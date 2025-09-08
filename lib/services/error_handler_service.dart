@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'analytics_service.dart';
 
 class ErrorHandlerService {
@@ -201,6 +200,24 @@ class ErrorHandlerService {
     debugPrint('📱 Error Snackbar: $message');
   }
   
+  // Generic error handler
+  void handleError(Object error, StackTrace? stackTrace, {BuildContext? context, String? tag}) {
+    debugPrint('🚨 Generic Error: $error');
+    if (stackTrace != null) {
+      debugPrint('📍 Stack trace: $stackTrace');
+    }
+    
+    // Track error in analytics
+    AnalyticsService.instance.trackError(
+      error.toString(),
+      stackTrace,
+      fatal: false,
+    );
+    
+    // Show user-friendly error message
+    _showErrorSnackBar('An error occurred. Please try again.');
+  }
+
   // Handle specific error types
   void handleSpecificError(String errorType, String message, {StackTrace? stackTrace}) {
     debugPrint('🚨 $errorType Error: $message');

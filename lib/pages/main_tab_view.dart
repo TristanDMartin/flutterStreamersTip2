@@ -126,7 +126,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
+      extendBody: true, // This allows content to extend behind the bottom navigation
       body: PageView(
         controller: _pageController,
         onPageChanged: (index) {

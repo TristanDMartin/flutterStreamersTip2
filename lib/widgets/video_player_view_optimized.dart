@@ -219,12 +219,16 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         color: Colors.black,
         child: Stack(
           children: [
-            // Video player
+            // Video player - Full screen
             if (_isInitialized && _videoPlayerController != null)
-              Center(
-                child: AspectRatio(
-                  aspectRatio: _videoPlayerController!.value.aspectRatio,
-                  child: VideoPlayer(_videoPlayerController!),
+              Positioned.fill(
+                child: FittedBox(
+                  fit: BoxFit.cover, // This ensures the video covers the entire screen
+                  child: SizedBox(
+                    width: _videoPlayerController!.value.size.width,
+                    height: _videoPlayerController!.value.size.height,
+                    child: VideoPlayer(_videoPlayerController!),
+                  ),
                 ),
               )
             else
@@ -246,10 +250,14 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   Widget _buildUIOverlay() {
+    // Position bottom info block above bottom navigation
+    final bottomNavH = 92.0; // bottom tab bar height
+    final railWidth = 64.0; // action rail width
+    
     return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
+      left: 12,
+      right: railWidth + 16, // leave room for the rail
+      bottom: bottomNavH + 12, // just above the tab bar
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -257,7 +265,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
             end: Alignment.bottomCenter,
             colors: [
               Colors.transparent,
-              Colors.black.withOpacity(0.7),
+              Colors.black.withValues(alpha: 0.7),
             ],
           ),
         ),
@@ -267,75 +275,75 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Creator info
-              GestureDetector(
-                onTap: widget.onShowProfile,
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 20,
+              // Creator row: avatar + username + follow pill
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: widget.onShowProfile,
+                    child: CircleAvatar(
+                      radius: 16, // Smaller radius as specified
                       backgroundImage: NetworkImage(widget.video.creator.avatarURL ?? ''),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '@${widget.video.creator.username}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            widget.video.creator.displayName,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
+                  ),
+                  const SizedBox(width: 8), // 8-12pt gap as specified
+                  Flexible(
+                    child: GestureDetector(
+                      onTap: widget.onShowProfile,
+                      child: Text(
+                        '@${widget.video.creator.username}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
-                    // Follow button
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final isFollowing = ref.watch(followingProvider).followingList.contains(widget.video.creator.id);
-                        return GestureDetector(
-                          onTap: () => _handleFollow(ref),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: isFollowing ? Colors.grey[600] : const Color(0xFF9248D2),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              isFollowing ? 'Following' : 'Follow',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
+                  ),
+                  const SizedBox(width: 8), // 8-12pt gap as specified
+                  // Follow pill next to username
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final isFollowing = ref.watch(followingProvider).followingList.contains(widget.video.creator.id);
+                      return GestureDetector(
+                        onTap: () => _handleFollow(ref),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isFollowing ? Colors.grey[600] : const Color(0xFF9248D2),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            isFollowing ? 'Following' : 'Follow',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              // Video caption
-              Text(
-                widget.video.caption,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
+              const SizedBox(height: 8),
+              // Video caption with overflow protection
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height - 92.0 - MediaQuery.of(context).padding.bottom - 80, // bottomNavH + safeArea + creatorRowHeight + 16
                 ),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+                child: Text(
+                  widget.video.caption,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    height: 1.2,
+                  ),
+                ),
               ),
             ],
           ),
@@ -345,10 +353,16 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   Widget _buildActionButtons() {
+    // Position action rail in middle third of screen
+    final screenHeight = MediaQuery.of(context).size.height;
+    final topPosition = screenHeight * 0.30; // ~upper-middle as specified
+    
     return Positioned(
-      right: 16,
-      bottom: 100,
-      child: Column(
+      right: 12, // 12-16 as specified
+      top: topPosition,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 220),
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           OptimizedLikeButton(
@@ -382,15 +396,16 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
             onFavoriteChanged: _handleFavoriteChanged,
             size: 24,
             activeColor: const Color(0xFF9248D2),
-            inactiveColor: Colors.white.withOpacity(0.85),
+            inactiveColor: Colors.white.withValues(alpha: 0.85),
           ),
           const SizedBox(height: 16),
           OptimizedShareButton(
             video: widget.video,
             size: 24,
-            color: Colors.white.withOpacity(0.85),
+            color: Colors.white.withValues(alpha: 0.85),
           ),
         ],
+        ),
       ),
     );
   }

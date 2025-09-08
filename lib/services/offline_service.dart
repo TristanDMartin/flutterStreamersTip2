@@ -47,7 +47,7 @@ class OfflineService {
   Future<void> cacheUsers(List<user_model.User> users) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final usersJson = users.map((u) => u.toJson()).toList();
+      final usersJson = users.map((u) => u.toMap()).toList();
       await prefs.setString(_usersKey, jsonEncode(usersJson));
       debugPrint('✅ Cached ${users.length} users offline');
     } catch (e) {
@@ -64,7 +64,7 @@ class OfflineService {
       if (usersString == null) return [];
       
       final List<dynamic> usersJson = jsonDecode(usersString);
-      return usersJson.map((json) => user_model.User.fromJson(json)).toList();
+      return usersJson.map((json) => user_model.User.fromMap(json as Map<String, dynamic>)).toList();
     } catch (e) {
       debugPrint('❌ Error retrieving cached users: $e');
       return [];

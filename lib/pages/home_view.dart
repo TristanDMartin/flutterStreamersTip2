@@ -90,7 +90,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     // Force sync with Firebase when HomeView appears
     favoritesNotifier.forceSync();
     
-    print('🏠 HomeView: Favorites manager setup complete');
+    // Favorites manager setup complete
   }
 
   /// Load videos from VideoService based on current feed tab
@@ -400,119 +400,140 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     }
   }
 
+  Widget _buildVideoContent() {
+    if (_isLoadingVideos) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Loading videos...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (_videos.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.video_library_outlined,
+              size: 80,
+              color: Colors.grey,
+            ),
+            SizedBox(height: 16),
+            Text(
+              'No videos available',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Pull to refresh or check your connection',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      return PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.horizontal, // Changed from vertical to horizontal
+        itemCount: _videos.length,
+        onPageChanged: (index) {
+          if (mounted) {
+            setState(() {
+              _currentIndex = index;
+            });
+          }
+        },
+        itemBuilder: (context, index) {
+          final video = _videos[index];
+          return VideoPlayerViewOptimized(
+            key: ValueKey(video.id),
+            video: video,
+            isCurrentVideo: index == _currentIndex,
+            isFirstVideo: index == 0,
+            homeViewModel: _homeVM,
+            showSheet: false,
+            sheetType: '',
+            onShowProfile: () => _showProfile(video.creator),
+            onShowComments: () => _openComments(video.id),
+            onShowShare: () => _shareVideo(video),
+            onShowStreamerCard: () => _showStreamerCardModal(video.creator),
+          );
+        },
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return NetworkStatusWidget(
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            // Main content
-            if (_isLoadingVideos)
-              const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Loading videos...',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
+        extendBody: true, // This allows content to extend behind the bottom navigation
+        body: MediaQuery.removePadding(
+          context: context,
+          removeTop: true, // Remove top padding to extend behind status bar
+          removeBottom: true, // Remove bottom padding to extend behind bottom nav
+          child: SizedBox(
+            width: double.infinity,
+            height: double.infinity,
+            child: Stack(
+              children: [
+                // Main content - Full screen video that extends behind everything
+                Positioned.fill(
+                  child: Container(
+                    width: double.infinity,
+                    height: double.infinity,
+                    child: _buildVideoContent(),
+                  ),
                 ),
-              )
-            else if (_videos.isEmpty)
-              const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.video_library_outlined,
-                      size: 80,
-                      color: Colors.grey,
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'No videos available',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Pull to refresh or check your connection',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              PageView.builder(
-                controller: _pageController,
-                scrollDirection: Axis.vertical,
-                itemCount: _videos.length,
-                onPageChanged: (index) {
-                  if (mounted) {
-                    setState(() {
-                      _currentIndex = index;
-                    });
-                  }
-                },
-                itemBuilder: (context, index) {
-                  final video = _videos[index];
-                  return VideoPlayerViewOptimized(
-                    key: ValueKey(video.id),
-                    video: video,
-                    isCurrentVideo: index == _currentIndex,
-                    isFirstVideo: index == 0,
-                    homeViewModel: _homeVM,
-                    showSheet: false,
-                    sheetType: '',
-                    onShowProfile: () => _showProfile(video.creator),
-                    onShowComments: () => _openComments(video.id),
-                    onShowShare: () => _shareVideo(video),
-                    onShowStreamerCard: () => _showStreamerCardModal(video.creator),
-                  );
-                },
-              ),
           
-            // Header overlay
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _buildHeader(),
-            ),
-            
-            // Feed dropdown
-            if (_isFeedMenuOpen)
-              Positioned(
-                left: 40,
-                top: MediaQuery.of(context).padding.top + 56,
-                child: _buildFeedDropdown(),
-              ),
-            
-            // StreamerCard full-screen modal
-            if (_showStreamerCard && _currentStreamerCard != null)
-              Positioned.fill(
-                child: StreamerCardViewOptimized(
-                  displayStreamer: _currentStreamerCard!,
-                  currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
-                  onDismiss: _dismissStreamerCard,
+                // Header overlay - positioned with proper status bar padding
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: _buildHeader(),
                 ),
-              ),
-          ],
+            
+                // Feed dropdown
+                if (_isFeedMenuOpen)
+                  Positioned(
+                    left: 40,
+                    top: MediaQuery.of(context).padding.top + 56,
+                    child: _buildFeedDropdown(),
+                  ),
+                
+                // StreamerCard full-screen modal
+                if (_showStreamerCard && _currentStreamerCard != null)
+                  Positioned.fill(
+                    child: StreamerCardViewOptimized(
+                      displayStreamer: _currentStreamerCard!,
+                      currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
+                      onDismiss: _dismissStreamerCard,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -593,8 +614,8 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
             ),
           ),
           const Spacer(),
-          // Discover button
-          GestureDetector(
+          // Discover button - bare icon with soft shadow
+          InkResponse(
             onTap: () {
               HapticFeedback.lightImpact();
               Navigator.push(
@@ -602,24 +623,20 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                 MaterialPageRoute(builder: (_) => const DiscoverView()),
               );
             },
+            radius: 24, // keeps 44x44 tap target
             child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(25),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
+              padding: const EdgeInsets.all(8), // transparent padding for hit area
+              child: Icon(
+                Icons.explore_outlined, 
+                color: Colors.white, 
+                size: 28, // 28-32pt as specified
+                shadows: [
+                  Shadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 4,
                     offset: const Offset(0, 2),
                   ),
                 ],
-              ),
-              child: const Icon(
-                Icons.explore_outlined, 
-                color: Colors.white, 
-                size: 24,
               ),
             ),
           ),

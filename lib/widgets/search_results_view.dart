@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/discover_provider.dart';
 import '../models/user.dart';
 import '../models/video_clip.dart';
+import 'optimized_image.dart';
 
 class SearchResultsView extends ConsumerStatefulWidget {
   final String searchText;
@@ -20,7 +21,6 @@ class SearchResultsView extends ConsumerStatefulWidget {
 }
 
 class _SearchResultsViewState extends ConsumerState<SearchResultsView> {
-  String _debouncedSearchText = '';
   Timer? _searchTimer;
 
   @override
@@ -57,14 +57,13 @@ class _SearchResultsViewState extends ConsumerState<SearchResultsView> {
 
   Future<void> _performSearch() async {
     try {
-      // TODO: Implement actual search using viewModel
-      await Future.delayed(const Duration(milliseconds: 100));
-      // For now, just update the debounced text
-      setState(() {
-        _debouncedSearchText = widget.searchText;
-      });
+      if (widget.searchText.isNotEmpty) {
+        await widget.viewModel.search(widget.searchText);
+      }
+      // Search completed
     } catch (e) {
-      print('Error performing search: $e');
+      // Error handling is done in the viewModel
+      // Search completed
     }
   }
 
@@ -162,12 +161,11 @@ class SearchResultRow extends StatelessWidget {
           color: Colors.grey.withValues(alpha: 0.1),
         ),
         child: ClipOval(
-          child: Image.network(
-            result.imageURL!,
+          child: OptimizedImage(
+            imageUrl: result.imageURL!,
+            width: 40,
+            height: 40,
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return _buildIconPlaceholder();
-            },
           ),
         ),
       );

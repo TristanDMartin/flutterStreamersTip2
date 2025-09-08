@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'dart:math';
 
 class SecurityService {
   static SecurityService? _instance;
@@ -36,10 +36,9 @@ class SecurityService {
   // Sanitize user input
   String sanitizeInput(String input) {
     // Remove potentially dangerous characters
-    return input
-        .replaceAll(RegExp(r'[<>"\']'), '') // Remove HTML/JS characters
-        .replaceAll(RegExp(r'[^\w\s@.-]'), '') // Keep only alphanumeric, spaces, @, ., -
-        .trim();
+    String sanitized = input.replaceAll('<', '').replaceAll('>', '').replaceAll('"', '').replaceAll("'", '');
+    sanitized = sanitized.replaceAll(RegExp(r'[^\w\s@.-]'), ''); // Keep only alphanumeric, spaces, @, ., -
+    return sanitized.trim();
   }
   
   // Validate URL format
@@ -52,35 +51,22 @@ class SecurityService {
     }
   }
   
-  // Hash sensitive data
-  String hashData(String data) {
-    final bytes = utf8.encode(data);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
+  // Validate phone number format
+  bool isValidPhoneNumber(String phone) {
+    final phoneRegex = RegExp(r'^\+?[1-9]\d{1,14}$');
+    return phoneRegex.hasMatch(phone.replaceAll(RegExp(r'[\s\-\(\)]'), ''));
   }
   
-  // Generate secure token
-  String generateSecureToken() {
-    final random = DateTime.now().millisecondsSinceEpoch.toString();
-    final bytes = utf8.encode(random);
-    final digest = sha256.convert(bytes);
-    return digest.toString().substring(0, 32);
+  // Validate file extension
+  bool isValidFileExtension(String filename, List<String> allowedExtensions) {
+    final extension = filename.split('.').last.toLowerCase();
+    return allowedExtensions.contains(extension);
   }
   
-  // Validate image URL
-  bool isValidImageUrl(String url) {
-    if (!isValidUrl(url)) return false;
-    
-    final imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
-    final lowerUrl = url.toLowerCase();
-    
-    return imageExtensions.any((ext) => lowerUrl.contains(ext));
-  }
-  
-  // Validate file size (in bytes)
-  bool isValidFileSize(int fileSizeBytes, int maxSizeMB) {
-    final maxSizeBytes = maxSizeMB * 1024 * 1024;
-    return fileSizeBytes <= maxSizeBytes;
+  // Validate file size
+  bool isValidFileSize(int fileSizeInBytes, {int maxSizeInMB = 10}) {
+    final maxSizeInBytes = maxSizeInMB * 1024 * 1024;
+    return fileSizeInBytes <= maxSizeInBytes;
   }
   
   // Validate image dimensions
@@ -90,159 +76,129 @@ class SecurityService {
   
   // Check for SQL injection patterns
   bool containsSqlInjection(String input) {
-    final sqlPatterns = [
-      r'(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)',
-      r'(\b(OR|AND)\s+\d+\s*=\s*\d+)',
-      r'(\b(OR|AND)\s+\w+\s*=\s*\w+)',
-      r'(\b(OR|AND)\s+\w+\s*LIKE\s*[\'"])',
-      r'(\b(OR|AND)\s+\w+\s*IN\s*[\'"])',
-      r'(\b(OR|AND)\s+\w+\s*BETWEEN\s+[\'"])',
-      r'(\b(OR|AND)\s+\w+\s*IS\s+NULL)',
-      r'(\b(OR|AND)\s+\w+\s*IS\s+NOT\s+NULL)',
-      r'(\b(OR|AND)\s+\w+\s*EXISTS\s*[\'"])',
-      r'(\b(OR|AND)\s+\w+\s*NOT\s+EXISTS\s*[\'"])',
-    ];
-    
     final upperInput = input.toUpperCase();
-    return sqlPatterns.any((pattern) => RegExp(pattern, caseSensitive: false).hasMatch(upperInput));
+    final sqlKeywords = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'EXEC', 'UNION', 'SCRIPT'];
+    return sqlKeywords.any((keyword) => upperInput.contains(keyword));
   }
   
   // Check for XSS patterns
   bool containsXss(String input) {
-    final xssPatterns = [
-      r'<script[^>]*>.*?</script>',
-      r'<iframe[^>]*>.*?</iframe>',
-      r'<object[^>]*>.*?</object>',
-      r'<embed[^>]*>.*?</embed>',
-      r'<applet[^>]*>.*?</applet>',
-      r'<form[^>]*>.*?</form>',
-      r'<input[^>]*>.*?</input>',
-      r'<button[^>]*>.*?</button>',
-      r'<select[^>]*>.*?</select>',
-      r'<textarea[^>]*>.*?</textarea>',
-      r'<link[^>]*>.*?</link>',
-      r'<meta[^>]*>.*?</meta>',
-      r'<style[^>]*>.*?</style>',
-      r'<link[^>]*>.*?</link>',
-      r'<meta[^>]*>.*?</meta>',
-      r'<style[^>]*>.*?</style>',
-      r'javascript:',
-      r'vbscript:',
-      r'data:',
-      r'<img[^>]*onerror[^>]*>',
-      r'<img[^>]*onload[^>]*>',
-      r'<img[^>]*onclick[^>]*>',
-      r'<img[^>]*onmouseover[^>]*>',
-      r'<img[^>]*onmouseout[^>]*>',
-      r'<img[^>]*onmousedown[^>]*>',
-      r'<img[^>]*onmouseup[^>]*>',
-      r'<img[^>]*onmousemove[^>]*>',
-      r'<img[^>]*onmouseenter[^>]*>',
-      r'<img[^>]*onmouseleave[^>]*>',
-      r'<img[^>]*onfocus[^>]*>',
-      r'<img[^>]*onblur[^>]*>',
-      r'<img[^>]*onchange[^>]*>',
-      r'<img[^>]*onsubmit[^>]*>',
-      r'<img[^>]*onreset[^>]*>',
-      r'<img[^>]*onselect[^>]*>',
-      r'<img[^>]*onkeydown[^>]*>',
-      r'<img[^>]*onkeyup[^>]*>',
-      r'<img[^>]*onkeypress[^>]*>',
-      r'<img[^>]*oncontextmenu[^>]*>',
-      r'<img[^>]*ondblclick[^>]*>',
-      r'<img[^>]*onabort[^>]*>',
-      r'<img[^>]*onerror[^>]*>',
-      r'<img[^>]*onload[^>]*>',
-      r'<img[^>]*onresize[^>]*>',
-      r'<img[^>]*onscroll[^>]*>',
-      r'<img[^>]*onunload[^>]*>',
-      r'<img[^>]*onbeforeunload[^>]*>',
-      r'<img[^>]*onhashchange[^>]*>',
-      r'<img[^>]*onpagehide[^>]*>',
-      r'<img[^>]*onpageshow[^>]*>',
-      r'<img[^>]*onpopstate[^>]*>',
-      r'<img[^>]*onstorage[^>]*>',
-      r'<img[^>]*ononline[^>]*>',
-      r'<img[^>]*onoffline[^>]*>',
-      r'<img[^>]*onmessage[^>]*>',
-      r'<img[^>]*onerror[^>]*>',
-      r'<img[^>]*onload[^>]*>',
-      r'<img[^>]*onclick[^>]*>',
-      r'<img[^>]*onmouseover[^>]*>',
-      r'<img[^>]*onmouseout[^>]*>',
-      r'<img[^>]*onmousedown[^>]*>',
-      r'<img[^>]*onmouseup[^>]*>',
-      r'<img[^>]*onmousemove[^>]*>',
-      r'<img[^>]*onmouseenter[^>]*>',
-      r'<img[^>]*onmouseleave[^>]*>',
-      r'<img[^>]*onfocus[^>]*>',
-      r'<img[^>]*onblur[^>]*>',
-      r'<img[^>]*onchange[^>]*>',
-      r'<img[^>]*onsubmit[^>]*>',
-      r'<img[^>]*onreset[^>]*>',
-      r'<img[^>]*onselect[^>]*>',
-      r'<img[^>]*onkeydown[^>]*>',
-      r'<img[^>]*onkeyup[^>]*>',
-      r'<img[^>]*onkeypress[^>]*>',
-      r'<img[^>]*oncontextmenu[^>]*>',
-      r'<img[^>]*ondblclick[^>]*>',
-      r'<img[^>]*onabort[^>]*>',
-      r'<img[^>]*onerror[^>]*>',
-      r'<img[^>]*onload[^>]*>',
-      r'<img[^>]*onresize[^>]*>',
-      r'<img[^>]*onscroll[^>]*>',
-      r'<img[^>]*onunload[^>]*>',
-      r'<img[^>]*onbeforeunload[^>]*>',
-      r'<img[^>]*onhashchange[^>]*>',
-      r'<img[^>]*onpagehide[^>]*>',
-      r'<img[^>]*onpageshow[^>]*>',
-      r'<img[^>]*onpopstate[^>]*>',
-      r'<img[^>]*onstorage[^>]*>',
-      r'<img[^>]*ononline[^>]*>',
-      r'<img[^>]*onoffline[^>]*>',
-      r'<img[^>]*onmessage[^>]*>',
-    ];
-    
-    return xssPatterns.any((pattern) => RegExp(pattern, caseSensitive: false).hasMatch(input));
+    final upperInput = input.toUpperCase();
+    final xssPatterns = ['<SCRIPT', 'JAVASCRIPT:', 'VBSCRIPT:', 'ONLOAD=', 'ONERROR=', 'ONCLICK=', 'ONMOUSEOVER=', '<IFRAME', '<OBJECT', '<EMBED'];
+    return xssPatterns.any((pattern) => upperInput.contains(pattern));
   }
   
-  // Validate and sanitize user input
-  String validateAndSanitizeInput(String input, {bool allowHtml = false}) {
-    if (input.isEmpty) return input;
+  // Escape HTML characters
+  String escapeHtml(String input) {
+    return input
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#x27;')
+        .replaceAll('/', '&#x2F;');
+  }
+  
+  // Escape SQL characters
+  String escapeSql(String input) {
+    return input
+        .replaceAll("'", "''")
+        .replaceAll('\\', '\\\\')
+        .replaceAll('\n', '\\n')
+        .replaceAll('\r', '\\r')
+        .replaceAll('\t', '\\t');
+  }
+  
+  // Generate secure hash
+  String generateHash(String input) {
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+  
+  // Generate secure random string
+  String generateRandomString(int length) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+    return String.fromCharCodes(
+      Iterable.generate(length, (_) => chars.codeUnitAt(random.nextInt(chars.length))),
+    );
+  }
+  
+  // Validate input against security rules
+  bool validateInput(String input, {
+    int? minLength,
+    int? maxLength,
+    bool checkSqlInjection = true,
+    bool checkXss = true,
+    bool allowSpecialChars = false,
+  }) {
+    // Check length constraints
+    if (minLength != null && input.length < minLength) return false;
+    if (maxLength != null && input.length > maxLength) return false;
     
     // Check for SQL injection
-    if (containsSqlInjection(input)) {
-      debugPrint('🚨 SQL injection attempt detected');
-      return '';
-    }
+    if (checkSqlInjection && containsSqlInjection(input)) return false;
     
     // Check for XSS
-    if (!allowHtml && containsXss(input)) {
-      debugPrint('🚨 XSS attempt detected');
-      return '';
-    }
+    if (checkXss && containsXss(input)) return false;
     
-    // Sanitize input
-    return sanitizeInput(input);
-  }
-  
-  // Rate limiting check
-  bool isRateLimited(String userId, String action, {int maxAttempts = 10, Duration window = const Duration(minutes: 1)}) {
-    // This would typically use a cache or database to track attempts
-    // For now, return false (not rate limited)
-    return false;
+    // Check for special characters if not allowed
+    if (!allowSpecialChars && (input.contains('<') || input.contains('>') || input.contains('"') || input.contains("'"))) return false;
+    
+    return true;
   }
   
   // Validate file upload
-  bool isValidFileUpload(String fileName, int fileSize, List<String> allowedExtensions) {
-    if (fileName.isEmpty) return false;
+  bool validateFileUpload(String filename, int fileSizeInBytes, {
+    List<String> allowedExtensions = const ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'],
+    int maxSizeInMB = 10,
+    int maxWidth = 4096,
+    int maxHeight = 4096,
+  }) {
+    // Check file extension
+    if (!isValidFileExtension(filename, allowedExtensions)) return false;
     
-    final extension = fileName.split('.').last.toLowerCase();
-    if (!allowedExtensions.contains(extension)) return false;
-    
-    const maxFileSize = 10 * 1024 * 1024; // 10MB
-    if (fileSize > maxFileSize) return false;
+    // Check file size
+    if (!isValidFileSize(fileSizeInBytes, maxSizeInMB: maxSizeInMB)) return false;
     
     return true;
+  }
+  
+  // Sanitize HTML content
+  String sanitizeHtml(String html) {
+    // Remove script tags and their content
+    String sanitized = html.replaceAll(RegExp(r'<script[^>]*>.*?</script>', caseSensitive: false), '');
+    
+    // Remove event handlers - simplified approach
+    sanitized = sanitized.replaceAll(RegExp(r'\s+on\w+\s*=', caseSensitive: false), '');
+    
+    // Remove javascript: and vbscript: protocols
+    sanitized = sanitized.replaceAll(RegExp(r'javascript:', caseSensitive: false), '');
+    sanitized = sanitized.replaceAll(RegExp(r'vbscript:', caseSensitive: false), '');
+    
+    return sanitized;
+  }
+  
+  // Validate and sanitize user input
+  String validateAndSanitizeInput(String input, {
+    int? minLength,
+    int? maxLength,
+    bool checkSqlInjection = true,
+    bool checkXss = true,
+    bool allowSpecialChars = false,
+  }) {
+    // First validate
+    if (!validateInput(input, 
+        minLength: minLength, 
+        maxLength: maxLength, 
+        checkSqlInjection: checkSqlInjection, 
+        checkXss: checkXss, 
+        allowSpecialChars: allowSpecialChars)) {
+      throw ArgumentError('Input validation failed');
+    }
+    
+    // Then sanitize
+    return sanitizeInput(input);
   }
 }

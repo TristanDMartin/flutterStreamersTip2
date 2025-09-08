@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/home_video.dart';
 import '../providers/discover_provider.dart';
 import '../models/trending_creator.dart';
-import '../models/category.dart';
-import 'trending_creator_card.dart';
+import 'trending_creator_ring.dart';
 import 'category_card.dart';
 import 'recommended_content_card.dart';
-import '../models/video_clip.dart';
-import 'video_grid.dart';
-import 'category_video_viewer.dart';
 import 'search_screen.dart';
 import 'activity_view.dart';
 import '../providers/activity_provider.dart';
+import '../services/logging_service.dart';
+import '../services/error_handler_service.dart';
 
 class DiscoverView extends ConsumerStatefulWidget {
   const DiscoverView({super.key});
@@ -23,10 +19,7 @@ class DiscoverView extends ConsumerStatefulWidget {
 }
 
 class _DiscoverViewState extends ConsumerState<DiscoverView> {
-  final String _searchText = '';
-  final bool _isSearching = false;
   String? _selectedCategory;
-  List<HomeVideo> _selectedCategoryVideos = [];
   int _currentCategoryPage = 0;
 
   @override
@@ -39,69 +32,154 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   void _loadInitialData() {
-    final discoverViewModel = ref.read(discoverProvider.notifier);
-    discoverViewModel.loadTrendingCreators();
+    try {
+      LoggingService.instance.debug('Loading initial data', tag: 'DiscoverView');
+      ref.read(discoverProvider.notifier).loadTrendingCreators();
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error loading initial data', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
+    }
   }
 
   void _onCategorySelected(String? categoryId) {
     setState(() {
       _selectedCategory = categoryId;
     });
-
-    if (categoryId != null) {
-      _fetchVideosForCategory(categoryId);
-    } else {
-      setState(() {
-        _selectedCategoryVideos = [];
-      });
-    }
   }
 
-  Future<void> _fetchVideosForCategory(String categoryId) async {
+  void _navigateToCreatorProfile(BuildContext context, TrendingCreator creator) {
     try {
-      final discoverViewModel = ref.read(discoverProvider.notifier);
-      final videos = await discoverViewModel.fetchVideosForCategory(categoryId);
-      
-      setState(() {
-        _selectedCategoryVideos = videos;
-      });
-    } catch (e) {
-      print('Error fetching videos for category $categoryId: $e');
-      setState(() {
-        _selectedCategoryVideos = [];
-      });
+      LoggingService.instance.debug('Navigating to creator profile: ${creator.username}', tag: 'DiscoverView');
+      // TODO: Implement navigation to StreamerCardView
+      // For now, show a placeholder dialog
+      _showCreatorInfoDialog(context, creator);
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error navigating to creator profile', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
     }
   }
 
-  void _onClipSelected(VideoClip clip) {
-    // Navigate to CategoryVideoViewer
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => CategoryVideoViewer(
-          videos: _selectedCategoryVideos.isNotEmpty
-              ? _selectedCategoryVideos
-              : _selectedCategoryVideos,
-          selectedIndex: 0,
+  void _showCreatorQuickActions(BuildContext context, TrendingCreator creator) {
+    try {
+      LoggingService.instance.debug('Showing quick actions for creator: ${creator.username}', tag: 'DiscoverView');
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (context) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_add, color: Colors.white),
+                title: const Text('Follow', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _followCreator(creator);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share, color: Colors.white),
+                title: const Text('Share', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _shareCreator(creator);
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
+      );
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error showing quick actions', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
+    }
+  }
+
+  void _showCreatorInfoDialog(BuildContext context, TrendingCreator creator) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(
+          creator.username,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Followers: ${_formatFollowerCount(creator.followers)}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Status: ${creator.isOnline ? "Online" : "Offline"}',
+              style: TextStyle(
+                color: creator.isOnline ? Colors.green : Colors.grey,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
     );
   }
 
+  void _followCreator(TrendingCreator creator) {
+    LoggingService.instance.info('Following creator: ${creator.username}', tag: 'DiscoverView');
+    // TODO: Implement actual follow functionality
+  }
+
+  void _shareCreator(TrendingCreator creator) {
+    LoggingService.instance.info('Sharing creator: ${creator.username}', tag: 'DiscoverView');
+    // TODO: Implement actual share functionality
+  }
+
+  String _formatFollowerCount(int count) {
+    if (count >= 1000000) {
+      return "${(count / 1000000).toStringAsFixed(1)}M";
+    } else if (count >= 1000) {
+      return "${(count / 1000).toStringAsFixed(1)}K";
+    } else {
+      return count.toString();
+    }
+  }
+
+
   void _navigateToActivity(BuildContext context) {
-    print('🔔 Bell icon tapped - navigating to ActivityView');
-    HapticFeedback.lightImpact();
+    LoggingService.instance.debug('Bell icon tapped - navigating to ActivityView', tag: 'DiscoverView');
     try {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) {
-            print('🔔 ActivityView page builder called');
+            LoggingService.instance.debug('ActivityView page builder called', tag: 'DiscoverView');
             return const ActivityView();
           },
         ),
       );
-      print('🔔 Navigation push completed');
-    } catch (e) {
-      print('❌ Navigation error: $e');
+      LoggingService.instance.debug('Navigation push completed', tag: 'DiscoverView');
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Navigation error', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
     }
   }
 
@@ -119,20 +197,12 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     
     return GestureDetector(
       onTap: () {
-        print('🔔 GestureDetector onTap triggered');
+        LoggingService.instance.debug('GestureDetector onTap triggered', tag: 'DiscoverView');
         _navigateToActivity(context);
       },
       child: Container(
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
         child: Stack(
           children: [
             const Icon(
@@ -157,7 +227,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFFE91E63).withOpacity(0.3),
+                              color: const Color(0xFFE91E63).withValues(alpha: 0.3),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -189,10 +259,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   @override
   Widget build(BuildContext context) {
-    final discoverViewModel = ref.watch(discoverProvider.notifier);
-    final discoverState = ref.watch(discoverProvider);
+    try {
+      final discoverViewModel = ref.watch(discoverProvider.notifier);
+      final discoverState = ref.watch(discoverProvider);
 
-    return Scaffold(
+      return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
         decoration: const BoxDecoration(
@@ -246,22 +317,22 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                   child: Container(
                     height: 52,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.10),
+                      color: Colors.white.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         width: 1,
                       ),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       children: [
-                        Icon(Icons.search, color: Colors.white.withOpacity(0.6)),
+                        Icon(Icons.search, color: Colors.white.withValues(alpha: 0.6)),
                         const SizedBox(width: 10),
                         Text(
                           'Search creators, categories…',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.65),
+                            color: Colors.white.withValues(alpha: 0.65),
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
                           ),
@@ -275,10 +346,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             ),
 
             // Content
-            if (_isSearching)
-              _buildSearchResults()
-            else
-              _buildRegularContent(discoverState, discoverViewModel),
+            _buildRegularContent(discoverState, discoverViewModel),
 
             // Bottom padding for tab bar
             const SliverToBoxAdapter(
@@ -288,19 +356,75 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         ),
       ),
     );
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error building DiscoverView', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      return _buildErrorState(context, e);
+    }
   }
 
-  Widget _buildSearchResults() {
-    // TODO: Implement search results
-    return const SliverToBoxAdapter(
-      child: Center(
-        child: Text(
-          'Search results will appear here',
-          style: TextStyle(color: Colors.white),
+  Widget _buildErrorState(BuildContext context, Object error) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF9248D2),
+              Color(0xFF7768DF),
+              Color(0xFF1670DE),
+              Color(0xFF3C8BD6),
+              Color(0xFF4897D2),
+            ],
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.white,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Something went wrong',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please try again later',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _loadInitialData();
+                  });
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
 
   Widget _buildRegularContent(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
     return SliverToBoxAdapter(
@@ -387,14 +511,14 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             Text(
               'No trending creators yet',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.85),
+                color: Colors.white.withValues(alpha: 0.85),
                 fontSize: 14,
               ),
             ),
             Text(
               'Popular creators will appear here',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.65),
+                color: Colors.white.withValues(alpha: 0.65),
                 fontSize: 12,
               ),
             ),
@@ -409,18 +533,49 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       height: 120,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
         itemCount: creators.length,
         itemBuilder: (context, index) {
+          final creator = creators[index];
           return Padding(
             padding: EdgeInsets.only(
-              left: index == 0 ? 0 : 16,
-              right: index == creators.length - 1 ? 0 : 0,
+              left: index == 0 ? 0 : 12, // 12px spacing as specified
+              right: index == creators.length - 1 ? 12 : 0,
             ),
-            child: TrendingCreatorCard(
-              creator: creators[index],
-              onTap: () {
-                // TODO: Navigate to StreamerCardView
-              },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TrendingCreatorRing(
+                  key: ValueKey(creator.id),
+                  imageUrl: creator.avatarURL,
+                  username: creator.username,
+                  isOnline: creator.isOnline,
+                  onTap: () {
+                    _navigateToCreatorProfile(context, creator);
+                  },
+                  onLongPress: () {
+                    _showCreatorQuickActions(context, creator);
+                  },
+                ),
+                
+                const SizedBox(height: 8), // 12px gap as specified
+                
+                // Username below circle
+                SizedBox(
+                  width: 84, // Match ring width
+                  child: Text(
+                    creator.username,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12, // 12-14pt as specified
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
             ),
           );
         },
@@ -437,7 +592,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           const SectionHeader(title: 'Categories', action: null),
           
           SizedBox(
-            height: 280,
+            height: 420, // Significantly increased height to ensure all text is visible
             child: PageView.builder(
               onPageChanged: (page) {
                 setState(() {
@@ -450,24 +605,28 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 final endIndex = (startIndex + 6).clamp(0, discoverState.categories.length);
                 final pageCategories = discoverState.categories.sublist(startIndex, endIndex);
                 
-                return GridView.builder(
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 100), // Much larger bottom padding to ensure text visibility
+                  child: GridView.builder(
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 24, // Even more spacing between rows
+                    ),
+                    itemCount: pageCategories.length,
+                    itemBuilder: (context, index) {
+                      final category = pageCategories[index];
+                      return CategoryCard(
+                        key: ValueKey(category.id), // Add key for better performance
+                        category: category,
+                        isSelected: _selectedCategory == category.id,
+                        onTap: () => _onCategorySelected(
+                          _selectedCategory == category.id ? null : category.id,
+                        ),
+                      );
+                    },
                   ),
-                  itemCount: pageCategories.length,
-                  itemBuilder: (context, index) {
-                    final category = pageCategories[index];
-                    return CategoryCard(
-                      category: category,
-                      isSelected: _selectedCategory == category.id,
-                      onTap: () => _onCategorySelected(
-                        _selectedCategory == category.id ? null : category.id,
-                      ),
-                    );
-                  },
                 );
               },
             ),
@@ -486,8 +645,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: index == _currentCategoryPage
-                        ? const Color(0xFF40DCD1)
-                        : const Color(0xFF6B5AE0).withOpacity(0.6),
+                        ? const Color(0xFF40DCD1) // Teal for active page
+                        : const Color(0xFF6B5AE0).withValues(alpha: 0.4), // Purple for inactive
                   ),
                 ),
               ),
@@ -499,81 +658,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   Widget _buildRecommendedContentSection(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
-    if (_selectedCategory != null) {
-      final category = discoverState.categories.firstWhere(
-        (c) => c.id == _selectedCategory,
-        orElse: () => const Category(id: '', name: '', icon: '', color: Colors.grey),
-      );
-      
-      if (category.id.isNotEmpty) {
-        return _buildCategoryContent(category);
-      }
-    }
-    
     return _buildRegularRecommendedContent(discoverState);
   }
 
-  Widget _buildCategoryContent(Category category) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            category.name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          if (_selectedCategoryVideos.isEmpty)
-            _buildEmptyCategoryView()
-          else
-            VideoGrid(
-              videos: _selectedCategoryVideos,
-              onVideoSelected: _onClipSelected,
-              categoryId: _selectedCategory!,
-            ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildEmptyCategoryView() {
-    return const Center(
-      child: Column(
-        children: [
-          Icon(
-            Icons.video_library_outlined,
-            size: 48,
-            color: Colors.grey,
-          ),
-          SizedBox(height: 16),
-          Text(
-            'No clips in this category yet',
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Be the first to share content in this category!',
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildRegularRecommendedContent(DiscoverState discoverState) {
     return Padding(

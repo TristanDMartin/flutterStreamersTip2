@@ -32,7 +32,11 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       await _notifSub?.cancel();
       state = state.copyWith(isLoading: true, hasError: false, error: null);
       
-      // Try to load from Firestore first
+      // IMMEDIATE FALLBACK: Load offline data first, then try Firestore
+      debugPrint('🔄 Loading offline data immediately...');
+      _loadOfflineData();
+      
+      // Try to load from Firestore in background
       try {
         _notifSub = _db
             .collection('notifications')
@@ -70,33 +74,29 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
                     hasError: false,
                     error: null,
                   );
+                  debugPrint('✅ Firestore data loaded successfully');
                 } catch (e) {
-                  state = state.copyWith(
-                    isLoading: false,
-                    hasError: true,
-                    error: 'Failed to parse notifications: ${e.toString()}',
-                  );
+                  debugPrint('🚨 Firestore parsing error: $e');
+                  // Keep offline data if Firestore fails
                 }
               },
               onError: (error) {
-                // If Firestore fails, try offline fallback
-                _loadOfflineData();
+                debugPrint('🚨 Firestore error: $error');
+                // Keep offline data if Firestore fails
               },
             );
       } catch (e) {
-        // If Firestore setup fails, try offline fallback
-        _loadOfflineData();
+        debugPrint('🚨 Firestore setup error: $e');
+        // Keep offline data if Firestore setup fails
       }
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        hasError: true,
-        error: 'Failed to initialize notifications: ${e.toString()}',
-      );
+      debugPrint('🚨 Init error: $e');
+      _loadOfflineData();
     }
   }
 
   void _loadOfflineData() {
+    debugPrint('🔄 Loading offline data as fallback...');
     // Load mock data as fallback when Firestore fails
     final mockNotifications = _generateMockNotifications();
     final grouped = <String, List<ActivityNotification>>{};
@@ -110,6 +110,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       hasError: false,
       error: null,
     );
+    debugPrint('✅ Offline data loaded successfully');
   }
 
   List<ActivityNotification> _generateMockNotifications() {

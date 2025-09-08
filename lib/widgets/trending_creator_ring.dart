@@ -1,0 +1,202 @@
+import 'package:flutter/material.dart';
+
+class TrendingCreatorRing extends StatefulWidget {
+  final String? imageUrl;
+  final String username;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool isOnline;
+
+  const TrendingCreatorRing({
+    super.key,
+    this.imageUrl,
+    required this.username,
+    this.onTap,
+    this.onLongPress,
+    this.isOnline = false,
+  });
+
+  @override
+  State<TrendingCreatorRing> createState() => _TrendingCreatorRingState();
+}
+
+class _TrendingCreatorRingState extends State<TrendingCreatorRing>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  bool _isPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.96,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _handleTapDown(TapDownDetails details) {
+    setState(() {
+      _isPressed = true;
+    });
+    _animationController.forward();
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    setState(() {
+      _isPressed = false;
+    });
+    _animationController.reverse();
+    widget.onTap?.call();
+  }
+
+  void _handleTapCancel() {
+    setState(() {
+      _isPressed = false;
+    });
+    _animationController.reverse();
+  }
+
+  void _handleLongPress() {
+    widget.onLongPress?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 84.0;
+    
+    return GestureDetector(
+      onTapDown: _handleTapDown,
+      onTapUp: _handleTapUp,
+      onTapCancel: _handleTapCancel,
+      onLongPress: _handleLongPress,
+      child: AnimatedBuilder(
+        animation: _scaleAnimation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _scaleAnimation.value,
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: _isPressed
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Gradient ring
+                  Container(
+                    width: size,
+                    height: size,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: SweepGradient(
+                        colors: [
+                          Color(0xFF9248D2), // Purple
+                          Color(0xFF7768DF), // Another purple
+                          Color(0xFF1670DE), // Blue
+                          Color(0xFF3C8BD6), // Lighter blue
+                          Color(0xFF4897D2), // Lightest blue
+                          Color(0xFF9248D2), // Back to purple for smooth transition
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  // White gap
+                  Container(
+                    width: size - 6,
+                    height: size - 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.95),
+                    ),
+                  ),
+                  
+                  // Avatar
+                  Container(
+                    width: size - 12,
+                    height: size - 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      image: widget.imageUrl != null
+                          ? DecorationImage(
+                              image: NetworkImage(widget.imageUrl!),
+                              fit: BoxFit.cover,
+                              onError: (exception, stackTrace) {
+                                // Handle image loading error
+                              },
+                            )
+                          : null,
+                      color: const Color(0x14FFFFFF),
+                    ),
+                    child: widget.imageUrl == null
+                        ? const Icon(
+                            Icons.person,
+                            color: Colors.white70,
+                            size: 32,
+                          )
+                        : null,
+                  ),
+                  
+                  // Online status indicator
+                  if (widget.isOnline)
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.green,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}

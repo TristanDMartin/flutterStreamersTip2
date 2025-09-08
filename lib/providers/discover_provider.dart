@@ -7,6 +7,7 @@ import '../models/recommended_content.dart';
 import '../models/home_video.dart';
 import '../models/video_clip.dart';
 import '../models/user.dart';
+import '../services/logging_service.dart';
 
 part 'discover_provider.freezed.dart';
 
@@ -125,7 +126,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
 
       return videos;
     } catch (e) {
-      print('Error fetching videos for category $categoryId: $e');
+      LoggingService.instance.error('Error fetching videos for category $categoryId', tag: 'DiscoverProvider', error: e);
       return [];
     }
   }
@@ -134,6 +135,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     if (state.isLoadingTrendingCreators) return;
     state = state.copyWith(isLoadingTrendingCreators: true);
     try {
+      LoggingService.instance.debug('Loading trending creators from Firestore', tag: 'DiscoverProvider');
       final FirebaseFirestore db = FirebaseFirestore.instance;
       Query<Map<String, dynamic>> q = db
           .collection('users')
@@ -158,9 +160,14 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       }).toList();
 
       state = state.copyWith(trendingCreators: trending, isLoadingTrendingCreators: false);
-    } catch (e) {
-      print('Error loading trending creators: $e');
-      state = state.copyWith(isLoadingTrendingCreators: false);
+      LoggingService.instance.info('Successfully loaded ${trending.length} trending creators', tag: 'DiscoverProvider');
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error loading trending creators', tag: 'DiscoverProvider', error: e, stackTrace: stackTrace);
+      // Fallback to sample data
+      state = state.copyWith(
+        trendingCreators: TrendingCreator.samples,
+        isLoadingTrendingCreators: false,
+      );
     }
   }
 
@@ -305,7 +312,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
 
       state = state.copyWith(searchResults: dedup.values.toList(), isSearching: false);
     } catch (e) {
-      print('Error searching: $e');
+      LoggingService.instance.error('Error searching', tag: 'DiscoverProvider', error: e);
       state = state.copyWith(searchResults: [], isSearching: false);
     }
   }
@@ -321,7 +328,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       },
     );
 
-    print('📊 User scrolled in category $categoryId, total scrolls: $newScrolls');
+    LoggingService.instance.debug('User scrolled in category $categoryId, total scrolls: $newScrolls', tag: 'DiscoverProvider');
 
     // Adjust low viewed ratio based on scroll behavior
     if (newScrolls > 10) {
@@ -335,7 +342,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
         },
       );
       
-      print('🎯 Increasing low viewed ratio for $categoryId to $newRatio');
+      LoggingService.instance.debug('Increasing low viewed ratio for $categoryId to $newRatio', tag: 'DiscoverProvider');
     }
   }
 
@@ -356,7 +363,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       },
     );
     
-    print('🔄 Reset user behavior for category $categoryId');
+    LoggingService.instance.debug('Reset user behavior for category $categoryId', tag: 'DiscoverProvider');
   }
 }
 

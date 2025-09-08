@@ -19,54 +19,40 @@ class CategoryCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: isSelected 
-              ? category.color.withValues(alpha: 0.1)
-              : Colors.transparent,
-          border: isSelected
-              ? Border.all(
-                  color: category.color,
-                  width: 2,
-                )
-              : null,
-        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 12),
-            
-            // Icon
+            // Circular Icon Container
             Container(
-              width: 60,
-              height: 60,
+              width: 80,
+              height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isSelected 
-                    ? category.color
-                    : Colors.grey.withValues(alpha: 0.2),
+                color: const Color(0xFF1A1A1A), // Dark circular background
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Icon(
                 _getIconData(category.icon),
-                color: isSelected 
-                    ? Colors.white
-                    : category.color,
-                size: 24,
+                color: _getIconColor(category.id),
+                size: 32,
               ),
             ),
             
             const SizedBox(height: 12),
             
-            // Name
+            // Category Name
             Text(
               category.name,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: isSelected 
-                    ? category.color
-                    : Colors.white,
+                color: Colors.white,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -76,6 +62,38 @@ class CategoryCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _getIconColor(String categoryId) {
+    // Match the specific colors from the images
+    switch (categoryId) {
+      case 'gaming':
+        return const Color(0xFF9C27B0); // Purple
+      case 'art':
+        return const Color(0xFF2196F3); // Blue
+      case 'music':
+        return const Color(0xFFF44336); // Red
+      case 'tech':
+        return const Color(0xFF4CAF50); // Green
+      case 'sports':
+        return const Color(0xFFFF9800); // Orange
+      case 'food':
+        return const Color(0xFFE91E63); // Pink/Red
+      case 'just-chatting':
+        return const Color(0xFF00BCD4); // Light Blue
+      case 'tutorials':
+        return const Color(0xFF3F51B5); // Indigo
+      case 'fitness':
+        return const Color(0xFF009688); // Teal
+      case 'podcasts':
+        return const Color(0xFF795548); // Brown
+      case 'fashion':
+        return const Color(0xFF9C27B0); // Purple
+      case 'roleplay':
+        return const Color(0xFFFFC107); // Yellow
+      default:
+        return const Color(0xFF757575); // Grey
+    }
   }
 
   IconData _getIconData(String iconName) {

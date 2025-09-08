@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/trending_creator.dart';
+import '../models/user_model.dart' as user_model;
 
 class TrendingCreatorCard extends StatelessWidget {
   final TrendingCreator creator;
@@ -17,17 +18,19 @@ class TrendingCreatorCard extends StatelessWidget {
       onTap: onTap,
       child: SizedBox(
         width: 100,
+        height: 120, // Fixed height to prevent overflow
         child: Column(
+          mainAxisSize: MainAxisSize.min, // Prevent column from expanding
           children: [
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             
-            // Avatar with gradient ring
+            // Avatar with gradient ring - matching example exactly
             Stack(
               children: [
-                // Gradient ring
+                // Outer gradient ring - very thick and prominent
                 Container(
-                  width: 80,
-                  height: 80,
+                  width: 100, // Large outer ring
+                  height: 100,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: SweepGradient(
@@ -41,19 +44,25 @@ class TrendingCreatorCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                ),
+                
+                // Inner white circle for separation
+                Center(
                   child: Container(
-                    margin: const EdgeInsets.all(3),
+                    width: 70, // White separation circle
+                    height: 70,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.transparent,
+                      color: Colors.white,
                     ),
                   ),
                 ),
                 
-                // Avatar image or placeholder
-                Positioned.fill(
+                // Avatar circle - much smaller
+                Center(
                   child: Container(
-                    margin: const EdgeInsets.all(3),
+                    width: 60, // Small avatar circle
+                    height: 60,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.grey.withValues(alpha: 0.1),
@@ -66,7 +75,7 @@ class TrendingCreatorCard extends StatelessWidget {
                               errorBuilder: (context, error, stackTrace) {
                                 return const Icon(
                                   Icons.person,
-                                  size: 40,
+                                  size: 28,
                                   color: Colors.grey,
                                 );
                               },
@@ -74,31 +83,31 @@ class TrendingCreatorCard extends StatelessWidget {
                           )
                         : const Icon(
                             Icons.person,
-                            size: 40,
+                            size: 28,
                             color: Colors.grey,
                           ),
                   ),
                 ),
                 
-                // Online status badge
+                // Online status badge - positioned on the outer ring
                 if (creator.isOnline)
                   Positioned(
                     right: 8,
                     top: 8,
                     child: Container(
-                      width: 10,
-                      height: 10,
+                      width: 16,
+                      height: 16,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.red,
+                        color: _getStatusColor(user_model.OnlineStatus.online),
                         border: Border.all(
                           color: Colors.white,
-                          width: 1.5,
+                          width: 3,
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 1,
+                            blurRadius: 3,
                           ),
                         ],
                       ),
@@ -107,23 +116,46 @@ class TrendingCreatorCard extends StatelessWidget {
               ],
             ),
             
-            const SizedBox(height: 12),
+            const SizedBox(height: 8), // Reduced spacing
             
             // Username
-            Text(
-              creator.username,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+            Expanded( // Use Expanded to take remaining space
+              child: Center(
+                child: Text(
+                  creator.username,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12, // Reduced font size
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 2, // Allow 2 lines for longer usernames
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
             ),
+            
+            const SizedBox(height: 8), // Bottom padding
           ],
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(user_model.OnlineStatus status) {
+    switch (status) {
+      case user_model.OnlineStatus.online:
+        return Colors.green;
+      case user_model.OnlineStatus.offline:
+        return Colors.grey;
+      case user_model.OnlineStatus.idle:
+        return Colors.orange;
+      case user_model.OnlineStatus.doNotDisturb:
+        return Colors.red;
+      case user_model.OnlineStatus.streaming:
+        return Colors.purple;
+      case user_model.OnlineStatus.invisible:
+        return Colors.grey;
+    }
   }
 }
