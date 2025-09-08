@@ -150,10 +150,10 @@ class ShareSheet extends ConsumerWidget {
     return Container(
       height: 100,
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Quick Share',
             style: TextStyle(
               color: Colors.white70,
@@ -161,8 +161,8 @@ class ShareSheet extends ConsumerWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 12),
-          const Expanded(
+          SizedBox(height: 12),
+          Expanded(
             child: Center(
               child: CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -179,10 +179,10 @@ class ShareSheet extends ConsumerWidget {
     return Container(
       height: 100,
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Quick Share',
             style: TextStyle(
               color: Colors.white70,
@@ -190,8 +190,8 @@ class ShareSheet extends ConsumerWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 12),
-          const Expanded(
+          SizedBox(height: 12),
+          Expanded(
             child: Center(
               child: Text(
                 'Unable to load connections',
@@ -309,7 +309,7 @@ class ShareSheet extends ConsumerWidget {
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: SizedBox(
         width: 80,
       child: Column(
         children: [
@@ -383,7 +383,7 @@ class ShareSheet extends ConsumerWidget {
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: SizedBox(
         width: 80,
         child: Column(
           children: [

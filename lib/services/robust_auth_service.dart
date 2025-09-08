@@ -469,7 +469,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     
     try {
       // Create a mock user for development
-      final mockUser = User(
+      const mockUser = User(
         id: 'dev_user_123',
         displayName: 'technqs',
         username: 'technqs',

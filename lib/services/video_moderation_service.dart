@@ -120,7 +120,7 @@ class VideoModerationService {
       final duration = await _getVideoDuration(videoFile);
       
       if (fileSize > 100 * 1024 * 1024) { // 100MB limit
-        return VideoModerationResult(
+        return const VideoModerationResult(
           isApproved: false,
           violations: ['file_too_large'],
           reason: 'Video file is too large (max 100MB)',
@@ -129,7 +129,7 @@ class VideoModerationService {
       }
 
       if (duration > 300) { // 5 minutes limit
-        return VideoModerationResult(
+        return const VideoModerationResult(
           isApproved: false,
           violations: ['duration_too_long'],
           reason: 'Video is too long (max 5 minutes)',
@@ -226,7 +226,7 @@ class VideoModerationService {
   VideoModerationResult _moderateMetadata(Map<String, dynamic> metadata) {
     final violations = <String>[];
     final metadataString = metadata.values
-        .where((value) => value is String)
+        .whereType<String>()
         .join(' ')
         .toLowerCase();
 

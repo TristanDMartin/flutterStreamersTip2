@@ -21,6 +21,8 @@ mixin _$ActivityState {
   bool get isLoading => throw _privateConstructorUsedError;
   bool get isProcessing => throw _privateConstructorUsedError;
   int get processingCount => throw _privateConstructorUsedError;
+  String? get error => throw _privateConstructorUsedError;
+  bool get hasError => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $ActivityStateCopyWith<ActivityState> get copyWith =>
@@ -37,7 +39,9 @@ abstract class $ActivityStateCopyWith<$Res> {
       {Map<String, List<ActivityNotification>> grouped,
       bool isLoading,
       bool isProcessing,
-      int processingCount});
+      int processingCount,
+      String? error,
+      bool hasError});
 }
 
 /// @nodoc
@@ -57,6 +61,8 @@ class _$ActivityStateCopyWithImpl<$Res, $Val extends ActivityState>
     Object? isLoading = null,
     Object? isProcessing = null,
     Object? processingCount = null,
+    Object? error = freezed,
+    Object? hasError = null,
   }) {
     return _then(_value.copyWith(
       grouped: null == grouped
@@ -75,6 +81,14 @@ class _$ActivityStateCopyWithImpl<$Res, $Val extends ActivityState>
           ? _value.processingCount
           : processingCount // ignore: cast_nullable_to_non_nullable
               as int,
+      error: freezed == error
+          ? _value.error
+          : error // ignore: cast_nullable_to_non_nullable
+              as String?,
+      hasError: null == hasError
+          ? _value.hasError
+          : hasError // ignore: cast_nullable_to_non_nullable
+              as bool,
     ) as $Val);
   }
 }
@@ -91,7 +105,9 @@ abstract class _$$ActivityStateImplCopyWith<$Res>
       {Map<String, List<ActivityNotification>> grouped,
       bool isLoading,
       bool isProcessing,
-      int processingCount});
+      int processingCount,
+      String? error,
+      bool hasError});
 }
 
 /// @nodoc
@@ -109,6 +125,8 @@ class __$$ActivityStateImplCopyWithImpl<$Res>
     Object? isLoading = null,
     Object? isProcessing = null,
     Object? processingCount = null,
+    Object? error = freezed,
+    Object? hasError = null,
   }) {
     return _then(_$ActivityStateImpl(
       grouped: null == grouped
@@ -127,18 +145,30 @@ class __$$ActivityStateImplCopyWithImpl<$Res>
           ? _value.processingCount
           : processingCount // ignore: cast_nullable_to_non_nullable
               as int,
+      error: freezed == error
+          ? _value.error
+          : error // ignore: cast_nullable_to_non_nullable
+              as String?,
+      hasError: null == hasError
+          ? _value.hasError
+          : hasError // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
 
 /// @nodoc
 
-class _$ActivityStateImpl implements _ActivityState {
+class _$ActivityStateImpl
+    with DiagnosticableTreeMixin
+    implements _ActivityState {
   const _$ActivityStateImpl(
       {final Map<String, List<ActivityNotification>> grouped = const {},
       this.isLoading = false,
       this.isProcessing = false,
-      this.processingCount = 0})
+      this.processingCount = 0,
+      this.error,
+      this.hasError = false})
       : _grouped = grouped;
 
   final Map<String, List<ActivityNotification>> _grouped;
@@ -159,10 +189,28 @@ class _$ActivityStateImpl implements _ActivityState {
   @override
   @JsonKey()
   final int processingCount;
+  @override
+  final String? error;
+  @override
+  @JsonKey()
+  final bool hasError;
 
   @override
-  String toString() {
-    return 'ActivityState(grouped: $grouped, isLoading: $isLoading, isProcessing: $isProcessing, processingCount: $processingCount)';
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return 'ActivityState(grouped: $grouped, isLoading: $isLoading, isProcessing: $isProcessing, processingCount: $processingCount, error: $error, hasError: $hasError)';
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties
+      ..add(DiagnosticsProperty('type', 'ActivityState'))
+      ..add(DiagnosticsProperty('grouped', grouped))
+      ..add(DiagnosticsProperty('isLoading', isLoading))
+      ..add(DiagnosticsProperty('isProcessing', isProcessing))
+      ..add(DiagnosticsProperty('processingCount', processingCount))
+      ..add(DiagnosticsProperty('error', error))
+      ..add(DiagnosticsProperty('hasError', hasError));
   }
 
   @override
@@ -176,7 +224,10 @@ class _$ActivityStateImpl implements _ActivityState {
             (identical(other.isProcessing, isProcessing) ||
                 other.isProcessing == isProcessing) &&
             (identical(other.processingCount, processingCount) ||
-                other.processingCount == processingCount));
+                other.processingCount == processingCount) &&
+            (identical(other.error, error) || other.error == error) &&
+            (identical(other.hasError, hasError) ||
+                other.hasError == hasError));
   }
 
   @override
@@ -185,7 +236,9 @@ class _$ActivityStateImpl implements _ActivityState {
       const DeepCollectionEquality().hash(_grouped),
       isLoading,
       isProcessing,
-      processingCount);
+      processingCount,
+      error,
+      hasError);
 
   @JsonKey(ignore: true)
   @override
@@ -199,7 +252,9 @@ abstract class _ActivityState implements ActivityState {
       {final Map<String, List<ActivityNotification>> grouped,
       final bool isLoading,
       final bool isProcessing,
-      final int processingCount}) = _$ActivityStateImpl;
+      final int processingCount,
+      final String? error,
+      final bool hasError}) = _$ActivityStateImpl;
 
   @override
   Map<String, List<ActivityNotification>> get grouped;
@@ -209,6 +264,10 @@ abstract class _ActivityState implements ActivityState {
   bool get isProcessing;
   @override
   int get processingCount;
+  @override
+  String? get error;
+  @override
+  bool get hasError;
   @override
   @JsonKey(ignore: true)
   _$$ActivityStateImplCopyWith<_$ActivityStateImpl> get copyWith =>

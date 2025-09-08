@@ -96,9 +96,11 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
   /// Load videos from VideoService based on current feed tab
   Future<void> _loadVideos() async {
     try {
-      setState(() {
-        _isLoadingVideos = true;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingVideos = true;
+        });
+      }
 
       final videoService = VideoService();
       VideoFetchResult result;
@@ -124,11 +126,13 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
 
       if (retryResult != null) {
         result = retryResult;
-        setState(() {
-          _videos = result.videos;
-          _lastDocument = result.lastDocument;
-          _isLoadingVideos = false;
-        });
+        if (mounted) {
+          setState(() {
+            _videos = result.videos;
+            _lastDocument = result.lastDocument;
+            _isLoadingVideos = false;
+          });
+        }
 
         // Save videos for offline access
         await OfflineDataService().saveVideosOffline(result.videos);
@@ -152,13 +156,13 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     try {
       final offlineVideos = await OfflineDataService().loadVideosOffline();
       if (offlineVideos.isNotEmpty) {
-        setState(() {
-          _videos = offlineVideos;
-          _isLoadingVideos = false;
-        });
-        
-        // Show offline mode indicator
         if (mounted) {
+          setState(() {
+            _videos = offlineVideos;
+            _isLoadingVideos = false;
+          });
+          
+          // Show offline mode indicator
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Showing offline content'),
@@ -168,12 +172,12 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
           );
         }
       } else {
-        setState(() {
-          _isLoadingVideos = false;
-        });
-        
-        // Show error message
         if (mounted) {
+          setState(() {
+            _isLoadingVideos = false;
+          });
+          
+          // Show error message
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Unable to load videos. Please check your connection.'),
@@ -184,9 +188,11 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
         }
       }
     } catch (e) {
-      setState(() {
-        _isLoadingVideos = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingVideos = false;
+        });
+      }
       debugPrint('Error loading offline videos: $e');
     }
   }
@@ -255,10 +261,12 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
             title: 'For You',
             isSelected: _feedTab == FeedTab.forYou,
             onTap: () {
-              setState(() {
-                _feedTab = FeedTab.forYou;
-                _isFeedMenuOpen = false;
-              });
+              if (mounted) {
+                setState(() {
+                  _feedTab = FeedTab.forYou;
+                  _isFeedMenuOpen = false;
+                });
+              }
               _loadVideos();
             },
           ),
@@ -271,10 +279,12 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
             title: 'Following',
             isSelected: _feedTab == FeedTab.following,
             onTap: () {
-              setState(() {
-                _feedTab = FeedTab.following;
-                _isFeedMenuOpen = false;
-              });
+              if (mounted) {
+                setState(() {
+                  _feedTab = FeedTab.following;
+                  _isFeedMenuOpen = false;
+                });
+              }
               _loadVideos();
             },
           ),
@@ -373,17 +383,21 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
       hashtags: user.hashtags,
     );
     
-    setState(() {
-      _currentStreamerCard = streamerCard;
-      _showStreamerCard = true;
-    });
+    if (mounted) {
+      setState(() {
+        _currentStreamerCard = streamerCard;
+        _showStreamerCard = true;
+      });
+    }
   }
 
   void _dismissStreamerCard() {
-    setState(() {
-      _showStreamerCard = false;
-      _currentStreamerCard = null;
-    });
+    if (mounted) {
+      setState(() {
+        _showStreamerCard = false;
+        _currentStreamerCard = null;
+      });
+    }
   }
 
   @override
@@ -449,9 +463,11 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                 scrollDirection: Axis.vertical,
                 itemCount: _videos.length,
                 onPageChanged: (index) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
+                  if (mounted) {
+                    setState(() {
+                      _currentIndex = index;
+                    });
+                  }
                 },
                 itemBuilder: (context, index) {
                   final video = _videos[index];
@@ -526,9 +542,11 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
           GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
-              setState(() {
-                _isFeedMenuOpen = !_isFeedMenuOpen;
-              });
+              if (mounted) {
+                setState(() {
+                  _isFeedMenuOpen = !_isFeedMenuOpen;
+                });
+              }
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),

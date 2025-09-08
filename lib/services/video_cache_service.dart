@@ -128,7 +128,7 @@ class VideoCacheService {
     
     try {
       final key = _generateCacheKey(videoUrl);
-      final filename = '${key}.mp4';
+      final filename = '$key.mp4';
       final cachedFile = File(path.join(_cacheDirectory!.path, filename));
       
       // Copy video file to cache
@@ -156,7 +156,7 @@ class VideoCacheService {
       // Check if we need to clean up
       await _enforceCacheLimits();
       
-      print('📦 Video cached: ${videoUrl} (${fileSize ~/ 1024}KB)');
+      print('📦 Video cached: $videoUrl (${fileSize ~/ 1024}KB)');
       return true;
     } catch (e) {
       print('❌ Error caching video: $e');
@@ -176,7 +176,7 @@ class VideoCacheService {
       // Write thumbnail data
       await cachedFile.writeAsBytes(thumbnailData);
       
-      print('📦 Thumbnail cached: ${videoUrl}');
+      print('📦 Thumbnail cached: $videoUrl');
       return true;
     } catch (e) {
       print('❌ Error caching thumbnail: $e');

@@ -15,11 +15,11 @@ dependencies:
   riverpod_annotation: ^2.3.3
   
   # Firebase
-  firebase_core: ^2.15.1
-  firebase_auth: ^4.7.3
-  cloud_firestore: ^4.9.1
-  firebase_storage: ^11.2.6
-  firebase_remote_config: ^4.2.4
+  firebase_core: ^2.24.0
+  firebase_auth: ^4.16.0
+  cloud_firestore: ^4.17.5
+  firebase_storage: ^11.6.5
+  firebase_remote_config: ^4.3.8
   
   # Google Sign In
   google_sign_in: ^6.1.6
@@ -41,6 +41,7 @@ dependencies:
   image_picker: ^1.0.4
   flutter_hooks: ^0.20.3
   hooks_riverpod: ^2.4.9
+  equatable: ^2.0.5
   
   # Video Processing
   path_provider: ^2.1.1
@@ -66,6 +67,11 @@ dependencies:
   connectivity_plus: ^5.0.2
   mobile_scanner: ^5.0.0
   giphy_picker: ^3.0.2
+  
+  # Production Dependencies
+  firebase_analytics: ^10.8.0
+  firebase_crashlytics: ^3.4.9
+  flutter_cache_manager: ^3.3.1
 
 dev_dependencies:
   flutter_test:

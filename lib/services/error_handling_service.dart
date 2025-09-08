@@ -178,7 +178,7 @@ class ErrorHandlingService {
     for (int attempt = 1; attempt <= attempts; attempt++) {
       try {
         if (!_isOnline && _requiresNetwork(operation)) {
-          throw SocketException('No internet connection');
+          throw const SocketException('No internet connection');
         }
         
         final result = await operation();

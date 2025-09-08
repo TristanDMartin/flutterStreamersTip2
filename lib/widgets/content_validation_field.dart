@@ -193,11 +193,11 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.warning, color: Colors.red, size: 16),
-              const SizedBox(width: 8),
-              const Text(
+              Icon(Icons.warning, color: Colors.red, size: 16),
+              SizedBox(width: 8),
+              Text(
                 'Content Policy Violation',
                 style: TextStyle(
                   color: Colors.red,

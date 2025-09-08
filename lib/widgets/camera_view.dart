@@ -30,7 +30,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isRecording = false;
-  List<File> _recordedClips = [];
+  final List<File> _recordedClips = [];
   NavigationState _navigationState = NavigationState.none;
   File? _currentVideoFile;
   VideoPlayerController? _previewController;
@@ -55,8 +55,8 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
   // Focus and zoom variables
   Offset? _focusPoint;
   double _currentZoom = 1.0;
-  double _minZoom = 1.0;
-  double _maxZoom = 4.0;
+  final double _minZoom = 1.0;
+  final double _maxZoom = 4.0;
   bool _isFocusing = false;
   late AnimationController _focusAnimationController;
   final EnhancedErrorHandlingService _errorHandler = EnhancedErrorHandlingService();
@@ -975,7 +975,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
                             builder: (context, child) {
                               return Container(
                                 margin: EdgeInsets.all(8 + (_pulseController.value * 4)),
-                                decoration: BoxDecoration(
+                                decoration: const BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: Colors.red,
                                 ),

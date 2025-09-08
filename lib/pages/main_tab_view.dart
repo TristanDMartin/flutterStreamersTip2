@@ -4,10 +4,12 @@ import '../services/robust_auth_service.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/custom_bottom_nav.dart';
 import '../widgets/camera_view.dart';
-import '../widgets/network_view_optimized.dart';
+import '../views/network_view.dart';
 import '../widgets/inbox_view_optimized.dart';
 import 'home_view.dart';
 import '../models/user.dart';
+import '../services/network_view_model_advanced.dart';
+import '../services/relationship_service_advanced.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
   const MainTabView({super.key});
@@ -19,17 +21,22 @@ class MainTabView extends ConsumerStatefulWidget {
 class _MainTabViewState extends ConsumerState<MainTabView> {
   int _currentIndex = 0;
   late PageController _pageController;
+  late NetworkViewModelAdvanced _networkViewModel;
+  late RelationshipServiceAdvanced _relationshipService;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
+    _networkViewModel = NetworkViewModelAdvanced();
+    _relationshipService = RelationshipServiceAdvanced();
     _startDataSync();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _networkViewModel.dispose();
     super.dispose();
   }
 
@@ -131,7 +138,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
           // Home View
           const HomeView(),
           // Network View
-          const NetworkViewOptimized(),
+          NetworkView(
+            vm: _networkViewModel,
+            relationshipService: _relationshipService,
+          ),
           // Creation Screen (handled by floating action button)
           const Center(
             child: Column(

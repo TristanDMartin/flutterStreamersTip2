@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
+import '../widgets/optimized_image.dart';
+import '../services/auth_service.dart';
 
-class ActivityRowView extends ConsumerWidget {
+class ActivityRowView extends ConsumerStatefulWidget {
   final ActivityNotification notification;
   final ValueChanged<User> onProfileTap;
   final ValueChanged<ActivityNotification> onPostTap;
@@ -16,63 +19,196 @@ class ActivityRowView extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // TODO: Get actual user manager
-    const isFollowing = false; // userManager.isFollowing(notification.user.id)
-    const isMutualFollow = false; // isFollowing && userManager.isFollowedBy(notification.user.id)
+  ConsumerState<ActivityRowView> createState() => _ActivityRowViewState();
+}
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1,
+class _ActivityRowViewState extends ConsumerState<ActivityRowView>
+    with TickerProviderStateMixin {
+  late AnimationController _scaleController;
+  late AnimationController _fadeController;
+  bool _isPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _fadeController.forward();
+  }
+
+  @override
+  void dispose() {
+    _scaleController.dispose();
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Get actual user management from Riverpod
+    final auth = ref.watch(authServiceProvider);
+    final currentUserId = auth.currentUser?.id;
+    
+    // For now, we'll use mock data until we implement the full relationship system
+    // TODO: Connect to actual relationship service
+    final isFollowing = false; // Will be implemented with relationship service
+    final isMutualFollow = false; // Will be implemented with relationship service
+
+    return FadeTransition(
+      opacity: _fadeController,
+      child: GestureDetector(
+        onTapDown: (_) {
+          setState(() {
+            _isPressed = true;
+          });
+          _scaleController.forward();
+        },
+        onTapUp: (_) {
+          setState(() {
+            _isPressed = false;
+          });
+          _scaleController.reverse();
+        },
+        onTapCancel: () {
+          setState(() {
+            _isPressed = false;
+          });
+          _scaleController.reverse();
+        },
+        child: AnimatedBuilder(
+          animation: _scaleController,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: 1.0 - (_scaleController.value * 0.02),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _isPressed 
+                      ? Colors.white.withOpacity(0.15)
+                      : Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: _isPressed
+                        ? Colors.white.withOpacity(0.3)
+                        : Colors.white.withOpacity(0.2),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Row(
+                      children: [
+                        // Avatar with ring
+                        _buildAvatarWithRing(),
+                        
+                        const SizedBox(width: 16),
+                        
+                        // Notification text
+                        Expanded(
+                          child: _buildNotificationText(),
+                        ),
+                        
+                        const SizedBox(width: 16),
+                        
+                        // Action item
+                        _buildActionItem(isFollowing, isMutualFollow, currentUserId),
+                      ],
+                    ),
+                    
+                    // Processing indicator overlay
+                    if (widget.notification.status == 'processing')
+                      Positioned(
+                        right: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.7),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
+    );
+  }
+
+  Widget _buildAvatarWithRing() {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onProfileTap(widget.notification.user);
+      },
       child: Stack(
         children: [
-          Row(
-            children: [
-              // Avatar with ring
-              _buildAvatarWithRing(),
-              
-              const SizedBox(width: 12),
-              
-              // Notification text
-              Expanded(
-                child: _buildNotificationText(),
-              ),
-              
-              const SizedBox(width: 12),
-              
-              // Action item
-              _buildActionItem(isFollowing, isMutualFollow),
-            ],
+          OptimizedAvatar(
+            imageUrl: widget.notification.user.avatarURL,
+            radius: 22,
+            backgroundColor: Colors.white.withOpacity(0.2),
+            child: Icon(
+              Icons.person,
+              color: Colors.white.withOpacity(0.7),
+              size: 24,
+            ),
           ),
           
-          // Processing indicator overlay
-          if (notification.status == 'processing')
-            const Positioned(
-              right: 8,
-              top: 0,
+          // Notification type ring
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: _getNotificationTypeColor(widget.notification.type),
+                width: 2,
+              ),
+            ),
+          ),
+          
+          // Online status indicator
+          if (widget.notification.user.onlineStatus == 'online')
+            Positioned(
+              right: 0,
               bottom: 0,
-              child: Center(
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              child: Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 2,
                   ),
                 ),
               ),
@@ -82,109 +218,167 @@ class ActivityRowView extends ConsumerWidget {
     );
   }
 
-  Widget _buildAvatarWithRing() {
-    return Stack(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.grey.withValues(alpha: 0.3),
-          ),
-          child: const Icon(
-            Icons.person,
-            color: Colors.grey,
-            size: 24,
-          ),
-        ),
-        
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: _getNotificationTypeColor(notification.type),
-              width: 2,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildNotificationText() {
     return GestureDetector(
-      onTap: () => onProfileTap(notification.user),
-      child: RichText(
-        text: TextSpan(
-          style: const TextStyle(
-            fontSize: 14,
-            color: Colors.white,
-          ),
-          children: [
-            TextSpan(
-              text: notification.user.username,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            TextSpan(
-              text: ' ${_getNotificationMessage()} • ${_getTimestampString()}',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
+      onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onProfileTap(widget.notification.user);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 15,
+                color: Colors.white,
+                height: 1.3,
               ),
+              children: [
+                TextSpan(
+                  text: widget.notification.user.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                TextSpan(
+                  text: ' ${_getNotificationMessage()}',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                '@${widget.notification.user.username}',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.6),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.4),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _getTimestampString(),
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.6),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildActionItem(bool isFollowing, bool isMutualFollow) {
-    if (notification.postThumbnailUrl != null) {
+  Widget _buildActionItem(bool isFollowing, bool isMutualFollow, String? currentUserId) {
+    if (widget.notification.postThumbnailUrl != null) {
       return GestureDetector(
-        onTap: () => onPostTap(notification),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          widget.onPostTap(widget.notification);
+        },
         child: Container(
-          width: 44,
-          height: 44,
+          width: 50,
+          height: 50,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(2),
-            color: Colors.grey.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.2),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: Image.network(
-              notification.postThumbnailUrl!,
+            borderRadius: BorderRadius.circular(12),
+            child: OptimizedImage(
+              imageUrl: widget.notification.postThumbnailUrl,
+              width: 50,
+              height: 50,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  color: Colors.grey.withValues(alpha: 0.3),
-                  child: const Icon(
-                    Icons.photo,
-                    color: Colors.grey,
-                    size: 20,
-                  ),
-                );
-              },
+              placeholder: Container(
+                color: Colors.white.withOpacity(0.1),
+                child: Icon(
+                  Icons.photo,
+                  color: Colors.white.withOpacity(0.6),
+                  size: 20,
+                ),
+              ),
+              errorWidget: Container(
+                color: Colors.white.withOpacity(0.1),
+                child: Icon(
+                  Icons.photo,
+                  color: Colors.white.withOpacity(0.6),
+                  size: 20,
+                ),
+              ),
             ),
           ),
         ),
       );
-    } else if (notification.type == ActivityNotificationType.follow &&
-               notification.user.id != 'currentUserId') { // TODO: Get actual current user ID
+    } else if (widget.notification.type == ActivityNotificationType.follow &&
+               widget.notification.user.id != currentUserId) {
       return GestureDetector(
         onTap: () {
-          // TODO: Implement follow/unfollow logic
+          HapticFeedback.lightImpact();
+          _handleFollowAction(isFollowing, isMutualFollow);
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Colors.blue, Colors.purple],
-            ),
-            borderRadius: BorderRadius.circular(20),
+            gradient: isMutualFollow
+                ? const LinearGradient(
+                    colors: [
+                      Color(0xFF9248D2), // Primary purple
+                      Color(0xFF7768DF), // Secondary purple
+                      Color(0xFF1670DE), // Blue
+                      Color(0xFF3C8BD6), // Lighter blue
+                      Color(0xFF4897D2), // Lightest blue
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  )
+                : const LinearGradient(
+                    colors: [
+                      Color(0xFF9248D2), // Primary purple
+                      Color(0xFF7768DF), // Secondary purple
+                      Color(0xFF1670DE), // Blue
+                      Color(0xFF3C8BD6), // Lighter blue
+                      Color(0xFF4897D2), // Lightest blue
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+            borderRadius: BorderRadius.circular(25),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF9248D2).withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Text(
             isMutualFollow 
@@ -192,7 +386,7 @@ class ActivityRowView extends ConsumerWidget {
                 : (isFollowing ? 'Following' : 'Follow back'),
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -204,22 +398,22 @@ class ActivityRowView extends ConsumerWidget {
   }
 
   String _getNotificationMessage() {
-    switch (notification.type) {
+    switch (widget.notification.type) {
       case ActivityNotificationType.like:
         return 'liked your post';
       case ActivityNotificationType.follow:
         return 'started following you';
       case ActivityNotificationType.comment:
-        if (notification.commentText != null) {
-          return 'commented: "${notification.commentText}"';
+        if (widget.notification.commentText != null) {
+          return 'commented: "${widget.notification.commentText}"';
         } else {
           return 'commented on your post';
         }
       case ActivityNotificationType.tag:
         return 'tagged you in their video';
       case ActivityNotificationType.mention:
-        if (notification.commentText != null) {
-          return 'mentioned you: "${notification.commentText}"';
+        if (widget.notification.commentText != null) {
+          return 'mentioned you: "${widget.notification.commentText}"';
         } else {
           return 'mentioned you in a comment';
         }
@@ -228,7 +422,7 @@ class ActivityRowView extends ConsumerWidget {
 
   String _getTimestampString() {
     final now = DateTime.now();
-    final difference = now.difference(notification.timestamp);
+    final difference = now.difference(widget.notification.timestamp);
     
     if (difference.inDays > 0) {
       return '${difference.inDays}d ago';
@@ -244,15 +438,38 @@ class ActivityRowView extends ConsumerWidget {
   Color _getNotificationTypeColor(ActivityNotificationType type) {
     switch (type) {
       case ActivityNotificationType.like:
-        return Colors.red;
+        return const Color(0xFFE91E63); // Pink
       case ActivityNotificationType.follow:
-        return Colors.blue;
+        return const Color(0xFF2196F3); // Blue
       case ActivityNotificationType.comment:
-        return Colors.green;
+        return const Color(0xFF4CAF50); // Green
       case ActivityNotificationType.tag:
-        return Colors.orange;
+        return const Color(0xFFFF9800); // Orange
       case ActivityNotificationType.mention:
-        return Colors.purple;
+        return const Color(0xFF9C27B0); // Purple
+    }
+  }
+
+  void _handleFollowAction(bool isFollowing, bool isMutualFollow) {
+    try {
+      // TODO: Implement actual follow/unfollow logic with relationship service
+      // For now, show a snackbar indicating the action
+      final action = isFollowing ? 'unfollow' : 'follow';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$action action will be implemented soon'),
+          backgroundColor: const Color(0xFF9248D2),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 }

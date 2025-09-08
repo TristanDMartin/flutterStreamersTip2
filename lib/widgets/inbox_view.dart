@@ -359,9 +359,9 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
                                   color: Colors.red,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: Text(
+                                child: const Text(
                                   '$unreadCount',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,

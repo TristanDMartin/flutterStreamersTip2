@@ -72,7 +72,7 @@ class VideoUploadService {
       // 2. Get current user
       final user = _auth.currentUser;
       if (user == null) {
-        return VideoUploadResult(
+        return const VideoUploadResult(
           success: false,
           error: 'User not authenticated',
         );
@@ -86,7 +86,7 @@ class VideoUploadService {
       print('📤 Uploading video to storage...');
       final videoUrl = await _uploadVideoFile(videoFile, videoId, userId);
       if (videoUrl == null) {
-        return VideoUploadResult(
+        return const VideoUploadResult(
           success: false,
           error: 'Failed to upload video file',
         );
@@ -190,7 +190,7 @@ class VideoUploadService {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        return VideoUploadResult(
+        return const VideoUploadResult(
           success: false,
           error: 'User not authenticated',
         );
@@ -202,7 +202,7 @@ class VideoUploadService {
       // Upload video file
       final videoUrl = await _uploadVideoFile(videoFile, videoId, userId);
       if (videoUrl == null) {
-        return VideoUploadResult(
+        return const VideoUploadResult(
           success: false,
           error: 'Failed to upload video file',
         );
@@ -387,9 +387,7 @@ class VideoUploadService {
 
   /// Generate unique video ID
   String _generateVideoId() {
-    return DateTime.now().millisecondsSinceEpoch.toString() +
-        '_' +
-        (1000 + (9999 - 1000) * (DateTime.now().microsecond / 1000000)).round().toString();
+    return '${DateTime.now().millisecondsSinceEpoch}_${(1000 + (9999 - 1000) * (DateTime.now().microsecond / 1000000)).round()}';
   }
 
   /// Get user's videos
@@ -430,7 +428,7 @@ class VideoUploadService {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        return VideoUploadResult(
+        return const VideoUploadResult(
           success: false,
           error: 'User not authenticated',
         );
@@ -439,7 +437,7 @@ class VideoUploadService {
       // Get draft video
       final doc = await _firestore.collection('videos').doc(videoId).get();
       if (!doc.exists) {
-        return VideoUploadResult(
+        return const VideoUploadResult(
           success: false,
           error: 'Draft not found',
         );

@@ -418,7 +418,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     );
 
     return [
-      HomeVideo(
+      const HomeVideo(
         id: 'draft_1',
         creator: currentUser,
         videoURL: 'https://example.com/draft1.mp4',
@@ -431,7 +431,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         isDraft: true,
         mlScore: 0.0,
       ),
-      HomeVideo(
+      const HomeVideo(
         id: 'draft_2',
         creator: currentUser,
         videoURL: 'https://example.com/draft2.mp4',

@@ -189,7 +189,7 @@ class VideoInsightsBarPreview extends StatelessWidget {
     // Create a sample video for preview
     const sampleVideo = HomeVideo(
       id: "sample-video-id",
-      creator: const User(id: 'current-user-id', username: 'sampleuser', displayName: 'Sample User'),
+      creator: User(id: 'current-user-id', username: 'sampleuser', displayName: 'Sample User'),
       videoURL: "https://example.com/video.mp4",
       thumbnailURL: "https://example.com/thumbnail.jpg",
       likes: 42,

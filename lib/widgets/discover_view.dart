@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/home_video.dart';
 import '../providers/discover_provider.dart';
@@ -11,6 +12,8 @@ import '../models/video_clip.dart';
 import 'video_grid.dart';
 import 'category_video_viewer.dart';
 import 'search_screen.dart';
+import 'activity_view.dart';
+import '../providers/activity_provider.dart';
 
 class DiscoverView extends ConsumerStatefulWidget {
   const DiscoverView({super.key});
@@ -84,6 +87,106 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
+  void _navigateToActivity(BuildContext context) {
+    print('🔔 Bell icon tapped - navigating to ActivityView');
+    HapticFeedback.lightImpact();
+    try {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) {
+            print('🔔 ActivityView page builder called');
+            return const ActivityView();
+          },
+        ),
+      );
+      print('🔔 Navigation push completed');
+    } catch (e) {
+      print('❌ Navigation error: $e');
+    }
+  }
+
+  int _getTotalNotificationCount(Map<String, List<dynamic>> grouped) {
+    int count = 0;
+    for (final notifications in grouped.values) {
+      count += notifications.length;
+    }
+    return count;
+  }
+
+  Widget _buildNotificationButton(BuildContext context, WidgetRef ref) {
+    final activityState = ref.watch(activityProvider);
+    final notificationCount = _getTotalNotificationCount(activityState.grouped);
+    
+    return GestureDetector(
+      onTap: () {
+        print('🔔 GestureDetector onTap triggered');
+        _navigateToActivity(context);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(right: 16),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+        child: Stack(
+          children: [
+            const Icon(
+              Icons.notifications_outlined,
+              color: Colors.white,
+              size: 24,
+            ),
+            if (notificationCount > 0)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 1000),
+                  tween: Tween(begin: 0.8, end: 1.0),
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE91E63),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFE91E63).withOpacity(0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          notificationCount > 99 ? '99+' : '$notificationCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final discoverViewModel = ref.watch(discoverProvider.notifier);
@@ -124,12 +227,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 ),
               ),
               actions: [
-                IconButton(
-                  icon: const Icon(Icons.notifications, color: Colors.white),
-                  onPressed: () {
-                    // TODO: Navigate to ActivityView
-                  },
-                ),
+                _buildNotificationButton(context, ref),
               ],
             ),
 
