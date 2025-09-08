@@ -1,0 +1,928 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../models/calendar_event.dart';
+import '../services/robust_auth_service.dart';
+
+class ProfileBackView extends ConsumerStatefulWidget {
+  final Map<String, dynamic> user;
+  final VoidCallback? onFlip;
+  const ProfileBackView({super.key, required this.user, this.onFlip});
+
+  @override
+  ConsumerState<ProfileBackView> createState() => _ProfileBackViewState();
+}
+
+class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
+  bool isBioExpanded = true;
+  bool isPlatformsExpanded = true;
+  bool isCalendarExpanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final String userId = widget.user['id'] as String;
+    debugPrint('📅 ProfileBackView: Setting up real-time listener for user: $userId');
+    
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        List<CalendarEvent> events = [];
+        List<Map<String, dynamic>> platforms = [];
+        
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>?;
+          if (data != null) {
+            // Load calendar events
+            if (data['calendarEvents'] != null) {
+              final eventsData = data['calendarEvents'] as List<dynamic>;
+              events = eventsData.map((eventData) {
+                final eventMap = eventData as Map<String, dynamic>;
+                return CalendarEvent(
+                  id: eventMap['id'] as String,
+                  title: eventMap['title'] as String,
+                  description: eventMap['description'] as String,
+                  date: (eventMap['date'] as Timestamp).toDate(),
+                );
+              }).toList();
+              debugPrint('📅 ProfileBackView: Loaded ${events.length} events from real-time listener');
+            }
+            
+            // Load platforms
+            if (data['platforms'] != null) {
+              final platformsData = data['platforms'] as List<dynamic>;
+              platforms = platformsData.map((platformData) {
+                final platformMap = platformData as Map<String, dynamic>;
+                return {
+                  'id': platformMap['id'] ?? '',
+                  'type': platformMap['type'] ?? '',
+                  'username': platformMap['username'] ?? '',
+                  'followers': platformMap['followers'] ?? 0,
+                  'url': platformMap['url'],
+                };
+              }).toList();
+              debugPrint('🔗 ProfileBackView: Loaded ${platforms.length} platforms from real-time listener');
+            }
+          }
+        } else if (snapshot.hasError) {
+          debugPrint('❌ ProfileBackView: Error loading data: ${snapshot.error}');
+        }
+        
+        return _buildContent(events, platforms);
+      },
+    );
+  }
+
+  Widget _buildContent(List<CalendarEvent> events, List<Map<String, dynamic>> platforms) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(child: _buildHeader()),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              SliverToBoxAdapter(child: _buildIdentity()),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              SliverToBoxAdapter(child: _buildTags()),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _buildSectionHeader('Bio', isBioExpanded, () => setState(() => isBioExpanded = !isBioExpanded))),
+              if (isBioExpanded) SliverToBoxAdapter(child: _buildBioBody()),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _buildSectionHeader('Platforms', isPlatformsExpanded, () => setState(() => isPlatformsExpanded = !isPlatformsExpanded))),
+              if (isPlatformsExpanded) SliverToBoxAdapter(child: _buildPlatforms(platforms)),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _buildSectionHeader('Calendar', isCalendarExpanded, () => setState(() => isCalendarExpanded = !isCalendarExpanded))),
+              if (isCalendarExpanded) SliverToBoxAdapter(child: _buildCalendar(events)),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          IconButton(
+            onPressed: widget.onFlip,
+            icon: const Icon(Icons.flip_camera_android_outlined, color: Colors.white),
+            tooltip: 'Flip',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIdentity() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _SmallAvatar(imageUrl: widget.user['avatarURL']),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.user['displayName'] ?? 'Techniques',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '@${widget.user['username'] ?? 'techniques'}',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.75),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTags() {
+    final List<String> tags = List<String>.from(widget.user['hashtags'] ?? const []);
+    if (tags.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        scrollDirection: Axis.horizontal,
+        itemBuilder: (context, index) {
+          final String tag = tags[index];
+          final bool active = index == 0;
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              gradient: active
+                  ? const LinearGradient(
+                      colors: [Color(0xFF40DCD1), Color(0xFF3D99F7)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    )
+                  : null,
+              color: active ? null : Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '#$tag',
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          );
+        },
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemCount: tags.length,
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, bool expanded, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: InkWell(
+        onTap: onTap,
+        child: Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const Spacer(),
+            Icon(expanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right, color: Colors.white.withValues(alpha: 0.9)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBioBody() {
+    final String bio = (widget.user['bio'] ?? '') as String;
+    if (bio.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Text(
+        bio,
+        style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 16, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
+    if (platforms.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+        child: Text(
+          'No platforms added yet.',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.6),
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      );
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        children: [
+          for (final platform in platforms)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+              child: _ClickablePlatformRow(
+                platform: platform,
+                onTap: () => _launchPlatformUrl(platform),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendar(List<CalendarEvent> events) {
+    debugPrint('📅 Building calendar with ${events.length} events');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Column(
+        children: [
+          for (final e in events)
+            _CalendarCard(
+              title: e.title,
+              subtitle: e.description,
+              meta: _formatDate(e.date),
+              onDelete: () async {
+                debugPrint('🗑️ Deleting calendar event: ${e.title}');
+                final List<CalendarEvent> updatedEvents = events.where((x) => x.id != e.id).toList();
+                
+                try {
+                  final authService = ref.read(robustAuthServiceProvider);
+                  await authService.updateUserCalendarEvents(updatedEvents);
+                  debugPrint('✅ Calendar event deleted successfully - StreamBuilder will auto-update');
+                } catch (error) {
+                  debugPrint('❌ Error deleting calendar event: $error');
+                }
+              },
+            ),
+          const SizedBox(height: 16),
+          _addToCalendarButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _addToCalendarButton() {
+    debugPrint('🔘 Rendering Add to Calendar button');
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      child: GestureDetector(
+        onTap: () {
+          debugPrint('➕ Add to Calendar button tapped');
+          _showAddEventSheet();
+        },
+        child: Container(
+          height: 60,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF955CFF).withValues(alpha: 0.4),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.2),
+              width: 1,
+            ),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add_circle, color: Colors.white, size: 28),
+              SizedBox(width: 12),
+              Text(
+                'Add to Calendar',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAddEventSheet() {
+    String title = '';
+    String description = '';
+    DateTime when = DateTime.now();
+    bool isValid = false;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.8),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Row(
+                      children: [
+                        const Text(
+                          'Add Event',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Title field (required)
+                    TextField(
+                      onChanged: (v) {
+                        title = v;
+                        setModalState(() {
+                          isValid = title.trim().isNotEmpty;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Title *',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        hintText: 'Event title',
+                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                        enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white30)),
+                        focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white70)),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Description field (optional)
+                    TextField(
+                      onChanged: (v) => description = v,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        labelText: 'Description',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        hintText: 'Event description (optional)',
+                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                        enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white30)),
+                        focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white70)),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Date & Time picker
+                    Row(
+                      children: [
+                        const Text(
+                          'Date & Time *',
+                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                        ),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () async {
+                            final DateTime? picked = await showDatePicker(
+                              context: context,
+                              initialDate: when,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              final TimeOfDay? tod = await showTimePicker(
+                                context: context,
+                                initialTime: TimeOfDay.fromDateTime(when),
+                              );
+                              if (tod != null) {
+                                setModalState(() {
+                                  when = DateTime(
+                                    picked.year,
+                                    picked.month,
+                                    picked.day,
+                                    tod.hour,
+                                    tod.minute,
+                                  );
+                                });
+                              }
+                            }
+                          },
+                          child: Text(
+                            _formatDate(when),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Save button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isValid 
+                              ? const Color(0xFF3D99F7)
+                              : Colors.grey.withValues(alpha: 0.3),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                        onPressed: isValid
+                            ? () async {
+                                final navigator = Navigator.of(context);
+                                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                                
+                                debugPrint('📅 Creating new calendar event...');
+                                debugPrint('📅 Title: ${title.trim()}');
+                                debugPrint('📅 Description: ${description.trim()}');
+                                debugPrint('📅 Date: $when');
+                                
+                                // Create event object with your exact spec
+                                final CalendarEvent ev = CalendarEvent.create(
+                                  title: title.trim(),
+                                  description: description.trim(),
+                                  date: when,
+                                );
+                                debugPrint('📅 Created event with ID: ${ev.id}');
+                                
+                                // Get current events and add new one
+                                final authService = ref.read(robustAuthServiceProvider);
+                                final currentUser = authService.currentUser;
+                                if (currentUser != null) {
+                                  final List<CalendarEvent> next = [...currentUser.calendarEvents, ev];
+                                  debugPrint('📅 Total events after adding: ${next.length}');
+                                  
+                                  try {
+                                    // Persist to backend via AuthenticationService
+                                    await authService.updateUserCalendarEvents(next);
+                                    debugPrint('📅 Successfully saved to Firestore - StreamBuilder will auto-update');
+                                    
+                                    // Dismiss sheet
+                                    navigator.pop();
+                                    
+                                    // Show success toast (optional)
+                                    scaffoldMessenger.showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Event added to your profile'),
+                                        backgroundColor: Color(0xFF3D99F7),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  } catch (e) {
+                                    debugPrint('❌ Error saving calendar event: $e');
+                                    // Show error with retry option
+                                    scaffoldMessenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to save event: $e'),
+                                        backgroundColor: Colors.red,
+                                        action: SnackBarAction(
+                                          label: 'Retry',
+                                          textColor: Colors.white,
+                                          onPressed: () {
+                                            // Retry logic could go here
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
+                              }
+                            : null,
+                        child: const Text(
+                          'Save',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    // Format date as "MMM d" (e.g., "Sep 2")
+    final List<String> months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    final String dateString = '${months[date.month - 1]} ${date.day}';
+    
+    // Format time as "h:mm a" (e.g., "5:10 PM")
+    final int hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final String minute = date.minute.toString().padLeft(2, '0');
+    // cspell:ignore ampm
+    final String ampm = date.hour >= 12 ? 'PM' : 'AM';
+    final String timeString = '$hour:$minute $ampm';
+    
+    return '$dateString · $timeString';
+  }
+
+  Future<void> _launchPlatformUrl(Map<String, dynamic> platform) async {
+    final url = platform['url'];
+    final platformType = platform['type'] ?? '';
+    
+    if (url != null && url.isNotEmpty) {
+      try {
+        debugPrint('🔗 ProfileBackView: Attempting to launch URL: $url');
+        final uri = Uri.parse(url);
+        
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(
+            uri,
+            mode: LaunchMode.externalApplication,
+          );
+          debugPrint('✅ ProfileBackView: Successfully launched URL: $url');
+          _showSuccessSnackBar('Opening ${_getPlatformDisplayName(platformType)}...');
+        } else {
+          debugPrint('❌ ProfileBackView: Cannot launch URL: $url');
+          _showErrorSnackBar('Cannot open this link');
+        }
+      } catch (e) {
+        debugPrint('❌ ProfileBackView: Error launching URL: $e');
+        _showErrorSnackBar('Error opening link: ${e.toString()}');
+      }
+    } else {
+      debugPrint('❌ ProfileBackView: No URL provided for platform: $platformType');
+      _showErrorSnackBar('No link available for this platform');
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red[600],
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _showSuccessSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green[600],
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  String _getPlatformDisplayName(String platformType) {
+    switch (platformType.toLowerCase()) {
+      case 'twitch':
+        return 'Twitch';
+      case 'youtube':
+        return 'YouTube';
+      case 'kick':
+        return 'Kick';
+      case 'tiktok':
+        return 'TikTok';
+      case 'facebook':
+        return 'Facebook';
+      case 'bluesky':
+        return 'Bluesky';
+      case 'twitter':
+        return 'Twitter';
+      case 'instagram':
+        return 'Instagram';
+      // cspell:ignore rednote
+      case 'rednote':
+        return 'RedNote';
+      default:
+        return platformType;
+    }
+  }
+}
+
+class _SmallAvatar extends StatelessWidget {
+  final String? imageUrl;
+  const _SmallAvatar({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [Color(0xFFFF6CAB), Color(0xFF8E54E9), Color(0xFF3D99F7), Color(0xFFFF6CAB)],
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black.withValues(alpha: 0.2),
+          ),
+          child: ClipOval(
+            child: imageUrl != null && imageUrl!.isNotEmpty
+                ? Image.network(imageUrl!, fit: BoxFit.cover)
+                : const Icon(Icons.person, color: Colors.white, size: 28),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClickablePlatformRow extends StatelessWidget {
+  final Map<String, dynamic> platform;
+  final VoidCallback onTap;
+  
+  const _ClickablePlatformRow({
+    required this.platform,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final platformType = platform['type'] ?? '';
+    final username = platform['username'] ?? '';
+    
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.2),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _getPlatformColor(platformType),
+                ),
+                child: Icon(
+                  _getPlatformIcon(platformType),
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              
+              const SizedBox(width: 16),
+              
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _getPlatformDisplayName(platformType),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              Text(
+                '@$username',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 14,
+                ),
+              ),
+              
+              const SizedBox(width: 8),
+              
+              const Icon(
+                Icons.chevron_right,
+                color: Colors.white,
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getPlatformColor(String platformType) {
+    switch (platformType.toLowerCase()) {
+      case 'twitch':
+        return const Color(0xFF9146FF);
+      case 'youtube':
+        return const Color(0xFFFF0000);
+      case 'kick':
+        return const Color(0xFF53FC18);
+      case 'tiktok':
+        return const Color(0xFF000000);
+      case 'facebook':
+        return const Color(0xFF1877F2);
+      case 'bluesky':
+        return const Color(0xFF0085FF);
+      case 'twitter':
+        return const Color(0xFF1DA1F2);
+      case 'instagram':
+        return const Color(0xFFE4405F);
+      // cspell:ignore rednote
+      case 'rednote':
+        return const Color(0xFFFF4500);
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getPlatformIcon(String platformType) {
+    switch (platformType.toLowerCase()) {
+      case 'twitch':
+        return Icons.tv;
+      case 'youtube':
+        return Icons.play_circle;
+      case 'kick':
+        return Icons.sports_esports;
+      case 'tiktok':
+        return Icons.music_note;
+      case 'facebook':
+        return Icons.facebook;
+      case 'bluesky':
+        return Icons.cloud;
+      case 'twitter':
+        return Icons.flutter_dash;
+      case 'instagram':
+        return Icons.camera_alt;
+      // cspell:ignore rednote
+      case 'rednote':
+        return Icons.note;
+      default:
+        return Icons.link;
+    }
+  }
+
+  String _getPlatformDisplayName(String platformType) {
+    switch (platformType.toLowerCase()) {
+      case 'twitch':
+        return 'Twitch';
+      case 'youtube':
+        return 'YouTube';
+      case 'kick':
+        return 'Kick';
+      case 'tiktok':
+        return 'TikTok';
+      case 'facebook':
+        return 'Facebook';
+      case 'bluesky':
+        return 'Bluesky';
+      case 'twitter':
+        return 'Twitter';
+      case 'instagram':
+        return 'Instagram';
+      // cspell:ignore rednote
+      case 'rednote':
+        return 'RedNote';
+      default:
+        return platformType;
+    }
+  }
+}
+
+
+
+class _CalendarCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String meta;
+  final VoidCallback onDelete;
+  const _CalendarCard({required this.title, required this.subtitle, required this.meta, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.calendar_today_outlined, color: Colors.white, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(subtitle, style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(meta, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
+              ],
+            ),
+          ),
+          IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline, color: Colors.redAccent)),
+        ],
+      ),
+    );
+  }
+}
+
+

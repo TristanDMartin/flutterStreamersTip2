@@ -1,0 +1,397 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../models/home_video.dart';
+import '../providers/home_provider.dart';
+import '../providers/following_provider.dart';
+import '../services/performance_service.dart';
+import '../services/engagement_analytics_service.dart';
+import '../services/robust_auth_service.dart';
+import '../widgets/action_button.dart';
+import '../widgets/optimized_like_button.dart';
+import '../widgets/comments_view_optimized.dart';
+import '../widgets/optimized_favorite_button.dart';
+import '../widgets/optimized_share_button.dart';
+
+class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
+  final HomeVideo video;
+  final bool isCurrentVideo;
+  final bool isFirstVideo;
+  final HomeViewModel homeViewModel;
+  final bool showSheet;
+  final String sheetType;
+  final VoidCallback onShowProfile;
+  final VoidCallback onShowComments;
+  final VoidCallback onShowShare;
+  final VoidCallback onShowStreamerCard;
+
+  const VideoPlayerViewOptimized({
+    super.key,
+    required this.video,
+    required this.isCurrentVideo,
+    required this.isFirstVideo,
+    required this.homeViewModel,
+    required this.showSheet,
+    required this.sheetType,
+    required this.onShowProfile,
+    required this.onShowComments,
+    required this.onShowShare,
+    required this.onShowStreamerCard,
+  });
+
+  @override
+  ConsumerState<VideoPlayerViewOptimized> createState() => _VideoPlayerViewOptimizedState();
+}
+
+class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimized> {
+  VideoPlayerController? _videoPlayerController;
+  bool _isInitialized = false;
+  bool _isPlaying = false;
+  bool _hasIncrementedView = false;
+  
+  // Like state - simplified
+  final GlobalKey _likeIconKey = GlobalKey();
+  
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideo();
+  }
+
+  @override
+  void dispose() {
+    // Track performance
+    PerformanceService().trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
+    
+    _videoPlayerController?.dispose();
+    _videoPlayerController = null;
+    
+    super.dispose();
+  }
+
+  Future<void> _initializeVideo() async {
+    // Start performance tracking
+    PerformanceService().startVideoLoad(widget.video.id);
+    
+    try {
+      // Create new controller
+      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.video.videoURL));
+      await _videoPlayerController!.initialize();
+      
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _isPlaying = widget.isCurrentVideo;
+        });
+        
+        if (_isPlaying) {
+          _videoPlayerController!.play();
+        }
+        
+        // Complete performance tracking
+        PerformanceService().completeVideoLoad(widget.video.id, success: true);
+      }
+    } catch (e) {
+      print('Error initializing video: $e');
+      PerformanceService().completeVideoLoad(widget.video.id, success: false);
+    }
+  }
+
+  void _togglePlayPause() {
+    if (_videoPlayerController == null || !_isInitialized) return;
+    
+    if (_isPlaying) {
+      _videoPlayerController!.pause();
+      setState(() {
+        _isPlaying = false;
+      });
+      
+      // Track playback performance
+      PerformanceService().trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
+    } else {
+      _videoPlayerController!.play();
+      setState(() {
+        _isPlaying = true;
+      });
+      
+      // Track playback performance
+      PerformanceService().trackVideoPlayback(widget.video.id, PlaybackEvent.play);
+      
+      // Increment view count (only once per video)
+      if (!_hasIncrementedView) {
+        _hasIncrementedView = true;
+        // TODO: Implement view increment logic
+        print('Incrementing view for video: ${widget.video.id}');
+      }
+    }
+  }
+
+  void _handleLikeChanged() {
+    // Optional callback when like state changes
+    setState(() {});
+  }
+
+  void _handleFavoriteChanged() {
+    // Optional callback when favorite state changes
+    setState(() {});
+  }
+
+  void _handleFollow(WidgetRef ref) {
+    print('🔔 Follow button tapped for creator: ${widget.video.creator.id}');
+    HapticFeedback.lightImpact();
+    
+    // Check if user is authenticated
+    final auth = FirebaseAuth.instance;
+    final robustAuth = ref.read(robustAuthServiceProvider);
+    
+    print('🔔 Current user ID: ${robustAuth.currentUser?.id ?? 'null'}');
+    print('🔔 Firebase Auth user: ${auth.currentUser?.uid}');
+    
+    // Check if we're in bypass mode (mock user)
+    if (robustAuth.currentUser?.id == 'dev_user_123') {
+      print('🔔 Using mock follow functionality for development');
+      _handleMockFollow(ref);
+      return;
+    } else {
+      print('🔔 Using real Firebase follow functionality');
+    }
+    
+    if (auth.currentUser == null) {
+      print('🔔 User not authenticated, cannot follow');
+      return;
+    }
+    
+    // Track follow/unfollow engagement
+    final isCurrentlyFollowing = ref.read(followingProvider).followingList.contains(widget.video.creator.id);
+    print('🔔 Currently following: $isCurrentlyFollowing');
+    print('🔔 Following list: ${ref.read(followingProvider).followingList}');
+    print('🔔 Followers list: ${ref.read(followingProvider).followersList}');
+    
+    EngagementAnalyticsService().trackEngagement(
+      videoId: widget.video.id,
+      event: isCurrentlyFollowing ? EngagementEvent.unfollow : EngagementEvent.follow,
+      metadata: {
+        'timestamp': DateTime.now().toIso8601String(),
+        'creatorId': widget.video.creator.id,
+      },
+    );
+    
+    // Toggle follow state
+    ref.read(followingProvider.notifier).toggleFollow(widget.video.creator.id);
+  }
+
+  void _handleMockFollow(WidgetRef ref) {
+    try {
+      // Mock follow functionality for development
+      final isCurrentlyFollowing = ref.read(followingProvider).followingList.contains(widget.video.creator.id);
+      
+      if (isCurrentlyFollowing) {
+        ref.read(followingProvider.notifier).unfollowUser(widget.video.creator.id);
+        print('🔔 Mock unfollowed: ${widget.video.creator.id}');
+      } else {
+        ref.read(followingProvider.notifier).followUser(widget.video.creator.id);
+        print('🔔 Mock followed: ${widget.video.creator.id}');
+      }
+    } catch (e) {
+      print('🔔 Mock follow error: $e');
+    }
+  }
+
+  void _handleTap() {
+    _togglePlayPause();
+  }
+
+  void _handleDoubleTap() {
+    // Simple double tap - just trigger like if not already liked
+    // The OptimizedLikeButton will handle the actual like logic
+    HapticFeedback.lightImpact();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _handleTap,
+      onDoubleTap: _handleDoubleTap,
+      child: Container(
+        color: Colors.black,
+        child: Stack(
+          children: [
+            // Video player
+            if (_isInitialized && _videoPlayerController != null)
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _videoPlayerController!.value.aspectRatio,
+                  child: VideoPlayer(_videoPlayerController!),
+                ),
+              )
+            else
+              const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+                ),
+              ),
+            
+            // UI Overlay
+            _buildUIOverlay(),
+            
+            // Action buttons overlay
+            _buildActionButtons(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUIOverlay() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.black.withOpacity(0.7),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Creator info
+              GestureDetector(
+                onTap: widget.onShowProfile,
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundImage: NetworkImage(widget.video.creator.avatarURL ?? ''),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '@${widget.video.creator.username}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            widget.video.creator.displayName,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Follow button
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final isFollowing = ref.watch(followingProvider).followingList.contains(widget.video.creator.id);
+                        return GestureDetector(
+                          onTap: () => _handleFollow(ref),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: isFollowing ? Colors.grey[600] : const Color(0xFF9248D2),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              isFollowing ? 'Following' : 'Follow',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Video caption
+              Text(
+                widget.video.caption,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Positioned(
+      right: 16,
+      bottom: 100,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          OptimizedLikeButton(
+            videoId: widget.video.id,
+            initialLikeCount: widget.video.likes,
+            initialIsLiked: widget.video.isLiked,
+            onLikeChanged: _handleLikeChanged,
+            iconKey: _likeIconKey,
+          ),
+          const SizedBox(height: 16),
+          ActionButton(
+            icon: Icons.chat_bubble_outline,
+            label: widget.video.comments.toString(),
+            isActive: false,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (BuildContext context) {
+                  return CommentsViewOptimized(videoId: widget.video.id);
+                },
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          OptimizedFavoriteButton(
+            videoId: widget.video.id,
+            initialIsFavorited: widget.video.isFavorited,
+            onFavoriteChanged: _handleFavoriteChanged,
+            size: 24,
+            activeColor: const Color(0xFF9248D2),
+            inactiveColor: Colors.white.withOpacity(0.85),
+          ),
+          const SizedBox(height: 16),
+          OptimizedShareButton(
+            video: widget.video,
+            size: 24,
+            color: Colors.white.withOpacity(0.85),
+          ),
+        ],
+      ),
+    );
+  }
+}

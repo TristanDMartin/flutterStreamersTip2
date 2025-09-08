@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "161050969080",
+    "project_id": "streamerstip-6cfdb",
+    "storage_bucket": "streamerstip-6cfdb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:161050969080:android:07a92599a2c1a1f504cc0d",
+        "android_client_info": {
+          "package_name": "com.streamerstip.streamersTipApp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "161050969080-pmsgr6kd4dsmoogucd5mqtoautcl44sd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.streamerstip.streamersTipApp",
+            "certificate_hash": "ab6ba51ad87fc6b1a5ab071d91e10d1b2f5d0c2c"
+          }
+        },
+        {
+          "client_id": "161050969080-25vjj699hf1mk35v5fq02es9ff72m9od.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcUq1k02c4QRvuZSZK16fD6wpUMnLXxe8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "161050969080-25vjj699hf1mk35v5fq02es9ff72m9od.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "161050969080-2avcs5v0o7vspdfb6rkgphpn6uv1r1qg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "St-INC.StreamersTip"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
