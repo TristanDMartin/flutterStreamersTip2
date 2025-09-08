@@ -95,7 +95,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         PerformanceService().completeVideoLoad(widget.video.id, success: true);
       }
     } catch (e) {
-      print('Error initializing video: $e');
+      // Error initializing video: $e
       PerformanceService().completeVideoLoad(widget.video.id, success: false);
     }
   }
@@ -124,7 +124,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       if (!_hasIncrementedView) {
         _hasIncrementedView = true;
         // TODO: Implement view increment logic
-        print('Incrementing view for video: ${widget.video.id}');
+        // Incrementing view for video: ${widget.video.id}
       }
     }
   }
@@ -140,35 +140,35 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   void _handleFollow(WidgetRef ref) {
-    print('🔔 Follow button tapped for creator: ${widget.video.creator.id}');
+    // Follow button tapped for creator: ${widget.video.creator.id}
     HapticFeedback.lightImpact();
     
     // Check if user is authenticated
     final auth = FirebaseAuth.instance;
     final robustAuth = ref.read(robustAuthServiceProvider);
     
-    print('🔔 Current user ID: ${robustAuth.currentUser?.id ?? 'null'}');
-    print('🔔 Firebase Auth user: ${auth.currentUser?.uid}');
+    // Current user ID: ${robustAuth.currentUser?.id ?? 'null'}
+    // Firebase Auth user: ${auth.currentUser?.uid}
     
     // Check if we're in bypass mode (mock user)
     if (robustAuth.currentUser?.id == 'dev_user_123') {
-      print('🔔 Using mock follow functionality for development');
+      // Using mock follow functionality for development
       _handleMockFollow(ref);
       return;
     } else {
-      print('🔔 Using real Firebase follow functionality');
+      // Using real Firebase follow functionality
     }
     
     if (auth.currentUser == null) {
-      print('🔔 User not authenticated, cannot follow');
+      // User not authenticated, cannot follow
       return;
     }
     
     // Track follow/unfollow engagement
     final isCurrentlyFollowing = ref.read(followingProvider).followingList.contains(widget.video.creator.id);
-    print('🔔 Currently following: $isCurrentlyFollowing');
-    print('🔔 Following list: ${ref.read(followingProvider).followingList}');
-    print('🔔 Followers list: ${ref.read(followingProvider).followersList}');
+    // Currently following: $isCurrentlyFollowing
+    // Following list: ${ref.read(followingProvider).followingList}
+    // Followers list: ${ref.read(followingProvider).followersList}
     
     EngagementAnalyticsService().trackEngagement(
       videoId: widget.video.id,
@@ -190,13 +190,13 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       
       if (isCurrentlyFollowing) {
         ref.read(followingProvider.notifier).unfollowUser(widget.video.creator.id);
-        print('🔔 Mock unfollowed: ${widget.video.creator.id}');
+        // Mock unfollowed: ${widget.video.creator.id}
       } else {
         ref.read(followingProvider.notifier).followUser(widget.video.creator.id);
-        print('🔔 Mock followed: ${widget.video.creator.id}');
+        // Mock followed: ${widget.video.creator.id}
       }
     } catch (e) {
-      print('🔔 Mock follow error: $e');
+      // Mock follow error: $e
     }
   }
 
@@ -251,26 +251,15 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
 
   Widget _buildUIOverlay() {
     // Position bottom info block above bottom navigation
-    final bottomNavH = 92.0; // bottom tab bar height
-    final railWidth = 64.0; // action rail width
+    const bottomNavH = 92.0; // bottom tab bar height
+    const railWidth = 64.0; // action rail width
     
     return Positioned(
       left: 12,
       right: railWidth + 16, // leave room for the rail
       bottom: bottomNavH + 12, // just above the tab bar
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              Colors.black.withValues(alpha: 0.7),
-            ],
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -347,7 +336,6 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
               ),
             ],
           ),
-        ),
       ),
     );
   }
