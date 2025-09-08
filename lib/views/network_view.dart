@@ -575,7 +575,7 @@ class _NetworkViewState extends State<NetworkView> {
   
   // Performance optimizations
   bool _isLoadingMore = false;
-  bool _hasMoreData = true;
+  final bool _hasMoreData = true;
 
   @override
   void initState() {
@@ -633,8 +633,15 @@ class _NetworkViewState extends State<NetworkView> {
 
   @override
   Widget build(BuildContext context) {
+    // Enhanced gradient background matching the app's design system
     const bg = LinearGradient(
-      colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+      colors: [
+        Color(0xFF9248D2), // Purple
+        Color(0xFF7768DF), // Blue-purple
+        Color(0xFF1670DE), // Blue
+        Color(0xFF3C8BD6), // Light blue
+        Color(0xFF4897D2), // Cyan-blue
+      ],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     );
@@ -647,16 +654,22 @@ class _NetworkViewState extends State<NetworkView> {
           child: SafeArea(
             child: Column(
               children: [
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
+                _buildHeader(context),
+                const SizedBox(height: 24),
                 _statsRow(context),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Divider(color: Colors.white.withOpacity(0.15), height: 1, thickness: 1),
+                  child: Divider(
+                    color: Colors.white.withOpacity(0.2), 
+                    height: 1, 
+                    thickness: 1,
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
                 Expanded(child: _mainList(context)),
-                const SizedBox(height: 80), // Bottom padding for navigation
+                const SizedBox(height: 100), // Bottom padding for navigation
               ],
             ),
           ),
@@ -666,14 +679,20 @@ class _NetworkViewState extends State<NetworkView> {
   }
 
   Widget _mainList(BuildContext context) {
+    if (_currentList.isEmpty) {
+      return _buildEmptyState();
+    }
+    
     return RefreshIndicator(
       onRefresh: widget.vm.refreshData,
+      color: const Color(0xFF9248D2),
+      backgroundColor: Colors.white.withOpacity(0.1),
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         controller: _listController,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        itemCount: _currentList.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        itemCount: _currentList.length + (_isLoadingMore ? 1 : 0),
+        separatorBuilder: (_, __) => const SizedBox(height: 16),
         itemBuilder: (_, i) {
           if (i < _currentList.length) {
             final user = _currentList[i];
@@ -689,11 +708,24 @@ class _NetworkViewState extends State<NetworkView> {
               },
             );
           } else if (_isLoadingMore) {
-            return const Padding(
-              padding: EdgeInsets.all(16.0),
+            return Container(
+              padding: const EdgeInsets.all(20),
               child: Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+                child: Column(
+                  children: [
+                    const CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+                      strokeWidth: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Loading more...',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             );
@@ -705,13 +737,168 @@ class _NetworkViewState extends State<NetworkView> {
     );
   }
 
+  Widget _buildEmptyState() {
+    final emptyMessages = {
+      NetworkTab.connections: {
+        'title': 'No connections yet',
+        'subtitle': 'Connect with other streamers to see them here',
+        'icon': Icons.group_rounded,
+      },
+      NetworkTab.followers: {
+        'title': 'No followers yet',
+        'subtitle': 'Share your content to get followers',
+        'icon': Icons.favorite_rounded,
+      },
+      NetworkTab.following: {
+        'title': 'Not following anyone yet',
+        'subtitle': 'Discover and follow interesting streamers',
+        'icon': Icons.person_rounded,
+      },
+    };
+
+    final message = emptyMessages[_selectedTab]!;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.1),
+                    Colors.white.withOpacity(0.05),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Icon(
+                message['icon'] as IconData,
+                size: 64,
+                color: Colors.white.withOpacity(0.6),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              message['title'] as String,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              message['subtitle'] as String,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 16,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF9248D2),
+                    Color(0xFF25E5D2),
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(25),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF9248D2).withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const Text(
+                'Discover Streamers',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          const Text(
+            'Network',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: GestureDetector(
+              onTap: () async {
+                await widget.vm.refreshData();
+              },
+              child: const Icon(
+                Icons.refresh_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _statsRow(BuildContext context) {
     final svc = widget.relationshipService;
     final connectionsCount = svc.connections.length;
     final followersCount = svc.nonMutualFollowers.length;
     final followingCount = svc.nonMutualFollowing.length;
 
-    final double cardWidth = (MediaQuery.of(context).size.width - 40 - 12) / 2;
+    final double cardWidth = (MediaQuery.of(context).size.width - 40 - 24) / 3;
 
     return GestureDetector(
       onHorizontalDragUpdate: (details) => _dragOffset = details.delta.dx,
@@ -745,8 +932,8 @@ class _NetworkViewState extends State<NetworkView> {
           children: [
             StatGlassCard(
               width: cardWidth,
-              height: 126,
-              icon: Icons.group,
+              height: 140,
+              icon: Icons.group_rounded,
               title: 'Connections',
               count: connectionsCount,
               isSelected: _selectedTab == NetworkTab.connections,
@@ -758,8 +945,8 @@ class _NetworkViewState extends State<NetworkView> {
             const SizedBox(width: 12),
             StatGlassCard(
               width: cardWidth,
-              height: 126,
-              icon: Icons.favorite,
+              height: 140,
+              icon: Icons.favorite_rounded,
               title: 'Followers',
               count: followersCount,
               isSelected: _selectedTab == NetworkTab.followers,
@@ -771,8 +958,8 @@ class _NetworkViewState extends State<NetworkView> {
             const SizedBox(width: 12),
             StatGlassCard(
               width: cardWidth,
-              height: 126,
-              icon: Icons.person,
+              height: 140,
+              icon: Icons.person_rounded,
               title: 'Following',
               count: followingCount,
               isSelected: _selectedTab == NetworkTab.following,
@@ -824,47 +1011,86 @@ class StatGlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Enhanced glass morphism effect matching the app's design
     final decoration = BoxDecoration(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
       gradient: LinearGradient(
-        colors: [
-          Colors.white.withOpacity(0.12),
-          Colors.white.withOpacity(0.06),
-        ],
+        colors: isSelected
+            ? [
+                Colors.white.withOpacity(0.25),
+                Colors.white.withOpacity(0.15),
+                Colors.white.withOpacity(0.08),
+                Colors.white.withOpacity(0.02),
+              ]
+            : [
+                Colors.white.withOpacity(0.15),
+                Colors.white.withOpacity(0.08),
+                Colors.white.withOpacity(0.04),
+                Colors.white.withOpacity(0.01),
+              ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
-      border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+      border: Border.all(
+        color: isSelected
+            ? Colors.white.withOpacity(0.4)
+            : Colors.white.withOpacity(0.2),
+        width: isSelected ? 2 : 1,
+      ),
       boxShadow: [
-        BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 8)),
+        BoxShadow(
+          color: Colors.white.withOpacity(0.1),
+          blurRadius: 20,
+          offset: const Offset(0, 8),
+        ),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.3),
+          blurRadius: 15,
+          offset: const Offset(0, 4),
+        ),
+        if (isSelected)
+          BoxShadow(
+            color: const Color(0xFF9248D2).withOpacity(0.3),
+            blurRadius: 25,
+            offset: const Offset(0, 0),
+          ),
       ],
     );
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(24),
+    return GestureDetector(
       onTap: onTap,
       child: Container(
         width: width,
         height: height,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.all(16),
         decoration: decoration,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const SizedBox(height: 6),
-            Center(child: _buildIcon(icon)),
             const SizedBox(height: 8),
-            Center(
-              child: Text(
-                title,
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+            _buildIcon(icon),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
               ),
+              textAlign: TextAlign.center,
             ),
             const Spacer(),
             Text(
               '$count',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -0.5,
+              ),
             ),
+            const SizedBox(height: 4),
           ],
         ),
       ),
@@ -873,16 +1099,31 @@ class StatGlassCard extends StatelessWidget {
 
   Widget _buildIcon(IconData iconData) {
     if (!isSelected) {
-      return Icon(iconData, color: Colors.white.withOpacity(0.9), size: 34);
+      return Icon(
+        iconData,
+        color: Colors.white.withOpacity(0.8),
+        size: 32,
+      );
     }
+    
+    // Enhanced gradient for selected state
     const gradient = LinearGradient(
-      colors: [Color(0xFF40DCD1), Color(0xFF3D99F7)],
+      colors: [
+        Color(0xFF9248D2), // Purple
+        Color(0xFF25E5D2), // Cyan
+        Color(0xFF3D99F7), // Blue
+      ],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     );
+    
     return ShaderMask(
       shaderCallback: (Rect bounds) => gradient.createShader(bounds),
-      child: Icon(iconData, color: Colors.white, size: 34),
+      child: Icon(
+        iconData,
+        color: Colors.white,
+        size: 32,
+      ),
     );
   }
 }
@@ -893,55 +1134,84 @@ class ConnectionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Enhanced glass morphism effect
     final glass = BoxDecoration(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
       gradient: LinearGradient(
         colors: [
-          Colors.white.withOpacity(0.18),
-          Colors.white.withOpacity(0.08),
+          Colors.white.withOpacity(0.20),
+          Colors.white.withOpacity(0.12),
+          Colors.white.withOpacity(0.06),
+          Colors.white.withOpacity(0.02),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       boxShadow: [
-        BoxShadow(color: Colors.white.withOpacity(0.10), blurRadius: 10, offset: const Offset(0, 6)),
-        BoxShadow(color: Colors.black.withOpacity(0.20), blurRadius: 10, offset: const Offset(0, 6)),
+        BoxShadow(
+          color: Colors.white.withOpacity(0.15),
+          blurRadius: 20,
+          offset: const Offset(0, 8),
+        ),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.25),
+          blurRadius: 15,
+          offset: const Offset(0, 4),
+        ),
       ],
-      border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+      border: Border.all(
+        color: Colors.white.withOpacity(0.25),
+        width: 1,
+      ),
     );
 
     return Stack(
       children: [
         Container(
-          height: 92,
+          height: 100,
           decoration: glass,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Row(
             children: [
               _avatar(user),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const SizedBox(height: 18),
                     Text(
                       user.displayName,
                       style: const TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.bold,
                         color: Colors.white,
+                        letterSpacing: -0.3,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '@${user.username}',
                       style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white.withOpacity(0.75),
-                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: -0.2,
                       ),
                     ),
+                    if (user.bio != null && user.bio!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        user.bio!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white.withOpacity(0.7),
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -949,24 +1219,29 @@ class ConnectionRow extends StatelessWidget {
           ),
         ),
         Positioned.fill(
-          right: 20,
+          right: 24,
           child: Align(
             alignment: Alignment.centerRight,
             child: Container(
-              width: 26,
-              height: 26,
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.7),
-                    blurRadius: 10,
+                    color: Colors.white.withOpacity(0.8),
+                    blurRadius: 12,
                     spreadRadius: 1,
-                  )
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
                 ],
               ),
               child: Container(
-                margin: const EdgeInsets.all(4),
+                margin: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
                   color: _getStatusColor(user.onlineStatus),
                   shape: BoxShape.circle,
@@ -982,22 +1257,64 @@ class ConnectionRow extends StatelessWidget {
 
   Widget _avatar(User user) {
     final fallback = Container(
-      width: 56,
-      height: 56,
+      width: 60,
+      height: 60,
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.3),
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withOpacity(0.2),
+            Colors.white.withOpacity(0.1),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: const Icon(Icons.person, color: Colors.grey),
+      child: Icon(
+        Icons.person_rounded,
+        color: Colors.white.withOpacity(0.8),
+        size: 28,
+      ),
     );
+    
     if (user.avatarURL == null) return fallback;
-    return ClipOval(
-      child: Image.network(
-        user.avatarURL!,
-        width: 56,
-        height: 56,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
+    
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: Image.network(
+          user.avatarURL!,
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => fallback,
+        ),
       ),
     );
   }
@@ -1165,5 +1482,6 @@ class _ConnectionRowWithSwipeState extends State<ConnectionRowWithSwipe> {
 }
 
 // old placeholder removed; now using StreamerCardPage
+
 
 
