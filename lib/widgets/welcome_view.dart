@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'onboarding_view.dart';
-import '../services/auth_service.dart';
-import '../pages/main_tab_view.dart';
+import '../services/robust_auth_service.dart';
 
 class WelcomeView extends ConsumerStatefulWidget {
   final VoidCallback onGetStarted;
@@ -372,18 +371,13 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
   // Dev login method that bypasses authentication
   Future<void> _devLogin() async {
     try {
-      final authService = ref.read(authServiceProvider);
-      await authService.bypassLoginAsTechnqs();
+      final authService = ref.read(robustAuthServiceProvider);
+      await authService.bypassLogin();
       
-              // Navigate to MainAppView after successful login and replace the welcome screen
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (context) => const MainTabView(),
-            ),
-            (route) => false, // Remove all previous routes
-          );
-        }
+      // The AppStartupWrapper will automatically detect the login state change
+      // and navigate to MainTabView, so we don't need to navigate manually here
+      print("✅ Bypass login completed - AppStartupWrapper will handle navigation");
+      
     } catch (e) {
       // Show error if bypass fails
       if (mounted) {
