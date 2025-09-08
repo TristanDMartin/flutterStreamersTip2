@@ -122,20 +122,18 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            _buildTabBar(),
-            Expanded(
-              child: _isLoading
-                  ? _buildLoadingState()
-                  : _error != null
-                      ? _buildErrorState()
-                      : _buildTabContent(),
-            ),
-          ],
-        ),
+      body: Column(
+        children: [
+          _buildHeader(),
+          _buildTabBar(),
+          Expanded(
+            child: _isLoading
+                ? _buildLoadingState()
+                : _error != null
+                    ? _buildErrorState()
+                    : _buildTabContent(),
+          ),
+        ],
       ),
     );
   }

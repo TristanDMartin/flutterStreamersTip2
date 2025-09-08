@@ -393,6 +393,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
         backgroundColor: Colors.black,
         body: Stack(
           children: [
+            // Main content
             if (_isLoadingVideos)
               const Center(
                 child: Column(
@@ -445,7 +446,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
             else
               PageView.builder(
                 controller: _pageController,
-                scrollDirection: Axis.vertical, // Changed to vertical for TikTok-style feed
+                scrollDirection: Axis.vertical,
                 itemCount: _videos.length,
                 onPageChanged: (index) {
                   setState(() {
@@ -470,32 +471,35 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                 },
               ),
           
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _buildHeader(),
-          ),
-          if (_isFeedMenuOpen)
+            // Header overlay
             Positioned(
-              left: 40,
-              top: MediaQuery.of(context).padding.top + 56,
-              child: _buildFeedDropdown(),
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _buildHeader(),
             ),
-          
-          // StreamerCard full-screen modal
-          if (_showStreamerCard && _currentStreamerCard != null)
-            Positioned.fill(
-              child: StreamerCardViewOptimized(
-                displayStreamer: _currentStreamerCard!,
-                currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
-                onDismiss: _dismissStreamerCard,
+            
+            // Feed dropdown
+            if (_isFeedMenuOpen)
+              Positioned(
+                left: 40,
+                top: MediaQuery.of(context).padding.top + 56,
+                child: _buildFeedDropdown(),
               ),
-            ),
-        ],
+            
+            // StreamerCard full-screen modal
+            if (_showStreamerCard && _currentStreamerCard != null)
+              Positioned.fill(
+                child: StreamerCardViewOptimized(
+                  displayStreamer: _currentStreamerCard!,
+                  currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
+                  onDismiss: _dismissStreamerCard,
+                ),
+              ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 
   Widget _buildHeader() {
