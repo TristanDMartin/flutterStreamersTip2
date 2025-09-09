@@ -321,7 +321,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
               // Video caption with overflow protection
               ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height - 92.0 - MediaQuery.of(context).padding.bottom - 80, // bottomNavH + safeArea + creatorRowHeight + 16
+                  maxHeight: MediaQuery.of(context).size.height - 92.0 - MediaQuery.of(context).padding.bottom - 100, // bottomNavH + safeArea + creatorRowHeight + extra padding
                 ),
                 child: Text(
                   widget.video.caption,

@@ -98,9 +98,9 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           width: 1,
         ),
       ),
@@ -108,7 +108,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
         children: [
           Icon(
             Icons.search,
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha:0.7),
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -140,7 +140,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
               },
               icon: Icon(
                 Icons.close,
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 size: 20,
               ),
             ),
@@ -202,12 +202,12 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Colors.white.withOpacity(0.1),
-              Colors.white.withOpacity(0.05),
+              Colors.white.withValues(alpha:0.1),
+              Colors.white.withValues(alpha:0.05),
             ],
           ),
           border: Border.all(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha:0.1),
             width: 1,
           ),
         ),
@@ -217,7 +217,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Icon(
@@ -243,7 +243,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha:0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -252,7 +252,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
             ),
             Icon(
               Icons.chevron_right,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha:0.5),
               size: 24,
             ),
           ],
@@ -283,7 +283,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
               child: Text(
                 'No recent chats',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha:0.7),
                   fontSize: 16,
                 ),
               ),
