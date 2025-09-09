@@ -6,6 +6,8 @@ import 'links_edit_view.dart';
 import 'image_picker_widget.dart';
 import 'status_button.dart';
 import '../services/auth_service.dart';
+import '../services/profile_update_service.dart';
+import '../services/content_moderation_service.dart';
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
 import 'status_debug_widget.dart';
@@ -66,9 +68,58 @@ class _EditProfileViewState extends State<EditProfileView> {
     }
   }
 
-  void _updateUser(String key, dynamic value) {
+  void _updateUser(String key, dynamic value) async {
+    // Content moderation validation
+    ModerationResult? moderationResult;
+    
+    if (key == 'displayName') {
+      moderationResult = ContentModerationService.validateDisplayName(value.toString());
+    } else if (key == 'bio') {
+      moderationResult = ContentModerationService.validateBio(value.toString());
+    } else if (key == 'hashtags') {
+      final hashtagsString = value.toString().trim();
+      if (hashtagsString.isNotEmpty) {
+        final hashtags = hashtagsString
+            .split(',')
+            .map((tag) => tag.trim().replaceFirst('#', ''))
+            .where((tag) => tag.isNotEmpty)
+            .toList();
+        moderationResult = ContentModerationService.validateHashtags(hashtags);
+      }
+    }
+    
+    // Check if content moderation failed
+    if (moderationResult != null && !moderationResult.isAllowed) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(moderationResult.reason ?? 'Content contains inappropriate language'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      return; // Don't update if content is inappropriate
+    }
+    
     setState(() {
-      _user[key] = value;
+      // Handle hashtags conversion from string to List
+      if (key == 'hashtags') {
+        final hashtagsString = value.toString().trim();
+        if (hashtagsString.isEmpty) {
+          _user[key] = [];
+        } else {
+          // Split by comma, trim whitespace, remove empty strings, and remove # prefix
+          final hashtags = hashtagsString
+              .split(',')
+              .map((tag) => tag.trim().replaceFirst('#', ''))
+              .where((tag) => tag.isNotEmpty)
+              .toList();
+          _user[key] = hashtags;
+        }
+      } else {
+        _user[key] = value;
+      }
       
       // If display name is updated, also update the username to match
       if (key == 'displayName') {
@@ -85,17 +136,35 @@ class _EditProfileViewState extends State<EditProfileView> {
         print('🔍 EditProfileView: Recorded name change date: $_lastNameChangeDate');
       }
     });
+    
+    // Update local callback
     widget.onUserUpdated(_user);
     
-    // Save to Firestore - include both fields if display name was updated
+    // Prepare update data for ProfileUpdateService
+    Map<String, dynamic> updateData;
     if (key == 'displayName') {
-      _saveToFirestore({
+      updateData = {
         'displayName': value,
         'username': _user['username'],
         'lastNameChangeDate': _user['lastNameChangeDate'],
-      });
+      };
+    } else if (key == 'hashtags') {
+      updateData = {key: _user[key]}; // Use the processed hashtags List
     } else {
-      _saveToFirestore({key: value});
+      updateData = {key: value};
+    }
+    
+    // Update all profile views through ProfileUpdateService
+    try {
+      final profileUpdateService = ProfileUpdateService();
+      debugPrint('🔍 EditProfileView: Updating ProfileUpdateService with data: $updateData');
+      debugPrint('🔍 EditProfileView: ProfileUpdateService isDataLoaded: ${profileUpdateService.isDataLoaded}');
+      await profileUpdateService.updateUserData(updateData);
+      debugPrint('✅ EditProfileView: All profile views updated successfully');
+    } catch (e) {
+      debugPrint('❌ EditProfileView: Error updating profile views: $e');
+      // Fallback to direct Firestore update
+      _saveToFirestore(updateData);
     }
   }
 
@@ -176,7 +245,17 @@ class _EditProfileViewState extends State<EditProfileView> {
         _isUploadingAvatar = false;
       });
       
+      // Update local callback
       widget.onUserUpdated(_user);
+      
+      // Update all profile views through ProfileUpdateService
+      try {
+        final profileUpdateService = ProfileUpdateService();
+        await profileUpdateService.updateUserData({'avatarURL': downloadUrl});
+        debugPrint('✅ EditProfileView: Avatar updated in all profile views');
+      } catch (e) {
+        debugPrint('❌ EditProfileView: Error updating avatar in profile views: $e');
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -310,6 +389,16 @@ class _EditProfileViewState extends State<EditProfileView> {
               onStatusSelected: (status) async {
                 final navigator = Navigator.of(context);
                 await updateStatus(status);
+                
+                // Update ProfileUpdateService to notify all views
+                try {
+                  final profileUpdateService = ProfileUpdateService();
+                  await profileUpdateService.updateUserData({'status': status.name});
+                  debugPrint('✅ EditProfileView: Status updated in all profile views');
+                } catch (e) {
+                  debugPrint('❌ EditProfileView: Error updating status in profile views: $e');
+                }
+                
                 if (mounted) {
                   navigator.pop();
                 }
@@ -341,7 +430,38 @@ class _EditProfileViewState extends State<EditProfileView> {
         builder: (context) => LinksEditView(
           platforms: currentPlatforms,
           onPlatformsUpdated: (updatedPlatforms) async {
-            _updateUser('platforms', updatedPlatforms);
+            // Content moderation validation for platforms
+            final moderationResult = ContentModerationService.validatePlatforms(updatedPlatforms);
+            
+            if (!moderationResult.isAllowed) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(moderationResult.reason ?? 'Platform contains inappropriate content'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              }
+              return; // Don't update if content is inappropriate
+            }
+            
+            // Update local state
+            setState(() {
+              _user['platforms'] = updatedPlatforms;
+            });
+            
+            // Update local callback
+            widget.onUserUpdated(_user);
+            
+            // Update all profile views through ProfileUpdateService
+            try {
+              final profileUpdateService = ProfileUpdateService();
+              await profileUpdateService.updateUserData({'platforms': updatedPlatforms});
+              debugPrint('✅ EditProfileView: Platforms updated in all profile views');
+            } catch (e) {
+              debugPrint('❌ EditProfileView: Error updating platforms in profile views: $e');
+            }
             
             // Show success message
             if (mounted) {
@@ -750,7 +870,16 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Widget _buildHashtagsRow() {
-    final hashtags = _user['hashtags'] as List<dynamic>? ?? [];
+    final hashtagsData = _user['hashtags'];
+    List<dynamic> hashtags = [];
+    
+    // Handle both List and String cases
+    if (hashtagsData is List) {
+      hashtags = hashtagsData;
+    } else if (hashtagsData is String) {
+      hashtags = hashtagsData.split(',').map((e) => e.trim()).toList();
+    }
+    
     return GestureDetector(
       onTap: () => _showEditField(EditableField.hashtags),
       child: Container(

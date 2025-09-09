@@ -25,6 +25,7 @@ _$MessageImpl _$$MessageImplFromJson(Map<String, dynamic> json) =>
           const [],
       gifUrl: json['gifUrl'] as String?,
       messageType: json['messageType'] as String? ?? 'text',
+      isDeviceGif: json['isDeviceGif'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$$MessageImplToJson(_$MessageImpl instance) =>
@@ -40,4 +41,5 @@ Map<String, dynamic> _$$MessageImplToJson(_$MessageImpl instance) =>
       'readBy': instance.readBy,
       'gifUrl': instance.gifUrl,
       'messageType': instance.messageType,
+      'isDeviceGif': instance.isDeviceGif,
     };

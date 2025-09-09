@@ -320,6 +320,9 @@ class RobustAuthenticationService extends ChangeNotifier {
     try {
       print("🔐 Starting Google Sign-In process (request: $requestId)");
       
+      // First, sign out any existing Google session to avoid conflicts
+      await _googleSignIn.signOut();
+      
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       
       if (googleUser == null) {
@@ -330,32 +333,71 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
       
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final credential = firebase_auth.GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+      print("✅ Google Sign-In successful for: ${googleUser.email}");
       
-      final userCredential = await _auth.signInWithCredential(credential);
-      
-      if (userCredential.user != null) {
-        return AuthRequestResult(
-          requestId: requestId,
-          success: true,
-          user: _currentUser,
+      try {
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        
+        if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+          return AuthRequestResult(
+            requestId: requestId,
+            success: false,
+            error: 'Failed to get Google authentication tokens',
+          );
+        }
+        
+        final credential = firebase_auth.GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
         );
-      } else {
+        
+        print("🔐 Signing in to Firebase with Google credential");
+        final userCredential = await _auth.signInWithCredential(credential);
+        
+        if (userCredential.user != null) {
+          print("✅ Firebase authentication successful for: ${userCredential.user!.email}");
+          // The auth state listener will handle the rest
+          return AuthRequestResult(
+            requestId: requestId,
+            success: true,
+            user: _currentUser,
+          );
+        } else {
+          return AuthRequestResult(
+            requestId: requestId,
+            success: false,
+            error: 'Google authentication failed',
+          );
+        }
+      } catch (authError) {
+        print("❌ Firebase authentication error: $authError");
+        // Sign out from Google if Firebase auth fails
+        await _googleSignIn.signOut();
         return AuthRequestResult(
           requestId: requestId,
           success: false,
-          error: 'Google authentication failed',
+          error: 'Firebase authentication failed: $authError',
         );
       }
     } catch (e) {
+      print("❌ Google Sign-In error: $e");
+      
+      // Provide more specific error messages
+      String errorMessage = e.toString();
+      if (e.toString().contains('network_error')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (e.toString().contains('sign_in_canceled')) {
+        errorMessage = 'Sign-in was cancelled.';
+      } else if (e.toString().contains('sign_in_failed')) {
+        errorMessage = 'Sign-in failed. Please try again.';
+      } else if (e.toString().contains('PigeonUserDetails')) {
+        errorMessage = 'Google Sign-In configuration error. Please try again.';
+      }
+      
       return AuthRequestResult(
         requestId: requestId,
         success: false,
-        error: e.toString(),
+        error: errorMessage,
       );
     }
   }
@@ -612,10 +654,15 @@ class RobustAuthenticationService extends ChangeNotifier {
         print("🔐 User document found in Firestore");
         final data = snapshot.data()!;
         
-        // Decode hashtags
+        // Decode hashtags - handle both List and String formats
         var hashtags = <String>[];
         if (data['hashtags'] != null) {
-          hashtags = List<String>.from(data['hashtags']);
+          final hashtagsData = data['hashtags'];
+          if (hashtagsData is List) {
+            hashtags = List<String>.from(hashtagsData);
+          } else if (hashtagsData is String) {
+            hashtags = hashtagsData.split(',').map((e) => e.trim()).toList();
+          }
         }
         
         // Decode aiSelf
@@ -737,9 +784,21 @@ class RobustAuthenticationService extends ChangeNotifier {
         final newUsername = data['username'] as String? ?? '';
         final newBio = data['bio'] as String?;
         
+        // Handle hashtags update
+        var newHashtags = <String>[];
+        if (data['hashtags'] != null) {
+          final hashtagsData = data['hashtags'];
+          if (hashtagsData is List) {
+            newHashtags = List<String>.from(hashtagsData);
+          } else if (hashtagsData is String) {
+            newHashtags = hashtagsData.split(',').map((e) => e.trim()).toList();
+          }
+        }
+        
         if (newDisplayName != _currentUser!.displayName ||
             newUsername != _currentUser!.username ||
-            newBio != _currentUser!.bio) {
+            newBio != _currentUser!.bio ||
+            newHashtags.toString() != _currentUser!.hashtags.toString()) {
           print("🔄 User data changed in Firestore - updating app");
           
           _currentUser = User(
@@ -749,7 +808,7 @@ class RobustAuthenticationService extends ChangeNotifier {
             bio: newBio,
             avatarURL: _currentUser!.avatarURL,
             onlineStatus: _currentUser!.onlineStatus,
-            hashtags: _currentUser!.hashtags,
+            hashtags: newHashtags,
             aiSelf: _currentUser!.aiSelf,
             postCount: _currentUser!.postCount,
             followerCount: _currentUser!.followerCount,

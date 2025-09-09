@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/trending_creator.dart';
-import '../models/user_model.dart' as user_model;
+import 'online_status_indicator.dart';
 
-class TrendingCreatorCard extends StatelessWidget {
+class TrendingCreatorCard extends ConsumerWidget {
   final TrendingCreator creator;
   final VoidCallback onTap;
 
@@ -13,7 +14,7 @@ class TrendingCreatorCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
@@ -89,30 +90,19 @@ class TrendingCreatorCard extends StatelessWidget {
                   ),
                 ),
                 
-                // Online status badge - positioned on the outer ring
-                if (creator.isOnline)
-                  Positioned(
+                // Dynamic online status indicator
+                OnlineStatusIndicator(
+                  userId: creator.id,
+                  size: 16,
+                  showBorder: true,
+                  borderColor: Colors.white,
+                  borderWidth: 3,
+                  showShadow: true,
+                  position: const EdgeInsets.only(
                     right: 8,
                     top: 8,
-                    child: Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _getStatusColor(user_model.OnlineStatus.online),
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 3,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 3,
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
+                ),
               ],
             ),
             
@@ -142,20 +132,4 @@ class TrendingCreatorCard extends StatelessWidget {
     );
   }
 
-  Color _getStatusColor(user_model.OnlineStatus status) {
-    switch (status) {
-      case user_model.OnlineStatus.online:
-        return Colors.green;
-      case user_model.OnlineStatus.offline:
-        return Colors.grey;
-      case user_model.OnlineStatus.idle:
-        return Colors.orange;
-      case user_model.OnlineStatus.doNotDisturb:
-        return Colors.red;
-      case user_model.OnlineStatus.streaming:
-        return Colors.purple;
-      case user_model.OnlineStatus.invisible:
-        return Colors.grey;
-    }
-  }
 }

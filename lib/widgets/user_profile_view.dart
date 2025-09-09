@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'share_profile_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/favorites_provider.dart';
@@ -6,11 +7,6 @@ import '../providers/video_service_provider.dart';
 import '../models/home_video.dart';
 import 'edit_profile_view.dart';
 import '../repositories/user_repository.dart';
-import '../widgets/streamer_card_view.dart';
-import '../models/streamer_card.dart';
-import '../models/calendar_event.dart';
-import '../providers/status_provider.dart';
-import '../models/user_status.dart';
 import '../views/menu_view.dart';
 import 'player_screen.dart';
 
@@ -28,26 +24,45 @@ class UserProfileView extends ConsumerStatefulWidget {
   ConsumerState<UserProfileView> createState() => _UserProfileViewState();
 }
 
-class _UserProfileViewState extends ConsumerState<UserProfileView> {
+class _UserProfileViewState extends ConsumerState<UserProfileView> with TickerProviderStateMixin {
   final UserRepository _userRepository = UserRepository();
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
+  late AnimationController _segmentedController;
+
+  @override
+  void initState() {
+    super.initState();
+    _segmentedController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _segmentedController.dispose();
+    super.dispose();
+  }
 
   void _onTabSelected(int index) {
     setState(() {
       _selectedTabIndex = index;
     });
+    _segmentedController.forward().then((_) {
+      _segmentedController.reset();
+    });
   }
 
   Widget _buildSegments() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
-        height: 40,
+        height: 56,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
+          color: const Color(0x1AFFFFFF), // 10% white (glass look)
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: const Color(0x26FFFFFF), // 15% white stroke
             width: 1,
           ),
         ),
@@ -78,22 +93,32 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
   Widget _buildTab(String text, int index) {
     final bool isSelected = _selectedTabIndex == index;
     return GestureDetector(
-      onTap: () => _onTabSelected(index),
-      child: Container(
-        height: 32,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        _onTabSelected(index);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        height: 48,
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withValues(alpha: 0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
+          color: isSelected ? const Color(0x14FFFFFF) : Colors.transparent, // 8% white fill
+          borderRadius: BorderRadius.circular(20),
+          border: isSelected ? Border.all(
+            color: const Color(0x40FFFFFF), // 25% white stroke
+            width: 1,
+          ) : null,
         ),
         child: Center(
-          child: Text(
-            text,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 200),
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.7),
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+              color: isSelected ? Colors.white : const Color(0xB3FFFFFF), // 70% white
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
+            child: Text(text),
           ),
         ),
       ),
@@ -115,32 +140,13 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
 
   Widget _buildVideoContent() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.video_library_outlined,
-            size: 80,
-            color: Colors.white.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'No Videos Yet',
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.75),
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-      ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Your published videos will appear here',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
-              fontSize: 16,
-            ),
-          ),
-        ],
+      child: Text(
+        'No videos yet.',
+        style: TextStyle(
+          color: const Color(0xBFFFFFFF), // 75% white
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -399,126 +405,18 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
 
   Widget _buildTaggedContent() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.person_add_outlined,
-            size: 80,
-            color: Colors.white.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'No Tagged Content',
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.75),
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-      ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Videos where you\'re tagged will appear here',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
-              fontSize: 16,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<Platform> _convertToPlatforms(dynamic platformsData) {
-    if (platformsData == null) return [];
-    if (platformsData is! List) return [];
-    
-    return platformsData.map((platform) {
-      if (platform is Map<String, dynamic>) {
-        return Platform.fromJson(platform);
-      }
-      return null;
-    }).where((platform) => platform != null).cast<Platform>().toList();
-  }
-
-  List<SocialLink> _convertToSocialLinks(dynamic socialLinksData) {
-    if (socialLinksData == null) return [];
-    if (socialLinksData is! List) return [];
-    
-    return socialLinksData.map((link) {
-      if (link is Map<String, dynamic>) {
-        return SocialLink.fromJson(link);
-      }
-      return null;
-    }).where((link) => link != null).cast<SocialLink>().toList();
-  }
-
-  List<CalendarEvent> _convertToCalendarEvents(dynamic eventsData) {
-    if (eventsData == null) return [];
-    if (eventsData is! List) return [];
-    
-    return eventsData.map((event) {
-      if (event is Map<String, dynamic>) {
-        return CalendarEvent.fromMap(event);
-      }
-      return null;
-    }).where((event) => event != null).cast<CalendarEvent>().toList();
-  }
-
-  void _presentStreamerCard() {
-    // Convert user data to StreamerCard
-    final StreamerCard streamerCard = StreamerCard(
-      id: (widget.user['id'] ?? '').toString(),
-      username: (widget.user['username'] ?? '').toString(),
-      displayName: (widget.user['displayName'] ?? '').toString(),
-      bio: widget.user['bio']?.toString() ?? '',
-      avatarURL: widget.user['avatarURL'] as String?,
-      coverImageURL: widget.user['coverImageURL'] as String?,
-      platforms: _convertToPlatforms(widget.user['platforms']),
-      hashtags: (widget.user['hashtags'] as List<dynamic>?)?.cast<String>() ?? [],
-      socialLinks: _convertToSocialLinks(widget.user['socialLinks']),
-      isConnected: false,
-      onlineStatus: (widget.user['onlineStatus'] ?? 'offline').toString(),
-      calendarEvents: _convertToCalendarEvents(widget.user['calendarEvents']),
-      isFollowing: false,
-      isFollowingYou: false,
-    );
-    
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => StreamerCardView(
-          displayStreamer: streamerCard,
-          currentUserId: widget.user['id']?.toString(),
-          onDismiss: () => Navigator.of(context).pop(),
-          onFollow: (streamer) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Followed ${streamer.displayName}'),
-                backgroundColor: const Color(0xFF25E5D2),
-              ),
-            );
-          },
-          onMessage: (streamer) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Messaged ${streamer.displayName}'),
-                backgroundColor: const Color(0xFF25E5D2),
-              ),
-            );
-          },
-          onShare: (streamer) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Shared ${streamer.displayName}\'s profile'),
-                backgroundColor: const Color(0xFF25E5D2),
-              ),
-            );
-          },
+      child: Text(
+        'No videos yet.',
+        style: TextStyle(
+          color: const Color(0xBFFFFFFF), // 75% white
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
+
+
 
   void _presentMenu() {
     Navigator.of(context).push(
@@ -545,28 +443,33 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              IconButton(
-                onPressed: widget.onFlip,
-                tooltip: 'Flip',
-                icon: const Icon(
-                  Icons.flip_camera_android_outlined,
-                  color: Colors.white,
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  widget.onFlip?.call();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: const Text(
+                    'Flip',
+                    style: TextStyle(
+                      color: Color(0xFF40DCD1), // Accent teal
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
-              IconButton(
-                onPressed: _presentStreamerCard,
-                tooltip: 'Streamer Card',
-                icon: const Icon(
-                  Icons.badge_outlined,
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _presentMenu();
+                },
+                child: const Icon(
+                  Icons.more_horiz,
                   color: Colors.white,
-                ),
-              ),
-              IconButton(
-                onPressed: _presentMenu,
-                tooltip: 'Menu',
-                icon: const Icon(
-                  Icons.menu,
-                  color: Colors.white,
+                  size: 24,
                 ),
               ),
             ],
@@ -592,111 +495,160 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
   }
 
   Widget _buildProfileHeader() {
-    return Container(
-      padding: const EdgeInsets.only(top: 32),
-      child: Column(
-        children: [
-          Column(
-            children: [
-              _AvatarWithStatus(
-                imageUrl: widget.user['avatarURL'],
-                userId: widget.user['id'],
-              ),
-              const SizedBox(height: 16),
-              Column(
-                children: [
-                  Text(
-                    widget.user['displayName'] ?? '',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 34,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '@${widget.user['username'] ?? ''}',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.75),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+    return Column(
+      children: [
+        // Avatar with gradient ring
+        _buildAvatarWithGradientRing(),
+        const SizedBox(height: 16),
+        
+        // Name & Handle
+        _buildNameAndHandle(),
+        const SizedBox(height: 20),
+        
+        // Stats Row
+        _buildStatsRow(),
+        const SizedBox(height: 18),
+        
+        // Primary Buttons Row
+        _buildPrimaryButtonsRow(),
+        const SizedBox(height: 18),
+        
+        // Segmented Control
+        _buildSegments(),
+        const SizedBox(height: 28),
+        
+        // Content Area
+        _buildContentArea(),
+      ],
+    );
+  }
 
-                ],
-              ),
-              const SizedBox(height: 20),
-              // Hashtags removed as requested
-              // _TagsRow(hashtags: List<String>.from(widget.user['hashtags'] ?? const [])),
-              // const SizedBox(height: 20),
-            ],
+  Widget _buildAvatarWithGradientRing() {
+    return Container(
+      width: 112,
+      height: 112,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [
+            Color(0xFFFF6CAB), // Pink
+            Color(0xFF8E54E9), // Purple
+            Color(0xFF3D99F7), // Blue
+            Color(0xFFFF6CAB), // Pink
+          ],
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width: 104,
+          height: 104,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black,
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildStatItem('${widget.user['postCount'] ?? 0}', 'Posts'),
-              const SizedBox(width: 54),
-              _buildStatItem('${widget.user['followerCount'] ?? 0}', 'Followers'),
-              const SizedBox(width: 54),
-              _buildStatItem('${widget.user['followingCount'] ?? 0}', 'Following'),
-            ],
-          ),
-          const SizedBox(height: 18),
-          TextButton(
-            onPressed: _presentStreamerCard,
-            child: const Text(
-              'View Streamer Card',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Expanded(child: _pillButton('Edit Profile', () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => EditProfileView(
-                        user: widget.user,
-                        onUserUpdated: (updated) async {
-                          if (updated['hashtags'] is String) {
-                            final List<String> parsed = (updated['hashtags'] as String)
-                                .split(',')
-                                .map((e) => e.trim())
-                                .where((e) => e.isNotEmpty)
-                                .toList();
-                            updated['hashtags'] = parsed;
-                          }
-                          setState(() {
-                            widget.user.addAll(updated);
-                          });
-                          final String uid = _userRepository.currentUid ?? (widget.user['id'] ?? 'user_123');
-                          await _userRepository.upsertUser(uid, widget.user);
-                        },
-                      ),
+          child: ClipOval(
+            child: widget.user['avatarURL'] != null && widget.user['avatarURL'].toString().isNotEmpty
+                ? Image.network(
+                    widget.user['avatarURL'],
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.person,
+                      color: Colors.white,
+                      size: 48,
                     ),
-                  );
-                })),
-                const SizedBox(width: 16),
-                Expanded(child: _pillButton('Share Profile', () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ShareProfileView(
-                        user: widget.user,
-                        dismiss: () => Navigator.of(context).pop(),
-                      ),
-                    ),
-                  );
-                })),
-              ],
-            ),
+                  )
+                : const Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 48,
+                  ),
           ),
-          const SizedBox(height: 18),
-          _buildSegments(),
-          const SizedBox(height: 28),
-          _buildContentArea(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNameAndHandle() {
+    return Column(
+      children: [
+        Text(
+          widget.user['displayName'] ?? 'Technqs',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 34,
+            fontWeight: FontWeight.w900, // Heavy/Bold
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '@${widget.user['username'] ?? 'technqs'}',
+          style: const TextStyle(
+            color: Color(0xBFFFFFFF), // 75% white
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatsRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildStatItem('${widget.user['postCount'] ?? 0}', 'Posts'),
+        const SizedBox(width: 54),
+        _buildStatItem('${widget.user['followerCount'] ?? 0}', 'Followers'),
+        const SizedBox(width: 54),
+        _buildStatItem('${widget.user['followingCount'] ?? 0}', 'Following'),
+      ],
+    );
+  }
+
+  Widget _buildPrimaryButtonsRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildGradientPillButton('Edit Profile', () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => EditProfileView(
+                    user: widget.user,
+                    onUserUpdated: (updated) async {
+                      if (updated['hashtags'] is String) {
+                        final List<String> parsed = (updated['hashtags'] as String)
+                            .split(',')
+                            .map((e) => e.trim())
+                            .where((e) => e.isNotEmpty)
+                            .toList();
+                        updated['hashtags'] = parsed;
+                      }
+                      setState(() {
+                        widget.user.addAll(updated);
+                      });
+                      final String uid = _userRepository.currentUid ?? (widget.user['id'] ?? 'user_123');
+                      await _userRepository.upsertUser(uid, widget.user);
+                    },
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _buildGradientPillButton('Share Profile', () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ShareProfileView(
+                    user: widget.user,
+                    dismiss: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              );
+            }),
+          ),
         ],
       ),
     );
@@ -710,13 +662,13 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
           style: const TextStyle(
             color: Colors.white,
             fontSize: 24,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900, // Heavy
           ),
         ),
         Text(
           label,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
+          style: const TextStyle(
+            color: Color(0xB3FFFFFF), // 70% white
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -725,19 +677,22 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
     );
   }
 
-  Widget _pillButton(String text, VoidCallback onPressed) {
+  Widget _buildGradientPillButton(String text, VoidCallback onPressed) {
     return GestureDetector(
-      onTap: onPressed,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onPressed();
+      },
       child: Container(
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: 48, // Visually ~44-48px content height
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
+            colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Left to Right gradient
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(24), // >24px corner radius (pill)
         ),
         child: Center(
           child: Text(
@@ -760,111 +715,6 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
   // Unused modal methods removed
 }
 
-class _AvatarWithStatus extends ConsumerWidget {
-  final String? imageUrl;
-  final String userId;
-  
-  const _AvatarWithStatus({
-    required this.imageUrl,
-    required this.userId,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final statusAsync = ref.watch(userStatusProvider(userId));
-    
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: 112,
-          height: 112,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: SweepGradient(
-              colors: [
-                Color(0xFFFF6CAB),
-                Color(0xFF8E54E9),
-                Color(0xFF3D99F7),
-                Color(0xFFFF6CAB),
-              ],
-            ),
-          ),
-          child: Center(
-            child: Container(
-              width: 104,
-              height: 104,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.2),
-              ),
-              child: ClipOval(
-                child: imageUrl != null && imageUrl!.isNotEmpty
-                    ? Image.network(
-                        imageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 48,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.person,
-                        color: Colors.white,
-                        size: 48,
-                      ),
-              ),
-            ),
-          ),
-        ),
-        statusAsync.when(
-          data: (presence) {
-            if (presence.status != UserStatus.offline) {
-              return Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(presence.status),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _getStatusColor(presence.status).withValues(alpha: 0.5),
-                        blurRadius: 6,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-            return const SizedBox.shrink();
-          },
-          loading: () => const SizedBox.shrink(),
-          error: (error, stack) => const SizedBox.shrink(),
-        ),
-      ],
-    );
-  }
-
-  Color _getStatusColor(UserStatus status) {
-    switch (status) {
-      case UserStatus.online:
-        return const Color(0xFF4CAF50); // Green
-      case UserStatus.offline:
-        return const Color(0xFF9E9E9E); // Grey
-      case UserStatus.busy:
-        return const Color(0xFFFF9800); // Orange
-      case UserStatus.dnd:
-        return const Color(0xFFF44336); // Red
-      case UserStatus.streaming:
-        return const Color(0xFF9C27B0); // Purple
-    }
-  }
-}
 
 
 
@@ -872,4 +722,3 @@ class _AvatarWithStatus extends ConsumerWidget {
 
 
 
-// _TagsRow class removed as hashtags are no longer displayed

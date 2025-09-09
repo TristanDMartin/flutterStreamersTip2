@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/calendar_event.dart';
 import '../services/robust_auth_service.dart';
+import '../services/profile_update_service.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -18,10 +20,55 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   bool isBioExpanded = true;
   bool isPlatformsExpanded = true;
   bool isCalendarExpanded = true;
+  String? _selectedHashtag;
+  late ProfileUpdateService _profileUpdateService;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileUpdateService = ProfileUpdateService();
+    
+    // Listen for profile updates
+    _profileUpdateService.addProfileBackViewListener(_onProfileUpdated);
+  }
+
+  @override
+  void dispose() {
+    _profileUpdateService.removeProfileBackViewListener(_onProfileUpdated);
+    super.dispose();
+  }
+
+  void _onProfileUpdated() {
+    if (mounted) {
+      setState(() {
+        // Trigger rebuild when profile data is updated
+        // The ProfileUpdateService will have the latest user data
+      });
+    }
+  }
+
+  /// Get the current user data, either from widget or from ProfileUpdateService
+  Map<String, dynamic> get _currentUserData {
+    // Check if this is the current user by comparing user IDs
+    final currentUserId = _profileUpdateService.currentUser?.uid;
+    final isCurrentUser = currentUserId != null && currentUserId == widget.user['id'];
+    
+    debugPrint('🔍 ProfileBackView: currentUserId: $currentUserId, widget.user.id: ${widget.user['id']}');
+    debugPrint('🔍 ProfileBackView: isCurrentUser: $isCurrentUser, isDataLoaded: ${_profileUpdateService.isDataLoaded}');
+    
+    // If this is the current user, get data from ProfileUpdateService
+    if (isCurrentUser && _profileUpdateService.isDataLoaded) {
+      debugPrint('🔍 ProfileBackView: Using ProfileUpdateService data: ${_profileUpdateService.userData}');
+      return _profileUpdateService.userData ?? widget.user;
+    }
+    // Otherwise use the widget user data
+    debugPrint('🔍 ProfileBackView: Using widget user data: ${widget.user}');
+    return widget.user;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final String userId = widget.user['id'] as String;
+    final String userId = _currentUserData['id'] as String;
     debugPrint('📅 ProfileBackView: Setting up real-time listener for user: $userId');
     
     return StreamBuilder<DocumentSnapshot>(
@@ -38,33 +85,41 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
           if (data != null) {
             // Load calendar events
             if (data['calendarEvents'] != null) {
-              final eventsData = data['calendarEvents'] as List<dynamic>;
-              events = eventsData.map((eventData) {
-                final eventMap = eventData as Map<String, dynamic>;
-                return CalendarEvent(
-                  id: eventMap['id'] as String,
-                  title: eventMap['title'] as String,
-                  description: eventMap['description'] as String,
-                  date: (eventMap['date'] as Timestamp).toDate(),
-                );
-              }).toList();
-              debugPrint('📅 ProfileBackView: Loaded ${events.length} events from real-time listener');
+              final eventsData = data['calendarEvents'];
+              if (eventsData is List<dynamic>) {
+                events = eventsData.map((eventData) {
+                  final eventMap = eventData as Map<String, dynamic>;
+                  return CalendarEvent(
+                    id: eventMap['id'] as String,
+                    title: eventMap['title'] as String,
+                    description: eventMap['description'] as String,
+                    date: (eventMap['date'] as Timestamp).toDate(),
+                  );
+                }).toList();
+                debugPrint('📅 ProfileBackView: Loaded ${events.length} events from real-time listener');
+              } else {
+                debugPrint('⚠️ ProfileBackView: calendarEvents is not a List, got: ${eventsData.runtimeType}');
+              }
             }
             
             // Load platforms
             if (data['platforms'] != null) {
-              final platformsData = data['platforms'] as List<dynamic>;
-              platforms = platformsData.map((platformData) {
-                final platformMap = platformData as Map<String, dynamic>;
-                return {
-                  'id': platformMap['id'] ?? '',
-                  'type': platformMap['type'] ?? '',
-                  'username': platformMap['username'] ?? '',
-                  'followers': platformMap['followers'] ?? 0,
-                  'url': platformMap['url'],
-                };
-              }).toList();
-              debugPrint('🔗 ProfileBackView: Loaded ${platforms.length} platforms from real-time listener');
+              final platformsData = data['platforms'];
+              if (platformsData is List<dynamic>) {
+                platforms = platformsData.map((platformData) {
+                  final platformMap = platformData as Map<String, dynamic>;
+                  return {
+                    'id': platformMap['id'] ?? '',
+                    'type': platformMap['type'] ?? '',
+                    'username': platformMap['username'] ?? '',
+                    'followers': platformMap['followers'] ?? 0,
+                    'url': platformMap['url'],
+                  };
+                }).toList();
+                debugPrint('🔗 ProfileBackView: Loaded ${platforms.length} platforms from real-time listener');
+              } else {
+                debugPrint('⚠️ ProfileBackView: platforms is not a List, got: ${platformsData.runtimeType}');
+              }
             }
           }
         } else if (snapshot.hasError) {
@@ -120,7 +175,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         children: [
           IconButton(
             onPressed: widget.onFlip,
-            icon: const Icon(Icons.flip_camera_android_outlined, color: Colors.white),
+            icon: const Icon(Icons.flip, color: Colors.white, size: 24),
             tooltip: 'Flip',
           ),
         ],
@@ -134,14 +189,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _SmallAvatar(imageUrl: widget.user['avatarURL']),
+          _SmallAvatar(imageUrl: _currentUserData['avatarURL']),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.user['displayName'] ?? 'Techniques',
+                  _currentUserData['displayName'] ?? 'Techniques',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 30,
@@ -150,7 +205,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '@${widget.user['username'] ?? 'techniques'}',
+                  '@${_currentUserData['username'] ?? 'techniques'}',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.75),
                     fontSize: 18,
@@ -166,8 +221,26 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Widget _buildTags() {
-    final List<String> tags = List<String>.from(widget.user['hashtags'] ?? const []);
+    final hashtagsData = _currentUserData['hashtags'];
+    List<String> tags = [];
+    
+    if (hashtagsData != null) {
+      if (hashtagsData is List) {
+        // If it's already a list, convert it
+        tags = List<String>.from(hashtagsData);
+      } else if (hashtagsData is String) {
+        // If it's a string, split by comma and trim whitespace
+        tags = hashtagsData.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
+      }
+    }
+    
     if (tags.isEmpty) return const SizedBox.shrink();
+    
+    // Set first hashtag as selected if none is selected
+    if (_selectedHashtag == null && tags.isNotEmpty) {
+      _selectedHashtag = tags.first;
+    }
+    
     return SizedBox(
       height: 42,
       child: ListView.separated(
@@ -175,25 +248,50 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         scrollDirection: Axis.horizontal,
         itemBuilder: (context, index) {
           final String tag = tags[index];
-          final bool active = index == 0;
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              gradient: active
-                  ? const LinearGradient(
-                      colors: [Color(0xFF40DCD1), Color(0xFF3D99F7)],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    )
-                  : null,
-              color: active ? null : Colors.white.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              '#$tag',
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+          final bool isSelected = _selectedHashtag == tag;
+          
+          return GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              setState(() {
+                _selectedHashtag = tag;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: isSelected
+                    ? const LinearGradient(
+                        colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match Add to Calendar button
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      )
+                    : null,
+                color: isSelected ? null : Colors.white.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected 
+                      ? Colors.white.withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: 0.15), 
+                  width: 1
+                ),
+                boxShadow: isSelected ? [
+                  BoxShadow(
+                    color: const Color(0xFF955CFF).withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ] : null,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                '#$tag',
+                style: TextStyle(
+                  color: Colors.white, 
+                  fontSize: 16, 
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           );
         },
@@ -227,7 +325,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Widget _buildBioBody() {
-    final String bio = (widget.user['bio'] ?? '') as String;
+    final String bio = (_currentUserData['bio'] ?? '') as String;
     if (bio.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),

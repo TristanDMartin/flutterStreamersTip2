@@ -43,9 +43,15 @@ service cloud.firestore {
     // Users can read and write video comments
     match /videos/{videoId}/comments/{commentId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && 
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.user.id;
+      allow update: if request.auth != null && 
         (request.auth.uid == resource.data.user.id || 
-         request.auth.uid == request.resource.data.user.id);
+         // Allow adding replies to any comment
+         request.resource.data.keys().hasAll(['replies']) && 
+         request.resource.data.replies is list);
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.user.id;
     }
     
     // Users can read public videos
@@ -69,6 +75,18 @@ service cloud.firestore {
     // Users can write their own engagement analytics
     match /engagement_analytics/{analyticsId} {
       allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Users can read and write chats they participate in
+    match /chats/{chatId} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid in resource.data.participants;
+    }
+    
+    // Users can read and write messages in chats they participate in
+    match /chats/{chatId}/messages/{messageId} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
     }
   }
 }

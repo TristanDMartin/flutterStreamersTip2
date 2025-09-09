@@ -10,6 +10,7 @@ import 'home_view.dart';
 import '../models/user.dart';
 import '../services/network_view_model_advanced.dart';
 import '../services/relationship_service_advanced.dart';
+import '../services/profile_update_service.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
   const MainTabView({super.key});
@@ -42,9 +43,18 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
   void _startDataSync() {
     // Initialize data synchronization after login
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authService = ref.read(robustAuthServiceProvider);
       if (authService.isLoggedIn && authService.currentUser != null) {
+        // Initialize ProfileUpdateService for cross-view updates
+        try {
+          final profileUpdateService = ProfileUpdateService();
+          await profileUpdateService.initialize();
+          print('✅ MainTabView: ProfileUpdateService initialized for user: ${authService.currentUser!.displayName}');
+        } catch (e) {
+          print('❌ MainTabView: Error initializing ProfileUpdateService: $e');
+        }
+        
         // Data sync will be handled by the individual views
         print('🔄 MainTabView: Starting data sync for user: ${authService.currentUser!.displayName}');
       }

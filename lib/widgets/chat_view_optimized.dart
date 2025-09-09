@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/message.dart' as app_message;
 import '../services/chat_service_optimized.dart';
+import '../providers/status_provider.dart';
+import 'online_status_indicator.dart';
 
-class ChatViewOptimized extends StatefulWidget {
+class ChatViewOptimized extends ConsumerStatefulWidget {
   final app_chat.Chat chat;
   final String otherUserId;
   final String otherUserName;
   final String? otherUserAvatarURL;
-  final bool otherUserIsOnline;
 
   const ChatViewOptimized({
     super.key,
@@ -17,14 +19,13 @@ class ChatViewOptimized extends StatefulWidget {
     required this.otherUserId,
     required this.otherUserName,
     this.otherUserAvatarURL,
-    required this.otherUserIsOnline,
   });
 
   @override
-  State<ChatViewOptimized> createState() => _ChatViewOptimizedState();
+  ConsumerState<ChatViewOptimized> createState() => _ChatViewOptimizedState();
 }
 
-class _ChatViewOptimizedState extends State<ChatViewOptimized> {
+class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ChatServiceOptimized _chatService = ChatServiceOptimized();
@@ -158,23 +159,39 @@ class _ChatViewOptimizedState extends State<ChatViewOptimized> {
                 ),
                 Row(
                   children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: widget.otherUserIsOnline
-                            ? const Color(0xFF00D4AA)
-                            : Colors.grey,
-                        shape: BoxShape.circle,
-                      ),
+                    OnlineStatusDot(
+                      userId: widget.otherUserId,
+                      size: 8,
+                      backgroundColor: const Color(0xFF00D4AA),
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      widget.otherUserIsOnline ? 'Online' : 'Offline',
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 12,
-                      ),
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final statusAsync = ref.watch(userStatusProvider(widget.otherUserId));
+                        return statusAsync.when(
+                          data: (presence) => Text(
+                            presence.status.displayName,
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 12,
+                            ),
+                          ),
+                          loading: () => Text(
+                            'Loading...',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 12,
+                            ),
+                          ),
+                          error: (error, stack) => Text(
+                            'Offline',
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 12,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -280,85 +297,221 @@ class _ChatViewOptimizedState extends State<ChatViewOptimized> {
   Widget _buildMessageBubble(app_message.Message message) {
     final isMe = message.from == _chatService.auth.currentUser?.uid;
     
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: [
-          if (!isMe) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: const Color(0xFF9248D2),
-              child: Text(
-                widget.otherUserName.isNotEmpty
-                    ? widget.otherUserName[0].toUpperCase()
-                    : 'U',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 300),
+      tween: Tween(begin: 0.0, end: 1.0),
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.8 + (0.2 * value),
+          child: Opacity(
+            opacity: value,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isMe ? const Color(0xFF9248D2) : Colors.grey[800],
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
                 children: [
-                  if (message.messageType == 'gif' && message.gifUrl != null)
-                    Image.network(
-                      message.gifUrl!,
-                      width: 200,
-                      height: 200,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Text(
-                          'GIF',
-                          style: TextStyle(color: Colors.white),
-                        );
-                      },
-                    )
-                  else
-                    Text(
-                      message.text,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
+                  if (!isMe) ...[
+                    Container(
+                      width: 32,
+                      height: 32,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFF9248D2).withOpacity(0.8),
+                            const Color(0xFF7B2CBF).withOpacity(0.8),
+                          ],
+                        ),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF9248D2).withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          widget.otherUserName.isNotEmpty
+                              ? widget.otherUserName[0].toUpperCase()
+                              : 'U',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatTime(message.timestamp),
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 12,
+                  ],
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: isMe 
+                            ? const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFF9248D2),
+                                  Color(0xFF7B2CBF),
+                                  Color(0xFF6A1B9A),
+                                ],
+                              )
+                            : LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.white.withOpacity(0.15),
+                                  Colors.white.withOpacity(0.05),
+                                ],
+                              ),
+                        borderRadius: BorderRadius.only(
+                          topLeft: const Radius.circular(24),
+                          topRight: const Radius.circular(24),
+                          bottomLeft: isMe ? const Radius.circular(24) : const Radius.circular(8),
+                          bottomRight: isMe ? const Radius.circular(8) : const Radius.circular(24),
+                        ),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: isMe 
+                                ? const Color(0xFF9248D2).withOpacity(0.3)
+                                : Colors.black.withOpacity(0.1),
+                            blurRadius: isMe ? 12 : 8,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (message.messageType == 'gif' && message.gifUrl != null)
+                            Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(
+                                    message.gifUrl!,
+                                    width: 200,
+                                    height: 150,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        width: 200,
+                                        height: 150,
+                                        color: Colors.grey.withOpacity(0.3),
+                                        child: const Center(
+                                          child: Text(
+                                            'GIF',
+                                            style: TextStyle(color: Colors.white),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                // Device GIF indicator
+                                if (message.isDeviceGif)
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [Color(0xFF9248D2), Color(0xFF7B2CBF)],
+                                        ),
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.3),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.phone_android,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            )
+                          else
+                            Text(
+                              message.text,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                height: 1.4,
+                              ),
+                            ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatTime(message.timestamp),
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.6),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                  if (isMe) ...[
+                    Container(
+                      width: 32,
+                      height: 32,
+                      margin: const EdgeInsets.only(left: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFF9248D2).withOpacity(0.8),
+                            const Color(0xFF7B2CBF).withOpacity(0.8),
+                          ],
+                        ),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF9248D2).withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
-          if (isMe) ...[
-            const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.grey[600],
-              child: const Icon(
-                Icons.person,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 

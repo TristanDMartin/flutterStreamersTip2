@@ -32,6 +32,7 @@ mixin _$Message {
   List<String> get readBy => throw _privateConstructorUsedError;
   String? get gifUrl => throw _privateConstructorUsedError;
   String get messageType => throw _privateConstructorUsedError;
+  bool get isDeviceGif => throw _privateConstructorUsedError;
 
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
   @JsonKey(ignore: true)
@@ -54,7 +55,8 @@ abstract class $MessageCopyWith<$Res> {
       List<String> recipients,
       List<String> readBy,
       String? gifUrl,
-      String messageType});
+      String messageType,
+      bool isDeviceGif});
 }
 
 /// @nodoc
@@ -81,6 +83,7 @@ class _$MessageCopyWithImpl<$Res, $Val extends Message>
     Object? readBy = null,
     Object? gifUrl = freezed,
     Object? messageType = null,
+    Object? isDeviceGif = null,
   }) {
     return _then(_value.copyWith(
       id: freezed == id
@@ -127,6 +130,10 @@ class _$MessageCopyWithImpl<$Res, $Val extends Message>
           ? _value.messageType
           : messageType // ignore: cast_nullable_to_non_nullable
               as String,
+      isDeviceGif: null == isDeviceGif
+          ? _value.isDeviceGif
+          : isDeviceGif // ignore: cast_nullable_to_non_nullable
+              as bool,
     ) as $Val);
   }
 }
@@ -149,7 +156,8 @@ abstract class _$$MessageImplCopyWith<$Res> implements $MessageCopyWith<$Res> {
       List<String> recipients,
       List<String> readBy,
       String? gifUrl,
-      String messageType});
+      String messageType,
+      bool isDeviceGif});
 }
 
 /// @nodoc
@@ -174,6 +182,7 @@ class __$$MessageImplCopyWithImpl<$Res>
     Object? readBy = null,
     Object? gifUrl = freezed,
     Object? messageType = null,
+    Object? isDeviceGif = null,
   }) {
     return _then(_$MessageImpl(
       id: freezed == id
@@ -220,6 +229,10 @@ class __$$MessageImplCopyWithImpl<$Res>
           ? _value.messageType
           : messageType // ignore: cast_nullable_to_non_nullable
               as String,
+      isDeviceGif: null == isDeviceGif
+          ? _value.isDeviceGif
+          : isDeviceGif // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
@@ -238,7 +251,8 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
       final List<String> recipients = const [],
       final List<String> readBy = const [],
       this.gifUrl,
-      this.messageType = 'text'})
+      this.messageType = 'text',
+      this.isDeviceGif = false})
       : _recipients = recipients,
         _readBy = readBy;
 
@@ -284,10 +298,13 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
   @override
   @JsonKey()
   final String messageType;
+  @override
+  @JsonKey()
+  final bool isDeviceGif;
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType)';
+    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif)';
   }
 
   @override
@@ -305,7 +322,8 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
       ..add(DiagnosticsProperty('recipients', recipients))
       ..add(DiagnosticsProperty('readBy', readBy))
       ..add(DiagnosticsProperty('gifUrl', gifUrl))
-      ..add(DiagnosticsProperty('messageType', messageType));
+      ..add(DiagnosticsProperty('messageType', messageType))
+      ..add(DiagnosticsProperty('isDeviceGif', isDeviceGif));
   }
 
   @override
@@ -326,7 +344,9 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
             const DeepCollectionEquality().equals(other._readBy, _readBy) &&
             (identical(other.gifUrl, gifUrl) || other.gifUrl == gifUrl) &&
             (identical(other.messageType, messageType) ||
-                other.messageType == messageType));
+                other.messageType == messageType) &&
+            (identical(other.isDeviceGif, isDeviceGif) ||
+                other.isDeviceGif == isDeviceGif));
   }
 
   @JsonKey(ignore: true)
@@ -343,7 +363,8 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
       const DeepCollectionEquality().hash(_recipients),
       const DeepCollectionEquality().hash(_readBy),
       gifUrl,
-      messageType);
+      messageType,
+      isDeviceGif);
 
   @JsonKey(ignore: true)
   @override
@@ -371,7 +392,8 @@ abstract class _Message implements Message {
       final List<String> recipients,
       final List<String> readBy,
       final String? gifUrl,
-      final String messageType}) = _$MessageImpl;
+      final String messageType,
+      final bool isDeviceGif}) = _$MessageImpl;
 
   factory _Message.fromJson(Map<String, dynamic> json) = _$MessageImpl.fromJson;
 
@@ -398,6 +420,8 @@ abstract class _Message implements Message {
   String? get gifUrl;
   @override
   String get messageType;
+  @override
+  bool get isDeviceGif;
   @override
   @JsonKey(ignore: true)
   _$$MessageImplCopyWith<_$MessageImpl> get copyWith =>

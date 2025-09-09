@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import '../models/chat.dart';
 import '../models/message.dart';
 
@@ -150,6 +152,71 @@ class ChatNotifier extends StateNotifier<ChatState> {
       });
     } catch (e) {
       state = state.copyWith(error: "Failed to send GIF: ${e.toString()}");
+    }
+  }
+
+  Future<void> sendDeviceGif(File gifFile) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      state = state.copyWith(error: "You need to be signed in to send messages");
+      return;
+    }
+    if (chat.id == null || chat.id!.isEmpty) {
+      state = state.copyWith(error: "Chat not found. Please try again.");
+      return;
+    }
+
+    final chatId = chat.id!;
+    final otherId = chat.participants.firstWhere(
+      (id) => id != currentUser.uid,
+      orElse: () => "",
+    );
+
+    try {
+      // Show loading state
+      state = state.copyWith(isLoading: true, error: null);
+
+      // Upload GIF to Firebase Storage
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('chat_gifs')
+          .child('${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}.gif');
+      
+      final uploadTask = storageRef.putFile(gifFile);
+      final snapshot = await uploadTask;
+      final gifUrl = await snapshot.ref.getDownloadURL();
+
+      // Send message with the uploaded GIF URL
+      await FirebaseFirestore.instance
+          .collection("chats")
+          .doc(chatId)
+          .collection("messages")
+          .add({
+        "text": "[Device GIF]",
+        "gifUrl": gifUrl,
+        "messageType": "gif",
+        "isDeviceGif": true, // Flag to distinguish from Giphy GIFs
+        "from": currentUser.uid,
+        "to": otherId,
+        "isRead": false,
+        "timestamp": FieldValue.serverTimestamp(),
+        "chatId": chatId,
+        "recipients": [otherId],
+        "readBy": [currentUser.uid],
+      });
+
+      await FirebaseFirestore.instance.collection("chats").doc(chatId).update({
+        "lastMessage": "[Device GIF]",
+        "lastTimestamp": FieldValue.serverTimestamp(),
+      });
+
+      // Clear loading state
+      state = state.copyWith(isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: "Failed to send device GIF: ${e.toString()}",
+      );
     }
   }
 

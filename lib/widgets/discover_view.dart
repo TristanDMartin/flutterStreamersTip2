@@ -549,7 +549,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                   key: ValueKey(creator.id),
                   imageUrl: creator.avatarURL,
                   username: creator.username,
-                  isOnline: creator.isOnline,
+                  userId: creator.id,
                   onTap: () {
                     _navigateToCreatorProfile(context, creator);
                   },

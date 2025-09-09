@@ -42,17 +42,16 @@ class ServerValidationService {
           isAllowed: data['isAllowed'] ?? true,
           reason: data['reason'],
           matchedTerms: List<String>.from(data['matchedTerms'] ?? []),
-          ruleId: data['ruleId'],
           severity: _parseSeverity(data['severity']),
         );
       } else {
         // If server validation fails, fall back to client-side validation
-        return await ContentModerationService().checkContent(content);
+        return await ContentModerationService().check(content);
       }
     } catch (e) {
       print('Server validation error: $e');
       // Fall back to client-side validation
-      return await ContentModerationService().checkContent(content);
+      return await ContentModerationService().check(content);
     }
   }
 

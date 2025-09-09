@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:giphy_picker/giphy_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../models/chat.dart';
 import '../models/message.dart';
 import '../providers/chat_provider.dart';
@@ -38,6 +40,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
   String _otherUserId = '';
   String _otherUserDisplayName = '';
   String? _otherUserAvatarURL;
+  String? _currentUserAvatarURL;
+  String _currentUserDisplayName = '';
   bool _otherUserIsOnline = false;
 
   @override
@@ -56,6 +60,21 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final currentUser = fa.FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
       _otherUserId = widget.chat.participants.firstWhere((id) => id != currentUser.uid);
+      
+      // Load current user's data
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get()
+          .then((snapshot) {
+        if (snapshot.exists && mounted) {
+          final data = snapshot.data()!;
+          setState(() {
+            _currentUserDisplayName = data['displayName'] ?? 'You';
+            _currentUserAvatarURL = data['avatarURL'];
+          });
+        }
+      });
       
       // Listen to other user's data
       FirebaseFirestore.instance
@@ -331,16 +350,24 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 
   Widget _buildMessageBubble(Message message, bool isFromCurrentUser, List<Message> messages, int index) {
-    final showAvatar = !isFromCurrentUser && _shouldShowAvatar(messages, index);
+    final showAvatar = _shouldShowAvatar(messages, index);
     
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: isFromCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 300),
+      tween: Tween(begin: 0.0, end: 1.0),
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.8 + (0.2 * value),
+          child: Opacity(
+            opacity: value,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: isFromCurrentUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
               // For incoming messages (left side)
               if (!isFromCurrentUser) ...[
                 Container(
@@ -354,10 +381,10 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                   _otherUserAvatarURL!,
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) {
-                                    return _buildSmallAvatar();
+                                    return _buildSmallAvatar(_otherUserDisplayName);
                                   },
                                 )
-                              : _buildSmallAvatar(),
+                              : _buildSmallAvatar(_otherUserDisplayName),
                         )
                       : const SizedBox(width: 32),
                 ),
@@ -366,15 +393,36 @@ class _ChatViewState extends ConsumerState<ChatView> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
-                        width: 1,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withOpacity(0.15),
+                          Colors.white.withOpacity(0.05),
+                        ],
                       ),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(24),
+                        topRight: const Radius.circular(24),
+                        bottomLeft: const Radius.circular(8),
+                        bottomRight: const Radius.circular(24),
+                      ),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: message.messageType == 'gif' && message.gifUrl != null
-                        ? ClipRRect(
+                        ? Stack(
+                            children: [
+                              ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Image.network(
                               message.gifUrl!,
@@ -395,12 +443,43 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                 );
                               },
                             ),
+                              ),
+                              // Device GIF indicator
+                              if (message.isDeviceGif)
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFF9248D2), Color(0xFF7B2CBF)],
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.phone_android,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           )
                         : Text(
                             message.text,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              height: 1.4,
                             ),
                           ),
                   ),
@@ -416,18 +495,36 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                         colors: [
                           Color(0xFF9248D2),
-                          Color(0xFF7768DF),
-                          Color(0xFF1670DE),
-                          Color(0xFF3C8BD6),
-                          Color(0xFF4897D2),
+                          Color(0xFF7B2CBF),
+                          Color(0xFF6A1B9A),
                         ],
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(24),
+                        topRight: const Radius.circular(24),
+                        bottomLeft: const Radius.circular(24),
+                        bottomRight: const Radius.circular(8),
+                      ),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF9248D2).withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: message.messageType == 'gif' && message.gifUrl != null
-                        ? ClipRRect(
+                        ? Stack(
+                            children: [
+                              ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Image.network(
                               message.gifUrl!,
@@ -448,42 +545,118 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                 );
                               },
                             ),
+                              ),
+                              // Device GIF indicator
+                              if (message.isDeviceGif)
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFF9248D2), Color(0xFF7B2CBF)],
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.phone_android,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           )
                         : Text(
                             message.text,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              height: 1.4,
                             ),
                           ),
                   ),
+                ),
+                // Avatar for outgoing messages
+                Container(
+                  width: 32,
+                  height: 32,
+                  margin: const EdgeInsets.only(left: 8),
+                  child: showAvatar
+                      ? ClipOval(
+                          child: _currentUserAvatarURL != null
+                              ? Image.network(
+                                  _currentUserAvatarURL!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return _buildSmallAvatar(_currentUserDisplayName);
+                                  },
+                                )
+                              : _buildSmallAvatar(_currentUserDisplayName),
+                        )
+                      : const SizedBox(width: 32),
                 ),
               ],
             ],
           ),
           
-          // Timestamp
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              _formatTimestamp(message.timestamp),
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: 12,
+                  // Timestamp
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      _formatTimestamp(message.timestamp),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildSmallAvatar() {
+  Widget _buildSmallAvatar([String? displayName]) {
+    final name = displayName ?? _otherUserDisplayName;
     return Container(
-      color: Colors.grey.withOpacity(0.3),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF9248D2).withOpacity(0.8),
+            const Color(0xFF7B2CBF).withOpacity(0.8),
+          ],
+        ),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF9248D2).withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Center(
         child: Text(
-          _otherUserDisplayName.isNotEmpty ? _otherUserDisplayName[0].toUpperCase() : 'U',
+          name.isNotEmpty ? name[0].toUpperCase() : 'U',
           style: const TextStyle(
             color: Colors.white,
             fontSize: 14,
@@ -509,7 +682,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final currentMessage = messages[index];
     final previousMessage = messages[index - 1];
     
-    return !_isFromCurrentUser(previousMessage) ||
+    // Show avatar if the previous message is from a different user
+    // or if there's a time gap of more than 5 minutes
+    return _isFromCurrentUser(currentMessage) != _isFromCurrentUser(previousMessage) ||
            currentMessage.timestamp.difference(previousMessage.timestamp).inMinutes > 5;
   }
 
@@ -577,9 +752,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // GIF icon
+                  // GIF picker button
                   GestureDetector(
-                    onTap: () => _showGifPicker(),
+                    onTap: () => _showGifOptions(),
                     child: Container(
                       width: 40,
                       height: 40,
@@ -637,7 +812,98 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
 
 
-  void _showGifPicker() async {
+  void _showGifOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Choose GIF Source',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _buildGifOption(
+              icon: Icons.gif_box_outlined,
+              title: 'Giphy GIFs',
+              subtitle: 'Browse trending GIFs online',
+              onTap: () {
+                Navigator.pop(context);
+                _showGiphyPicker();
+              },
+            ),
+            _buildGifOption(
+              icon: Icons.photo_library_outlined,
+              title: 'Device GIFs',
+              subtitle: 'Use GIFs from your gallery',
+              onTap: () {
+                Navigator.pop(context);
+                _pickDeviceGif();
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGifOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: 24),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.7),
+          fontSize: 14,
+        ),
+      ),
+      onTap: onTap,
+    );
+  }
+
+  void _showGiphyPicker() async {
     try {
       final gif = await GiphyPicker.pickGif(
         context: context,
@@ -667,6 +933,48 @@ class _ChatViewState extends ConsumerState<ChatView> {
               textColor: Colors.white,
               onPressed: () {},
             ),
+          ),
+        );
+      }
+    }
+  }
+
+  void _pickDeviceGif() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (image != null && mounted) {
+        // Check if the file is a GIF
+        final file = File(image.path);
+        final extension = image.path.toLowerCase().split('.').last;
+        
+        if (extension == 'gif') {
+          // Upload the GIF file to Firebase Storage and get the URL
+          final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
+          await chatNotifier.sendDeviceGif(file);
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please select a GIF file'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to pick GIF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }

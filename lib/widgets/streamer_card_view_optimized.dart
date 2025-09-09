@@ -6,8 +6,10 @@ import '../models/user.dart' as app_user;
 import '../models/home_video.dart';
 import '../services/following_service.dart';
 import '../services/share_service_optimized.dart';
+import '../services/profile_update_service.dart';
 import '../widgets/chat_view_optimized.dart';
 import '../models/chat.dart' as app_chat;
+import 'online_status_indicator.dart';
 
 class StreamerCardViewOptimized extends StatefulWidget {
   final StreamerCard displayStreamer;
@@ -27,6 +29,8 @@ class StreamerCardViewOptimized extends StatefulWidget {
 
 class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     with TickerProviderStateMixin {
+  late ProfileUpdateService _profileUpdateService;
+  
   // Pre-defined gradients for better performance - using your preferred color palette
   static const LinearGradient _mainGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -108,12 +112,16 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     // Load additional data
     _loadCalendarEvents();
     _loadPlatforms();
+    
+    // Listen for profile updates
+    _profileUpdateService = ProfileUpdateService();
+    _profileUpdateService.addStreamerCardViewListener(_onProfileUpdated);
   }
 
   // Computed Properties
   StreamerCard get displayStreamer => widget.displayStreamer;
   
-  List<String> get hashtags => displayStreamer.hashtags;
+  List<String> get hashtags => _currentStreamerCard.hashtags;
   
   int get selectedHashtagIndex {
     final index = hashtags.indexOf(_selectedHashtag);
@@ -122,18 +130,108 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   
   bool get isOwner {
     final currentUserId = widget.currentUserId ?? '';
-    return currentUserId == displayStreamer.id;
+    return currentUserId == _currentStreamerCard.id;
   }
 
   @override
   void dispose() {
+    _profileUpdateService.removeStreamerCardViewListener(_onProfileUpdated);
     _flipController.dispose();
     super.dispose();
   }
 
+  void _onProfileUpdated() {
+    if (mounted) {
+      setState(() {
+        // Trigger rebuild when profile data is updated
+        // The ProfileUpdateService will have the latest user data
+      });
+    }
+  }
+
+  /// Get the current streamer card data, either from widget or from ProfileUpdateService
+  StreamerCard get _currentStreamerCard {
+    // Check if this is the current user by comparing user IDs
+    final currentUserId = _profileUpdateService.currentUser?.uid;
+    final isCurrentUser = currentUserId != null && currentUserId == displayStreamer.id;
+    
+    // If this is the current user, get data from ProfileUpdateService and create StreamerCard
+    if (isCurrentUser && _profileUpdateService.isDataLoaded) {
+      final userData = _profileUpdateService.userData;
+      if (userData != null) {
+        return StreamerCard(
+          id: userData['id'] ?? displayStreamer.id,
+          username: userData['username'] ?? displayStreamer.username,
+          displayName: userData['displayName'] ?? displayStreamer.displayName,
+          bio: userData['bio'] ?? displayStreamer.bio,
+          avatarURL: userData['avatarURL'] ?? displayStreamer.avatarURL,
+          coverImageURL: displayStreamer.coverImageURL,
+          platforms: _convertPlatformsFromUserData(userData['platforms'] ?? displayStreamer.platforms),
+          hashtags: List<String>.from(userData['hashtags'] ?? displayStreamer.hashtags),
+          socialLinks: displayStreamer.socialLinks,
+          isConnected: displayStreamer.isConnected,
+        );
+      }
+    }
+    // Otherwise use the widget streamer card data
+    return displayStreamer;
+  }
+
+  /// Convert platforms from user data format to Platform objects
+  List<Platform> _convertPlatformsFromUserData(dynamic platformsData) {
+    if (platformsData is List) {
+      return platformsData.map((platform) {
+        if (platform is Map<String, dynamic>) {
+          return Platform(
+            id: platform['id'] ?? '',
+            type: _getPlatformTypeFromString(platform['name'] ?? ''),
+            username: platform['username'] ?? '',
+            followers: platform['followers'] ?? 0,
+            url: platform['url'] ?? '',
+          );
+        }
+        return Platform(
+          id: '',
+          type: PlatformType.other,
+          username: '',
+          followers: 0,
+          url: '',
+        );
+      }).toList();
+    }
+    return displayStreamer.platforms;
+  }
+
+  /// Convert string platform name to PlatformType enum
+  PlatformType _getPlatformTypeFromString(String name) {
+    switch (name.toLowerCase()) {
+      case 'twitch':
+        return PlatformType.twitch;
+      case 'youtube':
+        return PlatformType.youtube;
+      case 'kick':
+        return PlatformType.kick;
+      case 'tiktok':
+        return PlatformType.tiktok;
+      case 'facebook':
+        return PlatformType.facebook;
+      case 'bluesky':
+        return PlatformType.bluesky;
+      case 'twitter':
+      case 'x':
+        return PlatformType.twitter;
+      case 'instagram':
+        return PlatformType.instagram;
+      case 'rednote':
+        return PlatformType.rednote;
+      default:
+        return PlatformType.other;
+    }
+  }
+
   // Connection Status - Optimized with caching
   Future<void> _checkConnectionStatus() async {
-    if (widget.currentUserId == null || widget.currentUserId == displayStreamer.id) {
+    if (widget.currentUserId == null || widget.currentUserId == _currentStreamerCard.id) {
       return;
     }
 
@@ -151,12 +249,12 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     try {
       // Run both checks in parallel for better performance
       final results = await Future.wait([
-        _checkIfFollowing(displayStreamer.id),
-        _checkIfFollowedBy(displayStreamer.id),
+        _checkIfFollowing(_currentStreamerCard.id),
+        _checkIfFollowedBy(_currentStreamerCard.id),
       ]);
       
-      final isFollowing = results[0] as bool;
-      final isFollowedByStreamer = results[1] as bool;
+      final isFollowing = results[0];
+      final isFollowedByStreamer = results[1];
       final isConnected = isFollowing && isFollowedByStreamer;
       
       if (mounted) {
@@ -352,13 +450,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                   HapticFeedback.lightImpact();
                   _flipCard();
                 },
-                child: const Text(
-                  'Flip',
-                  style: TextStyle(
-                    color: Color(0xFF25E5D2), // Teal/greenish color
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: const Icon(
+                  Icons.flip,
+                  color: Colors.white,
+                  size: 24,
                 ),
               ),
               const SizedBox(width: 16),
@@ -391,13 +486,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       children: [
         CircleAvatar(
           radius: 50,
-          backgroundImage: displayStreamer.avatarURL != null
-              ? NetworkImage(displayStreamer.avatarURL!)
+          backgroundImage: _currentStreamerCard.avatarURL != null
+              ? NetworkImage(_currentStreamerCard.avatarURL!)
               : null,
-          child: displayStreamer.avatarURL == null
+          child: _currentStreamerCard.avatarURL == null
               ? Text(
-                  displayStreamer.displayName.isNotEmpty
-                      ? displayStreamer.displayName[0].toUpperCase()
+                  _currentStreamerCard.displayName.isNotEmpty
+                      ? _currentStreamerCard.displayName[0].toUpperCase()
                       : 'S',
                   style: const TextStyle(
                     color: Colors.white,
@@ -407,18 +502,15 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                 )
               : null,
         ),
-        Positioned(
-          right: 0,
-          bottom: 0,
-          child: Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: const Color(0xFF00D4AA),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.black, width: 2),
-            ),
-          ),
+        // Dynamic online status indicator
+        AvatarOnlineIndicator(
+          userId: _currentStreamerCard.id,
+          avatarSize: 100, // 50 * 2 (radius * 2)
+          indicatorSize: 20,
+          showBorder: true,
+          borderColor: Colors.black,
+          borderWidth: 2,
+          showShadow: true,
         ),
       ],
     );
@@ -428,7 +520,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     return Column(
       children: [
         Text(
-          displayStreamer.displayName,
+          _currentStreamerCard.displayName,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 24,
@@ -437,16 +529,16 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         ),
         const SizedBox(height: 4),
         Text(
-          '@${displayStreamer.username}',
+          '@${_currentStreamerCard.username}',
           style: const TextStyle(
             color: Color(0xFFB3FFFFFF), // Pre-computed opacity
             fontSize: 16,
           ),
         ),
-        if (displayStreamer.bio.isNotEmpty) ...[
+        if (_currentStreamerCard.bio.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
-            displayStreamer.bio,
+            _currentStreamerCard.bio,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Color(0xFFCCFFFFFF), // Pre-computed opacity
@@ -813,7 +905,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
               ),
             ),
             Text(
-              displayStreamer.displayName,
+              _currentStreamerCard.displayName,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -847,13 +939,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         children: [
           CircleAvatar(
             radius: 30,
-            backgroundImage: displayStreamer.avatarURL != null
-                ? NetworkImage(displayStreamer.avatarURL!)
+            backgroundImage: _currentStreamerCard.avatarURL != null
+                ? NetworkImage(_currentStreamerCard.avatarURL!)
                 : null,
-            child: displayStreamer.avatarURL == null
+            child: _currentStreamerCard.avatarURL == null
                 ? Text(
-                    displayStreamer.displayName.isNotEmpty
-                        ? displayStreamer.displayName[0].toUpperCase()
+                    _currentStreamerCard.displayName.isNotEmpty
+                        ? _currentStreamerCard.displayName[0].toUpperCase()
                         : 'S',
                     style: const TextStyle(
                       color: Colors.white,
@@ -869,7 +961,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  displayStreamer.displayName,
+                  _currentStreamerCard.displayName,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -877,7 +969,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                   ),
                 ),
                 Text(
-                  '@${displayStreamer.username}',
+                  '@${_currentStreamerCard.username}',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
                     fontSize: 16,
@@ -1309,10 +1401,9 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                   lastTimestamp: DateTime.now(),
                   chatType: 'direct',
                 ),
-                otherUserId: displayStreamer.id,
-                otherUserName: displayStreamer.displayName,
-                otherUserAvatarURL: displayStreamer.avatarURL,
-                otherUserIsOnline: true,
+                otherUserId: _currentStreamerCard.id,
+                otherUserName: _currentStreamerCard.displayName,
+                otherUserAvatarURL: _currentStreamerCard.avatarURL,
               ),
             ),
           ],

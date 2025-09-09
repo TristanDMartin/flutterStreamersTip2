@@ -8,6 +8,7 @@ import '../providers/unread_messages_provider.dart';
 import '../providers/shared_draft_provider.dart';
 import '../models/shared_draft.dart';
 import 'new_message_view.dart';
+import 'online_status_indicator.dart';
 import 'chat_view.dart';
 import 'shared_draft_item.dart';
 
@@ -929,7 +930,6 @@ class _ChatListItem extends StatelessWidget {
           final userData = snapshot.data!.data() as Map<String, dynamic>;
           final avatarURL = userData['avatarURL'] as String?;
           final displayName = userData['displayName'] as String? ?? 'User';
-          final onlineStatus = userData['onlineStatus'] as String? ?? 'offline';
           
           return Stack(
             children: [
@@ -955,24 +955,16 @@ class _ChatListItem extends StatelessWidget {
                       : _buildDefaultAvatar(displayName),
                 ),
               ),
-              // Online indicator
-              if (onlineStatus == 'online')
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 14,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.black,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                ),
+              // Dynamic online status indicator
+              AvatarOnlineIndicator(
+                userId: userId,
+                avatarSize: 50,
+                indicatorSize: 14,
+                showBorder: true,
+                borderColor: Colors.black,
+                borderWidth: 2,
+                showShadow: false,
+              ),
             ],
           );
         }

@@ -1612,7 +1612,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           otherUserId: otherUserId,
           otherUserName: userProfile?.displayName ?? userProfile?.username ?? 'User',
           otherUserAvatarURL: userProfile?.avatarURL,
-          otherUserIsOnline: isOnline,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           const begin = Offset(1.0, 0.0);

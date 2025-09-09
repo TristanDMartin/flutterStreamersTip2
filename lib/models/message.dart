@@ -19,6 +19,7 @@ class Message with _$Message {
     @Default([]) List<String> readBy,
     String? gifUrl,
     @Default('text') String messageType,
+    @Default(false) bool isDeviceGif,
   }) = _Message;
 
   factory Message.fromJson(Map<String, dynamic> json) => _$MessageFromJson(json);

@@ -128,7 +128,14 @@ class CommentsService {
       return reply.copyWith(id: 'reply-${DateTime.now().millisecondsSinceEpoch}');
     } catch (e) {
       print('Error adding reply: $e');
-      rethrow;
+      // Provide more specific error messages
+      if (e.toString().contains('permission-denied')) {
+        throw Exception('Permission denied. Please check your authentication status.');
+      } else if (e.toString().contains('network')) {
+        throw Exception('Network error. Please check your connection.');
+      } else {
+        throw Exception('Failed to add reply. Please try again.');
+      }
     }
   }
 

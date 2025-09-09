@@ -92,7 +92,7 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
 
     try {
       print('🔍 ContentValidationField: Calling ContentModerationService...');
-      final result = await ContentModerationService().checkContent(_controller.text);
+      final result = await ContentModerationService().check(_controller.text);
       
       print('🔍 ContentValidationField: Result - isAllowed: ${result.isAllowed}, reason: ${result.reason}');
       

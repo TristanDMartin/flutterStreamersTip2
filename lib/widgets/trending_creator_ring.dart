@@ -1,26 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'online_status_indicator.dart';
 
-class TrendingCreatorRing extends StatefulWidget {
+class TrendingCreatorRing extends ConsumerStatefulWidget {
   final String? imageUrl;
   final String username;
+  final String? userId;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
-  final bool isOnline;
 
   const TrendingCreatorRing({
     super.key,
     this.imageUrl,
     required this.username,
+    this.userId,
     this.onTap,
     this.onLongPress,
-    this.isOnline = false,
   });
 
   @override
-  State<TrendingCreatorRing> createState() => _TrendingCreatorRingState();
+  ConsumerState<TrendingCreatorRing> createState() => _TrendingCreatorRingState();
 }
 
-class _TrendingCreatorRingState extends State<TrendingCreatorRing>
+class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -167,28 +169,18 @@ class _TrendingCreatorRingState extends State<TrendingCreatorRing>
                         : null,
                   ),
                   
-                  // Online status indicator
-                  if (widget.isOnline)
-                    Positioned(
-                      right: 6,
-                      top: 6,
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.green,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              blurRadius: 2,
-                            ),
-                          ],
-                        ),
+                  // Dynamic online status indicator
+                  if (widget.userId != null)
+                    OnlineStatusIndicator(
+                      userId: widget.userId!,
+                      size: 12,
+                      showBorder: true,
+                      borderColor: Colors.white,
+                      borderWidth: 2,
+                      showShadow: true,
+                      position: const EdgeInsets.only(
+                        right: 6,
+                        top: 6,
                       ),
                     ),
                 ],

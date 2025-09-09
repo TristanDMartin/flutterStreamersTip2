@@ -60,11 +60,7 @@ class AuthenticationService extends ChangeNotifier {
         // Note: calendarEvents and platforms can be added later if needed
         
         // Decode hashtags from Firestore
-        List<String> hashtags = [];
-        if (data['hashtags'] != null) {
-          final hashtagsArray = data['hashtags'] as List<dynamic>;
-          hashtags = hashtagsArray.cast<String>();
-        }
+        List<String> hashtags = _parseHashtags(data['hashtags']) ?? [];
         
         // Create user object with Firestore data
         final user = User(
@@ -231,7 +227,7 @@ class AuthenticationService extends ChangeNotifier {
           bio: data['bio'] as String? ?? _currentUser!.bio,
           avatarURL: data['avatarURL'] as String? ?? _currentUser!.avatarURL,
           onlineStatus: data['onlineStatus'] as String? ?? _currentUser!.onlineStatus,
-          hashtags: (data['hashtags'] as List<dynamic>?)?.cast<String>() ?? _currentUser!.hashtags,
+          hashtags: _parseHashtags(data['hashtags']) ?? _currentUser!.hashtags,
           postCount: data['postCount'] as int? ?? _currentUser!.postCount,
           followerCount: data['followerCount'] as int? ?? _currentUser!.followerCount,
           followingCount: data['followingCount'] as int? ?? _currentUser!.followingCount,
@@ -265,6 +261,9 @@ class AuthenticationService extends ChangeNotifier {
       print("🔐 Starting Google Sign-In process");
       setLoading(true);
       
+      // First, sign out any existing Google session to avoid conflicts
+      await _googleSignIn.signOut();
+      
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         print("❌ Google Sign-In cancelled by user");
@@ -273,35 +272,53 @@ class AuthenticationService extends ChangeNotifier {
       }
 
       print("✅ Google Sign-In successful for: ${googleUser.email}");
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       
-      if (googleAuth.accessToken == null || googleAuth.idToken == null) {
-        print("❌ Missing Google authentication tokens");
+      try {
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        
+        if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+          print("❌ Missing Google authentication tokens");
+          setLoading(false);
+          throw Exception("Failed to get Google authentication tokens");
+        }
+
+        final credential = firebase_auth.GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        print("🔐 Signing in to Firebase with Google credential");
+        final firebase_auth.UserCredential userCredential = await _auth.signInWithCredential(credential);
+        final firebase_auth.User? user = userCredential.user;
+        
+        if (user != null) {
+          print("✅ Firebase authentication successful for: ${user.email}");
+          // The auth state listener will handle the rest
+        }
+        
         setLoading(false);
-        throw Exception("Failed to get Google authentication tokens");
+        print("🎉 Google Sign-In process completed successfully");
+      } catch (authError) {
+        print("❌ Firebase authentication error: $authError");
+        // Sign out from Google if Firebase auth fails
+        await _googleSignIn.signOut();
+        setLoading(false);
+        rethrow;
       }
-
-      final credential = firebase_auth.GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      print("🔐 Signing in to Firebase with Google credential");
-      final firebase_auth.UserCredential userCredential = await _auth.signInWithCredential(credential);
-      final firebase_auth.User? user = userCredential.user;
-      
-      if (user != null) {
-        print("✅ Firebase authentication successful for: ${user.email}");
-        await _createOrUpdateUserDocument(user);
-        print("✅ User document created/updated in Firestore");
-      }
-      
-      setLoading(false);
-      print("🎉 Google Sign-In process completed successfully");
     } catch (e) {
       print("❌ Google Sign-In error: $e");
       setLoading(false);
-      rethrow;
+      
+      // Provide more specific error messages
+      if (e.toString().contains('network_error')) {
+        throw Exception('Network error. Please check your internet connection.');
+      } else if (e.toString().contains('sign_in_canceled')) {
+        throw Exception('Sign-in was cancelled.');
+      } else if (e.toString().contains('sign_in_failed')) {
+        throw Exception('Sign-in failed. Please try again.');
+      } else {
+        throw Exception('Google Sign-In failed. Please try again.');
+      }
     }
   }
 
@@ -853,6 +870,19 @@ class AuthenticationService extends ChangeNotifier {
       print('❌ Error getting all users: $e');
       return [];
     }
+  }
+
+  // Helper method to parse hashtags from different data types
+  List<String>? _parseHashtags(dynamic hashtagsData) {
+    if (hashtagsData == null) return null;
+    
+    if (hashtagsData is List) {
+      return hashtagsData.cast<String>();
+    } else if (hashtagsData is String) {
+      return hashtagsData.split(',').map((e) => e.trim()).toList();
+    }
+    
+    return null;
   }
 
   // Set loading state

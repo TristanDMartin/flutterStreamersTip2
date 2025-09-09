@@ -32,9 +32,9 @@ class _StreamerBackViewState extends State<StreamerBackView>
     ],
   );
   
-  // Hashtag chip gradients
+  // Hashtag chip gradients - matching Add to Calendar button
   static const LinearGradient _selectedHashtagGradient = LinearGradient(
-    colors: [Color(0xFF9248D2), Color(0xFF25E5D2)], // Purple to cyan
+    colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match Add to Calendar button
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
@@ -320,13 +320,10 @@ class _StreamerBackViewState extends State<StreamerBackView>
                 HapticFeedback.lightImpact();
                 widget.onDismiss?.call();
               },
-                child: const Text(
-                  'Flip',
-                  style: TextStyle(
-                  color: Color(0xFF25E5D2),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                ),
+              child: const Icon(
+                Icons.flip,
+                color: Colors.white,
+                size: 24,
               ),
             ),
           ],
@@ -420,9 +417,18 @@ class _StreamerBackViewState extends State<StreamerBackView>
                         : Colors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: isSelected 
+                          ? Colors.white.withOpacity(0.3)
+                          : Colors.white.withOpacity(0.2),
                       width: 1,
               ),
+                    boxShadow: isSelected ? [
+                      BoxShadow(
+                        color: const Color(0xFF955CFF).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ] : null,
                   ),
               child: Text(
                     '#$hashtag',

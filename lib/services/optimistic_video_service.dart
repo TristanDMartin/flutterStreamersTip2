@@ -94,6 +94,48 @@ class OptimisticVideoService extends ChangeNotifier {
       'createdAt': video.createdAt,
       'status': 'processing',
     });
+
+    // Add to category feeds for each category
+    for (final category in video.categories) {
+      await _firestore
+          .collection('feeds')
+          .doc('categories')
+          .collection(category)
+          .doc(video.videoId)
+          .set({
+        'videoId': video.videoId,
+        'userId': video.ownerId,
+        'category': category,
+        'status': 'processing',
+        'addedAt': video.createdAt,
+      });
+    }
+
+    // Add to public feeds (for_you)
+    await _firestore
+        .collection('feeds')
+        .doc('for_you')
+        .collection('videos')
+        .doc(video.videoId)
+        .set({
+      'videoId': video.videoId,
+      'userId': video.ownerId,
+      'status': 'processing',
+      'addedAt': video.createdAt,
+    });
+
+    // Add to following feed
+    await _firestore
+        .collection('feeds')
+        .doc('following')
+        .collection('videos')
+        .doc(video.videoId)
+        .set({
+      'videoId': video.videoId,
+      'userId': video.ownerId,
+      'status': 'processing',
+      'addedAt': video.createdAt,
+    });
   }
 
   /// Set up listener for video status changes

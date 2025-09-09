@@ -27,12 +27,6 @@ class PublishedVideoCardView extends StatelessWidget {
               // Video thumbnail
               _buildThumbnail(),
               
-              // Play button overlay
-              _buildPlayButton(),
-              
-              // Video duration
-              _buildDuration(),
-              
               // View count
               _buildViewCount(),
             ],
@@ -72,45 +66,6 @@ class PublishedVideoCardView extends StatelessWidget {
     );
   }
 
-  Widget _buildPlayButton() {
-    return Center(
-      child: Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.6),
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          Icons.play_arrow,
-          color: Colors.white,
-          size: 28,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDuration() {
-    return Positioned(
-      bottom: 8,
-      right: 8,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          _formatDuration(video.views), // Using views as placeholder for duration
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildViewCount() {
     return Positioned(
@@ -145,11 +100,6 @@ class PublishedVideoCardView extends StatelessWidget {
     );
   }
 
-  String _formatDuration(int seconds) {
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
-  }
 
   String _formatViewCount(int views) {
     if (views >= 1000000) {

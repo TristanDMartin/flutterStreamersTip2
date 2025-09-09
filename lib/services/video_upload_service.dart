@@ -141,8 +141,9 @@ class VideoUploadService {
       // 8. Add to user's profile videos
       await _addToUserProfile(userId, videoId);
 
-      // 9. Add to appropriate feeds based on privacy
-      await _addToFeeds(videoId, privacy, userId);
+      // 9. Add to appropriate feeds based on privacy and category
+      final category = additionalMetadata?['category'] as String?;
+      await _addToFeeds(videoId, privacy, userId, category: category);
 
       print('✅ Video uploaded successfully!');
       return VideoUploadResult(
@@ -353,7 +354,7 @@ class VideoUploadService {
   }
 
   /// Add video to appropriate feeds
-  Future<void> _addToFeeds(String videoId, String privacy, String userId) async {
+  Future<void> _addToFeeds(String videoId, String privacy, String userId, {String? category}) async {
     try {
       if (privacy == 'Everyone') {
         // Add to public feeds
@@ -380,6 +381,22 @@ class VideoUploadService {
         'userId': userId,
         'addedAt': FieldValue.serverTimestamp(),
       });
+
+      // Add to category feed if category is specified
+      if (category != null && category.isNotEmpty) {
+        await _firestore
+            .collection('feeds')
+            .doc('categories')
+            .collection(category)
+            .doc(videoId)
+            .set({
+          'videoId': videoId,
+          'userId': userId,
+          'category': category,
+          'addedAt': FieldValue.serverTimestamp(),
+        });
+        print('✅ Added video to category feed: $category');
+      }
     } catch (e) {
       print('Error adding to feeds: $e');
     }
@@ -474,7 +491,8 @@ class VideoUploadService {
       });
 
       // Add to feeds
-      await _addToFeeds(videoId, videoData['privacy'], user.uid);
+      final category = videoData['metadata']?['category'] as String?;
+      await _addToFeeds(videoId, videoData['privacy'], user.uid, category: category);
 
       return VideoUploadResult(
         success: true,

@@ -495,13 +495,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             children: [
               GestureDetector(
                 onTap: () => _flipCard(),
-                child: const Text(
-                  'Flip',
-                  style: TextStyle(
-                    color: Color(0xFF25E5D2), // Teal/greenish color
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: const Icon(
+                  Icons.flip,
+                  color: Colors.white,
+                  size: 24,
                 ),
               ),
               const SizedBox(width: 16),
@@ -1241,13 +1238,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   const Spacer(),
                   GestureDetector(
                     onTap: _flipCard,
-                    child: const Text(
-                      'Flip',
-                      style: TextStyle(
-                        color: Color(0xFF25E5D2),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    child: const Icon(
+                      Icons.flip,
+                      color: Colors.white,
+                      size: 24,
                     ),
                   ),
                 ],
