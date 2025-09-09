@@ -26,10 +26,8 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
     with SingleTickerProviderStateMixin {
   late bool _isLiked;
   late int _likeCount;
-  bool _isLoading = false;
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  late Animation<Color?> _colorAnimation;
   bool _isPressed = false;
 
   @override
@@ -38,40 +36,43 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
     _isLiked = widget.initialIsLiked;
     _likeCount = widget.initialLikeCount;
     
-    // Load persistent state
-    _loadPersistentState();
-    
-    // Initialize animation controller with more dramatic animation
+    // Initialize animation controller with faster, more responsive animation
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 100), // Faster animation
       vsync: this,
     );
     
     _scaleAnimation = Tween<double>(
       begin: 1.0,
-      end: 0.6, // More dramatic scale down
+      end: 0.7, // Less dramatic scale for faster feel
     ).animate(CurvedAnimation(
       parent: _animationController,
-      curve: Curves.elasticOut, // More bouncy animation
+      curve: Curves.easeOut, // Faster, snappier animation
     ));
     
-    _colorAnimation = ColorTween(
-      begin: Colors.white.withValues(alpha: 0.85),
-      end: const Color(0xFF9248D2).withValues(alpha: 0.7),
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
+    // Load persistent state after initialization
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadPersistentState();
+    });
   }
 
   @override
   void didUpdateWidget(OptimizedLikeButton oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialIsLiked != widget.initialIsLiked) {
-      _isLiked = widget.initialIsLiked;
+      setState(() {
+        _isLiked = widget.initialIsLiked;
+      });
     }
     if (oldWidget.initialLikeCount != widget.initialLikeCount) {
-      _likeCount = widget.initialLikeCount;
+      setState(() {
+        _likeCount = widget.initialLikeCount;
+      });
+    }
+    
+    // Only reload persistent state when video ID changes (not on every update)
+    if (oldWidget.videoId != widget.videoId) {
+      _loadPersistentState();
     }
   }
 
@@ -101,7 +102,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
   }
 
   void _handleTapDown(TapDownDetails details) {
-    if (!_isLoading && !_isPressed) {
+    if (!_isPressed) {
       setState(() {
         _isPressed = true;
       });
@@ -134,64 +135,70 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
   }
 
   Future<void> _handleLike() async {
-    if (_isLoading) return;
-
-    // Immediate UI feedback
+    // Immediate UI feedback - no loading state needed
     HapticFeedback.lightImpact();
+    
+    // Update UI instantly - this should be immediate
     setState(() {
-      _isLoading = true;
       _isLiked = !_isLiked;
       _likeCount += _isLiked ? 1 : -1;
     });
 
+    // Quick visual feedback animation
+    _animationController.forward().then((_) {
+      _animationController.reverse();
+    });
+
+    // Create floating hearts animation on like
+    if (_isLiked) {
+      _createFloatingHearts();
+    }
+
+    // Notify parent of change immediately
+    widget.onLikeChanged?.call();
+
+    // Perform background operations without blocking UI
+    _performBackgroundLikeOperation();
+  }
+
+  Future<void> _performBackgroundLikeOperation() async {
     try {
-      // Track engagement immediately
+      // Track engagement
       LikeService().trackLikeEngagement(widget.videoId, _isLiked);
 
-      // Perform like/unlike operation
-      final success = await LikeService().toggleLike(widget.videoId);
-      
-      if (!success) {
-        // Revert on failure
-        setState(() {
-          _isLiked = !_isLiked;
-          _likeCount += _isLiked ? 1 : -1;
-        });
-        return;
-      }
-
-      // Create floating hearts animation on like
-      if (_isLiked) {
-        _createFloatingHearts();
-      }
-
-      // Notify parent of change
-      widget.onLikeChanged?.call();
+      // Try to perform like/unlike operation in background
+      // Don't revert on failure - keep the UI state as is
+      await LikeService().toggleLike(widget.videoId);
     } catch (e) {
-      // Revert on error
-      setState(() {
-        _isLiked = !_isLiked;
-        _likeCount += _isLiked ? 1 : -1;
-      });
-      // Error toggling like: $e
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      // Don't revert on error - keep the UI state
+      // The like state should persist locally even if Firebase fails
+      print('Background like operation failed (keeping UI state): $e');
     }
   }
 
   void _createFloatingHearts() {
-    final RenderBox? box = widget.iconKey?.currentContext?.findRenderObject() as RenderBox?;
-    final Offset origin = box != null
-        ? box.localToGlobal(Offset(box.size.width / 2, box.size.height / 2))
-        : Offset(MediaQuery.of(context).size.width / 2, MediaQuery.of(context).size.height / 2);
-    
-    FloatingHeartsAnimation.createFloatingHearts(
-      context,
-      origin,
-      () {}, // No callback needed
-    );
+    try {
+      final RenderBox? box = widget.iconKey?.currentContext?.findRenderObject() as RenderBox?;
+      final Offset origin = box != null
+          ? box.localToGlobal(Offset(box.size.width / 2, box.size.height / 2))
+          : Offset(MediaQuery.of(context).size.width / 2, MediaQuery.of(context).size.height / 2);
+      
+      // Create multiple hearts for better effect
+      for (int i = 0; i < 3; i++) {
+        Future.delayed(Duration(milliseconds: i * 100), () {
+          if (mounted) {
+            FloatingHeartsAnimation.createFloatingHearts(
+              context,
+              origin,
+              () {}, // No callback needed
+            );
+          }
+        });
+      }
+    } catch (e) {
+      // If floating hearts fail, just continue - not critical
+      print('Floating hearts animation error: $e');
+    }
   }
 
   @override
@@ -211,37 +218,12 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Stack(
-                    children: [
-                      Icon(
-                        _isLoading 
-                            ? Icons.favorite 
-                            : (_isLiked ? Icons.favorite : Icons.favorite_border),
-                        color: _isLiked 
-                            ? const Color(0xFF9248D2) 
-                            : (_isPressed ? _colorAnimation.value : Colors.white.withValues(alpha: 0.85)),
-                        size: 28,
-                      ),
-                      if (_isLoading)
-                        Positioned.fill(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Center(
-                              child: SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                  Icon(
+                    _isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: _isLiked 
+                        ? const Color(0xFF9248D2) 
+                        : Colors.white.withValues(alpha: 0.85),
+                    size: 28,
                   ),
                   const SizedBox(height: 4),
                   Text(

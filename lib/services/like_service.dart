@@ -21,45 +21,61 @@ class LikeService {
   Future<bool> toggleLike(String videoId) async {
     try {
       final currentUser = _auth.currentUser;
-      if (currentUser == null) return false;
+      if (currentUser == null) {
+        // If no user, just update local storage
+        await _updateLocalStorageOnly(videoId);
+        return true;
+      }
 
       // Check current like status
       final isLiked = await _isVideoLiked(videoId);
       
       if (isLiked) {
-        final success = await _unlikeVideo(videoId);
-        if (success) {
-          // Update local storage
-          final likedVideos = await getLikedVideos();
-          likedVideos.remove(videoId);
-          await saveLikedVideos(likedVideos);
-          
-          // Update like count in local storage
-          final likeCounts = await getLikeCounts();
-          final currentCount = likeCounts[videoId] ?? 0;
-          likeCounts[videoId] = (currentCount - 1).clamp(0, double.infinity).toInt();
-          await saveLikeCounts(likeCounts);
-        }
-        return success;
+        // Try to unlike in Firebase, but always update local storage
+        final firebaseSuccess = await _unlikeVideo(videoId);
+        await _updateLocalStorageOnly(videoId);
+        return firebaseSuccess;
       } else {
-        final success = await _likeVideo(videoId);
-        if (success) {
-          // Update local storage
-          final likedVideos = await getLikedVideos();
-          likedVideos.add(videoId);
-          await saveLikedVideos(likedVideos);
-          
-          // Update like count in local storage
-          final likeCounts = await getLikeCounts();
-          final currentCount = likeCounts[videoId] ?? 0;
-          likeCounts[videoId] = currentCount + 1;
-          await saveLikeCounts(likeCounts);
-        }
-        return success;
+        // Try to like in Firebase, but always update local storage
+        final firebaseSuccess = await _likeVideo(videoId);
+        await _updateLocalStorageOnly(videoId);
+        return firebaseSuccess;
       }
     } catch (e) {
-      // Error toggling like: $e
-      return false;
+      // Even if Firebase fails, update local storage
+      await _updateLocalStorageOnly(videoId);
+      return true; // Return true to keep UI state
+    }
+  }
+
+  /// Update local storage only (for when Firebase fails)
+  Future<void> _updateLocalStorageOnly(String videoId) async {
+    try {
+      final isLiked = await _isVideoLiked(videoId);
+      
+      if (isLiked) {
+        // Unlike locally
+        final likedVideos = await getLikedVideos();
+        likedVideos.remove(videoId);
+        await saveLikedVideos(likedVideos);
+        
+        final likeCounts = await getLikeCounts();
+        final currentCount = likeCounts[videoId] ?? 0;
+        likeCounts[videoId] = (currentCount - 1).clamp(0, double.infinity).toInt();
+        await saveLikeCounts(likeCounts);
+      } else {
+        // Like locally
+        final likedVideos = await getLikedVideos();
+        likedVideos.add(videoId);
+        await saveLikedVideos(likedVideos);
+        
+        final likeCounts = await getLikeCounts();
+        final currentCount = likeCounts[videoId] ?? 0;
+        likeCounts[videoId] = currentCount + 1;
+        await saveLikeCounts(likeCounts);
+      }
+    } catch (e) {
+      print('Error updating local storage: $e');
     }
   }
 
@@ -224,26 +240,35 @@ class LikeService {
         return true;
       }
 
-      // Then check Firebase for accuracy
+      // Then check Firebase for accuracy (if user is authenticated)
       final currentUser = _auth.currentUser;
-      if (currentUser == null) return false;
-
-      final doc = await _firestore
-          .collection('users')
-          .doc(currentUser.uid)
-          .collection('likedVideos')
-          .doc(videoId)
-          .get();
-
-      final isLiked = doc.exists;
-      
-      // Update local storage with Firebase result
-      if (isLiked) {
-        likedVideos.add(videoId);
-        await saveLikedVideos(likedVideos);
+      if (currentUser == null) {
+        // If no user, just return local storage result
+        return false;
       }
 
-      return isLiked;
+      try {
+        final doc = await _firestore
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('likedVideos')
+            .doc(videoId)
+            .get();
+
+        final isLiked = doc.exists;
+        
+        // Update local storage with Firebase result
+        if (isLiked) {
+          likedVideos.add(videoId);
+          await saveLikedVideos(likedVideos);
+        }
+
+        return isLiked;
+      } catch (firebaseError) {
+        // If Firebase fails, just return local storage result
+        print('Firebase check failed, using local storage: $firebaseError');
+        return false;
+      }
     } catch (e) {
       // Error checking if video is liked: $e
       // Fallback to local storage

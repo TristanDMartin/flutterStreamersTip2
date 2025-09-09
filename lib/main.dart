@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'widgets/app_startup_wrapper.dart';
 import 'services/analytics_service.dart';
 import 'services/error_handler_service.dart';

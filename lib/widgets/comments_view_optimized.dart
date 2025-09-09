@@ -24,8 +24,6 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   String? _errorMessage;
-  String _searchQuery = '';
-
   // Simplified emoji reactions
   static const List<String> _emojiReactions = <String>[
     '❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂',
@@ -46,15 +44,6 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   }
 
   Future<void> _loadComments() async {
-    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      setState(() {
-        _errorMessage = 'Please sign in to view comments';
-        _isLoading = false;
-      });
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -62,15 +51,36 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
 
     try {
       final List<Comment> fetched = await CommentsService().fetchCommentsForVideo(widget.videoId);
-      setState(() {
-        _comments
-          ..clear()
-          ..addAll(fetched);
-      });
+      if (mounted) {
+        setState(() {
+          _comments
+            ..clear()
+            ..addAll(fetched);
+        });
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-      });
+      if (mounted) {
+        String errorMessage = 'Unable to load comments. Showing sample comments.';
+        
+        // Provide more specific error messages
+        if (e.toString().contains('permission-denied')) {
+          errorMessage = 'Permission denied. Please sign in to view comments.';
+        } else if (e.toString().contains('network')) {
+          errorMessage = 'Network error. Please check your connection.';
+        }
+        
+        setState(() {
+          _errorMessage = errorMessage;
+        });
+        
+        // Still try to show mock data for better UX
+        final List<Comment> mockData = CommentMockData.mockData();
+        setState(() {
+          _comments
+            ..clear()
+            ..addAll(mockData);
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -115,11 +125,26 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
         text: text,
         author: me,
       );
+      // Success - optimistic update stays
     } catch (e) {
-      setState(() {
-        _comments.removeWhere((c) => c.id == optimistic.id);
-        _errorMessage = e.toString();
-      });
+      // Revert optimistic update on failure
+      if (mounted) {
+        String errorMessage = 'Failed to add comment. Please try again.';
+        
+        // Provide more specific error messages
+        if (e.toString().contains('permission-denied')) {
+          errorMessage = 'Permission denied. Please sign in to add comments.';
+        } else if (e.toString().contains('network')) {
+          errorMessage = 'Network error. Please check your connection.';
+        } else if (e.toString().contains('User not authenticated')) {
+          errorMessage = 'Please sign in to add comments.';
+        }
+        
+        setState(() {
+          _comments.removeWhere((c) => c.id == optimistic.id);
+          _errorMessage = errorMessage;
+        });
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -194,13 +219,6 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     }
   }
 
-  List<Comment> get _filteredComments {
-    if (_searchQuery.isEmpty) return _comments;
-    return _comments.where((comment) {
-      return comment.text.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          comment.user.username.toLowerCase().contains(_searchQuery.toLowerCase());
-    }).toList();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -255,35 +273,13 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           ),
           const SizedBox(height: 12),
           
-          // Search/action row
-          Row(
-            children: [
-              // Magnifying glass icon
-              Icon(
-                Icons.search,
-                color: Colors.grey[400],
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              
-              // Quick search link
-              Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _searchQuery = 'Lemonade recipes for pregnant women';
-                    });
-                  },
-                  child: Text(
-                    '· Lemonade recipes for pregnant women',
-                    style: TextStyle(
-                      color: Colors.grey[400],
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+          // Comment count
+          Text(
+            '${_comments.length} comments',
+            style: TextStyle(
+              color: Colors.grey[400],
+              fontSize: 14,
+            ),
           ),
         ],
       ),
@@ -299,7 +295,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       );
     }
 
-    if (_filteredComments.isEmpty && !_isLoading && _errorMessage == null) {
+    if (_comments.isEmpty && !_isLoading && _errorMessage == null) {
       return const Center(
         child: Text(
           'No comments yet',
@@ -312,19 +308,29 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: SelectableText.rich(
-            TextSpan(
-              children: <InlineSpan>[
-                const TextSpan(
-                  text: 'Error: ',
-                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: Colors.orange,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
                 ),
-                TextSpan(
-                  text: _errorMessage!,
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ],
-            ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadComments,
+                child: const Text('Retry'),
+              ),
+            ],
           ),
         ),
       );
@@ -333,9 +339,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _filteredComments.length,
+      itemCount: _comments.length,
       itemBuilder: (BuildContext context, int index) {
-        final Comment c = _filteredComments[index];
+        final Comment c = _comments[index];
         return OptimizedCommentTile(
           comment: c,
           videoId: widget.videoId,
@@ -598,15 +604,17 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   }
 
   app_user.User _currentUserOrSample() {
-    final AuthenticationService auth = ref.read(authServiceProvider);
-    final Map<String, dynamic>? profile = auth.currentUserProfile;
-    if (profile != null) {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      final AuthenticationService auth = ref.read(authServiceProvider);
+      final Map<String, dynamic>? profile = auth.currentUserProfile;
+      
       return app_user.User(
-        id: profile['uid']?.toString() ?? 'me',
-        username: (profile['username'] ?? 'you').toString(),
-        displayName: (profile['displayName'] ?? 'You').toString(),
+        id: currentUser.uid, // Use Firebase Auth UID directly
+        username: (profile?['username'] ?? currentUser.displayName ?? 'you').toString(),
+        displayName: (profile?['displayName'] ?? currentUser.displayName ?? 'You').toString(),
         bio: null,
-        avatarURL: profile['photoURL'] as String?,
+        avatarURL: profile?['photoURL'] ?? currentUser.photoURL,
         onlineStatus: 'online',
         hashtags: const <String>[],
         postCount: 0,

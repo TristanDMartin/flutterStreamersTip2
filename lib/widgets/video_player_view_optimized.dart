@@ -10,6 +10,7 @@ import '../providers/following_provider.dart';
 import '../services/performance_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/robust_auth_service.dart';
+import '../services/like_service.dart';
 import '../widgets/action_button.dart';
 import '../widgets/optimized_like_button.dart';
 import '../widgets/comments_view_optimized.dart';
@@ -54,6 +55,9 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   
   // Like state - simplified
   final GlobalKey _likeIconKey = GlobalKey();
+  
+  // Track last tap position for floating hearts
+  Offset _lastTapPosition = Offset.zero;
   
   @override
   void initState() {
@@ -130,7 +134,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   void _handleLikeChanged() {
-    // Optional callback when like state changes
+    // Update the video's like state in the parent
+    if (widget.homeViewModel.updateVideoLikeState != null) {
+      widget.homeViewModel.updateVideoLikeState!(widget.video.id);
+    }
     setState(() {});
   }
 
@@ -205,9 +212,83 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   void _handleDoubleTap() {
-    // Simple double tap - just trigger like if not already liked
-    // The OptimizedLikeButton will handle the actual like logic
+    // Double tap anywhere on video to like/unlike
     HapticFeedback.lightImpact();
+    
+    // Trigger the like button programmatically
+    _triggerLikeButton();
+  }
+  
+  void _handleDoubleTapDown(TapDownDetails details) {
+    // Capture the tap position for floating hearts animation
+    _lastTapPosition = details.globalPosition;
+  }
+  
+  void _triggerLikeButton() {
+    // Update the video's like state immediately
+    if (widget.homeViewModel.updateVideoLikeState != null) {
+      widget.homeViewModel.updateVideoLikeState!(widget.video.id);
+    }
+    
+    // Update local state
+    setState(() {
+      // The OptimizedLikeButton will handle the actual like logic
+      // We just need to trigger the visual update
+    });
+    
+    // Trigger the like service directly
+    _performLikeToggle();
+  }
+  
+  Future<void> _performLikeToggle() async {
+    try {
+      // Import the LikeService
+      final likeService = LikeService();
+      
+      // Toggle the like state
+      await likeService.toggleLike(widget.video.id);
+      
+      // Track engagement
+      likeService.trackLikeEngagement(widget.video.id, !widget.video.isLiked);
+      
+      // Create floating hearts animation if liking
+      if (!widget.video.isLiked) {
+        _createFloatingHearts();
+      }
+    } catch (e) {
+      // Error toggling like: $e
+    }
+  }
+  
+  void _createFloatingHearts() {
+    // Use the actual tap position for floating hearts animation
+    final tapPosition = _lastTapPosition;
+    
+    // Create multiple hearts with staggered timing
+    for (int i = 0; i < 3; i++) {
+      Future.delayed(Duration(milliseconds: i * 100), () {
+        if (mounted) {
+          _showFloatingHeart(tapPosition);
+        }
+      });
+    }
+  }
+  
+  void _showFloatingHeart(Offset position) {
+    // Show a temporary floating heart overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      builder: (context) => _FloatingHeartOverlay(position: position),
+    );
+    
+    // Remove the overlay after animation
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   @override
@@ -215,6 +296,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     return GestureDetector(
       onTap: _handleTap,
       onDoubleTap: _handleDoubleTap,
+      onDoubleTapDown: _handleDoubleTapDown,
       child: Container(
         color: Colors.black,
         child: Stack(
@@ -394,6 +476,96 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           ),
         ],
         ),
+      ),
+    );
+  }
+}
+
+class _FloatingHeartOverlay extends StatefulWidget {
+  final Offset position;
+  
+  const _FloatingHeartOverlay({required this.position});
+  
+  @override
+  State<_FloatingHeartOverlay> createState() => _FloatingHeartOverlayState();
+}
+
+class _FloatingHeartOverlayState extends State<_FloatingHeartOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+  late Animation<Offset> _positionAnimation;
+  
+  @override
+  void initState() {
+    super.initState();
+    
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    
+    _scaleAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.5,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.0, 0.3, curve: Curves.elasticOut),
+    ));
+    
+    _opacityAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeOut),
+    ));
+    
+    _positionAnimation = Tween<Offset>(
+      begin: widget.position,
+      end: Offset(widget.position.dx, widget.position.dy - 100),
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+    
+    _controller.forward();
+  }
+  
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return Positioned(
+                left: _positionAnimation.value.dx - 20,
+                top: _positionAnimation.value.dy - 20,
+                child: Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: Opacity(
+                    opacity: _opacityAnimation.value,
+                    child: const Icon(
+                      Icons.favorite,
+                      color: Color(0xFF9248D2),
+                      size: 40,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

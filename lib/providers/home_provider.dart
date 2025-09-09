@@ -25,7 +25,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
        _userService = userService,
        _favoritesService = favoritesService,
        _followingFeedService = followingFeedService ?? FollowingFeedService(),
-       super(const HomeState());
+       super(const HomeState()) {
+    // Initialize the callback
+    updateVideoLikeState = _updateVideoLikeState;
+  }
 
   // MARK: - Public Properties
   
@@ -34,6 +37,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
   bool get hasMoreContent => state.hasMoreContent;
   List<HomeVideo> get forYouVideos => state.forYouVideos;
   List<HomeVideo> get followingVideos => state.followingVideos;
+  
+  // Callback for updating video like state from child widgets
+  void Function(String videoId)? updateVideoLikeState;
   
   List<HomeVideo> videos(FeedType feed) {
     switch (feed) {

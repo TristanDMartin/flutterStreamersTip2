@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
 class MemoryPressureService {
   static final MemoryPressureService _instance = MemoryPressureService._internal();

@@ -9,15 +9,12 @@ import '../widgets/video_player_view_optimized.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/favorites_provider.dart';
 import '../providers/following_provider.dart';
-import '../services/video_service.dart';
-import '../services/user_service.dart';
-import '../services/favorites_service.dart';
 import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
-import '../widgets/comments_view.dart';
+import '../widgets/comments_view_optimized.dart';
 import '../widgets/profile_view.dart';
 import '../widgets/streamer_card_view_optimized.dart';
 import '../models/user.dart';
@@ -49,12 +46,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
   // Performance state
   final Map<String, int> _videoEngagementScores = {};
 
-  late hp.HomeViewModel _homeVM;
-
-  // Video data from VideoService
-  List<HomeVideo> _videos = [];
-  bool _isLoadingVideos = true;
-  String? _lastDocument;
+  // Video data is now managed by Riverpod provider
 
   @override
   void initState() {
@@ -66,13 +58,6 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     ErrorHandlingService().initialize();
     OfflineDataService();
     EngagementAnalyticsService().initialize();
-    
-    // Build lightweight HomeViewModel for actions
-    _homeVM = hp.HomeViewModel(
-      videoService: VideoService(),
-      userService: UserService(),
-      favoritesService: FavoritesService(),
-    );
 
     // Setup favorites manager and load videos
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,106 +81,23 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
   /// Load videos from VideoService based on current feed tab
   Future<void> _loadVideos() async {
     try {
-      if (mounted) {
-        setState(() {
-          _isLoadingVideos = true;
-        });
-      }
-
-      final videoService = VideoService();
-      VideoFetchResult result;
-
-      // Try to load videos with error handling and retry
-      final retryResult = await ErrorHandlingService().retryOperation(() async {
-        if (_feedTab == FeedTab.forYou) {
-          // Load For You feed (algorithmic recommendations)
-          return await videoService.fetchForYouVideos(
-            pageSize: 20,
-            lastDocument: _lastDocument,
-          );
-        } else {
-          // Load Following feed (videos from followed users)
-          final followingState = ref.read(followingProvider);
-          return await videoService.fetchFollowingVideos(
-            followingIds: followingState.followingList,
-            pageSize: 20,
-            lastDocument: _lastDocument,
-          );
-        }
-      }, operationId: 'load_videos_${_feedTab.name}');
-
-      if (retryResult != null) {
-        result = retryResult;
-        if (mounted) {
-          setState(() {
-            _videos = result.videos;
-            _lastDocument = result.lastDocument;
-            _isLoadingVideos = false;
-          });
-        }
-
-        // Save videos for offline access
-        await OfflineDataService().saveVideosOffline(result.videos);
-
-        // Videos will be handled by VideoPlayerView
+      final homeVM = ref.read(hp.homeProvider.notifier);
+      
+      if (_feedTab == FeedTab.forYou) {
+        await homeVM.fetchForYouVideos(reset: true);
       } else {
-        // If network request failed, try to load from offline storage
-        await _loadVideosOffline();
+        final followingState = ref.read(followingProvider);
+        await homeVM.fetchFollowingVideos(
+          followingIds: followingState.followingList,
+          reset: true,
+        );
       }
     } catch (e) {
       final error = ErrorHandlingService().handleError(e, context: 'load_videos');
       debugPrint('Error loading videos: ${error.message}');
-      
-      // Try to load from offline storage
-      await _loadVideosOffline();
     }
   }
 
-  /// Load videos from offline storage
-  Future<void> _loadVideosOffline() async {
-    try {
-      final offlineVideos = await OfflineDataService().loadVideosOffline();
-      if (offlineVideos.isNotEmpty) {
-        if (mounted) {
-          setState(() {
-            _videos = offlineVideos;
-            _isLoadingVideos = false;
-          });
-          
-          // Show offline mode indicator
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Showing offline content'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _isLoadingVideos = false;
-          });
-          
-          // Show error message
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Unable to load videos. Please check your connection.'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingVideos = false;
-        });
-      }
-      debugPrint('Error loading offline videos: $e');
-    }
-  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -224,7 +126,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return CommentsView(videoId: videoId);
+        return CommentsViewOptimized(videoId: videoId);
       },
     );
   }
@@ -400,8 +302,12 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     }
   }
 
-  Widget _buildVideoContent() {
-    if (_isLoadingVideos) {
+  Widget _buildVideoContent(hp.HomeState homeState) {
+    // Use videos from the provider based on current feed tab
+    final videos = _feedTab == FeedTab.forYou ? homeState.forYouVideos : homeState.followingVideos;
+    final isLoading = _feedTab == FeedTab.forYou ? homeState.isLoading : homeState.isLoading;
+    
+    if (isLoading) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -420,7 +326,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
           ],
         ),
       );
-    } else if (_videos.isEmpty) {
+    } else if (videos.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -454,7 +360,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
       return PageView.builder(
         controller: _pageController,
         scrollDirection: Axis.horizontal, // Changed from vertical to horizontal
-        itemCount: _videos.length,
+        itemCount: videos.length,
         onPageChanged: (index) {
           if (mounted) {
             setState(() {
@@ -463,13 +369,14 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
           }
         },
         itemBuilder: (context, index) {
-          final video = _videos[index];
+          final video = videos[index];
+          final homeVM = ref.read(hp.homeProvider.notifier);
           return VideoPlayerViewOptimized(
             key: ValueKey(video.id),
             video: video,
             isCurrentVideo: index == _currentIndex,
             isFirstVideo: index == 0,
-            homeViewModel: _homeVM,
+            homeViewModel: homeVM,
             showSheet: false,
             sheetType: '',
             onShowProfile: () => _showProfile(video.creator),
@@ -484,6 +391,8 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    final homeState = ref.watch(hp.homeProvider);
+    
     return NetworkStatusWidget(
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -502,7 +411,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                   child: Container(
                     width: double.infinity,
                     height: double.infinity,
-                    child: _buildVideoContent(),
+                    child: _buildVideoContent(homeState),
                   ),
                 ),
           

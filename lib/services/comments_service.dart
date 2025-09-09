@@ -14,6 +14,12 @@ class CommentsService {
   /// Fetch comments for a video
   Future<List<Comment>> fetchCommentsForVideo(String videoId) async {
     try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        print('User not authenticated, returning mock data');
+        return CommentMockData.mockData();
+      }
+
       final snapshot = await _firestore
           .collection('videos')
           .doc(videoId)
@@ -21,6 +27,11 @@ class CommentsService {
           .orderBy('timestamp', descending: true)
           .limit(50)
           .get();
+
+      if (snapshot.docs.isEmpty) {
+        print('No comments found for video $videoId, returning mock data');
+        return CommentMockData.mockData();
+      }
 
       return snapshot.docs.map((doc) {
         final data = doc.data();
@@ -38,7 +49,8 @@ class CommentsService {
       }).toList();
     } catch (e) {
       print('Error fetching comments: $e');
-      return CommentMockData.mockData(); // Fallback to mock data
+      // Return mock data as fallback for better UX
+      return CommentMockData.mockData();
     }
   }
 
@@ -71,7 +83,14 @@ class CommentsService {
       return comment.copyWith(id: docRef.id);
     } catch (e) {
       print('Error adding comment: $e');
-      rethrow;
+      // Provide more specific error messages
+      if (e.toString().contains('permission-denied')) {
+        throw Exception('Permission denied. Please check your authentication status.');
+      } else if (e.toString().contains('network')) {
+        throw Exception('Network error. Please check your connection.');
+      } else {
+        throw Exception('Failed to add comment. Please try again.');
+      }
     }
   }
 
@@ -170,37 +189,4 @@ class CommentsService {
     }
   }
 
-  /// Search comments
-  Future<List<Comment>> searchComments({
-    required String videoId,
-    required String query,
-  }) async {
-    try {
-      final snapshot = await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .collection('comments')
-          .where('text', isGreaterThanOrEqualTo: query)
-          .where('text', isLessThan: query + 'z')
-          .get();
-
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return Comment(
-          id: doc.id,
-          user: app_user.User.fromMap(data['user']),
-          text: data['text'] ?? '',
-          timestamp: (data['timestamp'] as Timestamp).toDate(),
-          likeCount: data['likeCount'] ?? 0,
-          isLiked: data['isLiked'] ?? false,
-          replies: (data['replies'] as List<dynamic>?)
-              ?.map((reply) => Comment.fromJson(reply))
-              .toList(),
-        );
-      }).toList();
-    } catch (e) {
-      print('Error searching comments: $e');
-      return [];
-    }
-  }
 }
