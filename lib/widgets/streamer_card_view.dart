@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -47,7 +46,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _showPlatforms = true;
   bool _showCalendar = true;
   final Set<String> _bookmarkedEventIds = {};
-  double _scrollOffset = 0.0;
   List<Map<String, dynamic>> _platforms = [];
   List<CalendarEvent> _calendarEvents = [];
   
@@ -335,7 +333,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         });
       }
     } catch (e) {
-      print('Error checking connection status: $e');
+      if (kDebugMode) {
+        print('Error checking connection status: $e');
+      }
       if (mounted) {
         setState(() {
           _isFollowing = false;
@@ -356,7 +356,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           .get();
       return query.docs.isNotEmpty;
     } catch (e) {
-      print('Error checking follow status: $e');
+      if (kDebugMode) {
+        print('Error checking follow status: $e');
+      }
       return false;
     }
   }
@@ -371,7 +373,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           .get();
       return query.docs.isNotEmpty;
     } catch (e) {
-      print('Error checking followed by status: $e');
+      if (kDebugMode) {
+        print('Error checking followed by status: $e');
+      }
       return false;
     }
   }
@@ -381,9 +385,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (url != null && url.isNotEmpty) {
       try {
         await launchUrl(Uri.parse(url));
-        print("Opening platform URL: $url");
+        if (kDebugMode) {
+          print("Opening platform URL: $url");
+        }
       } catch (error) {
-        print("Failed to open URL: $url - Error: $error");
+        if (kDebugMode) {
+          print("Failed to open URL: $url - Error: $error");
+        }
       }
     }
   }
@@ -520,16 +528,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-  // MARK: - Date Formatting Algorithm
-  String _formatDateAndTime(DateTime date) {
-    final dateFormatter = DateFormat('MMM d');
-    final timeFormatter = DateFormat('h:mm a');
-    
-    final dateString = dateFormatter.format(date);
-    final timeString = timeFormatter.format(date);
-    
-    return '$dateString · $timeString';
-  }
 
   void _flipCard() {
     if (_isFront) {
@@ -1532,17 +1530,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       ),
       child: Stack(
         children: [
-          // Main content with scroll-based header
-          NotificationListener<ScrollNotification>(
-            onNotification: (ScrollNotification scrollInfo) {
-              if (scrollInfo is ScrollUpdateNotification) {
-                setState(() {
-                  _scrollOffset = scrollInfo.metrics.pixels;
-                });
-              }
-              return false;
-            },
-            child: SafeArea(
+          // Main content
+          SafeArea(
               child: CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(child: _buildHeader()),
@@ -1563,172 +1552,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 ],
               ),
             ),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildHeaderSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          // Avatar with angular gradient border
-          Stack(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: SweepGradient(
-                    colors: [
-                      Color(0xFF25E5D2),
-                      Color(0xFF17C2AD),
-                      Color(0xFF8B5CF6),
-                      Color(0xFFEC4899),
-                      Color(0xFF25E5D2),
-                    ],
-                  ),
-                ),
-                child: Center(
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black.withValues(alpha: 0.2),
-                    ),
-                    child: ClipOval(
-                      child: avatarURL != null && avatarURL!.isNotEmpty
-                          ? Image.network(
-                              avatarURL!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Center(
-                                child: Text(
-                                  displayName.isNotEmpty 
-                                      ? displayName[0].toUpperCase()
-                                      : 'U',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Center(
-                              child: Text(
-                                displayName.isNotEmpty 
-                                    ? displayName[0].toUpperCase()
-                                    : 'U',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
-          
-          // User info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '@${username}',
-                  style: TextStyle(
-                    color: Colors.grey[400],
-                    fontSize: 16,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildHashtagsPicker() {
-    if (hashtags.isEmpty) return const SizedBox.shrink();
-    
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: 40,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: hashtags.length,
-              itemBuilder: (context, index) {
-                final hashtag = hashtags[index];
-                final isSelected = _selectedHashtag == hashtag;
-                
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: GestureDetector(
-                    onTap: () {
-                      // MARK: - Hashtag Selection Algorithm
-                      setState(() {
-                        _selectedHashtag = hashtag; // Always select, no toggle
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-                      decoration: BoxDecoration(
-                        gradient: isSelected
-                            ? const LinearGradient(
-                                colors: [Color(0xFF8B5CF6), Color(0xFF25E5D2)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              )
-                            : null,
-                        color: isSelected ? null : Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected 
-                              ? const Color(0xFF25E5D2).withValues(alpha: 0.5)
-                              : Colors.white.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      child: Text(
-                        '#$hashtag',
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildHeader() {
     return Padding(
@@ -1944,122 +1772,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-  Widget _buildBioSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Bio',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            bio.isEmpty ? 'No bio available.' : bio,
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 16,
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildPlatformsSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _showPlatforms = !_showPlatforms;
-              });
-            },
-            child: Row(
-              children: [
-                const Text(
-                  'Platforms',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                AnimatedRotation(
-                  turns: _showPlatforms ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 300),
-                  child: const Icon(
-                    Icons.keyboard_arrow_down,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            height: _showPlatforms ? null : 0,
-            child: _showPlatforms
-                ? StreamBuilder<DocumentSnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(widget.userId)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      List<Platform> platforms = [];
-                      
-                      if (snapshot.hasData && snapshot.data!.exists) {
-                        final data = snapshot.data!.data() as Map<String, dynamic>?;
-                        if (data != null && data['platforms'] != null) {
-                          final platformsData = data['platforms'] as List<dynamic>;
-                          platforms = platformsData.map((platformData) {
-                            final platformMap = platformData as Map<String, dynamic>;
-                            return Platform(
-                              id: (platformMap['id'] ?? '').toString(),
-                              type: PlatformType.values.firstWhere(
-                                (e) => e.name == (platformMap['type'] ?? '').toString(),
-                                orElse: () => PlatformType.other,
-                              ),
-                              username: (platformMap['username'] ?? '').toString(),
-                              followers: platformMap['followers'] as int? ?? 0,
-                              url: platformMap['url']?.toString(),
-                            );
-                          }).toList();
-                          print('🔗 StreamerCardView: Loaded ${platforms.length} platforms from real-time listener');
-                        }
-                      }
-                      
-                      if (platforms.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      
-                      return Column(
-                        children: [
-                          const SizedBox(height: 16),
-                          ...platforms.map((platform) {
-                            return _buildPlatformRow(platform);
-                          }),
-                        ],
-                      );
-                    },
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildPlatformRow(Platform platform) {
     return Container(
@@ -2192,7 +1905,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                               date: (eventMap['date'] as Timestamp).toDate(),
                             );
                           }).toList();
-                          print('📅 StreamerCardView: Loaded ${events.length} events from real-time listener');
+                          if (kDebugMode) {
+                            print('📅 StreamerCardView: Loaded ${events.length} events from real-time listener');
+                          }
                         }
                       }
                       
@@ -2425,7 +2140,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           });
         }
       } catch (e) {
-        print('Error loading platforms: $e');
+        if (kDebugMode) {
+          print('Error loading platforms: $e');
+        }
         setState(() {
           _platforms = [];
         });
@@ -2453,7 +2170,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                     date: (eventData['date'] as Timestamp).toDate(),
                   );
                 } catch (e) {
-                  print('Error creating CalendarEvent: $e');
+                  if (kDebugMode) {
+                    print('Error creating CalendarEvent: $e');
+                  }
                   return null;
                 }
               }
@@ -2467,7 +2186,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           });
         }
       } catch (e) {
-        print('Error loading calendar events: $e');
+        if (kDebugMode) {
+          print('Error loading calendar events: $e');
+        }
         setState(() {
           _calendarEvents = [];
         });
@@ -2503,6 +2224,38 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
       }
     }
+  }
+
+  String _formatDateAndTime(DateTime date) {
+    final now = DateTime.now();
+    final difference = date.difference(now).inDays;
+    
+    if (difference == 0) {
+      return 'Today · ${_formatTime(date)}';
+    } else if (difference == 1) {
+      return 'Tomorrow · ${_formatTime(date)}';
+    } else if (difference == -1) {
+      return 'Yesterday · ${_formatTime(date)}';
+    } else {
+      return '${_formatDate(date)} · ${_formatTime(date)}';
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.day}';
+  }
+
+  String _formatTime(DateTime date) {
+    final hour = date.hour;
+    final minute = date.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+    final displayMinute = minute.toString().padLeft(2, '0');
+    return '$displayHour:$displayMinute $period';
   }
 }
 
