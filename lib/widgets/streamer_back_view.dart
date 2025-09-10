@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/streamer_card.dart';
-import '../models/user.dart' as app_user;
-import '../services/user_service.dart';
+import '../models/calendar_event.dart';
+import '../services/bookmark_service.dart';
 
 class StreamerBackView extends StatefulWidget {
   final StreamerCard streamer;
@@ -40,7 +41,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
   );
 
   // Services
-  late final UserService _userService;
+  late final BookmarkService _bookmarkService;
 
   // Animation controllers
   late AnimationController _scrollController;
@@ -52,23 +53,25 @@ class _StreamerBackViewState extends State<StreamerBackView>
   // State management - matching SwiftUI @State variables
   bool _showPlatforms = true;
   bool _showCalendar = true;
-  bool _showConnect = true;
   bool _showSocialLinks = true;
   String _selectedHashtag = "";
   Set<String> _bookmarkedEventIds = {};
-  double _scrollOffset = 0.0;
   StreamerCard? _loadedStreamer;
 
   // Data
-  List<Map<String, dynamic>> _calendarEvents = [];
+  List<CalendarEvent> _calendarEvents = [];
   List<Map<String, dynamic>> _platforms = [];
   List<Map<String, dynamic>> _socialLinks = [];
   bool _isLoading = false;
 
+  // Bookmark state
+  bool _showBookmarkAlert = false;
+  String _bookmarkAlertMessage = '';
+
   @override
   void initState() {
     super.initState();
-    _userService = UserService();
+    _bookmarkService = BookmarkService();
     
     _scrollController = AnimationController(
       duration: const Duration(milliseconds: 300),
@@ -88,6 +91,9 @@ class _StreamerBackViewState extends State<StreamerBackView>
       _selectedHashtag = widget.streamer.hashtags.first;
     }
 
+    // Initialize bookmark service and load bookmarks
+    _initializeBookmarks();
+    
     // Set up real-time listeners
     _setupProfileListener();
     
@@ -106,8 +112,10 @@ class _StreamerBackViewState extends State<StreamerBackView>
   StreamerCard get displayStreamer => _loadedStreamer ?? widget.streamer;
   
   bool get isOwner {
-    // TODO: Implement proper ownership check with authentication service
-    return false; // For now, return false for testing
+    // For StreamerBackView, visitors should never be able to delete events
+    // Only the actual streamer can delete their own events
+    // Since this is a "back view" for visitors, always return false
+    return false;
   }
 
   // Real-time data management
@@ -171,17 +179,74 @@ class _StreamerBackViewState extends State<StreamerBackView>
     _profileListener = null;
   }
 
-  Future<void> _loadCalendarEvents() async {
+  /// Initialize bookmark service and load bookmarks for this streamer
+  Future<void> _initializeBookmarks() async {
+    await _bookmarkService.initialize();
+    await _fetchBookmarkedEventIds();
+  }
+
+  /// Fetch bookmarked event IDs for this streamer
+  Future<void> _fetchBookmarkedEventIds() async {
     try {
-      // TODO: Load calendar events from Firebase
-      // This would typically fetch from a calendar events collection
+      final bookmarkedEvents = _bookmarkService.getBookmarkedEventsForOwner(widget.streamer.id);
+      final eventIds = bookmarkedEvents.map((e) => e.eventId).toSet();
+      
       if (mounted) {
         setState(() {
-          _calendarEvents = [];
+          _bookmarkedEventIds = eventIds;
         });
       }
     } catch (e) {
-      print('Error loading calendar events: $e');
+      if (kDebugMode) {
+        print('❌ Error fetching bookmarked event IDs: $e');
+      }
+    }
+  }
+
+  Future<void> _loadCalendarEvents() async {
+    try {
+      // TODO: Load calendar events from Firebase
+      // For now, create sample events to demonstrate the bookmark functionality
+      if (mounted) {
+        setState(() {
+          _calendarEvents = [
+            CalendarEvent(
+              title: 'Gaming Stream',
+              description: 'Playing the latest games with viewers',
+              date: DateTime.now().add(const Duration(days: 1)),
+            ),
+            CalendarEvent(
+              title: 'Q&A Session',
+              description: 'Answering questions from the community',
+              date: DateTime.now().add(const Duration(days: 3)),
+            ),
+            CalendarEvent(
+              title: 'Tutorial Stream',
+              description: 'Learn new techniques and strategies',
+              date: DateTime.now().add(const Duration(days: 5)),
+            ),
+            CalendarEvent(
+              title: 'Community Event',
+              description: 'Special community celebration',
+              date: DateTime.now().add(const Duration(days: 7)),
+            ),
+            CalendarEvent(
+              title: 'Collaboration Stream',
+              description: 'Streaming with other creators',
+              date: DateTime.now().add(const Duration(days: 10)),
+            ),
+            CalendarEvent(
+              title: 'Charity Stream',
+              description: 'Raising money for a good cause',
+              date: DateTime.now().add(const Duration(days: 14)),
+            ),
+          ];
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error loading calendar events: $e');
+      }
     }
   }
 
@@ -264,6 +329,9 @@ class _StreamerBackViewState extends State<StreamerBackView>
               
               // Top bar with scroll-based title and flip button
             _buildTopBar(),
+            
+            // Success alert dialog - matching SwiftUI alert implementation
+            if (_showBookmarkAlert) _buildBookmarkAlertDialog(),
           ],
           ),
         ),
@@ -610,15 +678,34 @@ class _StreamerBackViewState extends State<StreamerBackView>
                 icon: Icons.event,
                 message: 'No upcoming events',
             )
-          else
-              ..._calendarEvents.map((event) => _buildEventCard(event)),
+          else ...[
+              // Show first 5 events
+              ..._calendarEvents.take(5).map((event) => _buildCalendarRow(event)),
+              // Show "+X more..." if there are more than 5 events
+              if (_calendarEvents.length > 5) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    '+${_calendarEvents.length - 5} more…',
+                    style: const TextStyle(
+                      color: Color(0xFF80FFFFFF),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ],
         ],
       ),
     );
   }
 
-  Widget _buildEventCard(Map<String, dynamic> event) {
+  /// Build calendar row matching SwiftUI CalendarRow implementation
+  Widget _buildCalendarRow(CalendarEvent event) {
+    final isBookmarked = _bookmarkedEventIds.contains(event.id);
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -632,56 +719,55 @@ class _StreamerBackViewState extends State<StreamerBackView>
       ),
       child: Row(
         children: [
-          // Calendar icon
+          // Calendar icon - matching SwiftUI implementation
           const Icon(
-              Icons.calendar_today,
+            Icons.calendar_today,
             color: Colors.white,
-              size: 16,
-            ),
+            size: 24,
+          ),
           const SizedBox(width: 12),
           
-          // Event details
+          // Event details - matching SwiftUI VStack layout
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Title - matching SwiftUI .subheadline .semibold
                 Text(
-                  event['title'] ?? 'Event',
+                  event.title,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (event['description'] != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    event['description'],
-                    style: const TextStyle(
-                      color: Color(0xFFB3FFFFFF),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-                if (event['date'] != null) ...[
                 const SizedBox(height: 2),
+                // Description - matching SwiftUI .caption .gray
                 Text(
-                    _formatDateAndTime(event['date']),
-                    style: const TextStyle(
-                      color: Color(0xFF80FFFFFF),
+                  event.description,
+                  style: const TextStyle(
+                    color: Color(0xFFB3FFFFFF),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // Date and time - matching SwiftUI .caption2 .secondary
+                Text(
+                  _formatDateAndTime(event.date),
+                  style: const TextStyle(
+                    color: Color(0xFF80FFFFFF),
                     fontSize: 10,
                   ),
                 ),
-                ],
               ],
             ),
           ),
           
-          // Action buttons based on ownership
+          // Action buttons based on ownership - matching SwiftUI logic
           if (isOwner) ...[
-            // Owner: Delete button
+            // Owner: Delete button (trash icon)
             IconButton(
-              onPressed: () => _deleteEvent(event['id']),
+              onPressed: () => _deleteEvent(event.id),
               icon: const Icon(
                 Icons.delete,
                 color: Colors.red,
@@ -689,16 +775,14 @@ class _StreamerBackViewState extends State<StreamerBackView>
               ),
             ),
           ] else ...[
-            // Visitor: Bookmark button
+            // Visitor: Bookmark button - matching SwiftUI bookmark logic
             IconButton(
-              onPressed: () => _toggleBookmark(event['id']),
+              onPressed: () => _toggleBookmark(event),
               icon: Icon(
-                _bookmarkedEventIds.contains(event['id'])
-                    ? Icons.bookmark
-                    : Icons.bookmark_border,
-              color: Colors.white,
-              size: 16,
-            ),
+                isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                color: Colors.white,
+                size: 16,
+              ),
             ),
           ],
         ],
@@ -822,12 +906,6 @@ class _StreamerBackViewState extends State<StreamerBackView>
     return 'TBD';
   }
 
-  String _formatEventDate(dynamic date) {
-    if (date is DateTime) {
-      return '${date.day}/${date.month}/${date.year}';
-    }
-    return 'TBD';
-  }
 
   IconData _getPlatformIcon(String type) {
     switch (type.toLowerCase()) {
@@ -889,10 +967,12 @@ class _StreamerBackViewState extends State<StreamerBackView>
   void _deleteEvent(String eventId) {
     HapticFeedback.lightImpact();
     // TODO: Delete event from Firebase
-    print('Deleting event: $eventId');
+    if (kDebugMode) {
+      print('Deleting event: $eventId');
+    }
     
     setState(() {
-      _calendarEvents.removeWhere((event) => event['id'] == eventId);
+      _calendarEvents.removeWhere((event) => event.id == eventId);
     });
     
     ScaffoldMessenger.of(context).showSnackBar(
@@ -904,20 +984,130 @@ class _StreamerBackViewState extends State<StreamerBackView>
     );
   }
 
-  void _toggleBookmark(String eventId) {
+  /// Toggle bookmark for a calendar event - matching SwiftUI implementation
+  Future<void> _toggleBookmark(CalendarEvent event) async {
     HapticFeedback.lightImpact();
     
-    setState(() {
-      if (_bookmarkedEventIds.contains(eventId)) {
-        _bookmarkedEventIds.remove(eventId);
-        print('Unbookmarked event: $eventId');
-      } else {
-        _bookmarkedEventIds.add(eventId);
-        print('Bookmarked event: $eventId');
-      }
-    });
+    final isBookmarked = _bookmarkedEventIds.contains(event.id);
     
-    // TODO: Save bookmark state to Firebase
+    try {
+      bool success;
+      String message;
+      
+      if (isBookmarked) {
+        // Remove bookmark
+        success = await _bookmarkService.removeEventBookmark(
+          eventId: event.id,
+          ownerId: widget.streamer.id,
+        );
+        message = success ? 'Event removed from bookmarks!' : 'Failed to remove bookmark';
+      } else {
+        // Add bookmark
+        success = await _bookmarkService.addEventBookmark(
+          event: event,
+          ownerId: widget.streamer.id,
+          ownerDisplayName: widget.streamer.displayName,
+        );
+        message = success ? 'Event saved to your bookmarks! You can view it in the menu.' : 'Failed to save bookmark';
+      }
+      
+      if (success && mounted) {
+        // Update local state
+        setState(() {
+          if (isBookmarked) {
+            _bookmarkedEventIds.remove(event.id);
+          } else {
+            _bookmarkedEventIds.add(event.id);
+          }
+        });
+        
+        // Show success alert
+        _showBookmarkAlertDialog(message);
+      } else if (mounted) {
+        // Show error alert
+        _showBookmarkAlertDialog(message);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error toggling bookmark: $e');
+      }
+      if (mounted) {
+        _showBookmarkAlertDialog('Failed to update bookmark');
+      }
+    }
+  }
+
+  /// Show bookmark alert - matching SwiftUI alert implementation
+  void _showBookmarkAlertDialog(String message) {
+    setState(() {
+      _bookmarkAlertMessage = message;
+      _showBookmarkAlert = true;
+    });
+  }
+
+  /// Build bookmark alert dialog - matching SwiftUI alert implementation
+  Widget _buildBookmarkAlertDialog() {
+    return Material(
+      color: Colors.black.withOpacity(0.5),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 40),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.bookmark,
+                color: Color(0xFF955CFF),
+                size: 32,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Bookmark',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _bookmarkAlertMessage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _showBookmarkAlert = false;
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF955CFF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('OK'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

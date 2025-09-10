@@ -425,8 +425,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   Widget _buildActionButtons() {
     // Position action rail in middle third of screen
     final screenHeight = MediaQuery.of(context).size.height;
-    final topPosition = screenHeight * 0.30; // ~upper-middle as specified
-    
+    final topPosition = screenHeight * 0.30; // ~upper-middle as specified    
     return Positioned(
       right: 12, // 12-16 as specified
       top: topPosition,

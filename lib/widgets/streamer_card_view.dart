@@ -11,6 +11,7 @@ import '../models/calendar_event.dart';
 import '../providers/status_provider.dart';
 import '../models/user_status.dart';
 import '../widgets/profile_video_feed_view.dart';
+import '../services/bookmark_service.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
   final String userId; // Changed from StreamerCard to userId for live data
@@ -46,6 +47,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _showCalendar = true;
   final Set<String> _bookmarkedEventIds = {};
   double _scrollOffset = 0.0;
+  
+  // Bookmark service
+  late final BookmarkService _bookmarkService;
   
   // Real-time data
   Map<String, dynamic>? _userData;
@@ -84,6 +88,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   @override
   void initState() {
     super.initState();
+    _bookmarkService = BookmarkService();
     _flipController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -272,9 +277,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
   
   bool get isOwner {
-    // Check if current user is the owner of this streamer card
-    final currentUserId = widget.currentUserId ?? '';
-    return currentUserId == widget.userId;
+    // For StreamerCardView, visitors should see bookmark buttons, not delete buttons
+    // Only allow deletion if explicitly viewing own profile (which should use ProfileView instead)
+    // For now, always show bookmark buttons to visitors
+    return false;
   }
 
   @override
@@ -394,28 +400,74 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-  void _toggleBookmark(String eventId) {
-    setState(() {
-      if (_bookmarkedEventIds.contains(eventId)) {
-        _bookmarkedEventIds.remove(eventId);
+  Future<void> _toggleBookmark(CalendarEvent event) async {
+    HapticFeedback.lightImpact();
+    
+    final isBookmarked = _bookmarkedEventIds.contains(event.id);
+    
+    try {
+      bool success;
+      String message;
+      
+      if (isBookmarked) {
+        // Remove bookmark
+        success = await _bookmarkService.removeEventBookmark(
+          eventId: event.id,
+          ownerId: widget.userId,
+        );
+        message = success ? 'Event removed from bookmarks!' : 'Failed to remove bookmark';
+      } else {
+        // Add bookmark
+        success = await _bookmarkService.addEventBookmark(
+          event: event,
+          ownerId: widget.userId,
+          ownerDisplayName: _userData?['displayName'] ?? 'Unknown',
+        );
+        message = success ? 'Event saved to your bookmarks! You can view it in the menu.' : 'Failed to save bookmark';
+      }
+      
+      if (success && mounted) {
+        // Update local state
+        setState(() {
+          if (isBookmarked) {
+            _bookmarkedEventIds.remove(event.id);
+          } else {
+            _bookmarkedEventIds.add(event.id);
+          }
+        });
+        
+        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Event removed from bookmarks'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 1),
+          SnackBar(
+            content: Text(message),
+            backgroundColor: success ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 2),
           ),
         );
-      } else {
-        _bookmarkedEventIds.add(eventId);
+      } else if (mounted) {
+        // Show error message
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Event bookmarked!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 1),
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
-    });
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error toggling bookmark: $e');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to update bookmark'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   void _deleteEvent(String eventId) {
@@ -2110,7 +2162,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           ] else ...[
             // Visitors see bookmark button
             GestureDetector(
-              onTap: () => _toggleBookmark(event.id),
+              onTap: () => _toggleBookmark(event),
               child: Icon(
                 _bookmarkedEventIds.contains(event.id) 
                     ? Icons.bookmark 
