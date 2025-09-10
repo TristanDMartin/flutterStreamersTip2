@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,7 +22,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   bool isPlatformsExpanded = true;
   bool isCalendarExpanded = true;
   String? _selectedHashtag;
-  late ProfileUpdateService _profileUpdateService;
+  late final ProfileUpdateService _profileUpdateService;
 
   @override
   void initState() {
@@ -53,23 +54,17 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     final currentUserId = _profileUpdateService.currentUser?.uid;
     final isCurrentUser = currentUserId != null && currentUserId == widget.user['id'];
     
-    debugPrint('🔍 ProfileBackView: currentUserId: $currentUserId, widget.user.id: ${widget.user['id']}');
-    debugPrint('🔍 ProfileBackView: isCurrentUser: $isCurrentUser, isDataLoaded: ${_profileUpdateService.isDataLoaded}');
-    
     // If this is the current user, get data from ProfileUpdateService
     if (isCurrentUser && _profileUpdateService.isDataLoaded) {
-      debugPrint('🔍 ProfileBackView: Using ProfileUpdateService data: ${_profileUpdateService.userData}');
       return _profileUpdateService.userData ?? widget.user;
     }
     // Otherwise use the widget user data
-    debugPrint('🔍 ProfileBackView: Using widget user data: ${widget.user}');
     return widget.user;
   }
 
   @override
   Widget build(BuildContext context) {
     final String userId = _currentUserData['id'] as String;
-    debugPrint('📅 ProfileBackView: Setting up real-time listener for user: $userId');
     
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -77,6 +72,21 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
           .doc(userId)
           .snapshots(),
       builder: (context, snapshot) {
+        // Handle loading state
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingState();
+        }
+        
+        // Handle error state
+        if (snapshot.hasError) {
+          return _buildErrorState(snapshot.error);
+        }
+        
+        // Handle no data state
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return _buildNoDataState();
+        }
+        
         List<CalendarEvent> events = [];
         List<Map<String, dynamic>> platforms = [];
         
@@ -88,17 +98,26 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               final eventsData = data['calendarEvents'];
               if (eventsData is List<dynamic>) {
                 events = eventsData.map((eventData) {
-                  final eventMap = eventData as Map<String, dynamic>;
-                  return CalendarEvent(
-                    id: eventMap['id'] as String,
-                    title: eventMap['title'] as String,
-                    description: eventMap['description'] as String,
-                    date: (eventMap['date'] as Timestamp).toDate(),
-                  );
-                }).toList();
-                debugPrint('📅 ProfileBackView: Loaded ${events.length} events from real-time listener');
+                  final eventMap = eventData as Map<String, dynamic>?;
+                  if (eventMap != null && 
+                      eventMap['id'] != null && 
+                      eventMap['title'] != null && 
+                      eventMap['description'] != null && 
+                      eventMap['date'] != null) {
+                    return CalendarEvent(
+                      id: eventMap['id'] as String,
+                      title: eventMap['title'] as String,
+                      description: eventMap['description'] as String,
+                      date: (eventMap['date'] as Timestamp).toDate(),
+                    );
+                  }
+                  return null;
+                }).where((event) => event != null).cast<CalendarEvent>().toList();
+                // Events loaded successfully
               } else {
-                debugPrint('⚠️ ProfileBackView: calendarEvents is not a List, got: ${eventsData.runtimeType}');
+                if (kDebugMode) {
+                  print('calendarEvents is not a List, got: ${eventsData.runtimeType}');
+                }
               }
             }
             
@@ -107,27 +126,153 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               final platformsData = data['platforms'];
               if (platformsData is List<dynamic>) {
                 platforms = platformsData.map((platformData) {
-                  final platformMap = platformData as Map<String, dynamic>;
-                  return {
-                    'id': platformMap['id'] ?? '',
-                    'type': platformMap['type'] ?? '',
-                    'username': platformMap['username'] ?? '',
-                    'followers': platformMap['followers'] ?? 0,
-                    'url': platformMap['url'],
-                  };
-                }).toList();
-                debugPrint('🔗 ProfileBackView: Loaded ${platforms.length} platforms from real-time listener');
+                  final platformMap = platformData as Map<String, dynamic>?;
+                  if (platformMap != null) {
+                    return {
+                      'id': platformMap['id']?.toString() ?? '',
+                      'type': platformMap['type']?.toString() ?? '',
+                      'username': platformMap['username']?.toString() ?? '',
+                      'followers': (platformMap['followers'] as num?)?.toInt() ?? 0,
+                      'url': platformMap['url']?.toString(),
+                    };
+                  }
+                  return null;
+                }).where((platform) => platform != null).cast<Map<String, dynamic>>().toList();
+                // Platforms loaded successfully
               } else {
-                debugPrint('⚠️ ProfileBackView: platforms is not a List, got: ${platformsData.runtimeType}');
+                if (kDebugMode) {
+                  print('platforms is not a List, got: ${platformsData.runtimeType}');
+                }
               }
             }
           }
         } else if (snapshot.hasError) {
-          debugPrint('❌ ProfileBackView: Error loading data: ${snapshot.error}');
+          if (kDebugMode) {
+            print('Error loading data: ${snapshot.error}');
+          }
         }
         
         return _buildContent(events, platforms);
       },
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+        ),
+      ),
+      child: const Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(Object? error) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.white,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Error Loading Profile',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please try again later',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => setState(() {}),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoDataState() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.person_outline,
+                color: Colors.white,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Profile Not Found',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This profile may not exist',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -708,7 +853,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     
     if (url != null && url.isNotEmpty) {
       try {
-        debugPrint('🔗 ProfileBackView: Attempting to launch URL: $url');
         final uri = Uri.parse(url);
         
         if (await canLaunchUrl(uri)) {
@@ -716,18 +860,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
             uri,
             mode: LaunchMode.externalApplication,
           );
-          debugPrint('✅ ProfileBackView: Successfully launched URL: $url');
           _showSuccessSnackBar('Opening ${_getPlatformDisplayName(platformType)}...');
         } else {
-          debugPrint('❌ ProfileBackView: Cannot launch URL: $url');
           _showErrorSnackBar('Cannot open this link');
         }
       } catch (e) {
-        debugPrint('❌ ProfileBackView: Error launching URL: $e');
         _showErrorSnackBar('Error opening link: ${e.toString()}');
       }
     } else {
-      debugPrint('❌ ProfileBackView: No URL provided for platform: $platformType');
       _showErrorSnackBar('No link available for this platform');
     }
   }

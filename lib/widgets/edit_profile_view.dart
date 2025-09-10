@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'edit_field_view.dart';
@@ -10,7 +11,6 @@ import '../services/profile_update_service.dart';
 import '../services/content_moderation_service.dart';
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
-import 'status_debug_widget.dart';
 
 class EditProfileView extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -35,6 +35,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   String? _uploadError;
   DateTime? _lastNameChangeDate;
   bool _canChangeName = true;
+  late final ProfileUpdateService _profileUpdateService;
   
   // Gradient colors matching your design system
   static const List<Color> _gradientColors = [
@@ -49,6 +50,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   void initState() {
     super.initState();
     _user = Map.from(widget.user);
+    _profileUpdateService = ProfileUpdateService();
     _checkNameChangeEligibility();
   }
 
@@ -61,9 +63,7 @@ class _EditProfileViewState extends State<EditProfileView> {
         final daysSinceLastChange = DateTime.now().difference(_lastNameChangeDate!).inDays;
         _canChangeName = daysSinceLastChange >= 7;
         
-        print('🔍 EditProfileView: Last name change: $_lastNameChangeDate');
-        print('🔍 EditProfileView: Days since last change: $daysSinceLastChange');
-        print('🔍 EditProfileView: Can change name: $_canChangeName');
+        // Debug logging removed for production
       }
     }
   }
@@ -132,8 +132,7 @@ class _EditProfileViewState extends State<EditProfileView> {
         _lastNameChangeDate = DateTime.now();
         _canChangeName = false;
         
-        print('🔍 EditProfileView: Updated username to "$username" based on display name "$value"');
-        print('🔍 EditProfileView: Recorded name change date: $_lastNameChangeDate');
+        // Username and date updated successfully
       }
     });
     
@@ -156,13 +155,12 @@ class _EditProfileViewState extends State<EditProfileView> {
     
     // Update all profile views through ProfileUpdateService
     try {
-      final profileUpdateService = ProfileUpdateService();
-      debugPrint('🔍 EditProfileView: Updating ProfileUpdateService with data: $updateData');
-      debugPrint('🔍 EditProfileView: ProfileUpdateService isDataLoaded: ${profileUpdateService.isDataLoaded}');
-      await profileUpdateService.updateUserData(updateData);
-      debugPrint('✅ EditProfileView: All profile views updated successfully');
+      await _profileUpdateService.updateUserData(updateData);
     } catch (e) {
-      debugPrint('❌ EditProfileView: Error updating profile views: $e');
+      // Error updating profile views, using fallback
+      if (kDebugMode) {
+        print('ProfileUpdateService error: $e');
+      }
       // Fallback to direct Firestore update
       _saveToFirestore(updateData);
     }
@@ -202,9 +200,10 @@ class _EditProfileViewState extends State<EditProfileView> {
       final authService = ProviderScope.containerOf(context).read(authServiceProvider);
       await authService.updateUserProfile(data);
     } catch (e) {
-      // Log error for debugging
-      debugPrint('❌ Error saving to Firestore: $e');
-      // Don't show error to user for individual field updates to avoid spam
+      // Error saving to Firestore - silent fail to avoid user spam
+      if (kDebugMode) {
+        print('Firestore save error: $e');
+      }
     }
   }
 
@@ -392,11 +391,13 @@ class _EditProfileViewState extends State<EditProfileView> {
                 
                 // Update ProfileUpdateService to notify all views
                 try {
-                  final profileUpdateService = ProfileUpdateService();
-                  await profileUpdateService.updateUserData({'status': status.name});
-                  debugPrint('✅ EditProfileView: Status updated in all profile views');
+                  await _profileUpdateService.updateUserData({'status': status.name});
+                  // Status updated successfully
                 } catch (e) {
-                  debugPrint('❌ EditProfileView: Error updating status in profile views: $e');
+                  // Error updating status, using fallback
+                  if (kDebugMode) {
+                    print('Status update error: $e');
+                  }
                 }
                 
                 if (mounted) {
@@ -1054,9 +1055,7 @@ class _EditProfileViewState extends State<EditProfileView> {
             ),
           ),
           
-          // Temporary debug widget
-          const SizedBox(height: 20),
-          const StatusDebugWidget(),
+          // Debug widget removed for production
         ],
       ),
     );

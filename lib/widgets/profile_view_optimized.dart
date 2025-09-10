@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user.dart' as app_user;
+import '../models/streamer_card.dart';
+import '../models/calendar_event.dart';
 import '../services/profile_update_service.dart';
 import '../views/menu_view.dart';
 import 'edit_profile_view.dart';
 import 'share_profile_view.dart';
 import 'profile_back_view.dart';
 import 'online_status_indicator.dart';
+import 'profile_video_feed_view.dart';
+import 'streamer_card_view_optimized.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -31,6 +36,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
   bool _isFront = true;
   late ProfileUpdateService _profileUpdateService;
+  Map<String, dynamic>? _cachedUserData;
 
   @override
   void initState() {
@@ -66,8 +72,6 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   void _onProfileUpdated() {
     if (mounted) {
-      debugPrint('🔄 ProfileViewOptimized: Profile updated, triggering rebuild');
-      debugPrint('🔄 ProfileViewOptimized: Current user data: ${_profileUpdateService.userData}');
       setState(() {
         // Trigger rebuild when profile data is updated
         // The ProfileUpdateService will have the latest user data
@@ -85,23 +89,90 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _isFront = !_isFront;
   }
 
+  PlatformType _parsePlatformType(String type) {
+    switch (type.toLowerCase()) {
+      case 'twitch':
+        return PlatformType.twitch;
+      case 'youtube':
+        return PlatformType.youtube;
+      case 'kick':
+        return PlatformType.kick;
+      case 'tiktok':
+        return PlatformType.tiktok;
+      case 'facebook':
+        return PlatformType.facebook;
+      case 'bluesky':
+        return PlatformType.bluesky;
+      case 'twitter':
+        return PlatformType.twitter;
+      case 'instagram':
+        return PlatformType.instagram;
+      case 'rednote':
+        return PlatformType.rednote;
+      default:
+        return PlatformType.other;
+    }
+  }
+
+  void _openStreamerCard() {
+    HapticFeedback.lightImpact();
+    
+    // Convert user data to StreamerCard
+    final userData = _currentUserData;
+    final streamerCard = StreamerCard(
+      id: userData['id'] as String? ?? '',
+      displayName: userData['displayName'] as String? ?? '',
+      username: userData['username'] as String? ?? '',
+      bio: userData['bio'] as String? ?? '',
+      avatarURL: userData['avatarUrl'] as String?,
+      platforms: (userData['platforms'] as List<dynamic>?)?.map((p) {
+        final platformMap = p as Map<String, dynamic>;
+        return Platform(
+          id: platformMap['id'] as String? ?? '',
+          type: _parsePlatformType(platformMap['type'] as String? ?? ''),
+          username: platformMap['username'] as String? ?? '',
+          followers: (platformMap['followers'] as num?)?.toInt() ?? 0,
+          url: platformMap['url'] as String?,
+        );
+      }).toList() ?? [],
+      hashtags: (userData['hashtags'] as List<dynamic>?)?.cast<String>() ?? [],
+      calendarEvents: (userData['calendarEvents'] as List<dynamic>?)?.map((e) {
+        final eventMap = e as Map<String, dynamic>;
+        return CalendarEvent(
+          id: eventMap['id'] as String? ?? '',
+          title: eventMap['title'] as String? ?? '',
+          description: eventMap['description'] as String? ?? '',
+          date: (eventMap['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+        );
+      }).toList() ?? [],
+      onlineStatus: userData['status'] as String? ?? 'offline',
+    );
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => StreamerCardViewOptimized(
+          displayStreamer: streamerCard,
+          currentUserId: _profileUpdateService.currentUser?.uid,
+          onDismiss: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+  }
+
   /// Get the current user data, either from widget or from ProfileUpdateService
   Map<String, dynamic> get _currentUserData {
     // Check if this is the current user by comparing user IDs
     final currentUserId = _profileUpdateService.currentUser?.uid;
     final isCurrentUser = currentUserId != null && currentUserId == widget.user.id;
     
-    debugPrint('🔍 ProfileViewOptimized: currentUserId: $currentUserId, widget.user.id: ${widget.user.id}');
-    debugPrint('🔍 ProfileViewOptimized: isCurrentUser: $isCurrentUser, isDataLoaded: ${_profileUpdateService.isDataLoaded}');
-    
     // If this is the current user, get data from ProfileUpdateService
     if (isCurrentUser && _profileUpdateService.isDataLoaded) {
-      debugPrint('🔍 ProfileViewOptimized: Using ProfileUpdateService data: ${_profileUpdateService.userData}');
-      return _profileUpdateService.userData ?? widget.user.toMap();
+      _cachedUserData = _profileUpdateService.userData ?? widget.user.toMap();
+      return _cachedUserData!;
     }
     // Otherwise use the widget user data
-    debugPrint('🔍 ProfileViewOptimized: Using widget user data: ${widget.user.toMap()}');
-    return widget.user.toMap();
+    _cachedUserData = widget.user.toMap();
+    return _cachedUserData!;
   }
 
   void _onTabSelected(int index) {
@@ -173,6 +244,14 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                 size: 24,
               ),
               onPressed: _flipCard,
+            ),
+            IconButton(
+              icon: const Icon(
+                Icons.card_membership,
+                color: Colors.white,
+                size: 24,
+              ),
+              onPressed: _openStreamerCard,
             ),
             IconButton(
               icon: Icon(
@@ -365,7 +444,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                     builder: (context) => EditProfileView(
                       user: _currentUserData,
                       onUserUpdated: (updatedUser) {
-                        // TODO: Handle user update
+                        // Profile update is handled by ProfileUpdateService
+                        // The service will automatically trigger a rebuild
+                        HapticFeedback.lightImpact();
                       },
                     ),
                   ),
@@ -497,54 +578,45 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   Widget _buildVideoContent() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(40),
-        child: Text(
-          'No videos yet.',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
+    return _buildVideoFeedWithErrorHandling(ProfileVideoFeedType.videos);
   }
 
   Widget _buildFavoritesContent() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(40),
-        child: Text(
-          'No videos yet.',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
+    return _buildVideoFeedWithErrorHandling(ProfileVideoFeedType.favorites);
   }
 
   Widget _buildTaggedContent() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(40),
-        child: Text(
-          'No videos yet.',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
+    return _buildVideoFeedWithErrorHandling(ProfileVideoFeedType.tagged);
+  }
+
+  Widget _buildVideoFeedWithErrorHandling(ProfileVideoFeedType feedType) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ProfileVideoFeedView(
+          feedType: feedType,
+          userId: widget.user.id,
+          onVideoTap: () {
+            // Handle video tap - could navigate to video player
+            HapticFeedback.lightImpact();
+          },
         ),
       ),
     );
   }
 
   Widget _buildProfileContent() {
-    return const SizedBox.shrink();
+    return Column(
+      children: [
+        _buildSegments(),
+        Expanded(
+          child: _buildContentArea(),
+        ),
+      ],
+    );
   }
 }
