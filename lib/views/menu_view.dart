@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'settings_view.dart';
+import '../pages/bookmark_view.dart';
 
 class MenuView extends StatelessWidget {
   const MenuView({super.key});
@@ -271,9 +272,20 @@ class MenuView extends StatelessWidget {
   }
 
   void _navigateToPage(BuildContext context, String pageName) {
+    Widget page;
+    
+    switch (pageName) {
+      case 'Bookmarks':
+        page = const BookmarkView();
+        break;
+      default:
+        page = _PlaceholderPage(title: pageName);
+        break;
+    }
+    
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => _PlaceholderPage(title: pageName),
+        builder: (context) => page,
       ),
     );
   }

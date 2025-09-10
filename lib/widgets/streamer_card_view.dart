@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/streamer_card.dart';
 import '../models/calendar_event.dart';
 import '../providers/status_provider.dart';
 import '../models/user_status.dart';
 import '../widgets/profile_video_feed_view.dart';
-import '../services/bookmark_service.dart';
+import '../services/enhanced_bookmark_service.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
   final String userId; // Changed from StreamerCard to userId for live data
@@ -45,7 +45,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _showBio = true;
   bool _showPlatforms = true;
   bool _showCalendar = true;
-  final Set<String> _bookmarkedEventIds = {};
+  Set<String> _bookmarkedEventIds = {};
   List<Map<String, dynamic>> _platforms = [];
   List<CalendarEvent> _calendarEvents = [];
   
@@ -57,7 +57,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   );
   
   // Bookmark service
-  late final BookmarkService _bookmarkService;
+  late final EnhancedBookmarkService _bookmarkService;
   
   // Real-time data
   Map<String, dynamic>? _userData;
@@ -96,7 +96,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   @override
   void initState() {
     super.initState();
-    _bookmarkService = BookmarkService();
+    _bookmarkService = EnhancedBookmarkService();
+    _initializeBookmarks();
     _flipController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -115,6 +116,39 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   // MARK: - Data Loading
+  Future<void> _initializeBookmarks() async {
+    try {
+      await _bookmarkService.initialize();
+      await _fetchBookmarkedEventIds();
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ StreamerCardView: Error initializing bookmarks: $e');
+      }
+    }
+  }
+
+  Future<void> _fetchBookmarkedEventIds() async {
+    try {
+      if (kDebugMode) {
+        print('📚 StreamerCardView: Fetching bookmarked event IDs...');
+      }
+      final bookmarkedIds = await _bookmarkService.fetchBookmarkedEventIds();
+      if (kDebugMode) {
+        print('📚 StreamerCardView: Found ${bookmarkedIds.length} bookmarked events: $bookmarkedIds');
+      }
+      if (mounted) {
+        setState(() {
+          _bookmarkedEventIds.clear();
+          _bookmarkedEventIds.addAll(bookmarkedIds);
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ StreamerCardView: Error fetching bookmarked event IDs: $e');
+      }
+    }
+  }
+
   void _loadUserData() {
     // Cancel existing subscription if any
     _userDataSubscription?.cancel();
@@ -380,50 +414,51 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
   }
 
-  // MARK: - Platform URL Opening Algorithm
-  void _openPlatformURL(String? url) async {
-    if (url != null && url.isNotEmpty) {
-      try {
-        await launchUrl(Uri.parse(url));
-        if (kDebugMode) {
-        print("Opening platform URL: $url");
-        }
-      } catch (error) {
-        if (kDebugMode) {
-        print("Failed to open URL: $url - Error: $error");
-        }
-      }
-    }
-  }
 
 
-  // MARK: - Calendar Management
-  void _showCalendarSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0E1220),
-      isScrollControlled: true,
-      builder: (context) => CalendarEventSheet(
-        onSave: (event) => _saveCalendarEvent(event),
-      ),
-    );
-  }
-
-  void _saveCalendarEvent(CalendarEvent event) {
-    // TODO: Implement actual calendar event saving
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Event "${event.title}" added to calendar!'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
 
   Future<void> _toggleBookmark(CalendarEvent event) async {
     HapticFeedback.lightImpact();
     
     final isBookmarked = _bookmarkedEventIds.contains(event.id);
+    
+    if (kDebugMode) {
+      print('🔖 StreamerCardView: Toggling bookmark for event: ${event.id}');
+      print('🔖 StreamerCardView: Currently bookmarked: $isBookmarked');
+      print('🔖 StreamerCardView: Event title: ${event.title}');
+      print('🔖 StreamerCardView: Event date: ${event.date}');
+      print('🔖 StreamerCardView: Creator ID: ${widget.userId}');
+    }
+    
+    // Check if user is authenticated
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      if (kDebugMode) {
+        print('❌ StreamerCardView: No authenticated user');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please log in to bookmark events'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+    
+    if (kDebugMode) {
+      print('✅ StreamerCardView: User authenticated: ${currentUser.uid}');
+    }
+    
+    // Optimistic UI update
+    if (isBookmarked) {
+      _bookmarkedEventIds.remove(event.id);
+    } else {
+      _bookmarkedEventIds.add(event.id);
+    }
+    setState(() {});
     
     try {
       bool success;
@@ -431,32 +466,33 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       
       if (isBookmarked) {
         // Remove bookmark
-        success = await _bookmarkService.removeEventBookmark(
-          eventId: event.id,
-          ownerId: widget.userId,
-        );
+        success = await _bookmarkService.deleteBookmark(eventId: event.id);
         message = success ? 'Event removed from bookmarks!' : 'Failed to remove bookmark';
       } else {
         // Add bookmark
-        success = await _bookmarkService.addEventBookmark(
-          event: event,
-          ownerId: widget.userId,
-          ownerDisplayName: _userData?['displayName'] ?? 'Unknown',
+        success = await _bookmarkService.bookmarkEvent(
+          eventId: event.id,
+          creatorId: widget.userId,
+          title: event.title,
+          startAt: event.date,
+          notifyAt: event.date.subtract(const Duration(minutes: 15)),
+          source: 'streamer_card',
         );
         message = success ? 'Event saved to your bookmarks! You can view it in the menu.' : 'Failed to save bookmark';
       }
       
-      if (success && mounted) {
-        // Update local state
-    setState(() {
-          if (isBookmarked) {
-            _bookmarkedEventIds.remove(event.id);
-          } else {
-            _bookmarkedEventIds.add(event.id);
-          }
-        });
-        
-        // Show success message
+      if (!success && mounted) {
+        // Revert optimistic update on failure
+        if (isBookmarked) {
+          _bookmarkedEventIds.add(event.id);
+        } else {
+          _bookmarkedEventIds.remove(event.id);
+        }
+        setState(() {});
+      }
+      
+      if (mounted) {
+        // Show message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
@@ -464,26 +500,31 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             duration: const Duration(seconds: 2),
           ),
         );
-      } else if (mounted) {
-        // Show error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
       }
     } catch (e) {
-      if (kDebugMode) {
-        print('❌ Error toggling bookmark: $e');
+      // Revert optimistic update on error
+      if (isBookmarked) {
+        _bookmarkedEventIds.add(event.id);
+      } else {
+        _bookmarkedEventIds.remove(event.id);
       }
+      setState(() {});
+      
+      if (kDebugMode) {
+        print('❌ StreamerCardView: Error toggling bookmark: $e');
+        print('❌ StreamerCardView: Error type: ${e.runtimeType}');
+        if (e is FirebaseException) {
+          print('❌ StreamerCardView: Firebase error code: ${e.code}');
+          print('❌ StreamerCardView: Firebase error message: ${e.message}');
+        }
+      }
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to update bookmark'),
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -1617,18 +1658,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-  Widget _buildStatsRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildStatItem('Posts', _postsCount.toString()),
-        const SizedBox(width: 54),
-        _buildStatItem('Followers', _followersCount.toString()),
-        const SizedBox(width: 54),
-        _buildStatItem('Following', _followingCount.toString()),
-      ],
-    );
-  }
 
   Widget _buildTags() {
     final hashtagsData = _userData?['hashtags'];
@@ -1675,10 +1704,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          );
+                      ),
+                    ),
+                  ),
+                );
         }).toList(),
       ),
     );
@@ -1689,22 +1718,22 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Text(
         _userData?['bio'] ?? 'No bio available',
-                        style: TextStyle(
+            style: TextStyle(
           color: Colors.white.withValues(alpha: 0.75),
-          fontSize: 16,
+              fontSize: 16,
           fontWeight: FontWeight.w600,
-        ),
+            ),
       ),
     );
   }
 
   Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
     if (platforms.isEmpty) {
-      return Padding(
+    return Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
         child: Text(
           'No platforms added yet.',
-          style: TextStyle(
+                  style: TextStyle(
             color: Colors.white.withValues(alpha: 0.6),
             fontSize: 16,
             fontWeight: FontWeight.w500,
@@ -1715,17 +1744,17 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        children: [
+                child: Column(
+                  children: [
           for (final platform in platforms)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
               child: _ClickablePlatformRow(
                 platform: platform,
                 onTap: () => _launchPlatformUrl(platform),
-            ),
-          ),
-        ],
+                      ),
+                    ),
+                  ],
       ),
     );
   }
@@ -1745,20 +1774,20 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             // Show first 5 events
             ...events.take(5).map((event) => _buildCalendarRow(event)),
             // Show "+X more..." if there are more than 5 events
-            if (events.length > 5) ...[
-          const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text(
-                  '+${events.length - 5} more…',
+                            if (events.length > 5) ...[
+                              const SizedBox(height: 8),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: Text(
+                                  '+${events.length - 5} more…',
                   style: const TextStyle(
                     color: Color(0xFF80FFFFFF),
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
         ],
       ),
     );
@@ -1771,11 +1800,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         onTap: onTap,
             child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-            Text(
+                                  children: [
+                                    Text(
               title,
               style: const TextStyle(
-                    color: Colors.white,
+                                        color: Colors.white,
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
               ),
@@ -1787,227 +1816,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 ),
               ],
             ),
-          ),
-    );
-  }
-
-
-
-  Widget _buildPlatformRow(Platform platform) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: () {
-          // MARK: - Platform URL Opening Algorithm
-          _openPlatformURL(platform.url);
-        },
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.1),
-              width: 0.5,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Color(platform.type.colorValue),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _getPlatformIcon(platform.type),
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      platform.type.name.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                '@${platform.username}',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.chevron_right,
-                color: Colors.white,
-                size: 20,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
 
 
 
-  Widget _buildCalendarSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _showCalendar = !_showCalendar;
-              });
-            },
-            child: Row(
-              children: [
-                const Text(
-                  'Calendar',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                AnimatedRotation(
-                  turns: _showCalendar ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 300),
-                  child: const Icon(
-                    Icons.keyboard_arrow_down,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            height: _showCalendar ? null : 0,
-            child: _showCalendar
-                ? StreamBuilder<DocumentSnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(widget.userId)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      List<CalendarEvent> events = [];
-                      
-                      if (snapshot.hasData && snapshot.data!.exists) {
-                        final data = snapshot.data!.data() as Map<String, dynamic>?;
-                        if (data != null && data['calendarEvents'] != null) {
-                          final eventsData = data['calendarEvents'] as List<dynamic>;
-                          events = eventsData.map((eventData) {
-                            final eventMap = eventData as Map<String, dynamic>;
-                            return CalendarEvent(
-                              id: (eventMap['id'] ?? '').toString(),
-                              title: (eventMap['title'] ?? '').toString(),
-                              description: (eventMap['description'] ?? '').toString(),
-                              date: (eventMap['date'] as Timestamp).toDate(),
-                            );
-                          }).toList();
-                          if (kDebugMode) {
-                          print('📅 StreamerCardView: Loaded ${events.length} events from real-time listener');
-                          }
-                        }
-                      }
-                      
-                      return Column(
-                        children: [
-                          const SizedBox(height: 16),
-                          if (events.isEmpty) ...[
-                            Text(
-                              'No Calendar',
-                              style: TextStyle(
-                                color: Colors.grey[400],
-                                fontSize: 16,
-                              ),
-                            ),
-                          ] else ...[
-                            ...events.take(5).map((event) {
-                              return _buildCalendarRow(event);
-                            }),
-                            if (events.length > 5) ...[
-                              const SizedBox(height: 8),
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8),
-                                child: Text(
-                                  '+${events.length - 5} more…',
-                                  style: TextStyle(
-                                    color: Colors.grey[400],
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                          const SizedBox(height: 16),
-                          // MARK: - Add to Calendar button (only for owner)
-                          if (isOwner) ...[
-                            GestureDetector(
-                              onTap: () {
-                                _showCalendarSheet();
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.1),
-                                    width: 0.5,
-                                  ),
-                                ),
-                                child: const Row(
-                                  children: [
-                                    Icon(
-                                      Icons.add_circle,
-                                      color: Colors.white,
-                                      size: 16,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Add to Calendar',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    Spacer(),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      );
-                    },
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
-    );
-  }
+
+
+
 
   Widget _buildCalendarRow(CalendarEvent event) {
     return Container(
@@ -2051,7 +1868,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _formatDateAndTime(event.date),
+                  _formatEventTime(event.date),
                   style: TextStyle(
                     color: Colors.grey[500],
                     fontSize: 12,
@@ -2093,30 +1910,38 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
 
 
-  IconData _getPlatformIcon(PlatformType type) {
-    switch (type) {
-      case PlatformType.twitch:
-        return Icons.videogame_asset;
-      case PlatformType.youtube:
-        return Icons.play_circle;
-      case PlatformType.kick:
-        return Icons.sports_esports;
-      case PlatformType.tiktok:
-        return Icons.music_note;
-      case PlatformType.facebook:
-        return Icons.facebook;
-      case PlatformType.bluesky:
-        return Icons.cloud;
-      case PlatformType.twitter:
-        return Icons.alternate_email;
-      case PlatformType.instagram:
-        return Icons.camera_alt;
-      case PlatformType.rednote:
-        return Icons.note;
-      case PlatformType.other:
-        return Icons.link;
+  String _formatEventTime(DateTime date) {
+    final now = DateTime.now();
+    final difference = date.difference(now).inDays;
+    
+    if (difference == 0) {
+      return 'Today · ${_formatTime(date)}';
+    } else if (difference == 1) {
+      return 'Tomorrow · ${_formatTime(date)}';
+    } else if (difference == -1) {
+      return 'Yesterday · ${_formatTime(date)}';
+    } else {
+      return '${_formatDate(date)} · ${_formatTime(date)}';
     }
   }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.day}';
+  }
+
+  String _formatTime(DateTime date) {
+    final hour = date.hour;
+    final minute = date.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+    final displayMinute = minute.toString().padLeft(2, '0');
+    return '$displayHour:$displayMinute $period';
+  }
+
 
   Color _getStatusColor(UserStatus status) {
     switch (status) {
@@ -2245,37 +2070,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
   }
 
-  String _formatDateAndTime(DateTime date) {
-    final now = DateTime.now();
-    final difference = date.difference(now).inDays;
-    
-    if (difference == 0) {
-      return 'Today · ${_formatTime(date)}';
-    } else if (difference == 1) {
-      return 'Tomorrow · ${_formatTime(date)}';
-    } else if (difference == -1) {
-      return 'Yesterday · ${_formatTime(date)}';
-    } else {
-      return '${_formatDate(date)} · ${_formatTime(date)}';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${months[date.month - 1]} ${date.day}';
-  }
-
-  String _formatTime(DateTime date) {
-    final hour = date.hour;
-    final minute = date.minute;
-    final period = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    final displayMinute = minute.toString().padLeft(2, '0');
-    return '$displayHour:$displayMinute $period';
-  }
 }
 
 // MARK: - Calendar Event Sheet
@@ -2552,37 +2346,6 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
   }
 
 
-  String _formatDateAndTime(DateTime date) {
-    final now = DateTime.now();
-    final difference = date.difference(now).inDays;
-    
-    if (difference == 0) {
-      return 'Today · ${_formatTime(date)}';
-    } else if (difference == 1) {
-      return 'Tomorrow · ${_formatTime(date)}';
-    } else if (difference == -1) {
-      return 'Yesterday · ${_formatTime(date)}';
-    } else {
-      return '${_formatDate(date)} · ${_formatTime(date)}';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${months[date.month - 1]} ${date.day}';
-  }
-
-  String _formatTime(DateTime date) {
-    final hour = date.hour;
-    final minute = date.minute;
-    final period = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    final displayMinute = minute.toString().padLeft(2, '0');
-    return '$displayHour:$displayMinute $period';
-  }
 
 }
 
@@ -2633,7 +2396,7 @@ class _ClickablePlatformRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final platformType = platform['type'] as String? ?? '';
     final username = platform['username'] as String? ?? '';
-    final url = platform['url'] as String? ?? '';
+    // final url = platform['url'] as String? ?? '';
 
     return GestureDetector(
       onTap: onTap,

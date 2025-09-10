@@ -430,7 +430,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       right: 12, // 12-16 as specified
       top: topPosition,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 220),
+        constraints: const BoxConstraints(minHeight: 225),
         child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

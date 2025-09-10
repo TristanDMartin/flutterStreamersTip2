@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../pages/bookmark_view.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfileMenuSheetView extends ConsumerStatefulWidget {
@@ -326,10 +327,7 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => BookmarksListView(
-          user: widget.user,
-          onDismiss: () => Navigator.of(context).pop(),
-        ),
+        builder: (_) => const BookmarkView(),
       ),
     );
   }
