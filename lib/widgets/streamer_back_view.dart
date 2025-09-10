@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/streamer_card.dart';
 import '../models/calendar_event.dart';
 import '../services/bookmark_service.dart';
@@ -23,15 +24,6 @@ class StreamerBackView extends StatefulWidget {
 
 class _StreamerBackViewState extends State<StreamerBackView>
     with TickerProviderStateMixin {
-  // Pre-defined gradients for better performance - matching SwiftUI specifications
-  static const LinearGradient _mainGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      Color(0xFF6633CC), // Purple (red: 0.4, green: 0.2, blue: 0.8)
-      Color(0xFF1A1A4D), // Dark blue (red: 0.1, green: 0.1, blue: 0.3)
-    ],
-  );
   
   // Hashtag chip gradients - matching Add to Calendar button
   static const LinearGradient _selectedHashtagGradient = LinearGradient(
@@ -43,17 +35,14 @@ class _StreamerBackViewState extends State<StreamerBackView>
   // Services
   late final BookmarkService _bookmarkService;
 
-  // Animation controllers
-  late AnimationController _scrollController;
-  late Animation<double> _fadeAnimation;
 
   // Firebase listener
   StreamSubscription<DocumentSnapshot>? _profileListener;
 
   // State management - matching SwiftUI @State variables
+  bool _showBio = true;
   bool _showPlatforms = true;
   bool _showCalendar = true;
-  bool _showSocialLinks = true;
   String _selectedHashtag = "";
   Set<String> _bookmarkedEventIds = {};
   StreamerCard? _loadedStreamer;
@@ -61,30 +50,14 @@ class _StreamerBackViewState extends State<StreamerBackView>
   // Data
   List<CalendarEvent> _calendarEvents = [];
   List<Map<String, dynamic>> _platforms = [];
-  List<Map<String, dynamic>> _socialLinks = [];
   bool _isLoading = false;
 
-  // Bookmark state
-  bool _showBookmarkAlert = false;
-  String _bookmarkAlertMessage = '';
 
   @override
   void initState() {
     super.initState();
     _bookmarkService = BookmarkService();
     
-    _scrollController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _scrollController,
-      curve: Curves.easeInOut,
-    ));
 
     // Initialize with first hashtag selected
     if (widget.streamer.hashtags.isNotEmpty) {
@@ -93,7 +66,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
 
     // Initialize bookmark service and load bookmarks
     _initializeBookmarks();
-    
+
     // Set up real-time listeners
     _setupProfileListener();
     
@@ -103,7 +76,6 @@ class _StreamerBackViewState extends State<StreamerBackView>
 
   @override
   void dispose() {
-    _scrollController.dispose();
     _cleanupListener();
     super.dispose();
   }
@@ -149,7 +121,6 @@ class _StreamerBackViewState extends State<StreamerBackView>
         setState(() {
           _isLoading = false;
         });
-        _scrollController.forward();
       }
     }
   }
@@ -270,7 +241,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
       // This would typically fetch from a social links collection
       if (mounted) {
         setState(() {
-          _socialLinks = [];
+          // Social links loading completed
         });
       }
     } catch (e) {
@@ -280,58 +251,34 @@ class _StreamerBackViewState extends State<StreamerBackView>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Container(
+    return Container(
         decoration: const BoxDecoration(
-          gradient: _mainGradient,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
         ),
-        child: SafeArea(
-        child: Stack(
-          children: [
-              // Main content with scroll-based header
-              SingleChildScrollView(
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      // Top padding to push content below header
-                      SizedBox(height: MediaQuery.of(context).padding.top + 80),
-                      
-                      // Header section with avatar and basic info
-                      _buildHeaderSection(),
-                          const SizedBox(height: 24),
-                      
-                      // Hashtags picker
-                          _buildHashtagsPicker(),
-                          const SizedBox(height: 24),
-                      
-                      // Bio section
-                                _buildBioSection(),
-                                const SizedBox(height: 24),
-                      
-                      // Platforms section (expandable)
-                                _buildPlatformsSection(),
-                                const SizedBox(height: 24),
-                      
-                      // Calendar section (expandable)
-                                _buildCalendarSection(),
-                                const SizedBox(height: 24),
-                      
-                      // Social links section (expandable)
-                      _buildSocialLinksSection(),
-                                const SizedBox(height: 40),
-                              ],
-                            ),
-                          ),
-              ),
-              
-              // Top bar with scroll-based title and flip button
-            _buildTopBar(),
-            
-            // Success alert dialog - matching SwiftUI alert implementation
-            if (_showBookmarkAlert) _buildBookmarkAlertDialog(),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(child: _buildHeader()),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              SliverToBoxAdapter(child: _buildIdentity()),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              SliverToBoxAdapter(child: _buildTags()),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _buildSectionHeader('Bio', _showBio, () => setState(() => _showBio = !_showBio))),
+              if (_showBio) SliverToBoxAdapter(child: _buildBioBody()),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _buildSectionHeader('Platforms', _showPlatforms, () => setState(() => _showPlatforms = !_showPlatforms))),
+              if (_showPlatforms) SliverToBoxAdapter(child: _buildPlatforms(_platforms)),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              SliverToBoxAdapter(child: _buildSectionHeader('Calendar', _showCalendar, () => setState(() => _showCalendar = !_showCalendar))),
+              if (_showCalendar) SliverToBoxAdapter(child: _buildCalendar(_calendarEvents)),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
           ],
           ),
         ),
@@ -339,91 +286,41 @@ class _StreamerBackViewState extends State<StreamerBackView>
     );
   }
 
-  Widget _buildTopBar() {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          MediaQuery.of(context).padding.top + 16,
-          16,
-          16,
-        ),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF6137EB).withOpacity(0.9),
-              const Color(0xFF6137EB).withOpacity(0.0),
-            ],
-          ),
-        ),
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            GestureDetector(
-              onTap: () {
+          IconButton(
+            onPressed: () {
                 HapticFeedback.lightImpact();
                 widget.onDismiss?.call();
               },
-              child: const Icon(
-                Icons.chevron_left,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-            Text(
-              widget.streamer.displayName,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            GestureDetector(
-              onTap: () {
+            icon: const Icon(Icons.close, color: Colors.white, size: 24),
+            tooltip: 'Close',
+          ),
+          IconButton(
+            onPressed: () {
                 HapticFeedback.lightImpact();
-                widget.onDismiss?.call();
-              },
-              child: const Icon(
-                Icons.flip,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-          ],
-        ),
+              // TODO: Implement flip functionality
+            },
+            icon: const Icon(Icons.flip, color: Colors.white, size: 24),
+            tooltip: 'Flip',
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildHeaderSection() {
+  Widget _buildIdentity() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundImage: widget.streamer.avatarURL != null
-                ? NetworkImage(widget.streamer.avatarURL!)
-                : null,
-            child: widget.streamer.avatarURL == null
-                ? Text(
-                    widget.streamer.displayName.isNotEmpty
-                        ? widget.streamer.displayName[0].toUpperCase()
-                        : 'S',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                    ),
-                  )
-                : null,
-          ),
-        const SizedBox(width: 16),
+          _SmallAvatar(imageUrl: widget.streamer.avatarURL),
+          const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,15 +329,17 @@ class _StreamerBackViewState extends State<StreamerBackView>
                   widget.streamer.displayName,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
                 ),
               ),
+                const SizedBox(height: 4),
               Text(
                   '@${widget.streamer.username}',
-                  style: const TextStyle(
-                    color: Color(0xFFB3FFFFFF), // Pre-computed opacity
-                    fontSize: 16,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.75),
+                fontSize: 18,
+                    fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -451,250 +350,170 @@ class _StreamerBackViewState extends State<StreamerBackView>
     );
   }
 
-  Widget _buildHashtagsPicker() {
-    if (displayStreamer.hashtags.isEmpty) return const SizedBox.shrink();
+  Widget _buildTags() {
+    final hashtags = widget.streamer.hashtags ?? [];
+    if (hashtags.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: SizedBox(
-        height: 40,
-        child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-          itemCount: displayStreamer.hashtags.length,
-        itemBuilder: (context, index) {
-            final hashtag = displayStreamer.hashtags[index];
-            final isSelected = hashtag == _selectedHashtag;
-            
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: hashtags.map((hashtag) {
+          final isSelected = _selectedHashtag == hashtag;
+          return GestureDetector(
             onTap: () {
-                  HapticFeedback.lightImpact();
               setState(() {
-                    _selectedHashtag = hashtag;
+                _selectedHashtag = isSelected ? "" : hashtag;
               });
             },
             child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                    gradient: isSelected 
-                        ? _selectedHashtagGradient
-                    : null,
-                    color: isSelected 
-                        ? null
-                        : Colors.white.withOpacity(0.1),
+                gradient: isSelected ? _selectedHashtagGradient : null,
+                color: isSelected ? null : Colors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: isSelected 
-                          ? Colors.white.withOpacity(0.3)
-                          : Colors.white.withOpacity(0.2),
+                      color: Colors.white.withOpacity(0.2),
                       width: 1,
               ),
-                    boxShadow: isSelected ? [
-                      BoxShadow(
-                        color: const Color(0xFF955CFF).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ] : null,
                   ),
               child: Text(
-                    '#$hashtag',
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
-                      fontSize: 14,
+                hashtag,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
                       fontWeight: FontWeight.w600,
-                    ),
                   ),
               ),
             ),
           );
-        },
-        ),
+        }).toList(),
       ),
     );
   }
 
-  Widget _buildBioSection() {
-    if (displayStreamer.bio.isEmpty) return const SizedBox.shrink();
-
+  Widget _buildSectionHeader(String title, bool isExpanded, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
-        child: Text(
-          displayStreamer.bio,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            height: 1.4,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlatformsSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GestureDetector(
+        onTap: onTap,
+      child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-          Row(
-            children: [
-              const Text(
-                'Platforms',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  setState(() {
-                    _showPlatforms = !_showPlatforms;
-                  });
-                },
-                icon: Icon(
-                _showPlatforms ? Icons.expand_less : Icons.expand_more,
+            Text(
+              title,
+              style: const TextStyle(
                 color: Colors.white,
-                ),
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
               ),
+            ),
+            Icon(
+              isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+              color: Colors.white.withValues(alpha: 0.9),
+              size: 24,
+            ),
             ],
-          ),
-        if (_showPlatforms) ...[
-            const SizedBox(height: 8),
-            if (_platforms.isEmpty)
-              const _EmptyStateWidget(
-                icon: Icons.link,
-                message: 'No platforms connected yet',
-              )
-            else
-              ..._platforms.map((platform) => _buildPlatformCard(platform)),
-          ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildPlatformCard(Map<String, dynamic> platform) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-          Icon(
-            _getPlatformIcon(platform['type']),
-                color: Colors.white,
-                size: 20,
-              ),
-          const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                  platform['type'].toString().toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    ),
-                  ),
-            Text(
-                  '@${platform['username']}',
-                  style: const TextStyle(
-                    color: Color(0xFFB3FFFFFF),
-                    fontSize: 12,
-                  ),
-                ),
-          ],
+  Widget _buildBioBody() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Text(
+        widget.streamer.bio ?? 'No bio available',
+                style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.75),
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
         ),
       ),
-          IconButton(
-            onPressed: () => _openPlatform(platform['url']),
-            icon: const Icon(Icons.open_in_new, color: Colors.white, size: 16),
+    );
+  }
+
+  Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
+    if (platforms.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+        child: Text(
+          'No platforms added yet.',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.6),
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      );
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                children: [
+          for (final platform in platforms)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+              child: _ClickablePlatformRow(
+                platform: platform,
+                onTap: () => _launchPlatformUrl(platform),
+              ),
           ),
         ],
     ),
     );
   }
 
-  Widget _buildCalendarSection() {
+  Future<void> _launchPlatformUrl(Map<String, dynamic> platform) async {
+    final url = platform['url'] as String?;
+    if (url != null && url.isNotEmpty) {
+      try {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('Error launching URL: $e');
+        }
+      }
+    }
+  }
+
+
+
+
+
+
+  Widget _buildCalendar(List<CalendarEvent> events) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-          Row(
-            children: [
-              const Text(
-                'Calendar',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  setState(() {
-                    _showCalendar = !_showCalendar;
-                  });
-                },
-                icon: Icon(
-                _showCalendar ? Icons.expand_less : Icons.expand_more,
-                color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        if (_showCalendar) ...[
-            const SizedBox(height: 8),
-            if (_calendarEvents.isEmpty)
+          if (events.isEmpty)
               const _EmptyStateWidget(
                 icon: Icons.event,
                 message: 'No upcoming events',
             )
           else ...[
-              // Show first 5 events
-              ..._calendarEvents.take(5).map((event) => _buildCalendarRow(event)),
-              // Show "+X more..." if there are more than 5 events
-              if (_calendarEvents.length > 5) ...[
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    '+${_calendarEvents.length - 5} more…',
-                    style: const TextStyle(
-                      color: Color(0xFF80FFFFFF),
-                      fontSize: 12,
-                    ),
+            // Show first 5 events
+            ...events.take(5).map((event) => _buildCalendarRow(event)),
+            // Show "+X more..." if there are more than 5 events
+            if (events.length > 5) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  '+${events.length - 5} more…',
+                  style: const TextStyle(
+                    color: Color(0xFF80FFFFFF),
+                    fontSize: 12,
                   ),
                 ),
-              ],
+              ),
             ],
           ],
         ],
@@ -707,13 +526,13 @@ class _StreamerBackViewState extends State<StreamerBackView>
     final isBookmarked = _bookmarkedEventIds.contains(event.id);
     
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha: 0.12),
           width: 1,
         ),
       ),
@@ -721,9 +540,9 @@ class _StreamerBackViewState extends State<StreamerBackView>
         children: [
           // Calendar icon - matching SwiftUI implementation
           const Icon(
-            Icons.calendar_today,
+            Icons.calendar_today_outlined,
             color: Colors.white,
-            size: 24,
+            size: 22,
           ),
           const SizedBox(width: 12),
           
@@ -737,26 +556,26 @@ class _StreamerBackViewState extends State<StreamerBackView>
                   event.title,
                   style: const TextStyle(
                     color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  event.description,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.65),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 2),
-                // Description - matching SwiftUI .caption .gray
-                Text(
-                  event.description,
-                  style: const TextStyle(
-                    color: Color(0xFFB3FFFFFF),
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                // Date and time - matching SwiftUI .caption2 .secondary
+                const SizedBox(height: 4),
                 Text(
                   _formatDateAndTime(event.date),
-                  style: const TextStyle(
-                    color: Color(0xFF80FFFFFF),
-                    fontSize: 10,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -780,112 +599,17 @@ class _StreamerBackViewState extends State<StreamerBackView>
               onPressed: () => _toggleBookmark(event),
               icon: Icon(
                 isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSocialLinksSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-          Row(
-            children: [
-              const Text(
-                'Social Links',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  setState(() {
-                    _showSocialLinks = !_showSocialLinks;
-                  });
-                },
-                icon: Icon(
-                  _showSocialLinks ? Icons.expand_less : Icons.expand_more,
-                color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          if (_showSocialLinks) ...[
-            const SizedBox(height: 8),
-            if (_socialLinks.isEmpty)
-              const _EmptyStateWidget(
-                icon: Icons.share,
-                message: 'No social links added yet',
-              )
-            else
-              ..._socialLinks.map((link) => _buildSocialLinkCard(link)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSocialLinkCard(Map<String, dynamic> link) {
-    return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.2),
-          width: 1,
-        ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-            _getSocialLinkIcon(link['type']),
               color: Colors.white,
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-            Text(
-                  link['title'] ?? 'Social Link',
-              style: const TextStyle(
-                color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  link['url'] ?? '',
-                  style: const TextStyle(
-                    color: Color(0xFFB3FFFFFF),
-                    fontSize: 12,
-                  ),
+              size: 16,
+            ),
             ),
           ],
-        ),
-      ),
-          IconButton(
-            onPressed: () => _openSocialLink(link['url']),
-            icon: const Icon(Icons.open_in_new, color: Colors.white, size: 16),
-          ),
         ],
       ),
     );
   }
+
+
 
   // Utility methods
   String _formatDateAndTime(dynamic date) {
@@ -968,7 +692,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
     HapticFeedback.lightImpact();
     // TODO: Delete event from Firebase
     if (kDebugMode) {
-      print('Deleting event: $eventId');
+    print('Deleting event: $eventId');
     }
     
     setState(() {
@@ -1013,102 +737,49 @@ class _StreamerBackViewState extends State<StreamerBackView>
       
       if (success && mounted) {
         // Update local state
-        setState(() {
+    setState(() {
           if (isBookmarked) {
             _bookmarkedEventIds.remove(event.id);
-          } else {
+      } else {
             _bookmarkedEventIds.add(event.id);
           }
         });
         
-        // Show success alert
-        _showBookmarkAlertDialog(message);
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: success ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       } else if (mounted) {
-        // Show error alert
-        _showBookmarkAlertDialog(message);
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     } catch (e) {
       if (kDebugMode) {
         print('❌ Error toggling bookmark: $e');
       }
       if (mounted) {
-        _showBookmarkAlertDialog('Failed to update bookmark');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to update bookmark'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
     }
   }
 
-  /// Show bookmark alert - matching SwiftUI alert implementation
-  void _showBookmarkAlertDialog(String message) {
-    setState(() {
-      _bookmarkAlertMessage = message;
-      _showBookmarkAlert = true;
-    });
-  }
 
-  /// Build bookmark alert dialog - matching SwiftUI alert implementation
-  Widget _buildBookmarkAlertDialog() {
-    return Material(
-      color: Colors.black.withOpacity(0.5),
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 40),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.bookmark,
-                color: Color(0xFF955CFF),
-                size: 32,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Bookmark',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _bookmarkAlertMessage,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _showBookmarkAlert = false;
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF955CFF),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('OK'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // Optimized const widget for empty states
@@ -1153,5 +824,151 @@ class _EmptyStateWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _SmallAvatar extends StatelessWidget {
+  final String? imageUrl;
+  const _SmallAvatar({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [Color(0xFFFF6CAB), Color(0xFF8E54E9), Color(0xFF3D99F7), Color(0xFFFF6CAB)],
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black.withValues(alpha: 0.2),
+          ),
+          child: ClipOval(
+            child: imageUrl != null && imageUrl!.isNotEmpty
+                ? Image.network(imageUrl!, fit: BoxFit.cover)
+                : const Icon(Icons.person, color: Colors.white, size: 28),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClickablePlatformRow extends StatelessWidget {
+  final Map<String, dynamic> platform;
+  final VoidCallback onTap;
+  
+  const _ClickablePlatformRow({
+    required this.platform,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final platformType = platform['type'] as String? ?? '';
+    final username = platform['username'] as String? ?? '';
+    final url = platform['url'] as String? ?? '';
+    
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _getPlatformIcon(platformType),
+              color: Colors.white,
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _getPlatformDisplayName(platformType),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (username.isNotEmpty)
+                    Text(
+                      '@$username',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 14,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getPlatformIcon(String platformType) {
+    switch (platformType.toLowerCase()) {
+      case 'twitch':
+        return Icons.live_tv;
+      case 'youtube':
+        return Icons.play_circle;
+      case 'kick':
+        return Icons.sports_esports;
+      case 'tiktok':
+        return Icons.music_note;
+      case 'facebook':
+        return Icons.facebook;
+      case 'twitter':
+        return Icons.alternate_email;
+      case 'instagram':
+        return Icons.camera_alt;
+      default:
+        return Icons.link;
+    }
+  }
+
+  String _getPlatformDisplayName(String platformType) {
+    switch (platformType.toLowerCase()) {
+      case 'twitch':
+        return 'Twitch';
+      case 'youtube':
+        return 'YouTube';
+      case 'kick':
+        return 'Kick';
+      case 'tiktok':
+        return 'TikTok';
+      case 'facebook':
+        return 'Facebook';
+      case 'twitter':
+        return 'Twitter';
+      case 'instagram':
+        return 'Instagram';
+      default:
+        return platformType;
+    }
   }
 }
