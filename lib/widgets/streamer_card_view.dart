@@ -334,7 +334,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error checking connection status: $e');
+      print('Error checking connection status: $e');
       }
       if (mounted) {
         setState(() {
@@ -357,7 +357,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return query.docs.isNotEmpty;
     } catch (e) {
       if (kDebugMode) {
-        print('Error checking follow status: $e');
+      print('Error checking follow status: $e');
       }
       return false;
     }
@@ -374,7 +374,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return query.docs.isNotEmpty;
     } catch (e) {
       if (kDebugMode) {
-        print('Error checking followed by status: $e');
+      print('Error checking followed by status: $e');
       }
       return false;
     }
@@ -386,11 +386,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       try {
         await launchUrl(Uri.parse(url));
         if (kDebugMode) {
-          print("Opening platform URL: $url");
+        print("Opening platform URL: $url");
         }
       } catch (error) {
         if (kDebugMode) {
-          print("Failed to open URL: $url - Error: $error");
+        print("Failed to open URL: $url - Error: $error");
         }
       }
     }
@@ -835,44 +835,47 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         _buildAvatarWithOnlineIndicator(),
         const SizedBox(height: 16),
         _buildProfileTextInfo(),
-        const SizedBox(height: 20), // Add bottom spacing to match ProfileView
+        const SizedBox(height: 4), // Minimal spacing to match ProfileView
       ],
     );
   }
 
   Widget _buildStatisticsRow() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _buildStatItem(_postsCount.toString(), 'Posts'),
+          _buildStatItem('Posts', _postsCount.toString()),
           const SizedBox(width: 54),
-          _buildStatItem(_followersCount.toString(), 'Followers'),
+          _buildStatItem('Followers', _followersCount.toString()),
           const SizedBox(width: 54),
-          _buildStatItem(_followingCount.toString(), 'Following'),
+          _buildStatItem('Following', _followingCount.toString()),
         ],
       ),
     );
   }
 
-  Widget _buildStatItem(String number, String label) {
+  Widget _buildStatItem(String label, String value) {
     return Column(
       children: [
         Text(
-          number,
+          value,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 24,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w900,
+            height: 1.0,
           ),
         ),
+        const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
+            color: Colors.white.withOpacity(0.7),
             fontSize: 16,
             fontWeight: FontWeight.w600,
+            height: 1.0,
           ),
         ),
       ],
@@ -1552,6 +1555,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 ],
               ),
             ),
+        ],
       ),
     );
   }
@@ -1561,9 +1565,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
+              child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
-        children: [
+                children: [
           IconButton(
             onPressed: _flipCard,
             icon: const Icon(Icons.flip, color: Colors.white, size: 24),
@@ -1590,17 +1594,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   _userData?['displayName'] ?? 'User',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '@${_userData?['username'] ?? 'username'}',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.75),
+                    color: Colors.white.withOpacity(0.75),
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
+                    height: 1.0,
                   ),
                 ),
               ],
@@ -1608,6 +1614,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStatsRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildStatItem('Posts', _postsCount.toString()),
+        const SizedBox(width: 54),
+        _buildStatItem('Followers', _followersCount.toString()),
+        const SizedBox(width: 54),
+        _buildStatItem('Following', _followingCount.toString()),
+      ],
     );
   }
 
@@ -1632,26 +1651,26 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         spacing: 8,
         runSpacing: 8,
         children: hashtags.map((hashtag) {
-          final isSelected = _selectedHashtag == hashtag;
+                final isSelected = _selectedHashtag == hashtag;
           return GestureDetector(
-            onTap: () {
-              setState(() {
+                    onTap: () {
+                      setState(() {
                 _selectedHashtag = isSelected ? "" : hashtag;
-              });
-            },
-            child: Container(
+                      });
+                    },
+                    child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
+                      decoration: BoxDecoration(
                 gradient: isSelected ? _selectedHashtagGradient : null,
                 color: isSelected ? null : Colors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(
+                        border: Border.all(
                   color: Colors.white.withOpacity(0.2),
                   width: 1,
-                ),
-              ),
-              child: Text(
-                '#$hashtag',
+                        ),
+                      ),
+                      child: Text(
+                        '#$hashtag',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -1670,7 +1689,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Text(
         _userData?['bio'] ?? 'No bio available',
-        style: TextStyle(
+                        style: TextStyle(
           color: Colors.white.withValues(alpha: 0.75),
           fontSize: 16,
           fontWeight: FontWeight.w600,
@@ -1689,9 +1708,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             color: Colors.white.withValues(alpha: 0.6),
             fontSize: 16,
             fontWeight: FontWeight.w500,
-          ),
-        ),
-      );
+                    ),
+                  ),
+                );
     }
     
     return Padding(
@@ -1704,8 +1723,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               child: _ClickablePlatformRow(
                 platform: platform,
                 onTap: () => _launchPlatformUrl(platform),
-              ),
             ),
+          ),
         ],
       ),
     );
@@ -1727,7 +1746,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             ...events.take(5).map((event) => _buildCalendarRow(event)),
             // Show "+X more..." if there are more than 5 events
             if (events.length > 5) ...[
-              const SizedBox(height: 8),
+          const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: Text(
@@ -1750,13 +1769,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
         onTap: onTap,
-        child: Row(
+            child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
+              children: [
             Text(
               title,
               style: const TextStyle(
-                color: Colors.white,
+                    color: Colors.white,
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
               ),
@@ -1764,11 +1783,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             Icon(
               isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
               color: Colors.white.withValues(alpha: 0.9),
-              size: 24,
+                    size: 24,
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
@@ -1906,7 +1925,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                             );
                           }).toList();
                           if (kDebugMode) {
-                            print('📅 StreamerCardView: Loaded ${events.length} events from real-time listener');
+                          print('📅 StreamerCardView: Loaded ${events.length} events from real-time listener');
                           }
                         }
                       }
