@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +13,7 @@ import 'share_profile_view.dart';
 import 'profile_back_view.dart';
 import 'online_status_indicator.dart';
 import 'profile_video_feed_view.dart';
-import 'streamer_card_view_optimized.dart';
+import 'streamer_card_view.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -114,11 +115,31 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     }
   }
 
+  List<String> _parseHashtags(dynamic hashtagsData) {
+    if (hashtagsData == null) return [];
+    
+    if (hashtagsData is List<dynamic>) {
+      return hashtagsData.cast<String>();
+    } else if (hashtagsData is String) {
+      // Handle comma-separated string like "Badge, chill"
+      return hashtagsData.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
+    }
+    
+    return [];
+  }
+
   void _openStreamerCard() {
+    if (kDebugMode) {
+      print('ProfileView: StreamerCard button tapped');
+    }
     HapticFeedback.lightImpact();
     
-    // Convert user data to StreamerCard
-    final userData = _currentUserData;
+    try {
+      // Convert user data to StreamerCard
+      final userData = _currentUserData;
+      if (kDebugMode) {
+        print('ProfileView: User data keys: ${userData.keys}');
+      }
     final streamerCard = StreamerCard(
       id: userData['id'] as String? ?? '',
       displayName: userData['displayName'] as String? ?? '',
@@ -135,7 +156,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
           url: platformMap['url'] as String?,
         );
       }).toList() ?? [],
-      hashtags: (userData['hashtags'] as List<dynamic>?)?.cast<String>() ?? [],
+      hashtags: _parseHashtags(userData['hashtags']),
       calendarEvents: (userData['calendarEvents'] as List<dynamic>?)?.map((e) {
         final eventMap = e as Map<String, dynamic>;
         return CalendarEvent(
@@ -148,31 +169,99 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       onlineStatus: userData['status'] as String? ?? 'offline',
     );
     
+      if (kDebugMode) {
+        print('ProfileView: Navigating to StreamerCardView');
+      }
+      
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => StreamerCardViewOptimized(
-          displayStreamer: streamerCard,
+        builder: (context) => StreamerCardView(
+          userId: widget.user.id,
           currentUserId: _profileUpdateService.currentUser?.uid,
           onDismiss: () => Navigator.of(context).pop(),
+          onFollow: (userId) {
+            // Handle follow action
+            HapticFeedback.lightImpact();
+            if (kDebugMode) {
+              print('ProfileView: Follow action triggered for user: $userId');
+            }
+            // TODO: Implement follow functionality
+          },
+          onMessage: (userId) {
+            // Handle message action
+            HapticFeedback.lightImpact();
+            if (kDebugMode) {
+              print('ProfileView: Message action triggered for user: $userId');
+            }
+            // TODO: Implement message functionality
+          },
+          onShare: (userId) {
+            // Handle share action
+            HapticFeedback.lightImpact();
+            if (kDebugMode) {
+              print('ProfileView: Share action triggered for user: $userId');
+            }
+            // TODO: Implement share functionality
+          },
         ),
       ),
     );
+    } catch (e) {
+      if (kDebugMode) {
+        print('ProfileView: Error opening StreamerCard: $e');
+      }
+      // Show error to user
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening profile: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   /// Get the current user data, either from widget or from ProfileUpdateService
   Map<String, dynamic> get _currentUserData {
-    // Check if this is the current user by comparing user IDs
-    final currentUserId = _profileUpdateService.currentUser?.uid;
-    final isCurrentUser = currentUserId != null && currentUserId == widget.user.id;
-    
-    // If this is the current user, get data from ProfileUpdateService
-    if (isCurrentUser && _profileUpdateService.isDataLoaded) {
-      _cachedUserData = _profileUpdateService.userData ?? widget.user.toMap();
+    try {
+      // Check if this is the current user by comparing user IDs
+      final currentUserId = _profileUpdateService.currentUser?.uid;
+      final isCurrentUser = currentUserId != null && currentUserId == widget.user.id;
+      
+      // If this is the current user, get data from ProfileUpdateService
+      if (isCurrentUser && _profileUpdateService.isDataLoaded) {
+        _cachedUserData = _profileUpdateService.userData ?? widget.user.toMap();
+        if (kDebugMode) {
+          print('ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
+        }
+        return _cachedUserData!;
+      }
+      // Otherwise use the widget user data
+      _cachedUserData = widget.user.toMap();
+      if (kDebugMode) {
+        print('ProfileView: Using widget user data: ${_cachedUserData?.keys}');
+      }
       return _cachedUserData!;
+    } catch (e) {
+      if (kDebugMode) {
+        print('ProfileView: Error getting user data: $e');
+      }
+      // Fallback to basic user data
+      return {
+        'id': widget.user.id,
+        'displayName': widget.user.displayName,
+        'username': widget.user.username,
+        'bio': widget.user.bio ?? '',
+        'avatarUrl': widget.user.avatarURL,
+        'followers': 0,
+        'following': 0,
+        'videos': 0,
+        'hashtags': <String>[],
+        'platforms': <Map<String, dynamic>>[],
+        'calendarEvents': <Map<String, dynamic>>[],
+        'status': 'offline',
+        'isOnline': false,
+      };
     }
-    // Otherwise use the widget user data
-    _cachedUserData = widget.user.toMap();
-    return _cachedUserData!;
   }
 
   void _onTabSelected(int index) {
@@ -251,7 +340,19 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                 color: Colors.white,
                 size: 24,
               ),
-              onPressed: _openStreamerCard,
+              onPressed: () {
+                if (kDebugMode) {
+                  print('ProfileView: Card button onPressed called');
+                }
+                // Show immediate feedback
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Opening StreamerCard...'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+                _openStreamerCard();
+              },
             ),
             IconButton(
               icon: Icon(
@@ -302,10 +403,6 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         _buildStatsRow(),
         const SizedBox(height: 24),
         _buildPrimaryButtonsRow(),
-        const SizedBox(height: 24),
-        _buildSegments(),
-        const SizedBox(height: 16),
-        _buildContentArea(),
       ],
     );
   }
@@ -590,22 +687,13 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   Widget _buildVideoFeedWithErrorHandling(ProfileVideoFeedType feedType) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: ProfileVideoFeedView(
-          feedType: feedType,
-          userId: widget.user.id,
-          onVideoTap: () {
-            // Handle video tap - could navigate to video player
-            HapticFeedback.lightImpact();
-          },
-        ),
-      ),
+    return ProfileVideoFeedView(
+      feedType: feedType,
+      userId: widget.user.id,
+      onVideoTap: () {
+        // Handle video tap - could navigate to video player
+        HapticFeedback.lightImpact();
+      },
     );
   }
 
@@ -613,7 +701,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     return Column(
       children: [
         _buildSegments(),
-        Expanded(
+        SizedBox(
+          height: 400, // Fixed height for content area
           child: _buildContentArea(),
         ),
       ],

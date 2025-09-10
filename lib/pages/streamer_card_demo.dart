@@ -68,29 +68,29 @@ class StreamerCardDemo extends StatelessWidget {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => StreamerCardView(
-              displayStreamer: card,
+              userId: card.id,
               currentUserId: 'current_user',
               onDismiss: () => Navigator.of(context).pop(),
-              onFollow: (streamer) {
+              onFollow: (userId) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Followed ${streamer.displayName}'),
+                    content: Text('Followed ${card.displayName}'),
                     backgroundColor: const Color(0xFF25E5D2),
                   ),
                 );
               },
-              onMessage: (streamer) {
+              onMessage: (userId) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Messaged ${streamer.displayName}'),
+                    content: Text('Messaged ${card.displayName}'),
                     backgroundColor: const Color(0xFF25E5D2),
                   ),
                 );
               },
-              onShare: (streamer) {
+              onShare: (userId) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Shared ${streamer.displayName}\'s profile'),
+                    content: Text('Shared ${card.displayName}\'s profile'),
                     backgroundColor: const Color(0xFF25E5D2),
                   ),
                 );

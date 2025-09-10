@@ -34,16 +34,7 @@ enum ProfileVideoFeedType {
 class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _buildGridLayout(),
-      floatingActionButton: widget.feedType == ProfileVideoFeedType.videos
-          ? FloatingActionButton(
-              onPressed: _showDraftsSheet,
-              backgroundColor: const Color(0xFF9248d2),
-              child: const Icon(Icons.video_library, color: Colors.white),
-            )
-          : null,
-    );
+    return _buildGridLayout();
   }
 
   Widget _buildGridLayout() {
@@ -139,7 +130,6 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         }
       },
       color: const Color(0xFF9248d2),
-      backgroundColor: Colors.black,
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
@@ -188,7 +178,6 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         }
       },
       color: const Color(0xFF9248d2),
-      backgroundColor: Colors.black,
       child: GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
