@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,7 +9,6 @@ import '../models/home_video.dart';
 import '../widgets/video_player_view_optimized.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/favorites_provider.dart';
-import '../providers/following_provider.dart';
 import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
@@ -51,6 +51,9 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
   @override
   void initState() {
     super.initState();
+    log('🏠 HomeView: initState() called');
+    debugPrint('🏠 HomeView: initState() called');
+    
     WidgetsBinding.instance.addObserver(this);
     _pageController = PageController();
     
@@ -61,6 +64,8 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
 
     // Setup favorites manager and load videos
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      log('📋 HomeView: addPostFrameCallback executing');
+      debugPrint('📋 HomeView: addPostFrameCallback executing');
       _setupFavoritesManager();
       _loadVideos();
     });
@@ -81,20 +86,23 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
   /// Load videos from VideoService based on current feed tab
   Future<void> _loadVideos() async {
     try {
-      final homeVM = ref.read(hp.homeProvider.notifier);
+      log('🚀 HomeView: _loadVideos() called');
+      debugPrint('🚀 HomeView: _loadVideos() called');
       
-      if (_feedTab == FeedTab.forYou) {
-        await homeVM.fetchForYouVideos(reset: true);
-      } else {
-        final followingState = ref.read(followingProvider);
-        await homeVM.fetchFollowingVideos(
-          followingIds: followingState.followingList,
-          reset: true,
-        );
-      }
+      final homeVM = ref.read(hp.homeProvider.notifier);
+      log('📱 HomeView: Got homeVM notifier');
+      debugPrint('📱 HomeView: Got homeVM notifier');
+      
+      // Use the new instant play loadVideos method
+      await homeVM.loadVideos();
+      
+      log('✅ HomeView: Videos loaded successfully');
+      debugPrint('✅ HomeView: Videos loaded successfully');
     } catch (e) {
+      log('❌ HomeView: Error in _loadVideos: $e');
+      debugPrint('❌ HomeView: Error in _loadVideos: $e');
       final error = ErrorHandlingService().handleError(e, context: 'load_videos');
-      debugPrint('Error loading videos: ${error.message}');
+      debugPrint('❌ HomeView: Error loading videos: ${error.message}');
     }
   }
 

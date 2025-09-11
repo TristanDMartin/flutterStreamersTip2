@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -11,6 +13,7 @@ import '../services/performance_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/robust_auth_service.dart';
 import '../services/like_service.dart';
+import '../services/video_performance_service.dart';
 import '../widgets/action_button.dart';
 import '../widgets/optimized_like_button.dart';
 import '../widgets/comments_view_optimized.dart';
@@ -70,8 +73,11 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     // Track performance
     PerformanceService().trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
     
-    _videoPlayerController?.dispose();
-    _videoPlayerController = null;
+    // Use performance service to dispose controller safely
+    if (_videoPlayerController != null) {
+      VideoPerformanceService().disposeController(widget.video.id);
+      _videoPlayerController = null;
+    }
     
     super.dispose();
   }
@@ -81,11 +87,13 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     PerformanceService().startVideoLoad(widget.video.id);
     
     try {
-      // Create new controller
-      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.video.videoURL));
-      await _videoPlayerController!.initialize();
+      // Use performance service to get optimized controller
+      _videoPlayerController = await VideoPerformanceService().getController(
+        widget.video.id,
+        widget.video.videoURL,
+      );
       
-      if (mounted) {
+      if (_videoPlayerController != null && mounted) {
         setState(() {
           _isInitialized = true;
           _isPlaying = widget.isCurrentVideo;
@@ -97,10 +105,19 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         
         // Complete performance tracking
         PerformanceService().completeVideoLoad(widget.video.id, success: true);
+      } else {
+        throw Exception('Failed to create video controller');
       }
     } catch (e) {
-      // Error initializing video: $e
+      log('❌ Error initializing video: $e');
       PerformanceService().completeVideoLoad(widget.video.id, success: false);
+      
+      if (mounted) {
+        setState(() {
+          _isInitialized = false;
+          _isPlaying = false;
+        });
+      }
     }
   }
 

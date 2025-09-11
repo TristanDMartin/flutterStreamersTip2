@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:ui';
+import 'dart:io' show Platform;
 import '../providers/unread_messages_provider.dart';
 
 class CustomBottomNav extends ConsumerWidget {
@@ -15,6 +16,15 @@ class CustomBottomNav extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Get safe area padding for platform-specific adjustments
+    final mediaQuery = MediaQuery.of(context);
+    final bottomPadding = mediaQuery.padding.bottom;
+    final isIOS = Platform.isIOS;
+    
+    // Platform-specific padding adjustments
+    final extraBottomPadding = isIOS ? 8.0 : 4.0;
+    final totalBottomPadding = bottomPadding + extraBottomPadding;
+    
     return Container(
       decoration: const BoxDecoration(
         color: Colors.transparent,
@@ -76,7 +86,12 @@ class CustomBottomNav extends ConsumerWidget {
               ],
             ),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 15,
+                bottom: totalBottomPadding,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -97,45 +112,51 @@ class CustomBottomNav extends ConsumerWidget {
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = currentIndex == index;
     
-    return GestureDetector(
-      onTap: () => onTap(index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isSelected 
-                ? Colors.white.withValues(alpha: 0.2) // More visible selected background
-                : Colors.transparent,
-              border: isSelected 
-                ? Border.all(
-                    color: Colors.white.withValues(alpha: 0.3),
-                    width: 1,
-                  )
-                : null,
+    return Semantics(
+      label: label,
+      hint: isSelected ? 'Selected tab' : 'Tap to switch to $label tab',
+      selected: isSelected,
+      button: true,
+      child: GestureDetector(
+        onTap: () => onTap(index),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSelected 
+                  ? Colors.white.withValues(alpha: 0.2) // More visible selected background
+                  : Colors.transparent,
+                border: isSelected 
+                  ? Border.all(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      width: 1,
+                    )
+                  : null,
+              ),
+              child: Icon(
+                icon,
+                color: isSelected 
+                  ? Colors.white 
+                  : Colors.white.withValues(alpha: 0.4), // More visible when not selected
+                size: 24,
+              ),
             ),
-            child: Icon(
-              icon,
-              color: isSelected 
-                ? Colors.white 
-                : Colors.white.withValues(alpha: 0.4), // More visible when not selected
-              size: 24,
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected 
+                  ? Colors.white 
+                  : Colors.white.withValues(alpha: 0.4), // More visible when not selected
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected 
-                ? Colors.white 
-                : Colors.white.withValues(alpha: 0.4), // More visible when not selected
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -144,117 +165,131 @@ class CustomBottomNav extends ConsumerWidget {
     final isSelected = currentIndex == 3;
     final unreadCountAsync = ref.watch(unreadMessagesProvider);
     
-    return GestureDetector(
-      onTap: () => onTap(3),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Stack(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isSelected 
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : Colors.transparent,
-                  border: isSelected 
-                    ? Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
-                        width: 1,
-                      )
-                    : null,
+    return Semantics(
+      label: 'Inbox',
+      hint: isSelected ? 'Selected inbox tab' : 'Tap to open inbox',
+      selected: isSelected,
+      button: true,
+      child: GestureDetector(
+        onTap: () => onTap(3),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected 
+                      ? Colors.white.withValues(alpha: 0.2)
+                      : Colors.transparent,
+                    border: isSelected 
+                      ? Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1,
+                        )
+                      : null,
+                  ),
+                  child: Icon(
+                    Icons.mail_outline,
+                    color: isSelected 
+                      ? Colors.white 
+                      : Colors.white.withValues(alpha: 0.4),
+                    size: 24,
+                  ),
                 ),
-                child: Icon(
-                  Icons.mail_outline,
-                  color: isSelected 
-                    ? Colors.white 
-                    : Colors.white.withValues(alpha: 0.4),
-                  size: 24,
-                ),
-              ),
-              // Unread badge
-              unreadCountAsync.when(
-                data: (unreadCount) {
-                  if (unreadCount > 0) {
-                    return Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          unreadCount > 99 ? '99+' : unreadCount.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                // Unread badge
+                unreadCountAsync.when(
+                  data: (unreadCount) {
+                    if (unreadCount > 0) {
+                      return Positioned(
+                        right: 0,
+                        top: 0,
+                        child: Semantics(
+                          label: '$unreadCount unread messages',
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              unreadCount > 99 ? '99+' : unreadCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
-                          textAlign: TextAlign.center,
                         ),
-                      ),
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Inbox',
-            style: TextStyle(
-              color: isSelected 
-                ? Colors.white 
-                : Colors.white.withValues(alpha: 0.4),
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                ),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 4),
+            Text(
+              'Inbox',
+              style: TextStyle(
+                color: isSelected 
+                  ? Colors.white 
+                  : Colors.white.withValues(alpha: 0.4),
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildAddButton() {
-    return GestureDetector(
-      onTap: () => onTap(2),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF9248D2), // AppColors.primary (purple)
-              Color(0xFF7768DF), // AppColors.secondary (purple)
-              Color(0xFF1670DE), // AppColors.tertiary (blue)
-            ],
-            stops: [0.0, 0.5, 1.0],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF9248D2).withValues(alpha: 0.4),
-              blurRadius: 15,
-              spreadRadius: 0,
-              offset: const Offset(0, 5),
+    return Semantics(
+      label: 'Create content',
+      hint: 'Tap to open camera and create new content',
+      button: true,
+      child: GestureDetector(
+        onTap: () => onTap(2),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF9248D2), // AppColors.primary (purple)
+                Color(0xFF7768DF), // AppColors.secondary (purple)
+                Color(0xFF1670DE), // AppColors.tertiary (blue)
+              ],
+              stops: [0.0, 0.5, 1.0],
             ),
-          ],
-        ),
-        child: const Icon(
-          Icons.add,
-          color: Colors.white,
-          size: 28,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF9248D2).withValues(alpha: 0.4),
+                blurRadius: 15,
+                spreadRadius: 0,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.add,
+            color: Colors.white,
+            size: 28,
+          ),
         ),
       ),
     );
