@@ -275,7 +275,7 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
       await ShareServiceOptimized().shareVideo(widget.video);
       widget.onDismiss?.call();
     } catch (e) {
-      print('Error sharing video: $e');
+    // print('Error sharing video: $e');
     }
   }
 
@@ -303,7 +303,7 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
       await ShareServiceOptimized().shareToPlatform(widget.video, platform);
       widget.onDismiss?.call();
     } catch (e) {
-      print('Error sharing to platform: $e');
+    // print('Error sharing to platform: $e');
     }
   }
 

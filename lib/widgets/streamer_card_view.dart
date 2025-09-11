@@ -122,7 +122,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       await _fetchBookmarkedEventIds();
     } catch (e) {
       if (kDebugMode) {
-        print('❌ StreamerCardView: Error initializing bookmarks: $e');
+    // print('❌ StreamerCardView: Error initializing bookmarks: $e');
       }
     }
   }
@@ -130,11 +130,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Future<void> _fetchBookmarkedEventIds() async {
     try {
       if (kDebugMode) {
-        print('📚 StreamerCardView: Fetching bookmarked event IDs...');
+    // print('📚 StreamerCardView: Fetching bookmarked event IDs...');
       }
       final bookmarkedIds = await _bookmarkService.fetchBookmarkedEventIds();
       if (kDebugMode) {
-        print('📚 StreamerCardView: Found ${bookmarkedIds.length} bookmarked events: $bookmarkedIds');
+    // print('📚 StreamerCardView: Found ${bookmarkedIds.length} bookmarked events: $bookmarkedIds');
       }
       if (mounted) {
         setState(() {
@@ -144,7 +144,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ StreamerCardView: Error fetching bookmarked event IDs: $e');
+    // print('❌ StreamerCardView: Error fetching bookmarked event IDs: $e');
       }
     }
   }
@@ -264,7 +264,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         });
         
         if (kDebugMode) {
-          print("🔄 StreamerCardView: Following updated - isFollowing: $_isFollowing");
+    // print("🔄 StreamerCardView: Following updated - isFollowing: $_isFollowing");
         }
       }
     });
@@ -283,8 +283,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         });
         
         if (kDebugMode) {
-          print("🔄 StreamerCardView: Followed by streamer updated - isFollowedByStreamer: $_isFollowedByStreamer");
-          print("🔄 StreamerCardView: Updated connection state - isConnected: $_isConnected");
+    // print("🔄 StreamerCardView: Followed by streamer updated - isFollowedByStreamer: $_isFollowedByStreamer");
+    // print("🔄 StreamerCardView: Updated connection state - isConnected: $_isConnected");
         }
       }
     });
@@ -368,7 +368,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (e) {
       if (kDebugMode) {
-      print('Error checking connection status: $e');
+    // print('Error checking connection status: $e');
       }
       if (mounted) {
         setState(() {
@@ -391,7 +391,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return query.docs.isNotEmpty;
     } catch (e) {
       if (kDebugMode) {
-      print('Error checking follow status: $e');
+    // print('Error checking follow status: $e');
       }
       return false;
     }
@@ -408,7 +408,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return query.docs.isNotEmpty;
     } catch (e) {
       if (kDebugMode) {
-      print('Error checking followed by status: $e');
+    // print('Error checking followed by status: $e');
       }
       return false;
     }
@@ -423,18 +423,18 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     final isBookmarked = _bookmarkedEventIds.contains(event.id);
     
     if (kDebugMode) {
-      print('🔖 StreamerCardView: Toggling bookmark for event: ${event.id}');
-      print('🔖 StreamerCardView: Currently bookmarked: $isBookmarked');
-      print('🔖 StreamerCardView: Event title: ${event.title}');
-      print('🔖 StreamerCardView: Event date: ${event.date}');
-      print('🔖 StreamerCardView: Creator ID: ${widget.userId}');
+    // print('🔖 StreamerCardView: Toggling bookmark for event: ${event.id}');
+    // print('🔖 StreamerCardView: Currently bookmarked: $isBookmarked');
+    // print('🔖 StreamerCardView: Event title: ${event.title}');
+    // print('🔖 StreamerCardView: Event date: ${event.date}');
+    // print('🔖 StreamerCardView: Creator ID: ${widget.userId}');
     }
     
     // Check if user is authenticated
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       if (kDebugMode) {
-        print('❌ StreamerCardView: No authenticated user');
+    // print('❌ StreamerCardView: No authenticated user');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -449,7 +449,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
     
     if (kDebugMode) {
-      print('✅ StreamerCardView: User authenticated: ${currentUser.uid}');
+    // print('✅ StreamerCardView: User authenticated: ${currentUser.uid}');
     }
     
     // Optimistic UI update
@@ -511,11 +511,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       setState(() {});
       
       if (kDebugMode) {
-        print('❌ StreamerCardView: Error toggling bookmark: $e');
-        print('❌ StreamerCardView: Error type: ${e.runtimeType}');
+    // print('❌ StreamerCardView: Error toggling bookmark: $e');
+    // print('❌ StreamerCardView: Error type: ${e.runtimeType}');
         if (e is FirebaseException) {
-          print('❌ StreamerCardView: Firebase error code: ${e.code}');
-          print('❌ StreamerCardView: Firebase error message: ${e.message}');
+    // print('❌ StreamerCardView: Firebase error code: ${e.code}');
+    // print('❌ StreamerCardView: Firebase error message: ${e.message}');
         }
       }
       
@@ -696,7 +696,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 color: const Color(0xFF0E1220),
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha:0.1),
                     width: 1,
                   ),
                 ),
@@ -737,7 +737,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                         Text(
                           '@${username}',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha:0.7),
                             fontSize: 14,
                           ),
                         ),
@@ -757,14 +757,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                     children: [
                       Icon(
                         Icons.chat_bubble_outline,
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha:0.3),
                         size: 64,
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'Chat with ${displayName}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha:0.7),
                           fontSize: 18,
                         ),
                       ),
@@ -772,7 +772,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       Text(
                         'Chat ID: ${_selectedChat!['id']}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha:0.5),
                           fontSize: 12,
                         ),
                       ),
@@ -780,7 +780,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       Text(
                         'Chat functionality will be implemented here',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha:0.5),
                           fontSize: 14,
                         ),
                       ),
@@ -913,7 +913,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha:0.7),
             fontSize: 16,
             fontWeight: FontWeight.w600,
             height: 1.0,
@@ -973,9 +973,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ) : null,
-          color: onPressed == null ? Colors.grey.withOpacity(0.3) : null,
+          color: onPressed == null ? Colors.grey.withValues(alpha:0.3) : null,
           borderRadius: BorderRadius.circular(24),
-          border: onPressed == null ? Border.all(color: Colors.grey.withOpacity(0.5)) : null,
+          border: onPressed == null ? Border.all(color: Colors.grey.withValues(alpha:0.5)) : null,
         ),
         child: Center(
           child: isLoading
@@ -1026,10 +1026,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // MARK: - Follow Button Action Handler (Real-time Updates)
   void _handleFollowButtonTap() {
     if (kDebugMode) {
-      print("🔘 Follow button tapped for user: ${widget.userId}");
-      print("🔘 Current follow state: $_isFollowing");
-      print("🔘 Is followed by other: $_isFollowedByStreamer");
-      print("🔘 Is connected: $_isConnected");
+    // print("🔘 Follow button tapped for user: ${widget.userId}");
+    // print("🔘 Current follow state: $_isFollowing");
+    // print("🔘 Is followed by other: $_isFollowedByStreamer");
+    // print("🔘 Is connected: $_isConnected");
     }
     
     HapticFeedback.lightImpact();
@@ -1045,7 +1045,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (_isFollowingOperation) return; // Prevent multiple simultaneous operations
     
     if (kDebugMode) {
-      print("🔘 Following user: ${widget.userId}");
+    // print("🔘 Following user: ${widget.userId}");
     }
     
     // Store original state for rollback
@@ -1078,11 +1078,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       await _createFollowNotification();
       
       if (kDebugMode) {
-        print("✅ Successfully followed user: ${widget.userId}");
+    // print("✅ Successfully followed user: ${widget.userId}");
       }
     } catch (error) {
       if (kDebugMode) {
-        print("❌ Error following user: $error");
+    // print("❌ Error following user: $error");
       }
       
       // Rollback optimistic update
@@ -1118,7 +1118,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (_isUnfollowingOperation) return; // Prevent multiple simultaneous operations
     
     if (kDebugMode) {
-      print("🔘 Unfollowing user: ${widget.userId}");
+    // print("🔘 Unfollowing user: ${widget.userId}");
     }
     
     // Store original state for rollback
@@ -1150,11 +1150,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       await _removeFollowNotification();
       
       if (kDebugMode) {
-        print("✅ Successfully unfollowed user: ${widget.userId}");
+    // print("✅ Successfully unfollowed user: ${widget.userId}");
       }
     } catch (error) {
       if (kDebugMode) {
-        print("❌ Error unfollowing user: $error");
+    // print("❌ Error unfollowing user: $error");
       }
       
       // Rollback optimistic update
@@ -1253,7 +1253,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
     } catch (e) {
       if (kDebugMode) {
-        print("❌ Error navigating to player screen: $e");
+    // print("❌ Error navigating to player screen: $e");
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1287,7 +1287,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       });
     } catch (error) {
       if (kDebugMode) {
-        print("❌ Error updating follower count: $error");
+    // print("❌ Error updating follower count: $error");
       }
       // Don't throw here - follower count is not critical for follow operation
     }
@@ -1307,7 +1307,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       });
     } catch (error) {
       if (kDebugMode) {
-        print("❌ Error creating follow notification: $error");
+    // print("❌ Error creating follow notification: $error");
       }
       // Don't throw here - notification is not critical for follow operation
     }
@@ -1327,7 +1327,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (error) {
       if (kDebugMode) {
-        print("❌ Error removing follow notification: $error");
+    // print("❌ Error removing follow notification: $error");
       }
       // Don't throw here - notification cleanup is not critical
     }
@@ -1346,10 +1346,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       height: 56,
       margin: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(24),
           border: Border.all(
-          color: Colors.white.withOpacity(0.15),
+          color: Colors.white.withValues(alpha:0.15),
             width: 1,
           ),
         ),
@@ -1378,11 +1378,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           curve: Curves.easeInOut,
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-            color: isSelected ? Colors.white.withOpacity(0.08) : Colors.transparent,
+            color: isSelected ? Colors.white.withValues(alpha:0.08) : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: isSelected
                 ? Border.all(
-                    color: Colors.white.withOpacity(0.25),
+                    color: Colors.white.withValues(alpha:0.25),
                     width: 1,
                   )
                 : null,
@@ -1391,7 +1391,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             child: AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
             style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+                color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -1511,7 +1511,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: _getStatusColor(presence.status).withOpacity(0.5),
+                            color: _getStatusColor(presence.status).withValues(alpha:0.5),
                             blurRadius: 6,
                           ),
                         ],
@@ -1644,7 +1644,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 Text(
                   '@${_userData?['username'] ?? 'username'}',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.75),
+                    color: Colors.white.withValues(alpha:0.75),
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     height: 1.0,
@@ -1691,10 +1691,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
                 gradient: isSelected ? _selectedHashtagGradient : null,
-                color: isSelected ? null : Colors.white.withOpacity(0.1),
+                color: isSelected ? null : Colors.white.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha:0.2),
                   width: 1,
                         ),
                       ),
@@ -1985,7 +1985,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
       } catch (e) {
         if (kDebugMode) {
-          print('Error loading platforms: $e');
+    // print('Error loading platforms: $e');
         }
         setState(() {
           _platforms = [];
@@ -2015,7 +2015,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   );
                 } catch (e) {
                   if (kDebugMode) {
-                    print('Error creating CalendarEvent: $e');
+    // print('Error creating CalendarEvent: $e');
                   }
                   return null;
                 }
@@ -2031,7 +2031,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
       } catch (e) {
         if (kDebugMode) {
-          print('Error loading calendar events: $e');
+    // print('Error loading calendar events: $e');
         }
         setState(() {
           _calendarEvents = [];
@@ -2125,21 +2125,21 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               labelText: 'Event Title',
-              labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+              labelStyle: TextStyle(color: Colors.white.withValues(alpha:0.7)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Color(0xFF9248D2)),
               ),
               filled: true,
-              fillColor: Colors.white.withOpacity(0.1),
+              fillColor: Colors.white.withValues(alpha:0.1),
             ),
           ),
           const SizedBox(height: 16),
@@ -2148,21 +2148,21 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               labelText: 'Description (Optional)',
-              labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+              labelStyle: TextStyle(color: Colors.white.withValues(alpha:0.7)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Color(0xFF9248D2)),
               ),
               filled: true,
-              fillColor: Colors.white.withOpacity(0.1),
+              fillColor: Colors.white.withValues(alpha:0.1),
             ),
             maxLines: 3,
           ),
@@ -2175,9 +2175,9 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white.withOpacity(0.3)),
+                      border: Border.all(color: Colors.white.withValues(alpha:0.3)),
                       borderRadius: BorderRadius.circular(8),
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha:0.1),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2185,7 +2185,7 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                         Text(
                           'Date',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha:0.7),
                             fontSize: 12,
                           ),
                         ),
@@ -2206,9 +2206,9 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white.withOpacity(0.3)),
+                      border: Border.all(color: Colors.white.withValues(alpha:0.3)),
                       borderRadius: BorderRadius.circular(8),
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha:0.1),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2216,7 +2216,7 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                         Text(
                           'Time',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha:0.7),
                             fontSize: 12,
                           ),
                         ),

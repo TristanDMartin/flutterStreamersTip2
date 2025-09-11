@@ -99,11 +99,11 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
   }
 
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    // VideoPlayerView handles lifecycle management
-  }
+  // @override
+  // void didChangeAppLifecycleState(AppLifecycleState state) {
+  //   super.didChangeAppLifecycleState(state);
+  //   // VideoPlayerView handles lifecycle management
+  // }
 
   @override
   void dispose() {
@@ -408,7 +408,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
               children: [
                 // Main content - Full screen video that extends behind everything
                 Positioned.fill(
-                  child: Container(
+                  child: SizedBox(
                     width: double.infinity,
                     height: double.infinity,
                     child: _buildVideoContent(homeState),

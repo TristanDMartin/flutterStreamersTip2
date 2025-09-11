@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
-import 'package:giphy_picker/giphy_picker.dart';
+import 'package:giphy_picker/giphy_picker.dart'; // cspell:ignore giphy
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../models/chat.dart';
 import '../models/message.dart';
 import '../providers/chat_provider.dart';
 import '../providers/unread_messages_provider.dart';
-import '../config/giphy_config.dart';
+import '../config/giphy_config.dart'; // cspell:ignore giphy
 
 // Provider for ChatNotifier
 final chatNotifierProvider = StateNotifierProvider.family<ChatNotifier, ChatState, Chat>((ref, chat) {
@@ -200,7 +200,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       Text(
                         '@${_otherUserId.isNotEmpty ? _otherUserId.substring(0, 8) : 'user'}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha:0.6),
                           fontSize: 14,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -228,7 +228,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   Widget _buildDefaultAvatar() {
     return Container(
-      color: Colors.grey.withOpacity(0.3),
+      color: Colors.grey.withValues(alpha:0.3),
       child: Center(
         child: Text(
           _otherUserDisplayName.isNotEmpty ? _otherUserDisplayName[0].toUpperCase() : 'U',
@@ -259,7 +259,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
               height: 4,
               margin: const EdgeInsets.only(top: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -397,23 +397,23 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Colors.white.withOpacity(0.15),
-                          Colors.white.withOpacity(0.05),
+                          Colors.white.withValues(alpha:0.15),
+                          Colors.white.withValues(alpha:0.05),
                         ],
                       ),
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(24),
-                        topRight: const Radius.circular(24),
-                        bottomLeft: const Radius.circular(8),
-                        bottomRight: const Radius.circular(24),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(24),
+                        topRight: Radius.circular(24),
+                        bottomLeft: Radius.circular(8),
+                        bottomRight: Radius.circular(24),
                       ),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha:0.3),
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha:0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -433,7 +433,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                 return Container(
                                   width: 200,
                                   height: 150,
-                                  color: Colors.grey.withOpacity(0.3),
+                                  color: Colors.grey.withValues(alpha:0.3),
                                   child: const Center(
                                     child: Text(
                                       'GIF',
@@ -458,7 +458,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                       borderRadius: BorderRadius.circular(16),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
+                                          color: Colors.black.withValues(alpha:0.3),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         ),
@@ -503,19 +503,19 @@ class _ChatViewState extends ConsumerState<ChatView> {
                           Color(0xFF6A1B9A),
                         ],
                       ),
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(24),
-                        topRight: const Radius.circular(24),
-                        bottomLeft: const Radius.circular(24),
-                        bottomRight: const Radius.circular(8),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(24),
+                        topRight: Radius.circular(24),
+                        bottomLeft: Radius.circular(24),
+                        bottomRight: Radius.circular(8),
                       ),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha:0.3),
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF9248D2).withOpacity(0.3),
+                          color: const Color(0xFF9248D2).withValues(alpha:0.3),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -535,7 +535,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                 return Container(
                                   width: 200,
                                   height: 150,
-                                  color: Colors.grey.withOpacity(0.3),
+                                  color: Colors.grey.withValues(alpha:0.3),
                                   child: const Center(
                                     child: Text(
                                       'GIF',
@@ -560,7 +560,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                                       borderRadius: BorderRadius.circular(16),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
+                                          color: Colors.black.withValues(alpha:0.3),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         ),
@@ -615,7 +615,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     child: Text(
                       _formatTimestamp(message.timestamp),
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha:0.6),
                         fontSize: 12,
                       ),
                     ),
@@ -637,18 +637,18 @@ class _ChatViewState extends ConsumerState<ChatView> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF9248D2).withOpacity(0.8),
-            const Color(0xFF7B2CBF).withOpacity(0.8),
+            const Color(0xFF9248D2).withValues(alpha:0.8),
+            const Color(0xFF7B2CBF).withValues(alpha:0.8),
           ],
         ),
         shape: BoxShape.circle,
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF9248D2).withOpacity(0.3),
+            color: const Color(0xFF9248D2).withValues(alpha:0.3),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -718,10 +718,10 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     maxHeight: 120,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha:0.1),
                     borderRadius: BorderRadius.circular(25),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha:0.2),
                       width: 1,
                     ),
                   ),
@@ -759,7 +759,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha:0.1),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -829,7 +829,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
               height: 4,
               margin: const EdgeInsets.only(top: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -845,11 +845,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
             const SizedBox(height: 20),
             _buildGifOption(
               icon: Icons.gif_box_outlined,
-              title: 'Giphy GIFs',
+              title: 'Giphy GIFs', // cspell:ignore Giphy
               subtitle: 'Browse trending GIFs online',
               onTap: () {
                 Navigator.pop(context);
-                _showGiphyPicker();
+                _showGiphyPicker(); // cspell:ignore Giphy
               },
             ),
             _buildGifOption(
@@ -879,7 +879,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
         width: 50,
         height: 50,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 24),
@@ -895,7 +895,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
       subtitle: Text(
         subtitle,
         style: TextStyle(
-          color: Colors.white.withOpacity(0.7),
+          color: Colors.white.withValues(alpha:0.7),
           fontSize: 14,
         ),
       ),
@@ -903,13 +903,13 @@ class _ChatViewState extends ConsumerState<ChatView> {
     );
   }
 
-  void _showGiphyPicker() async {
+  void _showGiphyPicker() async { // cspell:ignore Giphy
     try {
-      final gif = await GiphyPicker.pickGif(
+      final gif = await GiphyPicker.pickGif( // cspell:ignore Giphy
         context: context,
-        apiKey: GiphyConfig.apiKey,
+        apiKey: GiphyConfig.apiKey, // cspell:ignore Giphy
         fullScreenDialog: false,
-        previewType: GiphyPreviewType.previewWebp,
+        previewType: GiphyPreviewType.previewWebp, // cspell:ignore Giphy Webp
       );
 
       if (gif != null && mounted) {
@@ -920,7 +920,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
       if (mounted) {
         String errorMessage = 'GIF picker temporarily unavailable';
         if (e.toString().contains('403') || e.toString().contains('banned')) {
-          errorMessage = 'GIF picker needs API key setup. Please get a free Giphy API key from https://developers.giphy.com/';
+          errorMessage = 'GIF picker needs API key setup. Please get a free Giphy API key from https://developers.giphy.com/'; // cspell:ignore Giphy
         }
         
         ScaffoldMessenger.of(context).showSnackBar(

@@ -328,13 +328,13 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: TabBar(
                 controller: _tabController,
                 indicator: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha:0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 labelColor: Colors.white,
@@ -428,7 +428,7 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
                   hintText: _selectedTabIndex == 0 ? 'Search messages' : 'Search shared drafts',
                   hintStyle: const TextStyle(color: Colors.white70),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.1),
+                  fillColor: Colors.white.withValues(alpha:0.1),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -468,7 +468,7 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha:0.3),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -571,7 +571,7 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
                     style: TextStyle(color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withOpacity(0.2),
+                    backgroundColor: Colors.white.withValues(alpha:0.2),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -621,7 +621,7 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
                     style: TextStyle(color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withOpacity(0.1),
+                    backgroundColor: Colors.white.withValues(alpha:0.1),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -810,17 +810,17 @@ class _ChatListItem extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [
                   isSelected 
-                      ? Colors.white.withOpacity(0.2)
-                      : Colors.white.withOpacity(0.1),
+                      ? Colors.white.withValues(alpha:0.2)
+                      : Colors.white.withValues(alpha:0.1),
                   isSelected 
-                      ? Colors.white.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.05),
+                      ? Colors.white.withValues(alpha:0.15)
+                      : Colors.white.withValues(alpha:0.05),
                 ],
               ),
               border: Border.all(
                 color: isSelected 
-                    ? Colors.white.withOpacity(0.3)
-                    : Colors.white.withOpacity(0.1),
+                    ? Colors.white.withValues(alpha:0.3)
+                    : Colors.white.withValues(alpha:0.1),
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -872,7 +872,7 @@ class _ChatListItem extends StatelessWidget {
                           Text(
                             _formatTimestamp(chat.lastTimestamp),
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha:0.6),
                               fontSize: 12,
                             ),
                           ),
@@ -885,7 +885,7 @@ class _ChatListItem extends StatelessWidget {
                             child: Text(
                               chat.lastMessage ?? 'No messages yet',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
+                                color: Colors.white.withValues(alpha:0.7),
                                 fontSize: 14,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -939,7 +939,7 @@ class _ChatListItem extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha:0.2),
                     width: 2,
                   ),
                 ),
@@ -976,7 +976,7 @@ class _ChatListItem extends StatelessWidget {
 
   Widget _buildDefaultAvatar(String displayName) {
     return Container(
-      color: Colors.grey.withOpacity(0.3),
+      color: Colors.grey.withValues(alpha:0.3),
       child: Center(
         child: Text(
           displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
@@ -1074,7 +1074,7 @@ class _EmptyInboxView extends StatelessWidget {
             style: TextStyle(color: Colors.white),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.white.withOpacity(0.2),
+            backgroundColor: Colors.white.withValues(alpha:0.2),
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             shape: RoundedRectangleBorder(

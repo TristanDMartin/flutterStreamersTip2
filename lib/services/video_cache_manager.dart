@@ -18,7 +18,7 @@ class VideoCacheManager extends ChangeNotifier {
   Future<VideoPlayerController?> getPlayerItem(String videoURL) async {
     // Check if we have a cached controller
     if (_assetCache.containsKey(videoURL)) {
-      print('📦 Using cached asset for: $videoURL');
+    // print('📦 Using cached asset for: $videoURL');
       return _assetCache[videoURL];
     }
     
@@ -38,7 +38,7 @@ class VideoCacheManager extends ChangeNotifier {
       } else if (videoURL.startsWith('file://')) {
         controller = VideoPlayerController.file(File(videoURL.replaceFirst('file://', '')));
       } else {
-        print('❌ Invalid video URL: $videoURL');
+    // print('❌ Invalid video URL: $videoURL');
         return null;
       }
       
@@ -48,11 +48,11 @@ class VideoCacheManager extends ChangeNotifier {
       // Cache the controller for future use
       await cacheController(controller, videoURL);
       
-      print('✅ Created and cached controller for: $videoURL');
+    // print('✅ Created and cached controller for: $videoURL');
       return controller;
       
     } catch (error) {
-      print('❌ Error creating player controller for $videoURL: $error');
+    // print('❌ Error creating player controller for $videoURL: $error');
       
       // Try fallback URLs for sample videos
       if (videoURL.contains('sample') || videoURL.contains('test')) {
@@ -78,16 +78,16 @@ class VideoCacheManager extends ChangeNotifier {
         // Cache the fallback controller with original URL key
         await cacheController(controller, originalURL);
         
-        print('✅ Used fallback URL for $originalURL: $fallbackURL');
+    // print('✅ Used fallback URL for $originalURL: $fallbackURL');
         return controller;
         
       } catch (error) {
-        print('⚠️ Fallback URL failed: $fallbackURL');
+    // print('⚠️ Fallback URL failed: $fallbackURL');
         continue;
       }
     }
     
-    print('❌ All fallback URLs failed for: $originalURL');
+    // print('❌ All fallback URLs failed for: $originalURL');
     return null;
   }
   
@@ -100,7 +100,7 @@ class VideoCacheManager extends ChangeNotifier {
       evictOldestItems();
     }
     
-    print('📦 Cached controller for: $videoURL (Total: ${_assetCache.length})');
+    // print('📦 Cached controller for: $videoURL (Total: ${_assetCache.length})');
     notifyListeners();
   }
   
@@ -110,7 +110,7 @@ class VideoCacheManager extends ChangeNotifier {
       final firstKey = _assetCache.keys.first;
       final controller = _assetCache.remove(firstKey);
       controller?.dispose();
-      print('🗑️ Evicted cached controller: $firstKey');
+    // print('🗑️ Evicted cached controller: $firstKey');
     }
   }
   
@@ -119,7 +119,7 @@ class VideoCacheManager extends ChangeNotifier {
       controller.dispose();
     }
     _assetCache.clear();
-    print('🧹 Cleared video cache due to memory warning');
+    // print('🧹 Cleared video cache due to memory warning');
     notifyListeners();
   }
   
@@ -146,7 +146,7 @@ class VideoCacheManager extends ChangeNotifier {
       controller.dispose();
     }
     _assetCache.clear();
-    print('🧹 Manually cleared video cache');
+    // print('🧹 Manually cleared video cache');
     notifyListeners();
   }
   

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -28,12 +29,12 @@ class BackgroundUploadService {
   Future<void> startUpload(String localId) async {
     final job = await _jobStorage.loadJob(localId);
     if (job == null) {
-      print('❌ Upload job not found: $localId');
+      log('❌ Upload job not found: $localId');
       return;
     }
 
     if (job.state != UploadJobState.queued) {
-      print('❌ Job is not in queued state: ${job.state}');
+      log('❌ Job is not in queued state: ${job.state}');
       return;
     }
 
@@ -49,7 +50,7 @@ class BackgroundUploadService {
       await _performUpload(job);
 
     } catch (e) {
-      print('❌ Error starting upload for job $localId: $e');
+      log('❌ Error starting upload for job $localId: $e');
       await _jobStorage.updateJobState(
         localId, 
         UploadJobState.failed, 
@@ -75,15 +76,15 @@ class BackgroundUploadService {
 
     try {
       // 1. Upload video file with chunked upload
-      print('📤 Starting chunked upload for job $localId');
+      log('📤 Starting chunked upload for job $localId');
       final videoUrl = await _uploadVideoFile(file, job.videoId ?? localId, user.uid, localId);
       
       // 2. Generate and upload thumbnail
-      print('🖼️ Generating thumbnail for job $localId');
+      log('🖼️ Generating thumbnail for job $localId');
       final thumbnailUrl = await _generateAndUploadThumbnail(file, job.videoId ?? localId, user.uid);
       
       // 3. Update Firestore with final video data
-      print('💾 Updating Firestore for job $localId');
+      log('💾 Updating Firestore for job $localId');
       await _updateVideoDocument(
         job.videoId ?? localId,
         user.uid,
@@ -96,10 +97,10 @@ class BackgroundUploadService {
       await _jobStorage.updateJobState(localId, UploadJobState.done);
       _resultControllers[localId]?.add(UploadResult.success(videoUrl, thumbnailUrl));
 
-      print('✅ Upload completed successfully for job $localId');
+      log('✅ Upload completed successfully for job $localId');
 
     } catch (e) {
-      print('❌ Upload failed for job $localId: $e');
+      log('❌ Upload failed for job $localId: $e');
       await _jobStorage.updateJobState(
         localId, 
         UploadJobState.failed, 
@@ -136,7 +137,7 @@ class BackgroundUploadService {
     uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
       final progress = snapshot.bytesTransferred / snapshot.totalBytes;
       _progressControllers[localId]?.add(progress);
-      print('📊 Upload progress for $localId: ${(progress * 100).toStringAsFixed(1)}%');
+      log('📊 Upload progress for $localId: ${(progress * 100).toStringAsFixed(1)}%');
     });
 
     // Wait for upload to complete

@@ -17,7 +17,7 @@ class CustomTabPicker extends StatefulWidget {
 class _CustomTabPickerState extends State<CustomTabPicker>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
-  late Animation<double> _animation;
+  // late Animation<double> _animation; // Unused field commented out
   
   final List<String> tabs = ["Photos", "Video", "Tagged"];
 
@@ -28,10 +28,10 @@ class _CustomTabPickerState extends State<CustomTabPicker>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    );
+    // _animation = CurvedAnimation(
+    //   parent: _animationController,
+    //   curve: Curves.easeInOut,
+    // );
   }
 
   @override

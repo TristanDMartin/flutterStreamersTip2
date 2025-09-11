@@ -1,3 +1,5 @@
+// cspell:ignore Favorited
+import 'dart:developer';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_video.dart';
@@ -71,7 +73,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
       
       state = state.copyWith(hasLoaded: true, isLoading: false);
     } catch (e) {
-      print('Error loading videos: $e');
+      log('Error loading videos: $e');
       state = state.copyWith(isLoading: false);
     }
   }
@@ -253,7 +255,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
       }
     } catch (e) {
-      print('Error fetching For You videos: $e');
+      log('Error fetching For You videos: $e');
     }
   }
 
@@ -302,7 +304,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
       }
     } catch (e) {
-      print('Error fetching ranked Following feed: $e');
+      log('Error fetching ranked Following feed: $e');
     }
   }
 
@@ -332,7 +334,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
           break;
       }
     } catch (e) {
-      print('Error loading more videos: $e');
+      log('Error loading more videos: $e');
     } finally {
       state = state.copyWith(isLoadingMore: false);
     }
@@ -349,7 +351,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         _updateVideoLikeState(videoId);
       }
     } catch (e) {
-      print('Error toggling like: $e');
+      log('Error toggling like: $e');
     }
   }
 
@@ -427,12 +429,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
   
   Future<void> syncLikeStates() async {
     // TODO: Implement like state synchronization
-    print('Syncing like states...');
+    log('Syncing like states...');
   }
 
   Future<void> syncFavoriteStates() async {
     // Sync favorite states from the new FavoritesService
-    print('Syncing favorite states from FavoritesService...');
+    log('Syncing favorite states from FavoritesService...');
     
     // Update For You videos
     final updatedForYouVideos = forYouVideos.map((video) {
@@ -454,7 +456,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> syncCommentCounts() async {
     // TODO: Implement comment count synchronization
-    print('Syncing comment counts...');
+    log('Syncing comment counts...');
   }
 
   // MARK: - Private Methods

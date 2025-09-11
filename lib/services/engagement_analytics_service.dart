@@ -165,7 +165,9 @@ class EngagementAnalyticsService {
       final watchTime = metadata['watchTime'] as double? ?? 0.0;
       if (watchTime > 0.8) {
         baseScore *= 1.5; // High completion rate
-      } else if (watchTime < 0.2) baseScore *= 0.5; // Low completion rate
+      } else if (watchTime < 0.2) {
+        baseScore *= 0.5; // Low completion rate
+      }
     }
 
     if (metadata.containsKey('isReplay')) {

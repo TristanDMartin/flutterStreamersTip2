@@ -54,9 +54,9 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
       ]);
 
       setState(() {
-        _connections = results[0] as List<User>;
-        _followers = results[1] as List<User>;
-        _following = results[2] as List<User>;
+        _connections = results[0];
+        _followers = results[1];
+        _following = results[2];
         _isLoading = false;
       });
     } catch (e) {
@@ -69,7 +69,7 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
 
   // Create dummy StreamerCard for testing
   StreamerCard _createDummyStreamerCard() {
-    return StreamerCard(
+    return const StreamerCard(
       id: 'dummy_streamer_123',
       username: 'teststreamer',
       displayName: 'Test Streamer',
@@ -221,7 +221,7 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.purple.withOpacity(0.3),
+                        color: Colors.purple.withValues(alpha: 0.3),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),
@@ -229,7 +229,7 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                   ),
                   child: Column(
                     children: [
-                      Row(
+                      const Row(
                         children: [
                           CircleAvatar(
                             radius: 30,

@@ -91,7 +91,7 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
     _debounceTimer = Timer(widget.debounceDelay, () {
       // Check if this is still the latest request
       if (_currentRequestId != null && _currentRequestId != requestId) {
-        print("🚫 Ignoring stale button press: $requestId (current: $_currentRequestId)");
+    // print("🚫 Ignoring stale button press: $requestId (current: $_currentRequestId)");
         return;
       }
       
@@ -134,7 +134,7 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
   Widget build(BuildContext context) {
     final isDisabled = !widget.enabled || shouldShowLoading;
     final backgroundColor = isDisabled 
-        ? Colors.grey.withOpacity(0.3)
+        ? Colors.grey.withValues(alpha:0.3)
         : (widget.backgroundColor ?? Theme.of(context).primaryColor);
     final textColor = isDisabled 
         ? Colors.grey[600] 

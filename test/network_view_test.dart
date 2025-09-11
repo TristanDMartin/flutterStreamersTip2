@@ -133,10 +133,10 @@ void main() {
 
   group('ConnectionRow Tests', () {
     testWidgets('ConnectionRow displays user information', (WidgetTester tester) async {
-      final user = user_model.User(
+      const user = user_model.User(
         id: 'test',
         displayName: 'Test User',
-        username: 'testuser',
+        username: 'test_user',
         avatarURL: 'https://example.com/avatar.jpg',
         onlineStatus: user_model.OnlineStatus.online,
         hashtags: ['test'],
@@ -158,7 +158,7 @@ void main() {
       );
 
       expect(find.text('Test User'), findsOneWidget);
-      expect(find.text('@testuser'), findsOneWidget);
+      expect(find.text('@test_user'), findsOneWidget);
     });
   });
 }

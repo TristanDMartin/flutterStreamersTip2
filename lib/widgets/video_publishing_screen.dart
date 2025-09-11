@@ -353,7 +353,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha:0.5),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -370,7 +370,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
+                  color: Colors.black.withValues(alpha:0.7),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
@@ -418,7 +418,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           Text(
             'Choose the category that best fits your video',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
               fontSize: 14,
             ),
           ),
@@ -426,10 +426,10 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           // Category Dropdown
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: Colors.white.withValues(alpha:0.05),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 width: 1,
               ),
             ),
@@ -487,7 +487,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha:0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -509,14 +509,14 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: 'Write a caption...',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -546,7 +546,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha:0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -575,7 +575,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha:0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -604,10 +604,10 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF9248D2).withOpacity(0.1),
+                color: const Color(0xFF9248D2).withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: const Color(0xFF9248D2).withOpacity(0.3),
+                  color: const Color(0xFF9248D2).withValues(alpha:0.3),
                 ),
               ),
               child: Row(
@@ -622,7 +622,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                     child: Text(
                       'Watermark will be added to your video for cross-platform sharing',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha:0.9),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -643,7 +643,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF0E1220),
         border: Border(
-          top: BorderSide(color: Colors.white.withOpacity(0.1)),
+          top: BorderSide(color: Colors.white.withValues(alpha:0.1)),
         ),
       ),
       child: Row(
@@ -654,7 +654,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
               child: Container(
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(25),
                 ),
                 child: const Center(
@@ -753,12 +753,12 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
         decoration: BoxDecoration(
           color: _hashtags.contains(hashtag)
               ? const Color(0xFF9248D2)
-              : Colors.white.withOpacity(0.1),
+              : Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: _hashtags.contains(hashtag)
                 ? const Color(0xFF9248D2)
-                : Colors.white.withOpacity(0.3),
+                : Colors.white.withValues(alpha:0.3),
           ),
         ),
         child: Text(
@@ -787,7 +787,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isSelected ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.3),
+                  color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.3),
                   width: 2,
                 ),
               ),
@@ -817,7 +817,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha:0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -845,10 +845,10 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.1),
+          color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.3),
+            color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.3),
           ),
         ),
         child: Row(
@@ -882,7 +882,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
 
     try {
       // 1. Run content moderation
-      print('🔍 Running content moderation...');
+    // print('🔍 Running content moderation...');
       final moderationResult = await _moderationService.moderateVideo(
         videoFile: widget.videoFile,
         caption: _caption,
@@ -909,12 +909,12 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
 
       // 2. Generate video ID and create optimistic video
       final videoId = _generateVideoId();
-      print('🎬 Creating optimistic video: $videoId');
+    // print('🎬 Creating optimistic video: $videoId');
 
       // Apply watermark if cross-platform sharing is selected
       File videoFileToUpload = widget.videoFile;
       if (_watermarkService.shouldApplyWatermark(_selectedPlatforms)) {
-        print('🎬 Applying watermark for cross-platform sharing...');
+    // print('🎬 Applying watermark for cross-platform sharing...');
         final watermarkedFile = await _watermarkService.addWatermarkToVideo(
           videoFile: widget.videoFile,
           selectedPlatforms: _selectedPlatforms,
@@ -945,7 +945,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
       );
 
       // 4. Start background upload
-      print('📤 Starting background upload...');
+    // print('📤 Starting background upload...');
       await _uploadStatusManager.startUpload(
         fileUri: videoFileToUpload.path,
         title: _caption,
@@ -973,7 +973,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
         _isModerating = false;
       });
 
-      print('❌ Error publishing video: $e');
+    // print('❌ Error publishing video: $e');
       _errorHandler.handleUploadError(
         operation: 'video_publishing',
         error: e,
@@ -1021,9 +1021,9 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                border: Border.all(color: Colors.red.withValues(alpha:0.3)),
               ),
               child: Text(
                 result.reason ?? 'Inappropriate content detected',

@@ -197,7 +197,7 @@ class AdvancedNetworkService extends ChangeNotifier {
         newConnectionsThisWeek: 0, // TODO: Calculate this
         newFollowersThisWeek: 0, // TODO: Calculate this
         averageConnectionStrength: connections.isNotEmpty 
-            ? connections.fold(0.0, (sum, c) => sum + c.connectionStrength) / connections.length 
+            ? connections.fold(0.0, (total, c) => total + c.connectionStrength) / connections.length 
             : 0.0,
         networkGrowthRate: 0.0, // TODO: Calculate this
         topHashtags: [], // TODO: Calculate this
@@ -476,8 +476,4 @@ class AdvancedNetworkService extends ChangeNotifier {
     }
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
 }

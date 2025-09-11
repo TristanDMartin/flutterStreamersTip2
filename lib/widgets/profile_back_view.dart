@@ -116,7 +116,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 // Events loaded successfully
               } else {
                 if (kDebugMode) {
-                  print('calendarEvents is not a List, got: ${eventsData.runtimeType}');
+    // print('calendarEvents is not a List, got: ${eventsData.runtimeType}');
                 }
               }
             }
@@ -141,14 +141,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 // Platforms loaded successfully
               } else {
                 if (kDebugMode) {
-                  print('platforms is not a List, got: ${platformsData.runtimeType}');
+    // print('platforms is not a List, got: ${platformsData.runtimeType}');
                 }
               }
             }
           }
         } else if (snapshot.hasError) {
           if (kDebugMode) {
-            print('Error loading data: ${snapshot.error}');
+    // print('Error loading data: ${snapshot.error}');
           }
         }
         
@@ -214,7 +214,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               Text(
                 'Please try again later',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha:0.7),
                   fontSize: 16,
                 ),
               ),
@@ -265,7 +265,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               Text(
                 'This profile may not exist',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha:0.7),
                   fontSize: 16,
                 ),
               ),
@@ -431,7 +431,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               alignment: Alignment.center,
               child: Text(
                 '#$tag',
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.white, 
                   fontSize: 16, 
                   fontWeight: FontWeight.w600,
@@ -914,8 +914,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         return 'Twitter';
       case 'instagram':
         return 'Instagram';
-      // cspell:ignore rednote
-      case 'rednote':
+      // cspell:ignore reddit
+      case 'reddit':
         return 'RedNote';
       default:
         return platformType;
@@ -1059,8 +1059,8 @@ class _ClickablePlatformRow extends StatelessWidget {
         return const Color(0xFF1DA1F2);
       case 'instagram':
         return const Color(0xFFE4405F);
-      // cspell:ignore rednote
-      case 'rednote':
+      // cspell:ignore reddit
+      case 'reddit':
         return const Color(0xFFFF4500);
       default:
         return Colors.grey;
@@ -1085,8 +1085,8 @@ class _ClickablePlatformRow extends StatelessWidget {
         return Icons.flutter_dash;
       case 'instagram':
         return Icons.camera_alt;
-      // cspell:ignore rednote
-      case 'rednote':
+      // cspell:ignore reddit
+      case 'reddit':
         return Icons.note;
       default:
         return Icons.link;
@@ -1111,8 +1111,8 @@ class _ClickablePlatformRow extends StatelessWidget {
         return 'Twitter';
       case 'instagram':
         return 'Instagram';
-      // cspell:ignore rednote
-      case 'rednote':
+      // cspell:ignore reddit
+      case 'reddit':
         return 'RedNote';
       default:
         return platformType;

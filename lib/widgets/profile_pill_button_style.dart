@@ -24,7 +24,7 @@ class _ProfilePillButtonState extends State<ProfilePillButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  bool _isPressed = false;
+  // bool _isPressed = false;
 
   @override
   void initState() {
@@ -50,28 +50,28 @@ class _ProfilePillButtonState extends State<ProfilePillButton>
 
   @override
   Widget build(BuildContext context) {
-    final textScaleFactor = MediaQuery.of(context).textScaleFactor;
-    final adaptivePadding = _getAdaptivePadding(textScaleFactor);
-    final adaptiveCornerRadius = _getAdaptiveCornerRadius(textScaleFactor);
+    final textScaler = MediaQuery.of(context).textScaler;
+    final adaptivePadding = _getAdaptivePadding(textScaler.scale(1.0));
+    final adaptiveCornerRadius = _getAdaptiveCornerRadius(textScaler.scale(1.0));
     
     return GestureDetector(
       onTapDown: (_) {
-        setState(() {
-          _isPressed = true;
-        });
+        // setState(() {
+        //   _isPressed = true;
+        // }); // Commented out as not needed for functionality
         _animationController.forward();
       },
       onTapUp: (_) {
-        setState(() {
-          _isPressed = false;
-        });
+        // setState(() {
+        //   _isPressed = false;
+        // }); // Commented out as not needed for functionality
         _animationController.reverse();
         widget.onPressed?.call();
       },
       onTapCancel: () {
-        setState(() {
-          _isPressed = false;
-        });
+        // setState(() {
+        //   _isPressed = false;
+        // }); // Commented out as not needed for functionality
         _animationController.reverse();
       },
       child: AnimatedBuilder(
@@ -95,13 +95,13 @@ class _ProfilePillButtonState extends State<ProfilePillButton>
                         end: Alignment.centerRight,
                       )
                     : null,
-                color: widget.isPrimary ? null : Colors.white.withOpacity(0.1),
+                color: widget.isPrimary ? null : Colors.white.withValues(alpha:0.1),
               ),
               child: Center(
                 child: Text(
                   widget.text,
                   style: TextStyle(
-                    fontSize: 16 * textScaleFactor,
+                    fontSize: 16 * textScaler.scale(1.0),
                     fontWeight: FontWeight.w600,
                     color: widget.isPrimary ? Colors.black : Colors.white,
                   ),
@@ -196,7 +196,7 @@ class ProfilePillButtonStyle extends ButtonStyle {
       if (isPrimary) {
         return Colors.transparent; // Use gradient instead
       } else {
-        return Colors.white.withOpacity(0.1);
+        return Colors.white.withValues(alpha:0.1);
       }
     });
   }
@@ -238,7 +238,7 @@ class ProfilePillButtonExample extends StatelessWidget {
                 text: "Follow",
                 isPrimary: true,
                 onPressed: () {
-                  print("Follow button tapped");
+                  // print("Follow button tapped"); // Commented out for production
                 },
               ),
               
@@ -248,7 +248,7 @@ class ProfilePillButtonExample extends StatelessWidget {
                 text: "Message",
                 isPrimary: false,
                 onPressed: () {
-                  print("Message button tapped");
+                  // print("Message button tapped"); // Commented out for production
                 },
               ),
               
@@ -258,7 +258,7 @@ class ProfilePillButtonExample extends StatelessWidget {
               ElevatedButton(
                 style: const ProfilePillButtonStyle(isPrimary: true),
                 onPressed: () {
-                  print("Follow button (style) tapped");
+                  // print("Follow button (style) tapped"); // Commented out for production
                 },
                 child: const Text("Follow (Style)"),
               ),

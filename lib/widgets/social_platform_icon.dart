@@ -46,10 +46,10 @@ class SocialPlatformIcon extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: backgroundColor ?? platform.brandColor.withOpacity(0.1),
+          color: backgroundColor ?? platform.brandColor.withValues(alpha:0.1),
           borderRadius: borderRadius ?? BorderRadius.circular(size * 0.2),
           border: border ?? Border.all(
-            color: platform.brandColor.withOpacity(0.3),
+            color: platform.brandColor.withValues(alpha:0.3),
             width: 1.0,
           ),
         ),
@@ -276,10 +276,10 @@ class SocialPlatformChip extends StatelessWidget {
           vertical: height * 0.2,
         ),
         decoration: BoxDecoration(
-          color: backgroundColor ?? platform.brandColor.withOpacity(0.1),
+          color: backgroundColor ?? platform.brandColor.withValues(alpha:0.1),
           borderRadius: borderRadius ?? BorderRadius.circular(height * 0.5),
           border: Border.all(
-            color: platform.brandColor.withOpacity(0.3),
+            color: platform.brandColor.withValues(alpha:0.3),
             width: 1.0,
           ),
         ),

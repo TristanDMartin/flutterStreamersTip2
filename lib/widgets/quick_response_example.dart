@@ -20,7 +20,7 @@ class QuickResponseExample extends StatelessWidget {
             // Basic Quick Response Button
             QuickResponseButton(
               onPressed: () {
-                print('Basic button tapped!');
+    // print('Basic button tapped!');
               },
               child: const Text(
                 'Basic Quick Response Button',
@@ -33,7 +33,7 @@ class QuickResponseExample extends StatelessWidget {
             // Custom styled button
             QuickResponseButton(
               onPressed: () {
-                print('Custom styled button tapped!');
+    // print('Custom styled button tapped!');
               },
               style: const QuickResponseButtonStyle(),
               child: const Text(
@@ -48,7 +48,7 @@ class QuickResponseExample extends StatelessWidget {
             const Text('Using Extension Methods:')
                 .quickResponseButton(
                   onPressed: () {
-                    print('Extension method button tapped!');
+    // print('Extension method button tapped!');
                   },
                 ),
             
@@ -58,7 +58,7 @@ class QuickResponseExample extends StatelessWidget {
             const Text('Haptic Feedback Button')
                 .hapticFeedback(
                   onTap: () {
-                    print('Haptic feedback button tapped!');
+    // print('Haptic feedback button tapped!');
                   },
                   type: HapticFeedbackType.mediumImpact,
                 ),
@@ -78,7 +78,7 @@ class QuickResponseExample extends StatelessWidget {
               ),
             ).alwaysResponsive(
               onTap: () {
-                print('Always responsive area tapped!');
+    // print('Always responsive area tapped!');
               },
             ),
             

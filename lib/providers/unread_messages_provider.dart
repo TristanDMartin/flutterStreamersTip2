@@ -113,9 +113,9 @@ class UnreadMessagesService {
       }
       
       await batch.commit();
-      print('✅ Marked chat $chatId as read for user ${currentUser.uid}');
+    // print('✅ Marked chat $chatId as read for user ${currentUser.uid}');
     } catch (e) {
-      print('❌ Error marking chat as read: $e');
+    // print('❌ Error marking chat as read: $e');
     }
   }
   
@@ -134,7 +134,7 @@ class UnreadMessagesService {
         'readBy': FieldValue.arrayUnion([currentUser.uid])
       });
     } catch (e) {
-      print('❌ Error marking message as read: $e');
+    // print('❌ Error marking message as read: $e');
     }
   }
   
@@ -155,9 +155,9 @@ class UnreadMessagesService {
         await markChatAsRead(chatDoc.id);
       }
       
-      print('✅ Marked all visible messages as read');
+    // print('✅ Marked all visible messages as read');
     } catch (e) {
-      print('❌ Error marking all messages as read: $e');
+    // print('❌ Error marking all messages as read: $e');
     }
   }
 }

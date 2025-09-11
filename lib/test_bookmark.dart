@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'models/calendar_event.dart';
 import 'services/enhanced_bookmark_service.dart';
@@ -29,11 +28,11 @@ class _BookmarkTestPageState extends State<BookmarkTestPage> {
     try {
       await _bookmarkService.initialize();
       if (kDebugMode) {
-        print('✅ BookmarkTestPage: Service initialized successfully');
+    // print('✅ BookmarkTestPage: Service initialized successfully');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ BookmarkTestPage: Error initializing service: $e');
+    // print('❌ BookmarkTestPage: Error initializing service: $e');
       }
       setState(() {
         _error = 'Failed to initialize service: $e';
@@ -72,7 +71,7 @@ class _BookmarkTestPageState extends State<BookmarkTestPage> {
       });
 
       if (kDebugMode) {
-        print('✅ BookmarkTestPage: Event bookmarked successfully');
+    // print('✅ BookmarkTestPage: Event bookmarked successfully');
       }
     } catch (e) {
       setState(() {
@@ -80,7 +79,7 @@ class _BookmarkTestPageState extends State<BookmarkTestPage> {
       });
 
       if (kDebugMode) {
-        print('❌ BookmarkTestPage: Error bookmarking event: $e');
+    // print('❌ BookmarkTestPage: Error bookmarking event: $e');
       }
     } finally {
       setState(() {
@@ -105,7 +104,7 @@ class _BookmarkTestPageState extends State<BookmarkTestPage> {
       });
 
       if (kDebugMode) {
-        print('✅ BookmarkTestPage: Bookmark deleted successfully');
+    // print('✅ BookmarkTestPage: Bookmark deleted successfully');
       }
     } catch (e) {
       setState(() {
@@ -113,7 +112,7 @@ class _BookmarkTestPageState extends State<BookmarkTestPage> {
       });
 
       if (kDebugMode) {
-        print('❌ BookmarkTestPage: Error deleting bookmark: $e');
+    // print('❌ BookmarkTestPage: Error deleting bookmark: $e');
       }
     } finally {
       setState(() {
@@ -159,7 +158,7 @@ class _BookmarkTestPageState extends State<BookmarkTestPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
                   border: Border.all(color: Colors.red),
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -172,7 +171,7 @@ class _BookmarkTestPageState extends State<BookmarkTestPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: Colors.green.withValues(alpha: 0.1),
                   border: Border.all(color: Colors.green),
                   borderRadius: BorderRadius.circular(8),
                 ),

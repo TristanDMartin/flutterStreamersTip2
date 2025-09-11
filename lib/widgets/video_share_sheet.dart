@@ -18,8 +18,8 @@ class VideoShareSheet extends StatefulWidget {
 }
 
 class _VideoShareSheetState extends State<VideoShareSheet> {
-  bool _showAnalytics = false;
-  bool _showDeleteAlert = false;
+  // bool _showAnalytics = false;
+  // bool _showDeleteAlert = false;
   bool _isOwnVideo = false;
 
   // Mock data - replace with real data
@@ -155,7 +155,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
                         height: 60,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.grey.withOpacity(0.3),
+                          color: Colors.grey.withValues(alpha: 0.3),
                         ),
                         child: Center(
                           child: Text(
@@ -252,9 +252,9 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
               icon: Icons.analytics,
               color: Colors.blue,
               onTap: () {
-                setState(() {
-                  _showAnalytics = true;
-                });
+                // setState(() {
+                //   _showAnalytics = true;
+                // });
               },
             ),
             
@@ -274,9 +274,9 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
               icon: Icons.delete,
               color: Colors.red,
               onTap: () {
-                setState(() {
-                  _showDeleteAlert = true;
-                });
+                // setState(() {
+                //   _showDeleteAlert = true;
+                // });
               },
             ),
           ],
@@ -341,7 +341,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   // MARK: - Actions
 
   void _sendToFriend(String friend) {
-    print("📤 Sending video to $friend");
+    // print("📤 Sending video to $friend");
     // Implement in-app sharing
     widget.onDismiss?.call();
   }
@@ -349,7 +349,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   void _copyLink() {
     final videoLink = "https://streamerstip.com/video/${widget.video.id}";
     Clipboard.setData(ClipboardData(text: videoLink));
-    print("📋 Copied link: $videoLink");
+    // print("📋 Copied link: $videoLink");
     widget.onDismiss?.call();
   }
 
@@ -398,14 +398,14 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   }
 
   void _shareViaSystem() {
-    final videoLink = "https://streamerstip.com/video/${widget.video.id}";
+    // final videoLink = "https://streamerstip.com/video/${widget.video.id}";
     // TODO: Implement system share sheet
-    print("📤 Sharing via system: $videoLink");
+    // print("📤 Sharing via system: $videoLink");
     widget.onDismiss?.call();
   }
 
   void _downloadVideo() {
-    print("📥 Downloading video: ${widget.video.id}");
+    // print("📥 Downloading video: ${widget.video.id}");
     // Implement video download
     widget.onDismiss?.call();
   }
@@ -414,7 +414,7 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
-      print("Could not launch $uri");
+    // print("Could not launch $uri");
     }
   }
 }
@@ -494,7 +494,7 @@ class VideoShareActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.grey.withOpacity(0.1),
+          color: Colors.grey.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -639,7 +639,7 @@ class AnalyticsRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.1),
+        color: Colors.grey.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(

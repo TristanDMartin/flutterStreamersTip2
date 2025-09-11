@@ -172,7 +172,7 @@ class VideoCardWithFavorites extends ConsumerWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.8),
+            color: Colors.orange.withValues(alpha:0.8),
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Text(
@@ -188,7 +188,7 @@ class VideoCardWithFavorites extends ConsumerWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.8),
+            color: Colors.red.withValues(alpha:0.8),
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Text(
@@ -204,7 +204,7 @@ class VideoCardWithFavorites extends ConsumerWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.grey.withOpacity(0.8),
+            color: Colors.grey.withValues(alpha:0.8),
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Text(

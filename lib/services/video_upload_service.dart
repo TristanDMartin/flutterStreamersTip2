@@ -43,7 +43,7 @@ class VideoUploadService {
   }) async {
     try {
       // 1. Pre-upload moderation check
-      print('🔍 Starting video moderation...');
+    // print('🔍 Starting video moderation...');
       final moderationResult = await _moderationService.moderateVideo(
         videoFile: videoFile,
         caption: caption,
@@ -52,7 +52,7 @@ class VideoUploadService {
       );
 
       if (!moderationResult.isApproved) {
-        print('❌ Video rejected by moderation: ${moderationResult.reason}');
+    // print('❌ Video rejected by moderation: ${moderationResult.reason}');
         return VideoUploadResult(
           success: false,
           error: 'Content rejected: ${moderationResult.reason}',
@@ -67,7 +67,7 @@ class VideoUploadService {
         );
       }
 
-      print('✅ Video passed moderation checks');
+    // print('✅ Video passed moderation checks');
 
       // 2. Get current user
       final user = _auth.currentUser;
@@ -83,7 +83,7 @@ class VideoUploadService {
       final userId = user.uid;
 
       // 4. Upload video to Firebase Storage
-      print('📤 Uploading video to storage...');
+    // print('📤 Uploading video to storage...');
       final videoUrl = await _uploadVideoFile(videoFile, videoId, userId);
       if (videoUrl == null) {
         return const VideoUploadResult(
@@ -93,11 +93,11 @@ class VideoUploadService {
       }
 
       // 5. Generate and upload thumbnail
-      print('🖼️ Generating thumbnail...');
+    // print('🖼️ Generating thumbnail...');
       final thumbnailUrl = await _generateAndUploadThumbnail(videoFile, videoId, userId);
 
       // 6. Create video document in Firestore
-      print('💾 Saving video metadata to Firestore...');
+    // print('💾 Saving video metadata to Firestore...');
       final videoData = {
         'id': videoId,
         'userId': userId,
@@ -145,7 +145,7 @@ class VideoUploadService {
       final category = additionalMetadata?['category'] as String?;
       await _addToFeeds(videoId, privacy, userId, category: category);
 
-      print('✅ Video uploaded successfully!');
+    // print('✅ Video uploaded successfully!');
       return VideoUploadResult(
         success: true,
         videoUrl: videoUrl,
@@ -171,7 +171,7 @@ class VideoUploadService {
           'privacy': privacy,
         },
       );
-      print('❌ Video upload failed: $e');
+    // print('❌ Video upload failed: $e');
       return VideoUploadResult(
         success: false,
         error: 'Upload failed: ${e.toString()}',
@@ -290,7 +290,7 @@ class VideoUploadService {
           'file_size': await videoFile.length(),
         },
       );
-      print('Error uploading video file: $e');
+    // print('Error uploading video file: $e');
       return null;
     }
   }
@@ -302,7 +302,7 @@ class VideoUploadService {
       // For now, return a placeholder
       return 'https://via.placeholder.com/300x400/9248D2/FFFFFF?text=Thumbnail';
     } catch (e) {
-      print('Error generating thumbnail: $e');
+    // print('Error generating thumbnail: $e');
       return null;
     }
   }
@@ -315,7 +315,7 @@ class VideoUploadService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error updating user video count: $e');
+    // print('Error updating user video count: $e');
     }
   }
 
@@ -332,7 +332,7 @@ class VideoUploadService {
         'addedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error adding to user profile: $e');
+    // print('Error adding to user profile: $e');
     }
   }
 
@@ -349,7 +349,7 @@ class VideoUploadService {
         'addedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error adding to user drafts: $e');
+    // print('Error adding to user drafts: $e');
     }
   }
 
@@ -395,10 +395,10 @@ class VideoUploadService {
           'category': category,
           'addedAt': FieldValue.serverTimestamp(),
         });
-        print('✅ Added video to category feed: $category');
+    // print('✅ Added video to category feed: $category');
       }
     } catch (e) {
-      print('Error adding to feeds: $e');
+    // print('Error adding to feeds: $e');
     }
   }
 
@@ -418,7 +418,7 @@ class VideoUploadService {
 
       return snapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-      print('Error getting user videos: $e');
+    // print('Error getting user videos: $e');
       return [];
     }
   }
@@ -435,7 +435,7 @@ class VideoUploadService {
 
       return snapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-      print('Error getting user drafts: $e');
+    // print('Error getting user drafts: $e');
       return [];
     }
   }

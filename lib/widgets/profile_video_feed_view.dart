@@ -437,31 +437,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   // Sample data methods - replace with actual data sources
-  List<Map<String, dynamic>> _getSampleUserVideos() {
-    return [
-      {
-        'id': 'user_video_1',
-        'title': 'My First Video',
-        'likes': '1.2K',
-        'duration': '0:45',
-        'thumbnail': 'https://example.com/thumb1.jpg',
-      },
-      {
-        'id': 'user_video_2',
-        'title': 'Gaming Highlights',
-        'likes': '3.4K',
-        'duration': '1:23',
-        'thumbnail': 'https://example.com/thumb2.jpg',
-      },
-      {
-        'id': 'user_video_3',
-        'title': 'Tutorial Series',
-        'likes': '856',
-        'duration': '2:15',
-        'thumbnail': 'https://example.com/thumb3.jpg',
-      },
-    ];
-  }
+  // List<Map<String, dynamic>> _getSampleUserVideos() {
+  //   // Unused method commented out
+  // }
 
   List<Map<String, dynamic>> _getSampleTaggedVideos() {
     return [

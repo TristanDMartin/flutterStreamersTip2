@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'bookmark_view.dart';
 
 class BookmarkDemo extends StatelessWidget {
   const BookmarkDemo({super.key});

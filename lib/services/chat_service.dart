@@ -14,7 +14,7 @@ class ChatService {
   Future<Chat?> fetchOrCreateChat(String otherUID) async {
     final me = _auth.currentUser?.uid;
     if (me == null) {
-      print("No current user signed in");
+    // print("No current user signed in");
       return null;
     }
 
@@ -53,7 +53,7 @@ class ChatService {
 
       return null;
     } catch (e) {
-      print("Error in fetchOrCreateChat: $e");
+    // print("Error in fetchOrCreateChat: $e");
       return null;
     }
   }
@@ -66,7 +66,7 @@ class ChatService {
   }) async {
     final me = _auth.currentUser?.uid;
     if (me == null) {
-      print("No current user signed in");
+    // print("No current user signed in");
       return;
     }
 
@@ -120,7 +120,7 @@ class ChatService {
         onRealChatFetched(realChat);
       }
     } catch (e) {
-      print("Error in createPlaceholderAndFetchChat: $e");
+    // print("Error in createPlaceholderAndFetchChat: $e");
     }
   }
 
@@ -144,7 +144,7 @@ class ChatService {
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print("Error updating last message: $e");
+    // print("Error updating last message: $e");
     }
   }
 
@@ -154,7 +154,7 @@ class ChatService {
         "lastReadTimestamp": FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print("Error marking chat as read: $e");
+    // print("Error marking chat as read: $e");
     }
   }
 
@@ -174,7 +174,7 @@ class ChatService {
         return chat.copyWith(id: doc.id);
       }).toList();
     } catch (e) {
-      print("Error getting user chats: $e");
+    // print("Error getting user chats: $e");
       return [];
     }
   }
@@ -183,7 +183,7 @@ class ChatService {
     try {
       await _firestore.collection("chats").doc(chatId).delete();
     } catch (e) {
-      print("Error deleting chat: $e");
+    // print("Error deleting chat: $e");
     }
   }
 
@@ -196,9 +196,9 @@ class ChatService {
         batch.delete(chatRef);
       }
       await batch.commit();
-      print("✅ Deleted ${chatIds.length} chats");
+    // print("✅ Deleted ${chatIds.length} chats");
     } catch (e) {
-      print("Error deleting multiple chats: $e");
+    // print("Error deleting multiple chats: $e");
       rethrow;
     }
   }
@@ -209,7 +209,7 @@ class ChatService {
         "mutedBy": FieldValue.arrayUnion([userId]),
       });
     } catch (e) {
-      print("Error muting chat: $e");
+    // print("Error muting chat: $e");
       rethrow;
     }
   }
@@ -220,7 +220,7 @@ class ChatService {
         "mutedBy": FieldValue.arrayRemove([userId]),
       });
     } catch (e) {
-      print("Error unmuting chat: $e");
+    // print("Error unmuting chat: $e");
       rethrow;
     }
   }
@@ -235,9 +235,9 @@ class ChatService {
         });
       }
       await batch.commit();
-      print("✅ Muted ${chatIds.length} chats");
+    // print("✅ Muted ${chatIds.length} chats");
     } catch (e) {
-      print("Error muting multiple chats: $e");
+    // print("Error muting multiple chats: $e");
       rethrow;
     }
   }
@@ -248,7 +248,7 @@ class ChatService {
         "archivedBy": FieldValue.arrayUnion([userId]),
       });
     } catch (e) {
-      print("Error archiving chat: $e");
+    // print("Error archiving chat: $e");
       rethrow;
     }
   }
@@ -263,9 +263,9 @@ class ChatService {
         });
       }
       await batch.commit();
-      print("✅ Archived ${chatIds.length} chats");
+    // print("✅ Archived ${chatIds.length} chats");
     } catch (e) {
-      print("Error archiving multiple chats: $e");
+    // print("Error archiving multiple chats: $e");
       rethrow;
     }
   }
@@ -303,7 +303,7 @@ class ChatService {
 
       return null;
     } catch (e) {
-      print("Error creating group chat: $e");
+    // print("Error creating group chat: $e");
       return null;
     }
   }
@@ -314,7 +314,7 @@ class ChatService {
         "participants": FieldValue.arrayUnion([participantId]),
       });
     } catch (e) {
-      print("Error adding participant to group: $e");
+    // print("Error adding participant to group: $e");
     }
   }
 
@@ -324,7 +324,7 @@ class ChatService {
         "participants": FieldValue.arrayRemove([participantId]),
       });
     } catch (e) {
-      print("Error removing participant from group: $e");
+    // print("Error removing participant from group: $e");
     }
   }
 
@@ -342,7 +342,7 @@ class ChatService {
         await _firestore.collection("chats").doc(chatId).update(updates);
       }
     } catch (e) {
-      print("Error updating group info: $e");
+    // print("Error updating group info: $e");
     }
   }
 
@@ -350,7 +350,7 @@ class ChatService {
   Future<void> createSampleChats() async {
     final me = _auth.currentUser?.uid;
     if (me == null) {
-      print("No current user signed in");
+    // print("No current user signed in");
       return;
     }
 
@@ -455,9 +455,9 @@ class ChatService {
         }
       }
 
-      print('✅ Created sample chats for testing');
+    // print('✅ Created sample chats for testing');
     } catch (e) {
-      print('❌ Error creating sample chats: $e');
+    // print('❌ Error creating sample chats: $e');
     }
   }
 
@@ -521,9 +521,9 @@ class ChatService {
         });
       }
       
-      print('✅ Added sample messages to chat $chatId');
+    // print('✅ Added sample messages to chat $chatId');
     } catch (e) {
-      print('❌ Error adding sample messages: $e');
+    // print('❌ Error adding sample messages: $e');
     }
   }
 }

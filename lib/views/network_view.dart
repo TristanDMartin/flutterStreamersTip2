@@ -23,11 +23,11 @@ import '../services/sample_data_generator.dart'; // For sample data generation
 /// This file implements the complete NetworkView design specification with:
 /// 
 /// 🏗️ Architecture:
-/// - Three-tier design system with glass morphism and gradient effects
+/// - Three-tier design system with glass morphism and gradient effects // cspell:ignore morphism
 /// - Background gradient, tab buttons, divider, and main list
 /// 
 /// 🎨 Design Principles:
-/// - Glass morphism with ultra-thin material backgrounds
+/// - Glass morphism with ultra-thin material backgrounds // cspell:ignore morphism
 /// - Purple-to-blue gradient theme with white text on dark backgrounds
 /// - Layered shadows for elevation and translucent borders
 /// - Consistent opacity levels and status-based color coding
@@ -136,7 +136,7 @@ class RelationshipService extends ChangeNotifier {
       postCount: data['postCount'] ?? 0,
       followerCount: data['followerCount'] ?? 0,
       followingCount: data['followingCount'] ?? 0,
-      calendarEvents: [],
+      calendarEvents: const [],
     );
   }
 
@@ -180,7 +180,7 @@ class RelationshipService extends ChangeNotifier {
           .get();
       
       if (snap.docs.isEmpty) {
-        print('🔍 RelationshipService: Not following user ${u.id}');
+    // print('🔍 RelationshipService: Not following user ${u.id}');
         return; // Not following
       }
       
@@ -197,10 +197,10 @@ class RelationshipService extends ChangeNotifier {
       await _removeFollowNotification(uid, u.id);
       
       // 5. Real-time listeners update UI (handled by Firestore listeners)
-      print('✅ RelationshipService: Successfully unfollowed user ${u.id}');
+    // print('✅ RelationshipService: Successfully unfollowed user ${u.id}');
       
     } catch (e) {
-      print('❌ RelationshipService: Error unfollowing user ${u.id}: $e');
+    // print('❌ RelationshipService: Error unfollowing user ${u.id}: $e'); // cspell:ignore unfollowing
       rethrow;
     }
   }
@@ -218,7 +218,7 @@ class RelationshipService extends ChangeNotifier {
           .get();
       
       if (snap.docs.isEmpty) {
-        print('🔍 RelationshipService: User ${u.id} is not following current user');
+    // print('🔍 RelationshipService: User ${u.id} is not following current user');
         return; // Not a follower
       }
       
@@ -232,10 +232,10 @@ class RelationshipService extends ChangeNotifier {
       await _updateFollowingCount(u.id, -1);
       
       // 4. Real-time listeners update UI (handled by Firestore listeners)
-      print('✅ RelationshipService: Successfully removed follower ${u.id}');
+    // print('✅ RelationshipService: Successfully removed follower ${u.id}');
       
     } catch (e) {
-      print('❌ RelationshipService: Error removing follower ${u.id}: $e');
+    // print('❌ RelationshipService: Error removing follower ${u.id}: $e');
       rethrow;
     }
   }
@@ -302,10 +302,10 @@ class RelationshipService extends ChangeNotifier {
         });
       }
       
-      print('✅ Created sample relationships for testing');
+    // print('✅ Created sample relationships for testing');
       
     } catch (e) {
-      print('❌ Error creating sample relationships: $e');
+    // print('❌ Error creating sample relationships: $e');
     }
     
     await bindLive();
@@ -324,7 +324,7 @@ class RelationshipService extends ChangeNotifier {
           .get();
       
       if (existing.docs.isNotEmpty) {
-        print('🔍 RelationshipService: Already following user $userId');
+    // print('🔍 RelationshipService: Already following user $userId');
         return; // Already following
       }
       
@@ -342,13 +342,13 @@ class RelationshipService extends ChangeNotifier {
       // 4. Create follow notification
       await _createFollowNotification(uid, userId);
       
-      print('✅ RelationshipService: Successfully followed user $userId');
+    // print('✅ RelationshipService: Successfully followed user $userId');
       
       // Track analytics
       await NetworkAnalyticsService.trackFollow(userId, 'User');
       
     } catch (e) {
-      print('❌ RelationshipService: Error following user $userId: $e');
+    // print('❌ RelationshipService: Error following user $userId: $e');
       await NetworkAnalyticsService.trackError('follow_error', e.toString());
       rethrow;
     }
@@ -360,7 +360,7 @@ class RelationshipService extends ChangeNotifier {
         'followerCount': FieldValue.increment(increment),
       });
     } catch (e) {
-      print('❌ Error updating follower count: $e');
+    // print('❌ Error updating follower count: $e');
     }
   }
 
@@ -370,7 +370,7 @@ class RelationshipService extends ChangeNotifier {
         'followingCount': FieldValue.increment(increment),
       });
     } catch (e) {
-      print('❌ Error updating following count: $e');
+    // print('❌ Error updating following count: $e');
     }
   }
 
@@ -390,10 +390,10 @@ class RelationshipService extends ChangeNotifier {
           'timestamp': FieldValue.serverTimestamp(),
           'read': false,
         });
-        print('✅ Created follow notification for user $followingId');
+    // print('✅ Created follow notification for user $followingId');
       }
     } catch (e) {
-      print('❌ Error creating follow notification: $e');
+    // print('❌ Error creating follow notification: $e');
     }
   }
 
@@ -410,9 +410,9 @@ class RelationshipService extends ChangeNotifier {
       for (final doc in notificationQuery.docs) {
         await doc.reference.delete();
       }
-      print('✅ Removed follow notification for user $followingId');
+    // print('✅ Removed follow notification for user $followingId');
     } catch (e) {
-      print('❌ Error removing follow notification: $e');
+    // print('❌ Error removing follow notification: $e');
     }
   }
 }
@@ -463,7 +463,7 @@ class NetworkViewModel extends ChangeNotifier {
         try {
       await _relationshipService!.createSampleRelationships();
         } catch (e) {
-          print('❌ Failed to create sample relationships: $e');
+    // print('❌ Failed to create sample relationships: $e');
           // Create mock data as fallback
           _createMockData();
         }
@@ -475,7 +475,7 @@ class NetworkViewModel extends ChangeNotifier {
   void _createMockData() {
     // Create mock users for testing
     final mockUsers = [
-      user_model.User(
+      const user_model.User(
         id: 'mock1',
         displayName: 'T M',
         username: 'tm1753647359',
@@ -488,10 +488,10 @@ class NetworkViewModel extends ChangeNotifier {
         followingCount: 89,
         calendarEvents: [],
       ),
-      user_model.User(
+      const user_model.User(
         id: 'mock2',
         displayName: 'Sarah Johnson',
-        username: 'sarahj',
+        username: 'sarahj', // cspell:ignore sarahj
         avatarURL: 'https://picsum.photos/200/200?random=2',
         onlineStatus: user_model.OnlineStatus.offline,
         hashtags: ['art', 'design'],
@@ -501,10 +501,10 @@ class NetworkViewModel extends ChangeNotifier {
         followingCount: 156,
         calendarEvents: [],
       ),
-      user_model.User(
+      const user_model.User(
         id: 'mock3',
         displayName: 'Mike Chen',
-        username: 'mikechen',
+        username: 'mikechen', // cspell:ignore mikechen
         avatarURL: 'https://picsum.photos/200/200?random=3',
         onlineStatus: user_model.OnlineStatus.streaming,
         hashtags: ['tech', 'programming'],
@@ -521,7 +521,7 @@ class NetworkViewModel extends ChangeNotifier {
     followers = [mockUsers[1]]; // Sarah follows you
     following = [mockUsers[2]]; // You follow Mike
     
-    print('✅ Created mock data for testing');
+    // print('✅ Created mock data for testing');
   }
 
 
@@ -582,34 +582,34 @@ class NetworkCardButton extends StatelessWidget {
       end: Alignment.bottomRight,
     );
 
-    // Glass morphism effect - exact specification
+    // Glass morphism effect - exact specification // cspell:ignore morphism
     final cardGlass = BoxDecoration(
       borderRadius: BorderRadius.circular(24), // 24 points corner radius
       gradient: LinearGradient(
         colors: [
-          Colors.white.withOpacity(0.3),
-          Colors.white.withOpacity(0.15),
-          Colors.white.withOpacity(0.08),
-          Colors.white.withOpacity(0.02),
+          Colors.white.withValues(alpha:0.3),
+          Colors.white.withValues(alpha:0.15),
+          Colors.white.withValues(alpha:0.08),
+          Colors.white.withValues(alpha:0.02),
         ],
         begin: Alignment.topLeft, // .topLeading
         end: Alignment.bottomRight, // .bottomTrailing
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.white.withOpacity(0.15), 
+          color: Colors.white.withValues(alpha:0.15), 
           blurRadius: 12, 
           offset: const Offset(0, 6)
         ),
         BoxShadow(
-          color: Colors.black.withOpacity(0.10), 
+          color: Colors.black.withValues(alpha:0.10), 
           blurRadius: 8, 
           offset: const Offset(0, 4)
         ),
       ],
       border: Border.all(
         width: 2,
-        color: Colors.white.withOpacity(0.25), // Gradient stroke
+        color: Colors.white.withValues(alpha:0.25), // Gradient stroke
       ),
     );
 
@@ -957,7 +957,7 @@ class _NetworkViewState extends State<NetworkView> {
   List<user_model.User> _generateSuggestedUsers() {
     // Generate mock suggested users based on mutual connections
     return [
-      user_model.User(
+      const user_model.User(
         id: 'suggested_1',
         displayName: 'Gaming Pro',
         username: 'gaming_pro',
@@ -975,7 +975,7 @@ class _NetworkViewState extends State<NetworkView> {
         calendarEvents: [],
         hashtags: ['gaming', 'streaming', 'esports'],
       ),
-      user_model.User(
+      const user_model.User(
         id: 'suggested_2',
         displayName: 'Art Creator',
         username: 'art_creator',
@@ -993,7 +993,7 @@ class _NetworkViewState extends State<NetworkView> {
         calendarEvents: [],
         hashtags: ['art', 'digital', 'creative'],
       ),
-      user_model.User(
+      const user_model.User(
         id: 'suggested_3',
         displayName: 'Music Maker',
         username: 'music_maker',
@@ -1111,13 +1111,13 @@ class _NetworkViewState extends State<NetworkView> {
               height: 4,
               margin: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             // Title
-            Padding(
-              padding: const EdgeInsets.all(20),
+            const Padding(
+              padding: EdgeInsets.all(20),
               child: Text(
                 'Sort by',
                 style: TextStyle(
@@ -1143,12 +1143,12 @@ class _NetworkViewState extends State<NetworkView> {
     return ListTile(
       leading: Icon(
         icon,
-        color: isSelected ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.7),
+        color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.7),
       ),
       title: Text(
         title,
         style: TextStyle(
-          color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+          color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         ),
       ),
@@ -1266,14 +1266,14 @@ class _NetworkViewState extends State<NetworkView> {
                           padding: const EdgeInsets.all(8),
                           margin: const EdgeInsets.only(right: 8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withValues(alpha:0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha:0.2),
                               width: 1,
                             ),
                           ),
-                          child: Icon(
+                          child: const Icon(
                             Icons.sort,
                             color: Colors.white,
                             size: 20,
@@ -1286,10 +1286,10 @@ class _NetworkViewState extends State<NetworkView> {
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withValues(alpha:0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha:0.2),
                               width: 1,
                             ),
                           ),
@@ -1314,7 +1314,7 @@ class _NetworkViewState extends State<NetworkView> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Divider(
-                    color: Colors.white.withOpacity(0.2), 
+                    color: Colors.white.withValues(alpha:0.2), 
                     height: 1, 
                     thickness: 1,
                   ),
@@ -1336,10 +1336,10 @@ class _NetworkViewState extends State<NetworkView> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(25),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -1351,12 +1351,12 @@ class _NetworkViewState extends State<NetworkView> {
           decoration: InputDecoration(
             hintText: 'Search users...',
             hintStyle: TextStyle(
-              color: Colors.white.withOpacity(0.6),
+              color: Colors.white.withValues(alpha:0.6),
               fontSize: 16,
             ),
             prefixIcon: Icon(
               Icons.search,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
               size: 20,
             ),
             suffixIcon: _isSearching
@@ -1368,7 +1368,7 @@ class _NetworkViewState extends State<NetworkView> {
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white.withOpacity(0.7),
+                          Colors.white.withValues(alpha:0.7),
                         ),
                       ),
                     ),
@@ -1380,7 +1380,7 @@ class _NetworkViewState extends State<NetworkView> {
                         },
                         child: Icon(
                           Icons.clear,
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha:0.7),
                           size: 20,
                         ),
                       )
@@ -1423,20 +1423,20 @@ class _NetworkViewState extends State<NetworkView> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withOpacity(0.1),
-                          Colors.white.withOpacity(0.05),
+                          Colors.white.withValues(alpha:0.1),
+                          Colors.white.withValues(alpha:0.05),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha:0.2),
                         width: 1,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha:0.1),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
@@ -1445,7 +1445,7 @@ class _NetworkViewState extends State<NetworkView> {
                     child: Icon(
                       icon,
                       size: 64,
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha:0.6),
                     ),
                   ),
                 );
@@ -1492,7 +1492,7 @@ class _NetworkViewState extends State<NetworkView> {
                     child: Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha:0.7),
                         fontSize: 16,
                         height: 1.4,
                       ),
@@ -1531,7 +1531,7 @@ class _NetworkViewState extends State<NetworkView> {
                             borderRadius: BorderRadius.circular(25),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF9248D2).withOpacity(0.3),
+                                color: const Color(0xFF9248D2).withValues(alpha:0.3),
                                 blurRadius: 20,
                                 offset: const Offset(0, 8),
                               ),
@@ -1573,10 +1573,10 @@ class _NetworkViewState extends State<NetworkView> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -1616,7 +1616,7 @@ class _NetworkViewState extends State<NetworkView> {
           width: width,
           height: height,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(value),
+            color: Colors.white.withValues(alpha:value),
             borderRadius: BorderRadius.circular(isCircle ? width / 2 : 8),
           ),
         );
@@ -1650,7 +1650,7 @@ class _NetworkViewState extends State<NetworkView> {
           // Show user-friendly error message
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
+              const SnackBar(
                 content: Text('Failed to refresh data'),
                 backgroundColor: Colors.red,
               ),
@@ -1659,7 +1659,7 @@ class _NetworkViewState extends State<NetworkView> {
         }
       },
       color: const Color(0xFF9248D2),
-      backgroundColor: Colors.white.withOpacity(0.1),
+      backgroundColor: Colors.white.withValues(alpha:0.1),
       strokeWidth: 2.5,
       displacement: 40,
       child: ListView.separated(
@@ -1685,6 +1685,10 @@ class _NetworkViewState extends State<NetworkView> {
                 // Async Safety: All service calls are properly awaited
                 // Debug Logging: Comprehensive logging for troubleshooting
                 // User Feedback: Immediate UI updates for user actions
+                
+                // Store context reference before async operation
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                
                 try {
                   debugPrint('🔄 NetworkView: Unfollow action triggered for user: ${u.username}');
                   debugPrint('🔄 NetworkView: Stack trace: ${StackTrace.current}');
@@ -1695,11 +1699,11 @@ class _NetworkViewState extends State<NetworkView> {
                   await widget.relationshipService.unfollowUser(u); // ← Service call
                   debugPrint('✅ NetworkView: Successfully unfollowed user: ${u.username}');
                 } catch (e, stackTrace) {
-                  debugPrint('❌ NetworkView: Error unfollowing user ${u.username}: $e');
+                  debugPrint('❌ NetworkView: Error unfollowing user ${u.username}: $e'); // cspell:ignore unfollowing
                   debugPrint('❌ NetworkView: Stack trace: $stackTrace');
                   // Show user-friendly error message
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    scaffoldMessenger.showSnackBar(
                       SnackBar(
                         content: Text('Failed to unfollow ${u.username}'),
                         backgroundColor: Colors.red,
@@ -1713,6 +1717,10 @@ class _NetworkViewState extends State<NetworkView> {
                 // Async Safety: All service calls are properly awaited
                 // Debug Logging: Comprehensive logging for troubleshooting
                 // User Feedback: Immediate UI updates for user actions
+                
+                // Store context reference before async operation
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                
                 try {
                   debugPrint('🔄 NetworkView: Remove follower action triggered for user: ${u.username}');
                   debugPrint('🔄 NetworkView: Stack trace: ${StackTrace.current}');
@@ -1727,7 +1735,7 @@ class _NetworkViewState extends State<NetworkView> {
                   debugPrint('❌ NetworkView: Stack trace: $stackTrace');
                   // Show user-friendly error message
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    scaffoldMessenger.showSnackBar(
                       SnackBar(
                         content: Text('Failed to remove ${u.username}'),
                         backgroundColor: Colors.red,
@@ -1761,7 +1769,7 @@ class _NetworkViewState extends State<NetworkView> {
             Text(
               'Loading more...',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -1853,14 +1861,14 @@ class _NetworkViewState extends State<NetworkView> {
             children: [
               Icon(
                 Icons.people_alt,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha:0.8),
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
                 'Suggested for you',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha:0.8),
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1868,10 +1876,10 @@ class _NetworkViewState extends State<NetworkView> {
               const Spacer(),
               TextButton(
                 onPressed: _loadSuggestedUsers,
-                child: Text(
+                child: const Text(
                   'Refresh',
                   style: TextStyle(
-                    color: const Color(0xFF9248D2),
+                    color: Color(0xFF9248D2),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1903,10 +1911,10 @@ class _NetworkViewState extends State<NetworkView> {
       width: 160, // Fixed width for horizontal scrolling
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -1916,10 +1924,10 @@ class _NetworkViewState extends State<NetworkView> {
           OptimizedAvatar(
             imageUrl: user.avatarURL,
             radius: 30,
-            backgroundColor: Colors.white.withOpacity(0.2),
+            backgroundColor: Colors.white.withValues(alpha:0.2),
             child: Icon(
               Icons.person, 
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
               size: 30,
             ),
           ),
@@ -1940,7 +1948,7 @@ class _NetworkViewState extends State<NetworkView> {
           Text(
             '@${user.username}',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
               fontSize: 12,
             ),
             textAlign: TextAlign.center,
@@ -2156,28 +2164,28 @@ class ConnectionRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(16), // 16 points corner radius
       gradient: LinearGradient(
         colors: [
-          Colors.white.withOpacity(0.20),
-          Colors.white.withOpacity(0.12),
-          Colors.white.withOpacity(0.06),
-          Colors.white.withOpacity(0.02),
+          Colors.white.withValues(alpha:0.20),
+          Colors.white.withValues(alpha:0.12),
+          Colors.white.withValues(alpha:0.06),
+          Colors.white.withValues(alpha:0.02),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.white.withOpacity(0.15), // White opacity shadows
+          color: Colors.white.withValues(alpha:0.15), // White opacity shadows
           blurRadius: 20,
           offset: const Offset(0, 8),
         ),
         BoxShadow(
-          color: Colors.black.withOpacity(0.25),
+          color: Colors.black.withValues(alpha:0.25),
           blurRadius: 15,
           offset: const Offset(0, 4),
         ),
       ],
       border: Border.all(
-        color: Colors.white.withOpacity(0.25), // Gradient white border
+        color: Colors.white.withValues(alpha:0.25), // Gradient white border
         width: 1,
       ),
     );
@@ -2201,7 +2209,7 @@ class ConnectionRow extends StatelessWidget {
                     Text(
                       user.displayName,
                       style: const TextStyle(
-                    fontSize: 16, // Subheadline
+                    fontSize: 16, // Subheadline // cspell:ignore Subheadline
                     fontWeight: FontWeight.w500, // Medium weight
                         color: Colors.white,
                       ),
@@ -2211,7 +2219,7 @@ class ConnectionRow extends StatelessWidget {
                       '@${user.username}',
                       style: TextStyle(
                     fontSize: 12, // Caption
-                    color: Colors.white.withOpacity(0.7), // Secondary color
+                    color: Colors.white.withValues(alpha:0.7), // Secondary color
                     fontWeight: FontWeight.w400,
                       ),
                     ),
@@ -2246,20 +2254,20 @@ class ConnectionRow extends StatelessWidget {
                 decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.white.withOpacity(0.2),
-            Colors.white.withOpacity(0.1),
+            Colors.white.withValues(alpha:0.2),
+            Colors.white.withValues(alpha:0.1),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
                   shape: BoxShape.circle,
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha:0.2),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -2267,7 +2275,7 @@ class ConnectionRow extends StatelessWidget {
       ),
       child: Icon(
         Icons.person_rounded,
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withValues(alpha:0.8),
         size: 28,
       ),
     );
@@ -2278,12 +2286,12 @@ class ConnectionRow extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha:0.2),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -2366,7 +2374,7 @@ class _ConnectionRowWithSwipeState extends State<ConnectionRowWithSwipe>
 
   @override
   Widget build(BuildContext context) {
-    final isFollowersTab = widget.currentTab == NetworkTab.followers;
+    final isFollowersTab = widget.currentTab == network_models.NetworkTab.followers;
     final actionColor = isFollowersTab ? Colors.orange : Colors.red;
 
     return Stack(
@@ -2387,10 +2395,10 @@ class _ConnectionRowWithSwipeState extends State<ConnectionRowWithSwipe>
                     duration: const Duration(milliseconds: 200),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: actionColor.withOpacity(0.1),
+                        color: actionColor.withValues(alpha:0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: actionColor.withOpacity(0.3),
+                          color: actionColor.withValues(alpha:0.3),
                           width: 1,
                         ),
                       ),
@@ -2477,7 +2485,7 @@ class _ConnectionRowWithSwipeState extends State<ConnectionRowWithSwipe>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -2505,7 +2513,7 @@ class _ConnectionRowWithSwipeState extends State<ConnectionRowWithSwipe>
         content: Text(
           message,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha:0.9),
             fontSize: 14,
             height: 1.4,
           ),
@@ -2521,7 +2529,7 @@ class _ConnectionRowWithSwipeState extends State<ConnectionRowWithSwipe>
               Navigator.pop(context);
             },
             style: TextButton.styleFrom(
-              foregroundColor: Colors.white.withOpacity(0.7),
+              foregroundColor: Colors.white.withValues(alpha:0.7),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
             child: const Text('Cancel'),

@@ -16,14 +16,14 @@ class LoginView extends ConsumerStatefulWidget {
 }
 
 class _LoginViewState extends ConsumerState<LoginView> {
-  final bool _showSignup = false;
+  // final bool _showSignup = false; // Unused field commented out
   bool _showEmailLogin = false;
   bool _showAlert = false;
   String _alertMessage = "";
 
   @override
   Widget build(BuildContext context) {
-    final authService = ref.watch(authServiceProvider);
+    // final authService = ref.watch(authServiceProvider); // Unused variable commented out
     
     // Show EmailLoginView if requested
     if (_showEmailLogin) {
@@ -257,7 +257,7 @@ class _LoginViewState extends ConsumerState<LoginView> {
   }
 
   Future<void> _signInWithGoogle() async {
-    print("🟢 Google sign-in tapped");
+    // print("🟢 Google sign-in tapped"); // Commented out for production
     
     try {
       final authService = ref.read(authServiceProvider.notifier);
@@ -274,7 +274,7 @@ class _LoginViewState extends ConsumerState<LoginView> {
   }
 
   Future<void> _bypassLogin() async {
-    print("🚀 Bypass login tapped - logging in as technqs");
+    // print("🚀 Bypass login tapped - logging in as technqs"); // Commented out for production
     
     try {
       final authService = ref.read(authServiceProvider.notifier);
@@ -312,7 +312,7 @@ class LoginButton extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Colors.grey.withOpacity(0.2),
+            color: Colors.grey.withValues(alpha: 0.2),
             width: 1,
           ),
         ),

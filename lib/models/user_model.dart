@@ -246,7 +246,7 @@ enum PlatformType {
   bluesky('bluesky', 'Bluesky'),
   twitter('twitter', 'Twitter'),
   instagram('instagram', 'Instagram'),
-  rednote('rednote', 'RedNote'),
+  reddit('reddit', 'Reddit'),
   other('other', 'Other');
 
   const PlatformType(this.value, this.displayName);
@@ -272,7 +272,7 @@ enum PlatformType {
         return Icons.alternate_email;
       case PlatformType.instagram:
         return Icons.camera_alt;
-      case PlatformType.rednote:
+      case PlatformType.reddit:
         return Icons.note;
       case PlatformType.other:
         return Icons.link;
@@ -298,7 +298,7 @@ enum PlatformType {
         return const Color(0xFF1DA1F2);
       case PlatformType.instagram:
         return const Color(0xFFE4405F);
-      case PlatformType.rednote:
+      case PlatformType.reddit:
         return const Color(0xFFFF6B6B);
       case PlatformType.other:
         return Colors.grey;

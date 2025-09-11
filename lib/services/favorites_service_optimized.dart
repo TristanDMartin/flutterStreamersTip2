@@ -27,7 +27,7 @@ class FavoritesServiceOptimized {
       _favorites.addAll(favoritesList);
       _isInitialized = true;
     } catch (e) {
-      print('Error initializing favorites: $e');
+    // print('Error initializing favorites: $e');
     }
   }
 
@@ -55,7 +55,7 @@ class FavoritesServiceOptimized {
         return await _addFavorite(videoId, currentUser.uid);
       }
     } catch (e) {
-      print('Error toggling favorite: $e');
+    // print('Error toggling favorite: $e');
       return false;
     }
   }
@@ -91,7 +91,7 @@ class FavoritesServiceOptimized {
       
       return true;
     } catch (e) {
-      print('Error adding favorite: $e');
+    // print('Error adding favorite: $e');
       return false;
     }
   }
@@ -124,7 +124,7 @@ class FavoritesServiceOptimized {
       
       return true;
     } catch (e) {
-      print('Error removing favorite: $e');
+    // print('Error removing favorite: $e');
       return false;
     }
   }
@@ -135,7 +135,7 @@ class FavoritesServiceOptimized {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_favoritesKey, _favorites.toList());
     } catch (e) {
-      print('Error saving favorites: $e');
+    // print('Error saving favorites: $e');
     }
   }
 
@@ -145,7 +145,7 @@ class FavoritesServiceOptimized {
       final doc = await _firestore.collection('videos').doc(videoId).get();
       return doc.data()?['favoriteCount'] ?? 0;
     } catch (e) {
-      print('Error getting favorite count: $e');
+    // print('Error getting favorite count: $e');
       return 0;
     }
   }
@@ -175,7 +175,7 @@ class FavoritesServiceOptimized {
       
       await _saveLocalState();
     } catch (e) {
-      print('Error syncing favorites: $e');
+    // print('Error syncing favorites: $e');
     }
   }
 }

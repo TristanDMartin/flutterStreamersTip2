@@ -93,7 +93,7 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha:0.5),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -124,7 +124,7 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha:0.5),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(
@@ -165,7 +165,7 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
               width: 60,
               height: 60,
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.8),
+                color: Colors.red.withValues(alpha:0.8),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: const Icon(
@@ -214,7 +214,7 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
               width: 60,
               height: 60,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha:0.2),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: const Icon(

@@ -75,7 +75,7 @@ class _VideoInsightsBarState extends State<VideoInsightsBar> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.3),
+                color: Colors.grey.withValues(alpha:0.3),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Row(
@@ -123,19 +123,19 @@ class VideoAnalyticsService {
   void startListeningToAnalytics(String videoId) {
     // TODO: Implement real-time analytics listening
     // This would typically involve Firebase Firestore listeners
-    print("Started listening to analytics for video: $videoId");
+    // print("Started listening to analytics for video: $videoId");
   }
 
   void stopListeningToAnalytics(String videoId) {
     final listener = _listeners[videoId];
     listener?.cancel();
     _listeners.remove(videoId);
-    print("Stopped listening to analytics for video: $videoId");
+    // print("Stopped listening to analytics for video: $videoId");
   }
 
   void trackVideoView({required String videoId, String? userId}) {
     // TODO: Implement video view tracking
-    print("Tracked video view: $videoId by user: $userId");
+    // print("Tracked video view: $videoId by user: $userId");
   }
 }
 

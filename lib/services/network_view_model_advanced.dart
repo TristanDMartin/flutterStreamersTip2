@@ -31,10 +31,10 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
   RelationshipServiceAdvanced? _relationshipService;
   final Set<StreamSubscription> _cancellables = <StreamSubscription>{};
   
-  // Data persistence keys
-  static const String _followingKey = 'network_following_ids';
-  static const String _followersKey = 'network_followers_ids';
-  static const String _connectionsKey = 'network_connections_ids';
+  // Data persistence keys (commented out as they're not currently used)
+  // static const String _followingKey = 'network_following_ids';
+  // static const String _followersKey = 'network_followers_ids';
+  // static const String _connectionsKey = 'network_connections_ids';
 
   // ======== REAL-TIME UPDATES ALGORITHM ========
   /// Setup relationship service with reactive data binding
@@ -193,16 +193,17 @@ class NetworkViewModelAdvanced extends ChangeNotifier {
       debugPrint('📱 Loading persisted data...');
       
       // Load following IDs
+      // cspell:ignore prefs
       // final savedFollowing = await SharedPreferences.getInstance()
       //     .then((prefs) => prefs.getStringList(_followingKey));
       
       // Load follower IDs
       // final savedFollowers = await SharedPreferences.getInstance()
-      //     .then((prefs) => prefs.getStringList(_followersKey));
+      //     .then((prefs) => prefs.getStringList(_followersKey)); // cspell:ignore prefs
       
       // Load connection IDs
       // final savedConnections = await SharedPreferences.getInstance()
-      //     .then((prefs) => prefs.getStringList(_connectionsKey));
+      //     .then((prefs) => prefs.getStringList(_connectionsKey)); // cspell:ignore prefs
       
       debugPrint('✅ Persisted data loaded');
     } catch (e) {

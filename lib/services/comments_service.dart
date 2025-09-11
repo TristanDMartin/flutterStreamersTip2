@@ -16,7 +16,7 @@ class CommentsService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-        print('User not authenticated, returning mock data');
+    // print('User not authenticated, returning mock data');
         return CommentMockData.mockData();
       }
 
@@ -29,7 +29,7 @@ class CommentsService {
           .get();
 
       if (snapshot.docs.isEmpty) {
-        print('No comments found for video $videoId, returning mock data');
+    // print('No comments found for video $videoId, returning mock data');
         return CommentMockData.mockData();
       }
 
@@ -48,7 +48,7 @@ class CommentsService {
         );
       }).toList();
     } catch (e) {
-      print('Error fetching comments: $e');
+    // print('Error fetching comments: $e');
       // Return mock data as fallback for better UX
       return CommentMockData.mockData();
     }
@@ -82,7 +82,7 @@ class CommentsService {
 
       return comment.copyWith(id: docRef.id);
     } catch (e) {
-      print('Error adding comment: $e');
+    // print('Error adding comment: $e');
       // Provide more specific error messages
       if (e.toString().contains('permission-denied')) {
         throw Exception('Permission denied. Please check your authentication status.');
@@ -127,7 +127,7 @@ class CommentsService {
 
       return reply.copyWith(id: 'reply-${DateTime.now().millisecondsSinceEpoch}');
     } catch (e) {
-      print('Error adding reply: $e');
+    // print('Error adding reply: $e');
       // Provide more specific error messages
       if (e.toString().contains('permission-denied')) {
         throw Exception('Permission denied. Please check your authentication status.');
@@ -168,7 +168,7 @@ class CommentsService {
 
       return true;
     } catch (e) {
-      print('Error toggling like: $e');
+    // print('Error toggling like: $e');
       return false;
     }
   }
@@ -191,7 +191,7 @@ class CommentsService {
 
       return true;
     } catch (e) {
-      print('Error deleting comment: $e');
+    // print('Error deleting comment: $e');
       return false;
     }
   }

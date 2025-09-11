@@ -97,7 +97,7 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
       File? cachedVideo;
       if (cacheService.isVideoCached(widget.video.videoURL)) {
         cachedVideo = cacheService.getCachedVideo(widget.video.videoURL);
-        print('📦 Using cached video: ${widget.video.id}');
+    // print('📦 Using cached video: ${widget.video.id}');
       }
       
       // Initialize video controller
@@ -115,7 +115,7 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
       if (cachedVideo == null) {
         // Note: In a real implementation, you'd want to download and cache the video
         // For now, we'll just track that we loaded it
-        print('📦 Video loaded from network: ${widget.video.id}');
+    // print('📦 Video loaded from network: ${widget.video.id}');
       }
       
       if (mounted) {
@@ -151,7 +151,7 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
       // Complete performance tracking
       PerformanceService().completeVideoLoad(widget.video.id, success: true);
     } catch (e) {
-      print('Error initializing video: $e');
+    // print('Error initializing video: $e');
       PerformanceService().completeVideoLoad(widget.video.id, success: false);
       
       if (mounted) {
@@ -229,7 +229,7 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
     if (!_hasIncrementedView && widget.isCurrentVideo) {
       _hasIncrementedView = true;
       // TODO: Implement view increment logic
-      print('Incrementing view for video: ${widget.video.id}');
+    // print('Incrementing view for video: ${widget.video.id}');
     }
   }
 
@@ -257,35 +257,35 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
   }
 
   void _handleFollow(WidgetRef ref) {
-    print('🔔 Follow button tapped for creator: ${widget.video.creator.id}');
+    // print('🔔 Follow button tapped for creator: ${widget.video.creator.id}');
     HapticFeedback.lightImpact();
     
     // Check if user is authenticated
     final auth = FirebaseAuth.instance;
     final robustAuth = ref.read(robustAuthServiceProvider);
     
-    print('🔔 Current user ID: ${robustAuth.currentUser?.id}');
-    print('🔔 Firebase Auth user: ${auth.currentUser?.uid}');
+    // print('🔔 Current user ID: ${robustAuth.currentUser?.id}');
+    // print('🔔 Firebase Auth user: ${auth.currentUser?.uid}');
     
     // Check if we're in bypass mode (mock user)
     if (robustAuth.currentUser?.id == 'dev_user_123') {
-      print('🔔 Using mock follow functionality for development');
+    // print('🔔 Using mock follow functionality for development');
       _handleMockFollow(ref);
       return;
     } else {
-      print('🔔 Using real Firebase follow functionality');
+    // print('🔔 Using real Firebase follow functionality');
     }
     
     if (auth.currentUser == null) {
-      print('🔔 User not authenticated, cannot follow');
+    // print('🔔 User not authenticated, cannot follow');
       return;
     }
     
     // Track follow/unfollow engagement
     final isCurrentlyFollowing = ref.read(followingProvider).followingList.contains(widget.video.creator.id);
-    print('🔔 Currently following: $isCurrentlyFollowing');
-    print('🔔 Following list: ${ref.read(followingProvider).followingList}');
-    print('🔔 Followers list: ${ref.read(followingProvider).followersList}');
+    // print('🔔 Currently following: $isCurrentlyFollowing');
+    // print('🔔 Following list: ${ref.read(followingProvider).followingList}');
+    // print('🔔 Followers list: ${ref.read(followingProvider).followersList}');
     
     EngagementAnalyticsService().trackEngagement(
       videoId: widget.video.id,
@@ -298,29 +298,29 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
     
     // Toggle follow and refresh the state
     ref.read(followingProvider.notifier).toggleFollow(widget.video.creator.id).then((success) {
-      print('🔔 Follow toggle result: $success');
+    // print('🔔 Follow toggle result: $success');
       if (success) {
-        print('🔔 Follow toggle successful, updating UI');
+    // print('🔔 Follow toggle successful, updating UI');
         // Force a rebuild to update the UI
         if (mounted) {
           setState(() {});
         }
       } else {
-        print('🔔 Follow toggle failed');
+    // print('🔔 Follow toggle failed');
       }
     }).catchError((error) {
-      print('🔔 Follow toggle error: $error');
+    // print('🔔 Follow toggle error: $error');
     });
   }
 
   void _handleMockFollow(WidgetRef ref) async {
-    print('🔔 Mock follow handler called');
+    // print('🔔 Mock follow handler called');
     
     try {
       final robustAuth = ref.read(robustAuthServiceProvider.notifier);
       final isCurrentlyFollowing = ref.read(followingProvider).followingList.contains(widget.video.creator.id);
       
-      print('🔔 Currently following: $isCurrentlyFollowing');
+    // print('🔔 Currently following: $isCurrentlyFollowing');
       
       // Use mock follow/unfollow
       bool success;
@@ -331,7 +331,7 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
       }
       
       if (success) {
-        print('🔔 Mock follow/unfollow successful, updating UI');
+    // print('🔔 Mock follow/unfollow successful, updating UI');
         
         // Update the following list locally for UI
         if (isCurrentlyFollowing) {
@@ -345,10 +345,10 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
           setState(() {});
         }
       } else {
-        print('🔔 Mock follow/unfollow failed');
+    // print('🔔 Mock follow/unfollow failed');
       }
     } catch (e) {
-      print('🔔 Mock follow error: $e');
+    // print('🔔 Mock follow error: $e');
     }
   }
 
@@ -362,7 +362,7 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
         // Swipe up gesture to open StreamerCardView
         if (details.velocity.pixelsPerSecond.dy < -1000 && 
             details.velocity.pixelsPerSecond.dx.abs() < 500) {
-          print('🔔 Swipe up detected, calling onShowStreamerCard');
+    // print('🔔 Swipe up detected, calling onShowStreamerCard');
           widget.onShowStreamerCard();
         }
       },
@@ -495,7 +495,7 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
                       : FollowRelationship.notFollowing;
                   final isLoading = followingState.isLoading;
                   
-                  print('🔔 Follow state for ${widget.video.creator.id}: following=$isFollowing, followedBy=$isFollowedBy, relationship=$followRelationship');
+    // print('🔔 Follow state for ${widget.video.creator.id}: following=$isFollowing, followedBy=$isFollowedBy, relationship=$followRelationship');
                   
                   return Row(
                     children: [
@@ -515,7 +515,7 @@ class _VideoPlayerViewState extends ConsumerState<VideoPlayerView>
                       if (followRelationship == FollowRelationship.notFollowing)
                         GestureDetector(
                           onTap: isLoading ? null : () {
-                            print('🔔 Follow button onTap called');
+    // print('🔔 Follow button onTap called');
                             _handleFollow(ref);
                           },
                           child: Container(

@@ -57,7 +57,7 @@ class OnlineStatusIndicator extends ConsumerWidget {
         boxShadow: showShadow
             ? [
                 BoxShadow(
-                  color: _getStatusColor(status).withOpacity(0.5),
+                  color: _getStatusColor(status).withValues(alpha:0.5),
                   blurRadius: 6,
                   spreadRadius: 1,
                 ),

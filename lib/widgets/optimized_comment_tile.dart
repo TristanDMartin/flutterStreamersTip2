@@ -76,7 +76,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
         _isLiked = !_isLiked;
         _likeCount += _isLiked ? 1 : -1;
       });
-      print('Error toggling like: $e');
+    // print('Error toggling like: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -179,7 +179,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.2),
+                                color: Colors.red.withValues(alpha:0.2),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Text(
@@ -215,7 +215,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                           Positioned.fill(
                             child: Container(
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.3),
+                                color: Colors.black.withValues(alpha:0.3),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Center(
@@ -321,7 +321,7 @@ class _OptimizedReplyTileState extends State<OptimizedReplyTile> {
         _isLiked = !_isLiked;
         _likeCount += _isLiked ? 1 : -1;
       });
-      print('Error toggling like: $e');
+    // print('Error toggling like: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -403,7 +403,7 @@ class _OptimizedReplyTileState extends State<OptimizedReplyTile> {
                       Positioned.fill(
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.3),
+                            color: Colors.black.withValues(alpha:0.3),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Center(

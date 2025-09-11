@@ -50,7 +50,7 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
              _isContentValid &&
              !_isRateLimited;
       
-      print('🔍 EditFieldView: _isValid check - text: "$_currentText", length: ${_currentText.length}/${widget.maxLength}, contentValid: $_isContentValid, rateLimited: $_isRateLimited, result: $isValid');
+    // print('🔍 EditFieldView: _isValid check - text: "$_currentText", length: ${_currentText.length}/${widget.maxLength}, contentValid: $_isContentValid, rateLimited: $_isRateLimited, result: $isValid');
       
       return isValid;
     }
@@ -114,8 +114,8 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
   }
 
   void _handleSave() async {
-    print('🔍 EditFieldView: Save attempted for ${widget.title}');
-    print('🔍 EditFieldView: _isContentValid: $_isContentValid, _isRateLimited: $_isRateLimited');
+    // print('🔍 EditFieldView: Save attempted for ${widget.title}');
+    // print('🔍 EditFieldView: _isContentValid: $_isContentValid, _isRateLimited: $_isRateLimited');
     
     if (widget.title == "Hashtags") {
       final hashtagText = _selectedHashtags.join(', ');
@@ -123,18 +123,18 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
     } else {
       // For name and bio, validate content before saving
       if (!_isContentValid) {
-        print('🚫 EditFieldView: Content is invalid, blocking save');
+    // print('🚫 EditFieldView: Content is invalid, blocking save');
         _showContentError();
         return;
       }
       
       if (_isRateLimited) {
-        print('🚫 EditFieldView: User is rate limited, blocking save');
+    // print('🚫 EditFieldView: User is rate limited, blocking save');
         _showRateLimitError();
         return;
       }
       
-      print('✅ EditFieldView: Content is valid, proceeding with save');
+    // print('✅ EditFieldView: Content is valid, proceeding with save');
       widget.onTextChanged(_currentText);
     }
     
@@ -279,7 +279,7 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
                           return Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.2),
+                              color: Colors.blue.withValues(alpha:0.2),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
@@ -338,18 +338,18 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
                         maxLines: widget.title == "Bio" ? 6 : 1,
                         maxLength: widget.maxLength,
                         onChanged: (value) {
-                          print('🔍 EditFieldView: Text changed to "$value"');
+    // print('🔍 EditFieldView: Text changed to "$value"');
                           setState(() {
                             _currentText = value;
                           });
                           widget.onTextChanged(value);
                         },
                         onValidationChanged: (isValid) {
-                          print('🔍 EditFieldView: Validation changed to $isValid');
+    // print('🔍 EditFieldView: Validation changed to $isValid');
                           setState(() {
                             _isContentValid = isValid;
                           });
-                          print('🔍 EditFieldView: _isValid getter now returns: $_isValid');
+    // print('🔍 EditFieldView: _isValid getter now returns: $_isValid');
                         },
                       ),
                     ] else ...[

@@ -35,7 +35,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         widget.onCancel?.call();
       }
     } catch (e) {
-      print('❌ Error picking image: $e');
+    // print('❌ Error picking image: $e');
       widget.onCancel?.call();
     }
   }
@@ -49,6 +49,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       }
       
       // Navigate to custom camera screen
+      if (!mounted) return;
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
@@ -69,7 +70,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         widget.onCancel?.call();
       }
     } catch (e) {
-      print('❌ Error opening camera: $e');
+    // print('❌ Error opening camera: $e');
       widget.onCancel?.call();
     }
   }
@@ -250,7 +251,7 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
         _isInitialized = true;
       });
     } catch (e) {
-      print('❌ Error initializing camera: $e');
+    // print('❌ Error initializing camera: $e');
       widget.onCancel();
     }
   }
@@ -265,9 +266,11 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
     try {
       final XFile image = await _controller!.takePicture();
       widget.onImageCaptured(File(image.path));
-      Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+      }
     } catch (e) {
-      print('❌ Error capturing photo: $e');
+    // print('❌ Error capturing photo: $e');
       setState(() {
         _isCapturing = false;
       });
@@ -382,7 +385,9 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
                           widget.onImageCaptured(File(image.path));
                         } else {
                           // If user cancels gallery, close image picker modal too
-                          Navigator.pop(context);
+                          if (mounted) {
+                            Navigator.pop(context);
+                          }
                         }
                       },
                       child: Container(

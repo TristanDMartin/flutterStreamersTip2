@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class OnboardingView extends StatefulWidget {
   final VoidCallback onComplete;
@@ -184,7 +183,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
                 height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.1 * _pulseAnimation.value),
+                  color: Colors.white.withValues(alpha:0.1 * _pulseAnimation.value),
                 ),
               ),
             );
@@ -200,7 +199,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
                 height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.05 * _pulseAnimation.value),
+                  color: Colors.white.withValues(alpha:0.05 * _pulseAnimation.value),
                 ),
               ),
             );
@@ -216,7 +215,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
                 height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.03 * _pulseAnimation.value),
+                  color: Colors.white.withValues(alpha:0.03 * _pulseAnimation.value),
                 ),
               ),
             );
@@ -232,7 +231,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
             color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha:0.1),
                 blurRadius: 20,
                 spreadRadius: 0,
                 offset: const Offset(0, 10),
@@ -246,9 +245,9 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
               height: 120,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
-                print('Logo loading error in onboarding: $error');
-                print('Stack trace: $stackTrace');
-                print('Trying to load logo from: assets/logo.png');
+    // print('Logo loading error in onboarding: $error');
+    // print('Stack trace: $stackTrace');
+    // print('Trying to load logo from: assets/logo.png');
                 return Container(
                   color: Colors.white,
                   child: const Center(
@@ -288,10 +287,10 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
       width: double.infinity,
       height: 56,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
+        color: Colors.white.withValues(alpha:0.15),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 1,
         ),
       ),
@@ -342,7 +341,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
                 end: Alignment.centerRight,
               )
             : null,
-        color: hasText ? null : Colors.white.withOpacity(0.1),
+        color: hasText ? null : Colors.white.withValues(alpha:0.1),
       ),
       child: Material(
         color: Colors.transparent,
@@ -356,7 +355,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.0,
-                color: hasText ? Colors.white : Colors.white.withOpacity(0.5),
+                color: hasText ? Colors.white : Colors.white.withValues(alpha:0.5),
               ),
             ),
           ),
@@ -402,7 +401,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
           decoration: BoxDecoration(
             color: _currentStep == 0 
                 ? Colors.white 
-                : Colors.white.withOpacity(0.5),
+                : Colors.white.withValues(alpha:0.5),
             shape: BoxShape.circle,
           ),
         ),
@@ -414,7 +413,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
           decoration: BoxDecoration(
             color: _currentStep == 1 
                 ? Colors.white 
-                : Colors.white.withOpacity(0.5),
+                : Colors.white.withValues(alpha:0.5),
             shape: BoxShape.circle,
           ),
         ),
@@ -426,7 +425,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
           decoration: BoxDecoration(
             color: _currentStep == 2 
                 ? Colors.white 
-                : Colors.white.withOpacity(0.5),
+                : Colors.white.withValues(alpha:0.5),
             shape: BoxShape.circle,
           ),
         ),
@@ -449,7 +448,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
               ),
               child: Transform.rotate(
                 angle: _plane1Animation.value.dx * 0.5,
-                child: _buildPaperPlane(Colors.white.withOpacity(0.7), 24),
+                child: _buildPaperPlane(Colors.white.withValues(alpha:0.7), 24),
               ),
             );
           },
@@ -464,7 +463,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
               ),
               child: Transform.rotate(
                 angle: _plane2Animation.value.dx * 0.3,
-                child: _buildPaperPlane(Colors.white.withOpacity(0.5), 20),
+                child: _buildPaperPlane(Colors.white.withValues(alpha:0.5), 20),
               ),
             );
           },
@@ -479,7 +478,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
               ),
               child: Transform.rotate(
                 angle: _plane3Animation.value.dx * 0.4,
-                child: _buildPaperPlane(Colors.white.withOpacity(0.6), 18),
+                child: _buildPaperPlane(Colors.white.withValues(alpha:0.6), 18),
               ),
             );
           },
@@ -505,7 +504,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha:0.8),
                 letterSpacing: 1.0,
               ),
             ),
@@ -545,7 +544,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
     final streamerName = _streamerNameController.text.trim();
     if (streamerName.isNotEmpty) {
       // TODO: Save streamer name to preferences/storage
-      print('Streamer name: $streamerName');
+    // print('Streamer name: $streamerName');
       setState(() {
         _currentStep = 1; // Move to second step
       });
@@ -572,7 +571,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
             color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha:0.1),
                 blurRadius: 10,
                 spreadRadius: 0,
                 offset: const Offset(0, 5),
@@ -679,71 +678,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
     });
   }
 
-  void _showNotificationPermissionDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF2C2C2E), // Dark grey like iOS
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            '"StreamersTip" Would Like to Send You Notifications',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          content: const Text(
-            'Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-              height: 1.3,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close dialog
-                // Don't allow notifications
-                print('Notifications not allowed');
-                widget.onComplete(); // Complete onboarding anyway
-              },
-              child: const Text(
-                'Don\'t Allow',
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-                         TextButton(
-               onPressed: () async {
-                 Navigator.of(context).pop(); // Close dialog
-                 // Request notification permission
-                 final status = await Permission.notification.request();
-                 print('Notification permission status: $status');
-                 setState(() {
-                   _currentStep = 2; // Move to account creation step
-                 });
-               },
-               child: const Text(
-                 'Allow',
-                 style: TextStyle(
-                   color: Colors.blue,
-                   fontSize: 16,
-                   fontWeight: FontWeight.w500,
-                 ),
-               ),
-             ),
-          ],
-        );
-      },
-    );
-  }
+  // void _showNotificationPermissionDialog() {
+  //   // Unused method commented out
+  // }
 }

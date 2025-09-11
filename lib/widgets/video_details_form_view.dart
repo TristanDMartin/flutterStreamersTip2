@@ -107,7 +107,7 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
           // Upload Progress Overlay
           if (_isUploading)
             Container(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha:0.4),
               child: const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -152,10 +152,10 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 1,
         ),
       ),
@@ -190,14 +190,14 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
         hintText: "Add a catchy title",
         hintStyle: const TextStyle(color: Colors.white54),
         filled: true,
-        fillColor: Colors.white.withOpacity(0.1),
+        fillColor: Colors.white.withValues(alpha:0.1),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -211,10 +211,10 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
     return Container(
       height: 120,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 1,
         ),
       ),
@@ -237,10 +237,10 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 1,
         ),
       ),
@@ -293,7 +293,7 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
 
     setState(() {
       _isUploading = true;
-      _uploadError = null;
+      // _uploadError = null;
     });
 
     try {
@@ -308,8 +308,8 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
 
       // Monitor upload progress
       uploadTask.snapshotEvents.listen((snapshot) {
-        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        print('Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
+        // final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+    // print('Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
       });
 
       // Wait for upload to complete
@@ -346,19 +346,19 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
       widget.onPost?.call();
       
     } catch (e) {
-      print('Upload error: $e');
+    // print('Upload error: $e');
       setState(() {
         _isUploading = false;
-        _uploadError = "Upload failed: $e";
-        _showUploadError = true;
+        // _uploadError = "Upload failed: $e";
+        // _showUploadError = true;
       });
     }
   }
 
   void _showError(String message) {
     setState(() {
-      _uploadError = message;
-      _showUploadError = true;
+      // _uploadError = message;
+      // _showUploadError = true;
     });
   }
 
@@ -384,7 +384,7 @@ class _VideoDetailsFormViewState extends State<VideoDetailsFormView> {
             onPressed: () {
               Navigator.of(context).pop();
               setState(() {
-                _uploadError = null;
+                // _uploadError = null;
                 _showUploadError = false;
               });
             },
@@ -419,8 +419,8 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
   final TextEditingController _descriptionController = TextEditingController();
   Privacy _privacy = Privacy.everyone;
   bool _isUploading = false;
-  String? _uploadError;
-  bool _showUploadError = false;
+  // String? _uploadError;
+  // bool _showUploadError = false;
   final List<String> _tags = [];
   final TextEditingController _tagController = TextEditingController();
 
@@ -501,7 +501,7 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
           
           if (_isUploading)
             Container(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha:0.4),
               child: const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -543,10 +543,10 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 1,
         ),
       ),
@@ -581,14 +581,14 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
         hintText: "Add a catchy title",
         hintStyle: const TextStyle(color: Colors.white54),
         filled: true,
-        fillColor: Colors.white.withOpacity(0.1),
+        fillColor: Colors.white.withValues(alpha:0.1),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -602,10 +602,10 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
     return Container(
       height: 120,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 1,
         ),
       ),
@@ -637,7 +637,7 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.pink.withOpacity(0.2),
+                  color: Colors.pink.withValues(alpha:0.2),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: Colors.pink),
                 ),
@@ -676,14 +676,14 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
                   hintText: "Add a tag...",
                   hintStyle: const TextStyle(color: Colors.white54),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.1),
+                  fillColor: Colors.white.withValues(alpha:0.1),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                    borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                    borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -726,10 +726,10 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           width: 1,
         ),
       ),
@@ -798,7 +798,7 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
 
     setState(() {
       _isUploading = true;
-      _uploadError = null;
+      // _uploadError = null;
     });
 
     try {
@@ -814,16 +814,16 @@ class _EnhancedVideoDetailsFormViewState extends State<EnhancedVideoDetailsFormV
     } catch (e) {
       setState(() {
         _isUploading = false;
-        _uploadError = "Upload failed: $e";
-        _showUploadError = true;
+        // _uploadError = "Upload failed: $e";
+        // _showUploadError = true;
       });
     }
   }
 
   void _showError(String message) {
     setState(() {
-      _uploadError = message;
-      _showUploadError = true;
+      // _uploadError = message;
+      // _showUploadError = true;
     });
   }
 }

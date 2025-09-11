@@ -13,7 +13,7 @@ class CustomTextFieldStyle extends InputDecoration {
   InputBorder? get border => OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     borderSide: BorderSide(
-      color: Colors.grey.withOpacity(0.3),
+      color: Colors.grey.withValues(alpha:0.3),
       width: 1,
     ),
   );
@@ -22,7 +22,7 @@ class CustomTextFieldStyle extends InputDecoration {
   InputBorder? get enabledBorder => OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     borderSide: BorderSide(
-      color: Colors.grey.withOpacity(0.3),
+      color: Colors.grey.withValues(alpha:0.3),
       width: 1,
     ),
   );
@@ -31,7 +31,7 @@ class CustomTextFieldStyle extends InputDecoration {
   InputBorder? get focusedBorder => OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     borderSide: BorderSide(
-      color: Colors.grey.withOpacity(0.5),
+      color: Colors.grey.withValues(alpha:0.5),
       width: 2,
     ),
   );
@@ -40,7 +40,7 @@ class CustomTextFieldStyle extends InputDecoration {
   InputBorder? get errorBorder => OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     borderSide: BorderSide(
-      color: Colors.red.withOpacity(0.5),
+      color: Colors.red.withValues(alpha:0.5),
       width: 1,
     ),
   );
@@ -49,13 +49,13 @@ class CustomTextFieldStyle extends InputDecoration {
   InputBorder? get focusedErrorBorder => OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     borderSide: BorderSide(
-      color: Colors.red.withOpacity(0.7),
+      color: Colors.red.withValues(alpha:0.7),
       width: 2,
     ),
   );
 
   @override
-  Color? get fillColor => Colors.grey.withOpacity(0.2);
+  Color? get fillColor => Colors.grey.withValues(alpha:0.2);
 
   @override
   bool get filled => true;
@@ -65,19 +65,19 @@ class CustomTextFieldStyle extends InputDecoration {
 
   @override
   TextStyle? get hintStyle => TextStyle(
-    color: Colors.grey.withOpacity(0.7),
+    color: Colors.grey.withValues(alpha:0.7),
     fontSize: 16,
   );
 
   @override
   TextStyle? get labelStyle => TextStyle(
-    color: Colors.grey.withOpacity(0.7),
+    color: Colors.grey.withValues(alpha:0.7),
     fontSize: 16,
   );
 
   @override
   TextStyle? get errorStyle => TextStyle(
-    color: Colors.red.withOpacity(0.8),
+    color: Colors.red.withValues(alpha:0.8),
     fontSize: 14,
   );
 }

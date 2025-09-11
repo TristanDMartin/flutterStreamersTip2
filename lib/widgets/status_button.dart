@@ -41,7 +41,7 @@ class StatusButton extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: _getStatusColor(status).withOpacity(0.2),
+          color: _getStatusColor(status).withValues(alpha:0.2),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: _getStatusColor(status),
@@ -80,7 +80,7 @@ class StatusButton extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.2),
+        color: Colors.grey.withValues(alpha:0.2),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: Colors.grey,
@@ -118,7 +118,7 @@ class StatusButton extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.2),
+        color: Colors.red.withValues(alpha:0.2),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: Colors.red,
@@ -275,7 +275,7 @@ class StatusPickerModal extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected 
-              ? Colors.white.withOpacity(0.2)
+              ? Colors.white.withValues(alpha:0.2)
               : const Color(0xFF2C2C2E),
           borderRadius: BorderRadius.circular(12),
           border: isSelected 

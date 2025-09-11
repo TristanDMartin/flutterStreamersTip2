@@ -35,17 +35,17 @@ class SharedDraftItem extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [
                   isUnread 
-                      ? Colors.white.withOpacity(0.2)
-                      : Colors.white.withOpacity(0.1),
+                      ? Colors.white.withValues(alpha:0.2)
+                      : Colors.white.withValues(alpha:0.1),
                   isUnread 
-                      ? Colors.white.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.05),
+                      ? Colors.white.withValues(alpha:0.15)
+                      : Colors.white.withValues(alpha:0.05),
                 ],
               ),
               border: Border.all(
                 color: isUnread 
-                    ? const Color(0xFF9248d2).withOpacity(0.5)
-                    : Colors.white.withOpacity(0.1),
+                    ? const Color(0xFF9248d2).withValues(alpha:0.5)
+                    : Colors.white.withValues(alpha:0.1),
                 width: isUnread ? 2 : 1,
               ),
             ),
@@ -100,28 +100,28 @@ class SharedDraftItem extends StatelessWidget {
                         children: [
                           Icon(
                             Icons.play_circle_outline,
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white.withValues(alpha:0.6),
                             size: 16,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             _formatDuration(sharedDraft.draftDuration),
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha:0.6),
                               fontSize: 12,
                             ),
                           ),
                           const SizedBox(width: 16),
                           Icon(
                             Icons.access_time,
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white.withValues(alpha:0.6),
                             size: 16,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             _formatTimeAgo(sharedDraft.sharedAt),
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha:0.6),
                               fontSize: 12,
                             ),
                           ),
@@ -228,9 +228,9 @@ class SharedDraftItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(0.2),
+        color: badgeColor.withValues(alpha:0.2),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: badgeColor.withOpacity(0.5)),
+        border: Border.all(color: badgeColor.withValues(alpha:0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

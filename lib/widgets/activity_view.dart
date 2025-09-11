@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,9 +26,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Likes', 'Follows', 'Comments', 'Tags', 'Mentions'];
   
-  // Performance optimization
-  static const int _pageSize = 20;
-  int _currentPage = 0;
+  // Performance optimization (commented out as not currently used)
+  // static const int _pageSize = 20;
+  // int _currentPage = 0;
   bool _isLoadingMore = false;
   final ScrollController _scrollController = ScrollController();
 
@@ -64,7 +63,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     
     // Clear any pending operations
     _isLoadingMore = false;
-    _currentPage = 0;
+    // _currentPage = 0;
     
     super.dispose();
   }
@@ -150,9 +149,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   }
 
   Widget _buildLoadingScaffold() {
-    return Scaffold(
-      backgroundColor: const Color(0xFF9248D2),
-      body: const Center(
+    return const Scaffold(
+      backgroundColor: Color(0xFF9248D2),
+      body: Center(
         child: CircularProgressIndicator(
           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
         ),
@@ -170,13 +169,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             Icon(
               Icons.notifications_outlined,
               size: 64,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
             ),
             const SizedBox(height: 16),
             Text(
               'Sign in to view your activity',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha:0.9),
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
@@ -185,7 +184,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             Text(
               'Stay updated with all your notifications',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 14,
               ),
             ),
@@ -207,9 +206,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               children: [
                 Row(
                   children: [
-                    Text(
+                    const Text(
                       'Activity',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
@@ -230,7 +229,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                                 borderRadius: BorderRadius.circular(12),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFFE91E63).withOpacity(0.3),
+                                    color: const Color(0xFFE91E63).withValues(alpha:0.3),
                                     blurRadius: 8,
                                     offset: const Offset(0, 2),
                                   ),
@@ -267,7 +266,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       Text(
                         'Processing ${state.processingCount} notifications...',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
+                          color: Colors.white.withValues(alpha:0.8),
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
@@ -301,12 +300,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha:0.2),
                         width: 1,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF9248D2).withOpacity(0.3),
+                          color: const Color(0xFF9248D2).withValues(alpha:0.3),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -339,12 +338,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     ),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha:0.2),
                       width: 1,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF9248D2).withOpacity(0.3),
+                        color: const Color(0xFF9248D2).withValues(alpha:0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -409,17 +408,17 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     : null,
                 color: isSelected 
                     ? null
-                    : Colors.white.withOpacity(0.1),
+                    : Colors.white.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(25),
                 border: Border.all(
                   color: isSelected 
-                      ? Colors.white.withOpacity(0.4)
-                      : Colors.white.withOpacity(0.2),
+                      ? Colors.white.withValues(alpha:0.4)
+                      : Colors.white.withValues(alpha:0.2),
                   width: 1,
                 ),
                 boxShadow: isSelected ? [
                   BoxShadow(
-                    color: const Color(0xFF9248D2).withOpacity(0.3),
+                    color: const Color(0xFF9248D2).withValues(alpha:0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -445,10 +444,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -467,7 +466,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             child: Text(
               'Processing $count notifications...',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha:0.9),
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -487,10 +486,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha:0.1),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha:0.2),
               width: 1,
             ),
           ),
@@ -500,7 +499,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha:0.2),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -513,7 +512,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       height: 16,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha:0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
@@ -522,7 +521,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       height: 12,
                       width: 200,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha:0.2),
                         borderRadius: BorderRadius.circular(6),
                       ),
                     ),
@@ -543,7 +542,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Animated icon with glass morphism effect
+            // Animated icon with glass morphism effect // cspell:ignore morphism
             TweenAnimationBuilder<double>(
               duration: const Duration(milliseconds: 1000),
               tween: Tween(begin: 0.0, end: 1.0),
@@ -557,19 +556,19 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withOpacity(0.1),
-                          Colors.white.withOpacity(0.05),
+                          Colors.white.withValues(alpha:0.1),
+                          Colors.white.withValues(alpha:0.05),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha:0.2),
                         width: 1,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha:0.1),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
@@ -578,7 +577,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     child: Icon(
                       Icons.notifications_none_outlined,
                       size: 60,
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha:0.7),
                     ),
                   ),
                 );
@@ -598,7 +597,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     child: Text(
                       'No Activity Yet',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha:0.9),
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
@@ -624,7 +623,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       'When people interact with your content,\nyou\'ll see it here',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha:0.7),
                         fontSize: 16,
                         height: 1.5,
                         letterSpacing: 0.3,
@@ -672,7 +671,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                           borderRadius: BorderRadius.circular(25),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF9248D2).withOpacity(0.4),
+                              color: const Color(0xFF9248D2).withValues(alpha:0.4),
                               blurRadius: 20,
                               offset: const Offset(0, 8),
                             ),
@@ -709,13 +708,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             Icon(
               Icons.error_outline,
               size: 80,
-              color: Colors.red.withOpacity(0.7),
+              color: Colors.red.withValues(alpha:0.7),
             ),
             const SizedBox(height: 24),
             Text(
               'Something went wrong',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha:0.9),
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
@@ -725,7 +724,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               error,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 16,
                 height: 1.4,
               ),
@@ -758,7 +757,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF9248D2).withOpacity(0.3),
+                      color: const Color(0xFF9248D2).withValues(alpha:0.3),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -842,7 +841,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       // TODO: Implement actual pagination with Firestore
       // For now, just simulate loading
       await Future.delayed(const Duration(milliseconds: 1000));
-      _currentPage++;
+      // _currentPage++;
     } catch (e) {
       debugPrint('Error loading more notifications: $e');
     } finally {
@@ -859,10 +858,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       margin: const EdgeInsets.only(left: 20, top: 16, bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),

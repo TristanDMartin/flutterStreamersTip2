@@ -35,7 +35,7 @@ class SampleDataGenerator {
           'displayName': 'Gamer Girl',
           'bio': 'Professional gamer and streamer',
           'platforms': [
-            Platform(
+            const Platform(
               id: 'twitch_1',
               type: PlatformType.twitch,
               username: 'gamer_girl',
@@ -50,7 +50,7 @@ class SampleDataGenerator {
           'displayName': 'Art Streamer',
           'bio': 'Digital artist and creative streamer',
           'platforms': [
-            Platform(
+            const Platform(
               id: 'youtube_2',
               type: PlatformType.youtube,
               username: 'art_streamer',
@@ -65,7 +65,7 @@ class SampleDataGenerator {
           'displayName': 'Music Lover',
           'bio': 'Music enthusiast and DJ',
           'platforms': [
-            Platform(
+            const Platform(
               id: 'tiktok_3',
               type: PlatformType.tiktok,
               username: 'music_lover',
@@ -80,7 +80,7 @@ class SampleDataGenerator {
           'displayName': 'Tech Reviewer',
           'bio': 'Technology reviewer and gadget enthusiast',
           'platforms': [
-            Platform(
+            const Platform(
               id: 'youtube_4',
               type: PlatformType.youtube,
               username: 'tech_reviewer',
@@ -95,7 +95,7 @@ class SampleDataGenerator {
           'displayName': 'Fitness Coach',
           'bio': 'Personal trainer and fitness influencer',
           'platforms': [
-            Platform(
+            const Platform(
               id: 'instagram_5',
               type: PlatformType.instagram,
               username: 'fitness_coach',

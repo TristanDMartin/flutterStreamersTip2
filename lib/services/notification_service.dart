@@ -1,10 +1,5 @@
 class NotificationService {
-  String? _currentUserId;
   bool _hasUnreadNotifications = false;
-
-  void setCurrentUserId(String userId) {
-    _currentUserId = userId;
-  }
 
   bool get hasUnreadNotifications => _hasUnreadNotifications;
 

@@ -50,11 +50,11 @@ class _HorizontalVideoFeedState extends ConsumerState<HorizontalVideoFeed>
   
   // Performance optimizations
   int _lastLoadMoreIndex = -1;
-  final bool _isPreloading = false;
+  // final bool _isPreloading = false; // Unused field commented out
   
   // StreamerCard state - moved to parent level to persist across video changes
-  final bool _showStreamerCard = false;
-  StreamerCard? _currentStreamerCard;
+  // final bool _showStreamerCard = false; // Unused field commented out
+  // StreamerCard? _currentStreamerCard; // Unused field commented out
   final bool _showSheet = false;
   final String _sheetType = 'share'; // 'share' or 'comments'
   
@@ -142,7 +142,7 @@ class _HorizontalVideoFeedState extends ConsumerState<HorizontalVideoFeed>
 
   Widget _buildLoadingOverlay() {
     return Container(
-      color: Colors.black.withOpacity(0.3),
+      color: Colors.black.withValues(alpha:0.3),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -150,7 +150,7 @@ class _HorizontalVideoFeedState extends ConsumerState<HorizontalVideoFeed>
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.8),
+                color: Colors.black.withValues(alpha:0.8),
                 shape: BoxShape.circle,
               ),
               child: const CircularProgressIndicator(
@@ -233,9 +233,9 @@ class _HorizontalVideoFeedState extends ConsumerState<HorizontalVideoFeed>
     // Simplified preloading - only preload next video
     final nextIndex = currentIndex + 1;
     if (nextIndex < widget.videos.length) {
-      final video = widget.videos[nextIndex];
+      // final video = widget.videos[nextIndex];
       // TODO: Implement video preloading logic
-      print('Preloading video: ${video.id}');
+    // print('Preloading video: ${video.id}');
     }
   }
 
@@ -359,7 +359,7 @@ class FloatingCommentView extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.6),
+              color: Colors.black.withValues(alpha:0.6),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(

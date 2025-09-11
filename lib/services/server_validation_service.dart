@@ -49,7 +49,7 @@ class ServerValidationService {
         return await ContentModerationService().check(content);
       }
     } catch (e) {
-      print('Server validation error: $e');
+    // print('Server validation error: $e');
       // Fall back to client-side validation
       return await ContentModerationService().check(content);
     }
@@ -86,7 +86,7 @@ class ServerValidationService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Error submitting for review: $e');
+    // print('Error submitting for review: $e');
       return false;
     }
   }
@@ -114,7 +114,7 @@ class ServerValidationService {
         throw Exception('Failed to fetch moderation rules');
       }
     } catch (e) {
-      print('Error fetching moderation rules: $e');
+    // print('Error fetching moderation rules: $e');
       return {};
     }
   }
@@ -150,7 +150,7 @@ class ServerValidationService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Error reporting false positive: $e');
+    // print('Error reporting false positive: $e');
       return false;
     }
   }

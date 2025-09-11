@@ -77,7 +77,7 @@ class OfflineService {
       final prefs = await SharedPreferences.getInstance();
       final lastSync = prefs.getInt(_lastSyncKey) ?? 0;
       final now = DateTime.now().millisecondsSinceEpoch;
-      final oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+      const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
       
       return (now - lastSync) > oneHour;
     } catch (e) {

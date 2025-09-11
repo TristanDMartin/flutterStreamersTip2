@@ -18,7 +18,7 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  bool _isPressed = false;
+  // bool _isPressed = false;
 
   @override
   void initState() {
@@ -48,29 +48,29 @@ class _RecommendedContentCardState extends State<RecommendedContentCard>
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        print('Cannot open URL: ${widget.content.url}');
+    // print('Cannot open URL: ${widget.content.url}');
       }
     }
   }
 
   void _onTapDown(TapDownDetails details) {
-    setState(() {
-      _isPressed = true;
-    });
+    // setState(() {
+    //   _isPressed = true;
+    // });
     _animationController.forward();
   }
 
   void _onTapUp(TapUpDetails details) {
-    setState(() {
-      _isPressed = false;
-    });
+    // setState(() {
+    //   _isPressed = false;
+    // });
     _animationController.reverse();
   }
 
   void _onTapCancel() {
-    setState(() {
-      _isPressed = false;
-    });
+    // setState(() {
+    //   _isPressed = false;
+    // });
     _animationController.reverse();
   }
 

@@ -43,9 +43,9 @@ class VideoCacheService {
       await _cleanupExpiredEntries();
       
       _isInitialized = true;
-      print('📦 Video cache initialized: ${_currentCacheSize ~/ 1024}KB');
+    // print('📦 Video cache initialized: ${_currentCacheSize ~/ 1024}KB');
     } catch (e) {
-      print('❌ Error initializing video cache: $e');
+    // print('❌ Error initializing video cache: $e');
     }
   }
 
@@ -68,7 +68,7 @@ class VideoCacheService {
         }
       }
     } catch (e) {
-      print('❌ Error loading cache index: $e');
+    // print('❌ Error loading cache index: $e');
     }
   }
 
@@ -84,7 +84,7 @@ class VideoCacheService {
       
       await prefs.setString('video_cache_index', json.encode(indexData));
     } catch (e) {
-      print('❌ Error saving cache index: $e');
+    // print('❌ Error saving cache index: $e');
     }
   }
 
@@ -156,10 +156,10 @@ class VideoCacheService {
       // Check if we need to clean up
       await _enforceCacheLimits();
       
-      print('📦 Video cached: $videoUrl (${fileSize ~/ 1024}KB)');
+    // print('📦 Video cached: $videoUrl (${fileSize ~/ 1024}KB)');
       return true;
     } catch (e) {
-      print('❌ Error caching video: $e');
+    // print('❌ Error caching video: $e');
       return false;
     }
   }
@@ -176,10 +176,10 @@ class VideoCacheService {
       // Write thumbnail data
       await cachedFile.writeAsBytes(thumbnailData);
       
-      print('📦 Thumbnail cached: $videoUrl');
+    // print('📦 Thumbnail cached: $videoUrl');
       return true;
     } catch (e) {
-      print('❌ Error caching thumbnail: $e');
+    // print('❌ Error caching thumbnail: $e');
       return false;
     }
   }
@@ -255,7 +255,7 @@ class VideoCacheService {
       
       _currentCacheSize -= entry.size;
     } catch (e) {
-      print('❌ Error removing cache entry: $e');
+    // print('❌ Error removing cache entry: $e');
     }
   }
 
@@ -275,9 +275,9 @@ class VideoCacheService {
       // Save empty index
       await _saveCacheIndex();
       
-      print('📦 Cache cleared');
+    // print('📦 Cache cleared');
     } catch (e) {
-      print('❌ Error clearing cache: $e');
+    // print('❌ Error clearing cache: $e');
     }
   }
 

@@ -97,9 +97,9 @@ class _GroupChatSelectionViewState extends State<GroupChatSelectionView> {
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.grey.withOpacity(0.3),
+                color: Colors.grey.withValues(alpha:0.3),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha:0.2),
                   width: 2,
                 ),
               ),
@@ -153,9 +153,9 @@ class _GroupChatSelectionViewState extends State<GroupChatSelectionView> {
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             hintText: "Enter group name",
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.1),
+            fillColor: Colors.white.withValues(alpha:0.1),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide.none,
@@ -204,7 +204,7 @@ class _GroupChatSelectionViewState extends State<GroupChatSelectionView> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.3),
+                                color: Colors.white.withValues(alpha:0.3),
                                 width: 2,
                               ),
                             ),
@@ -215,19 +215,19 @@ class _GroupChatSelectionViewState extends State<GroupChatSelectionView> {
                                       fit: BoxFit.cover,
                                       errorBuilder: (context, error, stackTrace) {
                                         return Container(
-                                          color: Colors.grey.withOpacity(0.3),
+                                          color: Colors.grey.withValues(alpha:0.3),
                                           child: Icon(
                                             Icons.person,
-                                            color: Colors.white.withOpacity(0.6),
+                                            color: Colors.white.withValues(alpha:0.6),
                                           ),
                                         );
                                       },
                                     )
                                   : Container(
-                                      color: Colors.grey.withOpacity(0.3),
+                                      color: Colors.grey.withValues(alpha:0.3),
                                       child: Icon(
                                         Icons.person,
-                                        color: Colors.white.withOpacity(0.6),
+                                        color: Colors.white.withValues(alpha:0.6),
                                       ),
                                     ),
                             ),
@@ -277,10 +277,10 @@ class _GroupChatSelectionViewState extends State<GroupChatSelectionView> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: Colors.white.withValues(alpha:0.05),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
               ),
             ),
             child: const Center(

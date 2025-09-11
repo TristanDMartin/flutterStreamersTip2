@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
@@ -31,19 +32,19 @@ class CameraService extends ChangeNotifier {
   String? get lastRecordedVideoPath => _currentRecordingFile?.path;
 
   CameraService() {
-    print("📱 CameraService: Initializing...");
+    log("📱 CameraService: Initializing...");
     _startCameraInstantly();
   }
 
   void _startCameraInstantly() {
-    print("📱 CameraService: Starting camera instantly...");
+    log("📱 CameraService: Starting camera instantly...");
     
     // Check if we already have permission
     _checkPermissionsAndConfigure();
   }
 
   Future<void> _checkPermissionsAndConfigure() async {
-    print("📱 CameraService: checkPermissionsAndConfigure called");
+    log("📱 CameraService: checkPermissionsAndConfigure called");
     
     // Clear any existing error message first
     _errorMessage = null;
@@ -52,26 +53,26 @@ class CameraService extends ChangeNotifier {
     // Check current permission status for both camera and microphone
     final cameraStatus = await Permission.camera.status;
     final micStatus = await Permission.microphone.status;
-    print("📱 CameraService: Video authorization status: ${cameraStatus.name}");
-    print("📱 CameraService: Audio authorization status: ${micStatus.name}");
+    log("📱 CameraService: Video authorization status: ${cameraStatus.name}");
+    log("📱 CameraService: Audio authorization status: ${micStatus.name}");
     
     // Handle video permissions first
     if (cameraStatus.isGranted) {
-      print("📱 CameraService: Video already authorized, checking audio...");
+      log("📱 CameraService: Video already authorized, checking audio...");
       await _checkAudioPermissionsAndConfigure();
     } else if (cameraStatus.isDenied) {
-      print("📱 CameraService: Requesting video permission...");
+      log("📱 CameraService: Requesting video permission...");
       final result = await Permission.camera.request();
       if (result.isGranted) {
-        print("📱 CameraService: Video permission granted, checking audio...");
+        log("📱 CameraService: Video permission granted, checking audio...");
         await _checkAudioPermissionsAndConfigure();
       } else {
-        print("❌ CameraService: Video permission denied");
+        log("❌ CameraService: Video permission denied");
         _errorMessage = "Camera access is required to use this feature. Please enable it in Settings.";
         notifyListeners();
       }
     } else {
-      print("❌ CameraService: Video permission denied/restricted");
+      log("❌ CameraService: Video permission denied/restricted");
       _errorMessage = "Camera access is required. Please enable it in Settings.";
       notifyListeners();
     }
@@ -81,32 +82,32 @@ class CameraService extends ChangeNotifier {
     final micStatus = await Permission.microphone.status;
     
     if (micStatus.isGranted) {
-      print("📱 CameraService: Audio already authorized, configuring session...");
+      log("📱 CameraService: Audio already authorized, configuring session...");
       await _configureSession();
     } else if (micStatus.isDenied) {
-      print("📱 CameraService: Requesting audio permission...");
+      log("📱 CameraService: Requesting audio permission...");
       final result = await Permission.microphone.request();
       if (result.isGranted) {
-        print("📱 CameraService: Audio permission granted, configuring session...");
+        log("📱 CameraService: Audio permission granted, configuring session...");
         await _configureSession();
       } else {
-        print("⚠️ CameraService: Audio permission denied, configuring without audio...");
+        log("⚠️ CameraService: Audio permission denied, configuring without audio...");
         await _configureSession();
       }
     } else {
-      print("⚠️ CameraService: Audio permission denied/restricted, configuring without audio...");
+      log("⚠️ CameraService: Audio permission denied/restricted, configuring without audio...");
       await _configureSession();
     }
   }
 
   Future<void> _configureSession() async {
-    print("📱 CameraService: Configuring camera session...");
+    log("📱 CameraService: Configuring camera session...");
     
     try {
       // Get available cameras
       _cameras = await availableCameras();
       if (_cameras.isEmpty) {
-        print("❌ CameraService: No cameras available");
+        log("❌ CameraService: No cameras available");
         _errorMessage = "Could not access camera device";
         notifyListeners();
         return;
@@ -128,13 +129,13 @@ class CameraService extends ChangeNotifier {
       // Set flash mode
       await _cameraController!.setFlashMode(FlashMode.off);
       
-      print("✅ CameraService: Session configuration complete");
+      log("✅ CameraService: Session configuration complete");
       
       // Start session
       await _startSession();
       
     } catch (e) {
-      print("❌ CameraService: Error configuring session: $e");
+      log("❌ CameraService: Error configuring session: $e");
       _errorMessage = "Failed to configure camera: $e";
       notifyListeners();
     }
@@ -142,7 +143,7 @@ class CameraService extends ChangeNotifier {
 
   Future<void> _startSession() async {
     try {
-      print("📱 CameraService: Starting camera session...");
+      log("📱 CameraService: Starting camera session...");
       
       // Start the session
       await _cameraController!.startImageStream((image) {
@@ -151,10 +152,10 @@ class CameraService extends ChangeNotifier {
       
       _isSessionRunning = true;
       _errorMessage = null;
-      print("✅ CameraService: Camera session started successfully");
+      log("✅ CameraService: Camera session started successfully");
       
     } catch (e) {
-      print("❌ CameraService: Session failed to start: $e");
+      log("❌ CameraService: Session failed to start: $e");
       _errorMessage = "Camera session failed to start";
       _isSessionRunning = false;
     }
@@ -163,7 +164,7 @@ class CameraService extends ChangeNotifier {
   }
 
   void resetCamera() {
-    print("📱 CameraService: Resetting camera session...");
+    log("📱 CameraService: Resetting camera session...");
     
     // Stop current session
     _stopSession();
@@ -183,31 +184,31 @@ class CameraService extends ChangeNotifier {
     try {
       await _cameraController?.stopImageStream();
       _isSessionRunning = false;
-      print("📱 CameraService: Camera session stopped");
+      log("📱 CameraService: Camera session stopped");
     } catch (e) {
-      print("❌ CameraService: Error stopping session: $e");
+      log("❌ CameraService: Error stopping session: $e");
     }
   }
 
   void ensureSessionIsRunning() {
     if (!_isSessionRunning) {
-      print("📱 CameraService: Session not running, starting...");
+      log("📱 CameraService: Session not running, starting...");
       _startSession();
     } else {
-      print("📱 CameraService: Session is already running");
+      log("📱 CameraService: Session is already running");
     }
   }
 
   Future<void> startRecording() async {
-    print("📱 CameraService: startRecording() called");
+    log("📱 CameraService: startRecording() called");
     
     // Check mic permission for recording
     final micStatus = await Permission.microphone.status;
     if (micStatus.isDenied) {
-      print("📱 CameraService: Requesting mic permission...");
+      log("📱 CameraService: Requesting mic permission...");
       final result = await Permission.microphone.request();
       if (!result.isGranted) {
-        print("📱 CameraService: Mic permission denied");
+        log("📱 CameraService: Mic permission denied");
         _errorMessage = "Microphone access is required for video recording";
         notifyListeners();
         return;
@@ -215,17 +216,17 @@ class CameraService extends ChangeNotifier {
     }
 
     if (_isRecording) { 
-      print("📱 CameraService: Already recording, ignoring start request");
+      log("📱 CameraService: Already recording, ignoring start request");
       return; 
     }
     
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      print("❌ CameraService: Camera not initialized");
+      log("❌ CameraService: Camera not initialized");
       return;
     }
     
     try {
-      print("📱 CameraService: Starting recording...");
+      log("📱 CameraService: Starting recording...");
       
       // Create temporary file for recording
       final tempDir = await getTemporaryDirectory();
@@ -242,26 +243,26 @@ class CameraService extends ChangeNotifier {
       // Start progress timer
       _startProgressTimer();
       
-      print("📱 CameraService: Recording started successfully");
+      log("📱 CameraService: Recording started successfully");
       notifyListeners();
       
     } catch (e) {
-      print("❌ CameraService: Failed to start recording: $e");
+      log("❌ CameraService: Failed to start recording: $e");
       _errorMessage = "Failed to start recording: $e";
       notifyListeners();
     }
   }
 
   Future<void> stopRecording() async {
-    print("📱 CameraService: stopRecording() called");
+    log("📱 CameraService: stopRecording() called");
     
     if (!_isRecording) { 
-      print("📱 CameraService: Not recording, ignoring stop request");
+      log("📱 CameraService: Not recording, ignoring stop request");
       return; 
     }
     
     try {
-      print("📱 CameraService: Stopping recording...");
+      log("📱 CameraService: Stopping recording...");
       
       // Stop recording
       final file = await _cameraController!.stopVideoRecording();
@@ -277,11 +278,11 @@ class CameraService extends ChangeNotifier {
       // Stop progress timer
       _stopProgressTimer();
       
-      print("📱 CameraService: Recording stopped successfully");
+      log("📱 CameraService: Recording stopped successfully");
       notifyListeners();
       
     } catch (e) {
-      print("❌ CameraService: Failed to stop recording: $e");
+      log("❌ CameraService: Failed to stop recording: $e");
       _errorMessage = "Failed to stop recording: $e";
       _isRecording = false;
       notifyListeners();
@@ -319,9 +320,9 @@ class CameraService extends ChangeNotifier {
     if (_currentRecordingFile != null && _currentRecordingFile!.existsSync()) {
       try {
         _currentRecordingFile!.deleteSync();
-        print("📱 CameraService: Recording discarded");
+        log("📱 CameraService: Recording discarded");
       } catch (e) {
-        print("❌ CameraService: Failed to delete recording: $e");
+        log("❌ CameraService: Failed to delete recording: $e");
       }
     }
     _currentRecordingFile = null;
@@ -335,11 +336,11 @@ class CameraService extends ChangeNotifier {
   }
 
   Future<void> flipCamera() async {
-    print("📱 CameraService: flipCamera() called");
-    print("📱 CameraService: Current position: $_selectedCameraIndex");
+    log("📱 CameraService: flipCamera() called");
+    log("📱 CameraService: Current position: $_selectedCameraIndex");
     
     if (_cameras.length <= 1) {
-      print("📱 CameraService: Only one camera available, cannot flip");
+      log("📱 CameraService: Only one camera available, cannot flip");
       return;
     }
     
@@ -349,15 +350,15 @@ class CameraService extends ChangeNotifier {
       
       // Toggle camera index
       _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
-      print("📱 CameraService: New position: $_selectedCameraIndex");
+      log("📱 CameraService: New position: $_selectedCameraIndex");
       
       // Reconfigure with new camera
       await _configureSession();
       
-      print("📱 CameraService: Camera flipped successfully");
+      log("📱 CameraService: Camera flipped successfully");
       
     } catch (e) {
-      print("❌ CameraService: Failed to flip camera: $e");
+      log("❌ CameraService: Failed to flip camera: $e");
       _errorMessage = "Failed to flip camera: $e";
       notifyListeners();
     }
@@ -365,21 +366,21 @@ class CameraService extends ChangeNotifier {
 
   Future<String?> capturePhoto() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      print("❌ CameraService: Camera not initialized");
+      log("❌ CameraService: Camera not initialized");
       return null;
     }
     
     try {
-      print("📱 CameraService: Capturing photo...");
+      log("📱 CameraService: Capturing photo...");
       
       final image = await _cameraController!.takePicture();
-      print("✅ CameraService: Photo captured: ${image.path}");
+      log("✅ CameraService: Photo captured: ${image.path}");
       
       // You can return the image path or handle it as needed
       return image.path;
       
     } catch (e) {
-      print("❌ CameraService: Failed to capture photo: $e");
+      log("❌ CameraService: Failed to capture photo: $e");
       _errorMessage = "Failed to capture photo: $e";
       notifyListeners();
       return null;
@@ -387,11 +388,11 @@ class CameraService extends ChangeNotifier {
   }
 
   Future<void> toggleFlash() async {
-    print("📱 CameraService: toggleFlash() called");
-    print("📱 CameraService: Current flash state: $_isFlashOn");
+    log("📱 CameraService: toggleFlash() called");
+    log("📱 CameraService: Current flash state: $_isFlashOn");
     
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      print("❌ CameraService: Camera not initialized, cannot toggle flash");
+      log("❌ CameraService: Camera not initialized, cannot toggle flash");
       return;
     }
     
@@ -399,24 +400,24 @@ class CameraService extends ChangeNotifier {
       if (_isFlashOn) {
         await _cameraController!.setFlashMode(FlashMode.off);
         _isFlashOn = false;
-        print("📱 CameraService: Flash turned OFF");
+        log("📱 CameraService: Flash turned OFF");
       } else {
         await _cameraController!.setFlashMode(FlashMode.torch);
         _isFlashOn = true;
-        print("📱 CameraService: Flash turned ON");
+        log("📱 CameraService: Flash turned ON");
       }
       
       notifyListeners();
       
     } catch (e) {
-      print("❌ CameraService: Failed to toggle flash: $e");
+      log("❌ CameraService: Failed to toggle flash: $e");
       _isFlashOn = false;
       notifyListeners();
     }
   }
 
   void stopCamera() {
-    print("📱 CameraService: Stopping camera session");
+    log("📱 CameraService: Stopping camera session");
     _stopSession();
     _isSessionRunning = false;
     notifyListeners();

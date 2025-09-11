@@ -144,7 +144,7 @@ enum PlatformType {
   bluesky,
   twitter,
   instagram,
-  rednote,
+  reddit,
   other,
 }
 
@@ -199,8 +199,8 @@ extension PlatformTypeExtension on PlatformType {
         return 'twitter';
       case PlatformType.instagram:
         return 'instagram';
-      case PlatformType.rednote:
-        return 'rednote';
+      case PlatformType.reddit:
+        return 'reddit';
       case PlatformType.other:
         return 'other';
     }
@@ -224,7 +224,7 @@ extension PlatformTypeExtension on PlatformType {
         return 0xFF000000; // Black
       case PlatformType.instagram:
         return 0xFF9146FF; // Purple (matching Swift)
-      case PlatformType.rednote:
+      case PlatformType.reddit:
         return 0xFFFF0000; // Red
       case PlatformType.other:
         return 0xFF808080; // Gray

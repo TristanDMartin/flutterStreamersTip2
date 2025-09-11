@@ -222,8 +222,8 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         return PlatformType.twitter;
       case 'instagram':
         return PlatformType.instagram;
-      case 'rednote':
-        return PlatformType.rednote;
+      case 'reddit':
+        return PlatformType.reddit;
       default:
         return PlatformType.other;
     }
@@ -266,7 +266,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         });
       }
     } catch (e) {
-      print('Error checking connection status: $e');
+    // print('Error checking connection status: $e');
       if (mounted) {
         setState(() {
           _isFollowing = false;
@@ -288,7 +288,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
           .get();
       return doc.exists;
     } catch (e) {
-      print('Error checking follow status: $e');
+    // print('Error checking follow status: $e');
       return false;
     }
   }
@@ -303,7 +303,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
           .get();
       return doc.exists;
     } catch (e) {
-      print('Error checking followed by status: $e');
+    // print('Error checking followed by status: $e');
       return false;
     }
   }
@@ -625,10 +625,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         height: 40,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -655,7 +655,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
           gradient: _getFollowButtonGradient(),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -685,10 +685,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         height: 40,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -713,13 +713,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: BoxDecoration(
           color: _isConnected 
-              ? Colors.white.withOpacity(0.15)
-              : Colors.white.withOpacity(0.05),
+              ? Colors.white.withValues(alpha:0.15)
+              : Colors.white.withValues(alpha:0.05),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: _isConnected 
-                ? Colors.white.withOpacity(0.2)
-                : Colors.white.withOpacity(0.1),
+                ? Colors.white.withValues(alpha:0.2)
+                : Colors.white.withValues(alpha:0.1),
             width: 1,
           ),
         ),
@@ -729,7 +729,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             style: TextStyle(
               color: _isConnected 
                   ? Colors.white 
-                  : Colors.white.withOpacity(0.3),
+                  : Colors.white.withValues(alpha:0.3),
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
@@ -749,7 +749,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
           gradient: _shareGradient,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -773,10 +773,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       child: Container(
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -810,14 +810,14 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         height: 32,
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withOpacity(0.2) : Colors.transparent,
+          color: isSelected ? Colors.white.withValues(alpha:0.2) : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Center(
           child: Text(
             text,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+              color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -885,8 +885,8 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              const Color(0xFF6137EB).withOpacity(0.9),
-              const Color(0xFF6137EB).withOpacity(0.0),
+              const Color(0xFF6137EB).withValues(alpha:0.9),
+              const Color(0xFF6137EB).withValues(alpha:0.0),
             ],
           ),
         ),
@@ -971,7 +971,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                 Text(
                   '@${_currentStreamerCard.username}',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha:0.7),
                     fontSize: 16,
                   ),
                 ),
@@ -1010,18 +1010,18 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: isSelected 
-                        ? Colors.white.withOpacity(0.2)
-                        : Colors.white.withOpacity(0.1),
+                        ? Colors.white.withValues(alpha:0.2)
+                        : Colors.white.withValues(alpha:0.1),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha:0.2),
                       width: 1,
                     ),
                   ),
                   child: Text(
                     '#$hashtag',
                     style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+                      color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1044,10 +1044,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -1100,10 +1100,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha:0.2),
                     width: 1,
                   ),
                 ),
@@ -1128,10 +1128,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -1158,7 +1158,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                 Text(
                   '@${platform['username']}',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha:0.7),
                     fontSize: 12,
                   ),
                 ),
@@ -1211,10 +1211,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha:0.2),
                     width: 1,
                   ),
                 ),
@@ -1239,10 +1239,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -1262,7 +1262,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             Text(
               event['description'],
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 12,
               ),
             ),
@@ -1272,7 +1272,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             Text(
               _formatEventDate(event['date']),
               style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha:0.5),
                 fontSize: 10,
               ),
             ),
@@ -1296,7 +1296,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         });
       }
     } catch (e) {
-      print('Error loading calendar events: $e');
+    // print('Error loading calendar events: $e');
     }
   }
 
@@ -1313,7 +1313,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         });
       }
     } catch (e) {
-      print('Error loading platforms: $e');
+    // print('Error loading platforms: $e');
     }
   }
 
@@ -1343,7 +1343,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         return Icons.cloud;
       case 'kick':
         return Icons.sports_esports;
-      case 'rednote':
+      case 'reddit':
         return Icons.note;
       default:
         return Icons.link;
@@ -1353,7 +1353,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   void _openPlatform(String? url) {
     HapticFeedback.lightImpact();
     // TODO: Open platform URL using url_launcher
-    print('Opening platform: $url');
+    // print('Opening platform: $url');
   }
 
   Widget _buildChatOverlay() {
@@ -1472,7 +1472,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         throw Exception('Failed to follow user');
       }
     } catch (e) {
-      print('Error following streamer: $e');
+    // print('Error following streamer: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1508,7 +1508,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         throw Exception('Failed to unfollow user');
       }
     } catch (e) {
-      print('Error unfollowing streamer: $e');
+    // print('Error unfollowing streamer: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1592,12 +1592,12 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     if (widget.currentUserId == null) return;
 
     try {
-      print('🔍 Finding or creating chat with: ${displayStreamer.id}');
+    // print('🔍 Finding or creating chat with: ${displayStreamer.id}');
       
       // First, try to find existing chat
       final existingChat = await _findExistingChat();
       if (existingChat != null) {
-        print('✅ Found existing chat: ${existingChat['id']}');
+    // print('✅ Found existing chat: ${existingChat['id']}');
         _selectedChat = existingChat;
         setState(() {
           _showChatView = true;
@@ -1606,20 +1606,20 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       }
 
       // If no existing chat, create a new one
-      print('📝 Creating new chat...');
+    // print('📝 Creating new chat...');
       final newChat = await _createNewChat();
       if (newChat != null) {
-        print('✅ Created new chat: ${newChat['id']}');
+    // print('✅ Created new chat: ${newChat['id']}');
         _selectedChat = newChat;
         setState(() {
           _showChatView = true;
         });
       } else {
-        print('❌ Failed to create chat');
+    // print('❌ Failed to create chat');
         _showErrorDialog('Failed to create chat. Please try again.');
       }
     } catch (e) {
-      print('❌ Error in chat creation: $e');
+    // print('❌ Error in chat creation: $e');
       _showErrorDialog('Error creating chat: $e');
     }
   }
@@ -1644,7 +1644,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       }
       return null;
     } catch (e) {
-      print('Error finding existing chat: $e');
+    // print('Error finding existing chat: $e');
       return null;
     }
   }
@@ -1668,7 +1668,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         ...chatData,
       };
     } catch (e) {
-      print('Error creating new chat: $e');
+    // print('Error creating new chat: $e');
       return null;
     }
   }

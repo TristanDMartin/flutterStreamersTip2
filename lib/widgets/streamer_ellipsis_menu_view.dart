@@ -20,9 +20,9 @@ class StreamerEllipsisMenuView extends StatefulWidget {
 }
 
 class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
-  final bool _showChatView = false;
-  bool _showBlockAlert = false;
-  bool _showReportAlert = false;
+  // final bool _showChatView = false;
+  // bool _showBlockAlert = false;
+  // bool _showReportAlert = false;
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +149,7 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
                         height: 50,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.grey.withOpacity(0.3),
+                          color: Colors.grey.withValues(alpha:0.3),
                         ),
                         child: Center(
                           child: Text(
@@ -295,9 +295,9 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
                   icon: Icons.block,
                   color: Colors.red,
                   onTap: () {
-                    setState(() {
-                      _showBlockAlert = true;
-                    });
+                    // setState(() {
+                    //   _showBlockAlert = true;
+                    // });
                   },
                 ),
                 
@@ -405,14 +405,14 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
     );
   }
 
-  void _handleBlockUser() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${widget.streamer['displayName']} has been blocked'),
-      ),
-    );
-    widget.onDismiss();
-  }
+  // void _handleBlockUser() {
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       content: Text('${widget.streamer['displayName']} has been blocked'),
+  //     ),
+  //   );
+  //   widget.onDismiss();
+  // }
 
   Future<void> _handleReportUser() async {
     final container = ProviderScope.containerOf(context, listen: false);
@@ -472,141 +472,141 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
   }
 
 
-  Widget _buildBlockAlert() {
-    return Container(
-      color: Colors.black54,
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.all(20),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Block User',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              
-              const SizedBox(height: 16),
-              
-              Text(
-                'Are you sure you want to block ${widget.streamer['displayName']}? You won\'t see their content anymore.',
-                textAlign: TextAlign.center,
-              ),
-              
-              const SizedBox(height: 20),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _showBlockAlert = false;
-                        });
-                      },
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _showBlockAlert = false;
-                        });
-                        _handleBlockUser();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Block'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // Widget _buildBlockAlert() {
+  //   return Container(
+  //     color: Colors.black54,
+  //     child: Center(
+  //       child: Container(
+  //         margin: const EdgeInsets.all(20),
+  //         padding: const EdgeInsets.all(20),
+  //         decoration: BoxDecoration(
+  //           color: Colors.white,
+  //           borderRadius: BorderRadius.circular(12),
+  //         ),
+  //         child: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           children: [
+  //             const Text(
+  //               'Block User',
+  //               style: TextStyle(
+  //                 fontSize: 18,
+  //                 fontWeight: FontWeight.bold,
+  //               ),
+  //             ),
+  //             
+  //             const SizedBox(height: 16),
+  //             
+  //             Text(
+  //               'Are you sure you want to block ${widget.streamer['displayName']}? You won\'t see their content anymore.',
+  //               textAlign: TextAlign.center,
+  //             ),
+  //             
+  //             const SizedBox(height: 20),
+  //             
+  //             Row(
+  //               children: [
+  //                 Expanded(
+  //                   child: TextButton(
+  //                     onPressed: () {
+  //                       setState(() {
+  //                         _showBlockAlert = false;
+  //                       });
+  //                     },
+  //                     child: const Text('Cancel'),
+  //                   ),
+  //                 ),
+  //                 
+  //                 Expanded(
+  //                   child: ElevatedButton(
+  //                     onPressed: () {
+  //                       setState(() {
+  //                         _showBlockAlert = false;
+  //                       });
+  //                       _handleBlockUser();
+  //                     },
+  //                     style: ElevatedButton.styleFrom(
+  //                       backgroundColor: Colors.red,
+  //                       foregroundColor: Colors.white,
+  //                     ),
+  //                     child: const Text('Block'),
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
 
-  Widget _buildReportAlert() {
-    return Container(
-      color: Colors.black54,
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.all(20),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Report User',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              
-              const SizedBox(height: 16),
-              
-              Text(
-                'Are you sure you want to report ${widget.streamer['displayName']}?',
-                textAlign: TextAlign.center,
-              ),
-              
-              const SizedBox(height: 20),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _showReportAlert = false;
-                        });
-                      },
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _showReportAlert = false;
-                        });
-                        _handleReportUser();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Report'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // Widget _buildReportAlert() {
+  //   return Container(
+  //     color: Colors.black54,
+  //     child: Center(
+  //       child: Container(
+  //         margin: const EdgeInsets.all(20),
+  //         padding: const EdgeInsets.all(20),
+  //         decoration: BoxDecoration(
+  //           color: Colors.white,
+  //           borderRadius: BorderRadius.circular(12),
+  //         ),
+  //         child: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           children: [
+  //             const Text(
+  //               'Report User',
+  //               style: TextStyle(
+  //                 fontSize: 18,
+  //                 fontWeight: FontWeight.bold,
+  //               ),
+  //             ),
+  //             
+  //             const SizedBox(height: 16),
+  //             
+  //             Text(
+  //               'Are you sure you want to report ${widget.streamer['displayName']}?',
+  //               textAlign: TextAlign.center,
+  //             ),
+  //             
+  //             const SizedBox(height: 20),
+  //             
+  //             Row(
+  //               children: [
+  //                 Expanded(
+  //                   child: TextButton(
+  //                     onPressed: () {
+  //                       setState(() {
+  //                         _showReportAlert = false;
+  //                       });
+  //                     },
+  //                     child: const Text('Cancel'),
+  //                   ),
+  //                 ),
+  //                 
+  //                 Expanded(
+  //                   child: ElevatedButton(
+  //                     onPressed: () {
+  //                       setState(() {
+  //                         _showReportAlert = false;
+  //                       });
+  //                       _handleReportUser();
+  //                     },
+  //                     style: ElevatedButton.styleFrom(
+  //                       backgroundColor: Colors.orange,
+  //                       foregroundColor: Colors.white,
+  //                     ),
+  //                     child: const Text('Report'),
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
 }
 
 class ShareActionButton extends StatelessWidget {
@@ -630,10 +630,10 @@ class ShareActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -684,10 +684,10 @@ class ActionRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),

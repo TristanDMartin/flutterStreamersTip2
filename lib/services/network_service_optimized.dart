@@ -31,7 +31,7 @@ class NetworkServiceOptimized {
 
       return following.where((user) => mutualIds.contains(user.id)).toList();
     } catch (e) {
-      print('Error getting connections: $e');
+    // print('Error getting connections: $e');
       return [];
     }
   }
@@ -44,7 +44,7 @@ class NetworkServiceOptimized {
     try {
       return await _getFollowers(currentUser.uid);
     } catch (e) {
-      print('Error getting followers: $e');
+    // print('Error getting followers: $e');
       return [];
     }
   }
@@ -57,7 +57,7 @@ class NetworkServiceOptimized {
     try {
       return await _getFollowing(currentUser.uid);
     } catch (e) {
-      print('Error getting following: $e');
+    // print('Error getting following: $e');
       return [];
     }
   }
@@ -115,7 +115,7 @@ class NetworkServiceOptimized {
       
       return true;
     } catch (e) {
-      print('Error following user: $e');
+    // print('Error following user: $e');
       return false;
     }
   }
@@ -158,7 +158,7 @@ class NetworkServiceOptimized {
       
       return true;
     } catch (e) {
-      print('Error unfollowing user: $e');
+    // print('Error unfollowing user: $e');
       return false;
     }
   }
@@ -201,7 +201,7 @@ class NetworkServiceOptimized {
       
       return true;
     } catch (e) {
-      print('Error removing follower: $e');
+    // print('Error removing follower: $e');
       return false;
     }
   }
@@ -232,7 +232,7 @@ class NetworkServiceOptimized {
 
       return suggestions;
     } catch (e) {
-      print('Error getting user suggestions: $e');
+    // print('Error getting user suggestions: $e');
       return [];
     }
   }
@@ -248,7 +248,7 @@ class NetworkServiceOptimized {
       final followerIds = query.docs.map((doc) => doc.data()['followerId'] as String).toList();
       return await _fetchUsers(followerIds);
     } catch (e) {
-      print('Error getting followers: $e');
+    // print('Error getting followers: $e');
       return [];
     }
   }
@@ -264,7 +264,7 @@ class NetworkServiceOptimized {
       final followingIds = query.docs.map((doc) => doc.data()['followingId'] as String).toList();
       return await _fetchUsers(followingIds);
     } catch (e) {
-      print('Error getting following: $e');
+    // print('Error getting following: $e');
       return [];
     }
   }
@@ -308,7 +308,7 @@ class NetworkServiceOptimized {
 
       return [...cachedUsers, ...fetchedUsers];
     } catch (e) {
-      print('Error fetching users: $e');
+    // print('Error fetching users: $e');
       return cachedUsers;
     }
   }
@@ -351,7 +351,7 @@ class NetworkServiceOptimized {
       }
       return null;
     } catch (e) {
-      print('Error getting user by ID: $e');
+    // print('Error getting user by ID: $e');
       return null;
     }
   }

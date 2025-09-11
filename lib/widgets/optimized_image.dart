@@ -14,7 +14,7 @@ class OptimizedImage extends StatefulWidget {
   final BorderRadius? borderRadius;
 
   const OptimizedImage({
-    Key? key,
+    super.key,
     this.imageUrl,
     this.width,
     this.height,
@@ -22,7 +22,7 @@ class OptimizedImage extends StatefulWidget {
     this.placeholder,
     this.errorWidget,
     this.borderRadius,
-  }) : super(key: key);
+  });
 
   @override
   State<OptimizedImage> createState() => _OptimizedImageState();
@@ -161,12 +161,12 @@ class OptimizedAvatar extends StatelessWidget {
   final Widget? child;
 
   const OptimizedAvatar({
-    Key? key,
+    super.key,
     this.imageUrl,
     this.radius = 20,
     this.backgroundColor,
     this.child,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

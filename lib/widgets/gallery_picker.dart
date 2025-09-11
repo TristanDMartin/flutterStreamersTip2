@@ -197,7 +197,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
                             Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(8),
-                                color: Colors.blue.withOpacity(0.7),
+                                color: Colors.blue.withValues(alpha: 0.7),
                               ),
                               child: const Center(
                                 child: Icon(
@@ -237,7 +237,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
       // that prompts the user to use the camera or pick individual images
       return [];
     } catch (e) {
-      print('Error getting gallery images: $e');
+      // print('Error getting gallery images: $e');
       return [];
     }
   }
@@ -266,9 +266,9 @@ class _GalleryPickerState extends State<GalleryPicker> {
     _showErrorDialog('Camera capture is not available in this build.');
   }
 
-  Future<void> _pickFromGallery() async {
-    _showErrorDialog('Gallery picker is not available in this build.');
-  }
+  // Future<void> _pickFromGallery() async {
+  //   _showErrorDialog('Gallery picker is not available in this build.');
+  // }
 
   void _confirmSelection() {
     widget.onImagesSelected(_tempSelectedImages);
@@ -538,7 +538,7 @@ class _AdvancedGalleryPickerState extends State<AdvancedGalleryPicker> {
                       Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
-                          color: Colors.blue.withOpacity(0.7),
+                          color: Colors.blue.withValues(alpha: 0.7),
                         ),
                         child: const Center(
                           child: Icon(

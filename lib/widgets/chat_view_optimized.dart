@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/message.dart' as app_message;
@@ -320,18 +319,18 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            const Color(0xFF9248D2).withOpacity(0.8),
-                            const Color(0xFF7B2CBF).withOpacity(0.8),
+                            const Color(0xFF9248D2).withValues(alpha:0.8),
+                            const Color(0xFF7B2CBF).withValues(alpha:0.8),
                           ],
                         ),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           width: 2,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF9248D2).withOpacity(0.3),
+                            color: const Color(0xFF9248D2).withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -369,8 +368,8 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  Colors.white.withOpacity(0.15),
-                                  Colors.white.withOpacity(0.05),
+                                  Colors.white.withValues(alpha:0.15),
+                                  Colors.white.withValues(alpha:0.05),
                                 ],
                               ),
                         borderRadius: BorderRadius.only(
@@ -380,16 +379,16 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                           bottomRight: isMe ? const Radius.circular(8) : const Radius.circular(24),
                         ),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: isMe 
-                                ? const Color(0xFF9248D2).withOpacity(0.3)
-                                : Colors.black.withOpacity(0.1),
+                                ? const Color(0xFF9248D2).withValues(alpha: 0.3)
+                                : Colors.black.withValues(alpha: 0.1),
                             blurRadius: isMe ? 12 : 8,
-                            offset: Offset(0, 4),
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
@@ -410,7 +409,7 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                                       return Container(
                                         width: 200,
                                         height: 150,
-                                        color: Colors.grey.withOpacity(0.3),
+                                        color: Colors.grey.withValues(alpha: 0.3),
                                         child: const Center(
                                           child: Text(
                                             'GIF',
@@ -435,7 +434,7 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                                         borderRadius: BorderRadius.circular(16),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(0.3),
+                                            color: Colors.black.withValues(alpha: 0.3),
                                             blurRadius: 4,
                                             offset: const Offset(0, 2),
                                           ),
@@ -464,7 +463,7 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                           Text(
                             _formatTime(message.timestamp),
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha:0.6),
                               fontSize: 12,
                             ),
                           ),
@@ -482,18 +481,18 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            const Color(0xFF9248D2).withOpacity(0.8),
-                            const Color(0xFF7B2CBF).withOpacity(0.8),
+                            const Color(0xFF9248D2).withValues(alpha:0.8),
+                            const Color(0xFF7B2CBF).withValues(alpha:0.8),
                           ],
                         ),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           width: 2,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF9248D2).withOpacity(0.3),
+                            color: const Color(0xFF9248D2).withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -584,7 +583,7 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
               height: 4,
               margin: const EdgeInsets.only(top: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

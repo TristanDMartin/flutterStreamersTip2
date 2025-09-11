@@ -54,7 +54,7 @@ class BookmarkService {
       _isInitialized = true;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ BookmarkService: Error initializing: $e');
+    // print('❌ BookmarkService: Error initializing: $e');
       }
     } finally {
       _isLoading = false;
@@ -98,7 +98,7 @@ class BookmarkService {
       _notifyBookmarksChanged();
     } catch (e) {
       if (kDebugMode) {
-        print('❌ BookmarkService: Error loading bookmarks: $e');
+    // print('❌ BookmarkService: Error loading bookmarks: $e');
       }
     }
   }
@@ -124,7 +124,7 @@ class BookmarkService {
       final bookmarkData = {
         'eventId': event.id,
         'title': event.title,
-        'description': event.description ?? '',
+        'description': event.description,
         'date': Timestamp.fromDate(event.date),
         'ownerId': ownerId,
         'ownerDisplayName': ownerDisplayName,
@@ -143,7 +143,7 @@ class BookmarkService {
         id: '', // Will be updated on next load
         eventId: event.id,
         title: event.title,
-        description: event.description ?? '',
+        description: event.description,
         date: event.date,
         ownerId: ownerId,
         ownerDisplayName: ownerDisplayName,
@@ -153,13 +153,13 @@ class BookmarkService {
       _notifyBookmarksChanged();
       
       if (kDebugMode) {
-        print('✅ BookmarkService: Bookmarked event: ${event.title}');
+    // print('✅ BookmarkService: Bookmarked event: ${event.title}');
       }
       
       return true;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ BookmarkService: Error adding bookmark: $e');
+    // print('❌ BookmarkService: Error adding bookmark: $e');
       }
       return false;
     } finally {
@@ -204,13 +204,13 @@ class BookmarkService {
       _notifyBookmarksChanged();
       
       if (kDebugMode) {
-        print('✅ BookmarkService: Unbookmarked event: $eventId');
+    // print('✅ BookmarkService: Unbookmarked event: $eventId');
       }
       
       return true;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ BookmarkService: Error removing bookmark: $e');
+    // print('❌ BookmarkService: Error removing bookmark: $e');
       }
       return false;
     } finally {

@@ -110,7 +110,7 @@ class _QRScannerViewState extends State<QRScannerView> {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     width: 2,
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withValues(alpha:0.9),
                   ),
                 ),
               ),

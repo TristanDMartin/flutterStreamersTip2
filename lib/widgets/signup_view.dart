@@ -19,8 +19,8 @@ class _SignupViewState extends ConsumerState<SignupView> {
   final FocusNode _passwordFocusNode = FocusNode();
   final FocusNode _confirmPasswordFocusNode = FocusNode();
   
-  bool _showAlert = false;
-  String _alertMessage = "";
+  // bool _showAlert = false;
+  // String _alertMessage = "";
   String? _nameValidationMessage;
   bool _isCheckingUsername = false;
   String _generatedUsername = "";
@@ -43,7 +43,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
     final authService = ref.watch(robustAuthServiceProvider);
     
     return Scaffold(
-      backgroundColor: Colors.grey.withOpacity(0.1),
+      backgroundColor: Colors.grey.withValues(alpha: 0.1),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -364,10 +364,10 @@ class _SignupViewState extends ConsumerState<SignupView> {
 
   Future<void> _signUp() async {
     if (_generatedUsername.isEmpty) {
-      setState(() {
-        _alertMessage = "Please enter a valid display name";
-        _showAlert = true;
-      });
+      // setState(() {
+      //   _alertMessage = "Please enter a valid display name";
+      //   _showAlert = true;
+      // });
       return;
     }
     
@@ -384,10 +384,10 @@ class _SignupViewState extends ConsumerState<SignupView> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      setState(() {
-        _alertMessage = e.toString();
-        _showAlert = true;
-      });
+      // setState(() {
+      //   _alertMessage = e.toString();
+      //   _showAlert = true;
+      // });
     }
   }
 }

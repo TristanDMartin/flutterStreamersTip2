@@ -492,7 +492,7 @@ class InstantActionButton extends StatelessWidget {
                 child: Icon(
                   icon,
                   size: 32,
-                  color: color ?? (isActive ? const Color(0xFF9248d2) : Colors.white.withOpacity(0.85)),
+                  color: color ?? (isActive ? const Color(0xFF9248d2) : Colors.white.withValues(alpha:0.85)),
                 ),
               ),
             

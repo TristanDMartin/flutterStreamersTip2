@@ -114,11 +114,11 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha:0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -158,7 +158,7 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 28),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -196,7 +196,7 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 28),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha:0.1),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -226,7 +226,7 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha:0.2),
                         blurRadius: 4,
                         offset: const Offset(0, 2),
                       ),
@@ -257,7 +257,7 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: Colors.white.withValues(alpha:0.05),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -450,11 +450,11 @@ class _BookmarksListViewState extends ConsumerState<BookmarksListView> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha:0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -552,11 +552,11 @@ class _BookmarksListViewState extends ConsumerState<BookmarksListView> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha:0.2),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -685,7 +685,7 @@ class _BookmarksListViewState extends ConsumerState<BookmarksListView> {
         _isLoading = false;
       });
     } catch (e) {
-      print('Error fetching bookmarks: $e');
+    // print('Error fetching bookmarks: $e');
       setState(() {
         _isLoading = false;
       });

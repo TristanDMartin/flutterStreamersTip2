@@ -159,7 +159,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     } catch (e) {
       // Error updating profile views, using fallback
       if (kDebugMode) {
-        print('ProfileUpdateService error: $e');
+    // print('ProfileUpdateService error: $e');
       }
       // Fallback to direct Firestore update
       _saveToFirestore(updateData);
@@ -202,7 +202,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     } catch (e) {
       // Error saving to Firestore - silent fail to avoid user spam
       if (kDebugMode) {
-        print('Firestore save error: $e');
+    // print('Firestore save error: $e');
       }
     }
   }
@@ -396,7 +396,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                 } catch (e) {
                   // Error updating status, using fallback
                   if (kDebugMode) {
-                    print('Status update error: $e');
+    // print('Status update error: $e');
                   }
                 }
                 

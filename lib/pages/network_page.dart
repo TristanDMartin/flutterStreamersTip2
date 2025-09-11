@@ -83,14 +83,14 @@ class _NetworkBodyState extends State<_NetworkBody> {
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: 'Search creators',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
               prefixIcon: const Icon(Icons.search, color: Colors.white),
               filled: true,
-              fillColor: Colors.white.withOpacity(0.08),
+              fillColor: Colors.white.withValues(alpha: 0.08),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                 ),
               ),
               focusedBorder: OutlineInputBorder(
@@ -128,7 +128,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.people_outline, color: Colors.white.withOpacity(0.6), size: 56),
+            Icon(Icons.people_outline, color: Colors.white.withValues(alpha: 0.6), size: 56),
             const SizedBox(height: 12),
             const Text(
               'No results',
@@ -162,9 +162,9 @@ class _UserCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
+        color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.12), width: 0.5),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 0.5),
       ),
       child: ListTile(
         leading: Stack(
@@ -192,7 +192,7 @@ class _UserCard extends StatelessWidget {
           ],
         ),
         title: Text(data.displayName, style: const TextStyle(color: Colors.white)),
-        subtitle: Text('@${data.username}', style: TextStyle(color: Colors.white.withOpacity(0.7))),
+        subtitle: Text('@${data.username}', style: TextStyle(color: Colors.white.withValues(alpha: 0.7))),
         trailing: TextButton(
           onPressed: () {},
           child: const Text('Follow'),

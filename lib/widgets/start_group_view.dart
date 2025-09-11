@@ -241,9 +241,9 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           width: 1,
         ),
       ),
@@ -251,7 +251,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
         children: [
           Icon(
             Icons.search,
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha:0.7),
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -283,7 +283,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
               },
               icon: Icon(
                 Icons.close,
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 size: 20,
               ),
             ),
@@ -323,10 +323,10 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -339,7 +339,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 width: 1,
               ),
             ),
@@ -350,20 +350,20 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) {
                         return Container(
-                          color: Colors.grey.withOpacity(0.3),
+                          color: Colors.grey.withValues(alpha:0.3),
                           child: Icon(
                             Icons.person,
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white.withValues(alpha:0.6),
                             size: 12,
                           ),
                         );
                       },
                     )
                   : Container(
-                      color: Colors.grey.withOpacity(0.3),
+                      color: Colors.grey.withValues(alpha:0.3),
                       child: Icon(
                         Icons.person,
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha:0.6),
                         size: 12,
                       ),
                     ),
@@ -383,7 +383,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
             onTap: () => _toggleUserSelection(user.id),
             child: Icon(
               Icons.close,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
               size: 16,
             ),
           ),
@@ -400,9 +400,9 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           hintText: 'Group name (optional)',
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+          hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.7)),
           filled: true,
-          fillColor: Colors.white.withOpacity(0.1),
+          fillColor: Colors.white.withValues(alpha:0.1),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
@@ -451,7 +451,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
           children: [
             Icon(
               _searchQuery.isNotEmpty ? Icons.search_off : Icons.people_outline,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha:0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
@@ -460,7 +460,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
                   ? 'No connections found for "$_searchQuery"'
                   : 'No connections yet',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 16,
               ),
               textAlign: TextAlign.center,
@@ -470,7 +470,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
               Text(
                 'Connect with friends to create groups',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
+                  color: Colors.white.withValues(alpha:0.5),
                   fontSize: 14,
                 ),
                 textAlign: TextAlign.center,
@@ -510,17 +510,17 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
                 end: Alignment.bottomRight,
                 colors: [
                   isSelected 
-                      ? Colors.white.withOpacity(0.2)
-                      : Colors.white.withOpacity(0.1),
+                      ? Colors.white.withValues(alpha:0.2)
+                      : Colors.white.withValues(alpha:0.1),
                   isSelected 
-                      ? Colors.white.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.05),
+                      ? Colors.white.withValues(alpha:0.15)
+                      : Colors.white.withValues(alpha:0.05),
                 ],
               ),
               border: Border.all(
                 color: isSelected 
-                    ? Colors.white.withOpacity(0.3)
-                    : Colors.white.withOpacity(0.1),
+                    ? Colors.white.withValues(alpha:0.3)
+                    : Colors.white.withValues(alpha:0.1),
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -554,7 +554,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha:0.2),
                       width: 2,
                     ),
                   ),
@@ -565,20 +565,20 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
                               return Container(
-                                color: Colors.grey.withOpacity(0.3),
+                                color: Colors.grey.withValues(alpha:0.3),
                                 child: Icon(
                                   Icons.person,
-                                  color: Colors.white.withOpacity(0.6),
+                                  color: Colors.white.withValues(alpha:0.6),
                                   size: 20,
                                 ),
                               );
                             },
                           )
                         : Container(
-                            color: Colors.grey.withOpacity(0.3),
+                            color: Colors.grey.withValues(alpha:0.3),
                             child: Icon(
                               Icons.person,
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha:0.6),
                               size: 20,
                             ),
                           ),
@@ -603,7 +603,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
                       Text(
                         '@${connection.username}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha:0.7),
                           fontSize: 14,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -627,7 +627,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
         child: ElevatedButton(
           onPressed: _isCreating ? null : _createGroup,
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.white.withOpacity(0.1),
+            backgroundColor: Colors.white.withValues(alpha:0.1),
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(

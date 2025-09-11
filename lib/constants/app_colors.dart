@@ -28,7 +28,7 @@ class AppColors {
   static const Color bluesky = Color(0xFF0085FF);
   static const Color twitter = Color(0xFF1DA1F2);
   static const Color instagram = Color(0xFFE4405F);
-  static const Color rednote = Color(0xFFFF4500);
+  static const Color reddit = Color(0xFFFF4500);
   static const Color website = Color(0xFF6C757D);
 
   // MARK: - Semantic Colors
@@ -125,7 +125,7 @@ class AppColors {
 
   // MARK: - Utility Methods
   static Color withOpacity(Color color, double opacity) {
-    return color.withOpacity(opacity);
+    return color.withValues(alpha: opacity);
   }
 
   static Color blend(Color color1, Color color2, double factor) {
@@ -174,10 +174,10 @@ extension ColorExtensions on Color {
   Color lighten(double amount) => AppColors.lighten(this, amount);
   
   /// Get a version with opacity
-  Color withAlpha(double alpha) => withOpacity(alpha);
+  Color withAlpha(double alpha) => withValues(alpha: alpha);
   
   /// Get the hex string representation
-  String get hexString => '#${value.toRadixString(16).padLeft(8, '0')}';
+  String get hexString => '#${toARGB32().toRadixString(16).padLeft(8, '0')}';
   
   /// Check if this is a dark color
   bool get isDark => computeLuminance() < 0.5;

@@ -447,7 +447,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -508,7 +508,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
       ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
+        style: TextStyle(color: Colors.white.withValues(alpha:0.7), fontSize: 14),
       ),
       onTap: onTap,
     );
@@ -530,7 +530,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -574,14 +574,14 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
         width: 60,
         height: 60,
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.2),
+          color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.2),
           borderRadius: BorderRadius.circular(30),
         ),
         child: Center(
           child: Text(
             label,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+              color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -722,7 +722,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha:0.8),
                         width: 2,
                       ),
                     ),
@@ -731,7 +731,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha:0.6),
                           width: 1,
                         ),
                       ),
@@ -748,7 +748,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
+                  color: Colors.black.withValues(alpha:0.7),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
@@ -794,7 +794,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha:0.3),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
@@ -828,7 +828,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha:0.5),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(
@@ -845,7 +845,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha:0.5),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(
@@ -873,7 +873,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha:0.5),
                 borderRadius: BorderRadius.circular(25),
               ),
               child: const Icon(
@@ -891,7 +891,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha:0.5),
                 borderRadius: BorderRadius.circular(25),
               ),
               child: const Icon(
@@ -921,7 +921,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha:0.5),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.white, width: 2),
               ),
@@ -1001,7 +1001,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withValues(alpha:0.5),
                 borderRadius: BorderRadius.circular(25),
               ),
               child: const Icon(
@@ -1083,7 +1083,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
       child: Container(
         height: 100,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.8),
+          color: Colors.black.withValues(alpha:0.8),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
@@ -1093,7 +1093,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               height: 4,
               margin: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1115,7 +1115,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
                       width: 60,
                       margin: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
-                        color: isSelected ? Colors.white : Colors.white.withOpacity(0.2),
+                        color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
@@ -1148,7 +1148,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.7),
+            color: Colors.black.withValues(alpha:0.7),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
@@ -1170,7 +1170,7 @@ class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.3)
+      ..color = Colors.white.withValues(alpha:0.3)
       ..strokeWidth = 1.0;
 
     // Vertical lines

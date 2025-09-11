@@ -34,9 +34,9 @@ class OfflineDataService {
         'creatorAvatarURL': v.creator.avatarURL,
       }).toList();
       await prefs.setString(_videosKey, json.encode(videosData));
-      print('💾 Saved ${videos.length} videos offline');
+    // print('💾 Saved ${videos.length} videos offline');
     } catch (e) {
-      print('❌ Error saving videos offline: $e');
+    // print('❌ Error saving videos offline: $e');
     }
   }
 
@@ -81,11 +81,11 @@ class OfflineDataService {
             categoryId: '',
           );
         }).toList().cast<HomeVideo>();
-        print('📱 Loaded ${videos.length} videos from offline storage');
+    // print('📱 Loaded ${videos.length} videos from offline storage');
         return videos;
       }
     } catch (e) {
-      print('❌ Error loading videos offline: $e');
+    // print('❌ Error loading videos offline: $e');
     }
     
     return [];
@@ -96,9 +96,9 @@ class OfflineDataService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_favoritesKey, favoriteIds);
-      print('💾 Saved ${favoriteIds.length} favorites offline');
+    // print('💾 Saved ${favoriteIds.length} favorites offline');
     } catch (e) {
-      print('❌ Error saving favorites offline: $e');
+    // print('❌ Error saving favorites offline: $e');
     }
   }
 
@@ -107,10 +107,10 @@ class OfflineDataService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final favorites = prefs.getStringList(_favoritesKey) ?? [];
-      print('📱 Loaded ${favorites.length} favorites from offline storage');
+    // print('📱 Loaded ${favorites.length} favorites from offline storage');
       return favorites;
     } catch (e) {
-      print('❌ Error loading favorites offline: $e');
+    // print('❌ Error loading favorites offline: $e');
       return [];
     }
   }
@@ -120,9 +120,9 @@ class OfflineDataService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_followingKey, followingIds);
-      print('💾 Saved ${followingIds.length} following offline');
+    // print('💾 Saved ${followingIds.length} following offline');
     } catch (e) {
-      print('❌ Error saving following offline: $e');
+    // print('❌ Error saving following offline: $e');
     }
   }
 
@@ -131,10 +131,10 @@ class OfflineDataService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final following = prefs.getStringList(_followingKey) ?? [];
-      print('📱 Loaded ${following.length} following from offline storage');
+    // print('📱 Loaded ${following.length} following from offline storage');
       return following;
     } catch (e) {
-      print('❌ Error loading following offline: $e');
+    // print('❌ Error loading following offline: $e');
       return [];
     }
   }
@@ -156,9 +156,9 @@ class OfflineDataService {
         'followingCount': user.followingCount,
       };
       await prefs.setString(_userKey, json.encode(userData));
-      print('💾 Saved user data offline');
+    // print('💾 Saved user data offline');
     } catch (e) {
-      print('❌ Error saving user offline: $e');
+    // print('❌ Error saving user offline: $e');
     }
   }
 
@@ -183,11 +183,11 @@ class OfflineDataService {
           followerCount: userData['followerCount'] ?? 0,
           followingCount: userData['followingCount'] ?? 0,
         );
-        print('📱 Loaded user data from offline storage');
+    // print('📱 Loaded user data from offline storage');
         return user;
       }
     } catch (e) {
-      print('❌ Error loading user offline: $e');
+    // print('❌ Error loading user offline: $e');
     }
     
     return null;
@@ -202,9 +202,9 @@ class OfflineDataService {
       
       final actionsJson = existingActions.map((a) => a.toJson()).toList();
       await prefs.setString(_pendingActionsKey, json.encode(actionsJson));
-      print('💾 Saved pending action: ${action.type}');
+    // print('💾 Saved pending action: ${action.type}');
     } catch (e) {
-      print('❌ Error saving pending action: $e');
+    // print('❌ Error saving pending action: $e');
     }
   }
 
@@ -217,11 +217,11 @@ class OfflineDataService {
       if (actionsJson != null) {
         final List<dynamic> actionsList = json.decode(actionsJson);
         final actions = actionsList.map((a) => PendingAction.fromJson(a)).toList();
-        print('📱 Loaded ${actions.length} pending actions');
+    // print('📱 Loaded ${actions.length} pending actions');
         return actions;
       }
     } catch (e) {
-      print('❌ Error loading pending actions: $e');
+    // print('❌ Error loading pending actions: $e');
     }
     
     return [];
@@ -236,9 +236,9 @@ class OfflineDataService {
       
       final actionsJson = existingActions.map((a) => a.toJson()).toList();
       await prefs.setString(_pendingActionsKey, json.encode(actionsJson));
-      print('🗑️ Removed pending action: $actionId');
+    // print('🗑️ Removed pending action: $actionId');
     } catch (e) {
-      print('❌ Error removing pending action: $e');
+    // print('❌ Error removing pending action: $e');
     }
   }
 
@@ -251,9 +251,9 @@ class OfflineDataService {
       await prefs.remove(_followingKey);
       await prefs.remove(_userKey);
       await prefs.remove(_pendingActionsKey);
-      print('🗑️ Cleared all offline data');
+    // print('🗑️ Cleared all offline data');
     } catch (e) {
-      print('❌ Error clearing offline data: $e');
+    // print('❌ Error clearing offline data: $e');
     }
   }
 
@@ -273,7 +273,7 @@ class OfflineDataService {
         hasUserData: await loadUserOffline() != null,
       );
     } catch (e) {
-      print('❌ Error getting offline data statistics: $e');
+    // print('❌ Error getting offline data statistics: $e');
       return OfflineDataStatistics(
         videoCount: 0,
         favoriteCount: 0,

@@ -17,18 +17,18 @@ class PostDetailView extends ConsumerStatefulWidget {
 }
 
 class _PostDetailViewState extends ConsumerState<PostDetailView> {
-  bool _showShareSheet = false;
-  bool _showEllipsisMenu = false;
-  bool _showInsightsModal = false;
+  // bool _showShareSheet = false;
+  // bool _showEllipsisMenu = false;
+  // bool _showInsightsModal = false;
   bool _isLiked = false;
   int _likeCount = 1;
   final int _commentCount = 0;
 
   // Mock data for the ellipsis menu
   final bool _isOwnVideo = true; // This would be determined by comparing current user with video owner
-  final List<String> _friends = [
-    "nikoleglenn", "BuzZz", "Reggie", "Ashley Fyl Johnson", "drina.", "Camil"
-  ];
+  // final List<String> _friends = [
+  //   "nikoleglenn", "BuzZz", "Reggie", "Ashley Fyl Johnson", "drina.", "Camil"
+  // ]; // Unused field commented out
 
   @override
   Widget build(BuildContext context) {
@@ -164,9 +164,9 @@ class _PostDetailViewState extends ConsumerState<PostDetailView> {
               icon: Icons.share,
               label: "Share",
               onTap: () {
-                setState(() {
-                  _showShareSheet = true;
-                });
+                // setState(() {
+                //   _showShareSheet = true;
+                // }); // Commented out as functionality not implemented
               },
             ),
             
@@ -177,9 +177,9 @@ class _PostDetailViewState extends ConsumerState<PostDetailView> {
               icon: Icons.more_horiz,
               label: "",
               onTap: () {
-                setState(() {
-                  _showEllipsisMenu = true;
-                });
+                // setState(() {
+                //   _showEllipsisMenu = true;
+                // }); // Commented out as functionality not implemented
               },
             ),
           ],
@@ -276,7 +276,7 @@ class _PostDetailViewState extends ConsumerState<PostDetailView> {
                     Text(
                       "New Video",
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha:0.8),
                         fontSize: 14,
                       ),
                     ),
@@ -294,7 +294,7 @@ class _PostDetailViewState extends ConsumerState<PostDetailView> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -316,9 +316,9 @@ class _PostDetailViewState extends ConsumerState<PostDetailView> {
                     const Spacer(),
                     IconButton(
                       onPressed: () {
-                        setState(() {
-                          _showInsightsModal = true;
-                        });
+                        // setState(() {
+                        //   _showInsightsModal = true;
+                        // }); // Commented out as functionality not implemented
                       },
                       icon: const Icon(
                         Icons.arrow_forward_ios,
@@ -465,7 +465,7 @@ class ShareSheetView extends StatelessWidget {
                   height: 50,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.grey.withOpacity(0.3),
+                    color: Colors.grey.withValues(alpha:0.3),
                   ),
                   child: Center(
                     child: Text(
@@ -656,7 +656,7 @@ class EllipsisMenuView extends StatelessWidget {
               height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.grey.withOpacity(0.3),
+                color: Colors.grey.withValues(alpha:0.3),
               ),
               child: Center(
                 child: Text(
@@ -767,7 +767,7 @@ class PostShareActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.grey.withOpacity(0.1),
+          color: Colors.grey.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(

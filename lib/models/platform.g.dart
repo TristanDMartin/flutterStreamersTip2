@@ -33,6 +33,6 @@ const _$PlatformTypeEnumMap = {
   PlatformType.bluesky: 'bluesky',
   PlatformType.twitter: 'twitter',
   PlatformType.instagram: 'instagram',
-  PlatformType.rednote: 'rednote',
+  PlatformType.reddit: 'reddit',
   PlatformType.other: 'other',
 };

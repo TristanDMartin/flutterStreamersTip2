@@ -57,8 +57,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     
     // For now, we'll use mock data until we implement the full relationship system
     // TODO: Connect to actual relationship service
-    final isFollowing = false; // Will be implemented with relationship service
-    final isMutualFollow = false; // Will be implemented with relationship service
+    const isFollowing = false; // Will be implemented with relationship service
+    const isMutualFollow = false; // Will be implemented with relationship service
 
     return FadeTransition(
       opacity: _fadeController,
@@ -91,18 +91,18 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: _isPressed 
-                      ? Colors.white.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.1),
+                      ? Colors.white.withValues(alpha:0.15)
+                      : Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: _isPressed
-                        ? Colors.white.withOpacity(0.3)
-                        : Colors.white.withOpacity(0.2),
+                        ? Colors.white.withValues(alpha:0.3)
+                        : Colors.white.withValues(alpha:0.2),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha:0.1),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -139,7 +139,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                           child: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.7),
+                              color: Colors.black.withValues(alpha:0.7),
                               shape: BoxShape.circle,
                             ),
                             child: const SizedBox(
@@ -174,10 +174,10 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           OptimizedAvatar(
             imageUrl: widget.notification.user.avatarURL,
             radius: 22,
-            backgroundColor: Colors.white.withOpacity(0.2),
+            backgroundColor: Colors.white.withValues(alpha:0.2),
             child: Icon(
               Icons.person,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
               size: 24,
             ),
           ),
@@ -242,7 +242,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 TextSpan(
                   text: ' ${_getNotificationMessage()}',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withValues(alpha:0.9),
                     fontWeight: FontWeight.w400,
                   ),
                 ),
@@ -257,7 +257,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               Text(
                 '@${widget.notification.user.username}',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha:0.6),
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
@@ -267,7 +267,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 width: 4,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.4),
+                  color: Colors.white.withValues(alpha:0.4),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -275,7 +275,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               Text(
                 _getTimestampString(),
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha:0.6),
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
@@ -300,12 +300,12 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha:0.2),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha:0.1),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -319,18 +319,18 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               height: 50,
               fit: BoxFit.cover,
               placeholder: Container(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 child: Icon(
                   Icons.photo,
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha:0.6),
                   size: 20,
                 ),
               ),
               errorWidget: Container(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 child: Icon(
                   Icons.photo,
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha:0.6),
                   size: 20,
                 ),
               ),
@@ -374,7 +374,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
             borderRadius: BorderRadius.circular(25),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF9248D2).withOpacity(0.3),
+                color: const Color(0xFF9248D2).withValues(alpha:0.3),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),

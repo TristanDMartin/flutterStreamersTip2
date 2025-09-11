@@ -34,7 +34,7 @@ class DataSyncService extends ChangeNotifier {
   Future<void> syncUserData() async {
     if (_isLoading || _hasLoaded) return;
     
-    print("🔄 Starting comprehensive data synchronization");
+    // print("🔄 Starting comprehensive data synchronization");
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -45,7 +45,7 @@ class DataSyncService extends ChangeNotifier {
         throw Exception('No authenticated user found');
       }
       
-      print("👤 Syncing data for user: ${user.displayName} (${user.id})");
+    // print("👤 Syncing data for user: ${user.displayName} (${user.id})");
       
       // 1. Load user profile data (already handled by AuthService)
       await _loadUserProfileData(user);
@@ -66,11 +66,11 @@ class DataSyncService extends ChangeNotifier {
       _setupRealtimeListeners(user.id);
       
       _hasLoaded = true;
-      print("✅ Data synchronization completed successfully");
+    // print("✅ Data synchronization completed successfully");
       
     } catch (e) {
       _errorMessage = e.toString();
-      print("❌ Data synchronization failed: $e");
+    // print("❌ Data synchronization failed: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -79,50 +79,50 @@ class DataSyncService extends ChangeNotifier {
   
   // Load user profile data
   Future<void> _loadUserProfileData(User user) async {
-    print("📄 Loading user profile data");
+    // print("📄 Loading user profile data");
     try {
       final userDoc = await _firestore.collection('users').doc(user.id).get();
       if (userDoc.exists) {
-        final data = userDoc.data()!;
-        print("✅ User profile data loaded: ${data['displayName']}");
+        // final data = userDoc.data()!;
+    // print("✅ User profile data loaded: ${data['displayName']}");
       }
     } catch (e) {
-      print("❌ Error loading user profile: $e");
+    // print("❌ Error loading user profile: $e");
     }
   }
   
   // Load relationship data (following/followers)
   Future<void> _loadRelationshipData(String userId) async {
-    print("👥 Loading relationship data");
+    // print("👥 Loading relationship data");
     try {
       // Load following
-      final followingQuery = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('following')
-          .get();
+      // final followingQuery = await _firestore
+      //     .collection('users')
+      //     .doc(userId)
+      //     .collection('following')
+      //     .get();
       
-      final followingIds = followingQuery.docs.map((doc) => doc.id).toList();
-      print("👥 Following ${followingIds.length} users");
+      // final followingIds = followingQuery.docs.map((doc) => doc.id).toList();
+    // print("👥 Following ${followingIds.length} users");
       
       // Load followers
-      final followersQuery = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('followers')
-          .get();
+      // final followersQuery = await _firestore
+      //     .collection('users')
+      //     .doc(userId)
+      //     .collection('followers')
+      //     .get();
       
-      final followerIds = followersQuery.docs.map((doc) => doc.id).toList();
-      print("👥 ${followerIds.length} followers");
+      // final followerIds = followersQuery.docs.map((doc) => doc.id).toList();
+    // print("👥 ${followerIds.length} followers");
       
     } catch (e) {
-      print("❌ Error loading relationship data: $e");
+    // print("❌ Error loading relationship data: $e");
     }
   }
   
   // Load video data
   Future<void> _loadVideoData() async {
-    print("🎥 Loading video data");
+    // print("🎥 Loading video data");
     try {
       // Load For You videos
       await _homeNotifier.fetchForYouVideos(reset: true);
@@ -141,44 +141,44 @@ class DataSyncService extends ChangeNotifier {
         await _homeNotifier.fetchFollowingVideos(followingIds: followingIds, reset: true);
       }
       
-      print("✅ Video data loaded");
+    // print("✅ Video data loaded");
     } catch (e) {
-      print("❌ Error loading video data: $e");
+    // print("❌ Error loading video data: $e");
     }
   }
   
   // Load user favorites
   Future<void> _loadFavorites(String userId) async {
-    print("❤️ Loading user favorites");
+    // print("❤️ Loading user favorites");
     try {
       await _favoritesManager.initialize();
-      print("✅ Favorites loaded");
+    // print("✅ Favorites loaded");
     } catch (e) {
-      print("❌ Error loading favorites: $e");
+    // print("❌ Error loading favorites: $e");
     }
   }
   
   // Sync video states (likes, comments, etc.)
   Future<void> _syncVideoStates() async {
-    print("🔄 Syncing video states");
+    // print("🔄 Syncing video states");
     try {
       await _homeNotifier.syncLikeStates();
       await _homeNotifier.syncFavoriteStates();
       await _homeNotifier.syncCommentCounts();
-      print("✅ Video states synced");
+    // print("✅ Video states synced");
     } catch (e) {
-      print("❌ Error syncing video states: $e");
+    // print("❌ Error syncing video states: $e");
     }
   }
   
   // Set up real-time listeners
   void _setupRealtimeListeners(String userId) {
-    print("👂 Setting up real-time listeners");
+    // print("👂 Setting up real-time listeners");
     
     // User profile listener
     _firestore.collection('users').doc(userId).snapshots().listen((snapshot) {
       if (snapshot.exists) {
-        print("🔄 User profile updated in real-time");
+    // print("🔄 User profile updated in real-time");
         // The AuthService already handles this, but we can add additional logic here
       }
     });
@@ -190,7 +190,7 @@ class DataSyncService extends ChangeNotifier {
         .collection('following')
         .snapshots()
         .listen((snapshot) {
-      print("🔄 Following list updated: ${snapshot.docs.length} users");
+    // print("🔄 Following list updated: ${snapshot.docs.length} users");
       // Refresh following videos when following list changes
       _refreshFollowingVideos();
     });
@@ -202,7 +202,7 @@ class DataSyncService extends ChangeNotifier {
         .collection('favorites')
         .snapshots()
         .listen((snapshot) {
-      print("🔄 Favorites updated: ${snapshot.docs.length} videos");
+    // print("🔄 Favorites updated: ${snapshot.docs.length} videos");
       // Refresh favorites when favorites list changes
       _favoritesManager.initialize();
     });
@@ -223,13 +223,13 @@ class DataSyncService extends ChangeNotifier {
         await _homeNotifier.fetchFollowingVideos(followingIds: followingIds, reset: true);
       }
     } catch (e) {
-      print("❌ Error refreshing following videos: $e");
+    // print("❌ Error refreshing following videos: $e");
     }
   }
   
   // Force refresh all data
   Future<void> refreshAllData() async {
-    print("🔄 Force refreshing all data");
+    // print("🔄 Force refreshing all data");
     _hasLoaded = false;
     await syncUserData();
   }

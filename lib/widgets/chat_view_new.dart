@@ -32,7 +32,7 @@ class _ChatViewNewState extends ConsumerState<ChatViewNew> {
   @override
   void initState() {
     super.initState();
-    print("🔍 ChatViewNew init - Chat ID: ${widget.chat.id ?? "nil"}");
+    // print("🔍 ChatViewNew init - Chat ID: ${widget.chat.id ?? "nil"}");
     
     // Create the chat notifier
     chatNotifier = ChatNotifier(widget.chat, widget.authService);
@@ -84,7 +84,7 @@ class _ChatViewNewState extends ConsumerState<ChatViewNew> {
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.blue.withValues(alpha:0.3),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(

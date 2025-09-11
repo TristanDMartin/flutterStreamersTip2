@@ -20,8 +20,8 @@ class _TextOverlayViewState extends State<TextOverlayView> {
   final TextEditingController _textController = TextEditingController();
   double _fontSize = 24.0;
   Color _textColor = Colors.white;
-  final Offset _position = const Offset(0.5, 0.5);
-  final bool _isDragging = false;
+  // final Offset _position = const Offset(0.5, 0.5);
+  // final bool _isDragging = false;
   
   final List<Color> _availableColors = [
     Colors.white,
@@ -53,7 +53,7 @@ class _TextOverlayViewState extends State<TextOverlayView> {
             child: GestureDetector(
               onTap: widget.onClose,
               child: Container(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
               ),
             ),
           ),
@@ -63,7 +63,7 @@ class _TextOverlayViewState extends State<TextOverlayView> {
             child: Container(
               margin: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.8),
+                color: Colors.black.withValues(alpha: 0.8),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
@@ -129,14 +129,14 @@ class _TextOverlayViewState extends State<TextOverlayView> {
           hintText: "Enter text...",
           hintStyle: const TextStyle(color: Colors.white54),
           filled: true,
-          fillColor: Colors.white.withOpacity(0.1),
+          fillColor: Colors.white.withValues(alpha: 0.1),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
@@ -164,9 +164,9 @@ class _TextOverlayViewState extends State<TextOverlayView> {
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: Colors.blue,
-              inactiveTrackColor: Colors.white.withOpacity(0.3),
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
               thumbColor: Colors.blue,
-              overlayColor: Colors.blue.withOpacity(0.2),
+              overlayColor: Colors.blue.withValues(alpha: 0.2),
             ),
             child: Slider(
               value: _fontSize,
@@ -317,7 +317,7 @@ class _DraggableTextOverlayState extends State<DraggableTextOverlay> {
                   Shadow(
                     offset: const Offset(1, 1),
                     blurRadius: 3,
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                   ),
                 ],
               ),
@@ -464,7 +464,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor> {
                             Shadow(
                               offset: const Offset(1, 1),
                               blurRadius: 3,
-                              color: Colors.black.withOpacity(0.5),
+                              color: Colors.black.withValues(alpha: 0.5),
                             ),
                           ],
                         ),
@@ -484,7 +484,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.8),
+              color: Colors.black.withValues(alpha: 0.8),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(20),
                 topRight: Radius.circular(20),
@@ -500,14 +500,14 @@ class _TextOverlayEditorState extends State<TextOverlayEditor> {
                     hintText: "Enter text...",
                     hintStyle: const TextStyle(color: Colors.white54),
                     filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
+                    fillColor: Colors.white.withValues(alpha: 0.1),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -538,9 +538,9 @@ class _TextOverlayEditorState extends State<TextOverlayEditor> {
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
                         activeTrackColor: Colors.blue,
-                        inactiveTrackColor: Colors.white.withOpacity(0.3),
+                        inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
                         thumbColor: Colors.blue,
-                        overlayColor: Colors.blue.withOpacity(0.2),
+                        overlayColor: Colors.blue.withValues(alpha: 0.2),
                       ),
                       child: Slider(
                         value: _fontSize,

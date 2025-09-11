@@ -207,21 +207,21 @@ class PerformanceService {
   /// Log performance information
   void _logPerformanceInfo(String message) {
     if (kDebugMode) {
-      print('📊 Performance: $message');
+    // print('📊 Performance: $message');
     }
   }
 
   /// Log performance warning
   void _logPerformanceWarning(String message) {
     if (kDebugMode) {
-      print('⚠️ Performance Warning: $message');
+    // print('⚠️ Performance Warning: $message');
     }
   }
 
   /// Log performance error
   void _logPerformanceError(String message) {
     if (kDebugMode) {
-      print('❌ Performance Error: $message');
+    // print('❌ Performance Error: $message');
     }
   }
 

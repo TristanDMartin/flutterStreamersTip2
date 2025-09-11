@@ -33,7 +33,7 @@ class ShareServiceOptimized {
         subject: 'StreamersTip Video',
       );
     } catch (e) {
-      print('Error sharing video: $e');
+    // print('Error sharing video: $e');
     }
   }
 
@@ -53,7 +53,7 @@ class ShareServiceOptimized {
         },
       );
     } catch (e) {
-      print('Error copying link: $e');
+    // print('Error copying link: $e');
     }
   }
 
@@ -98,7 +98,7 @@ class ShareServiceOptimized {
           break;
       }
     } catch (e) {
-      print('Error sharing to ${platform.name}: $e');
+    // print('Error sharing to ${platform.name}: $e');
     }
   }
 
@@ -188,7 +188,7 @@ class ShareServiceOptimized {
 
   /// Share via Email
   Future<void> _shareViaEmail(HomeVideo video, String text, String url) async {
-    final subject = 'Check out this video on StreamersTip!';
+    const subject = 'Check out this video on StreamersTip!';
     final body = '$text\n\n$url';
     
     final uri = Uri.parse('mailto:?subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}');

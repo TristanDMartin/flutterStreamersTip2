@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../services/content_moderation_service.dart';
 
 /// A text field with real-time content moderation validation
@@ -48,7 +47,7 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
     super.didUpdateWidget(oldWidget);
     if (widget.initialValue != oldWidget.initialValue) {
       _controller.text = widget.initialValue;
-      print('🔍 ContentValidationField: Updated controller text to "${widget.initialValue}"');
+      // ContentValidationField: Updated controller text
     }
   }
 
@@ -60,7 +59,7 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
   }
 
   void _onTextChanged() {
-    print('🔍 ContentValidationField: Text changed to "${_controller.text}"');
+    // ContentValidationField: Text changed
     widget.onChanged(_controller.text);
     
     // Cancel previous timer
@@ -73,10 +72,10 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
   }
 
   Future<void> _validateContent() async {
-    print('🔍 ContentValidationField: Validating "${_controller.text}"');
+    // ContentValidationField: Validating text
     
     if (_controller.text.trim().isEmpty) {
-      print('🔍 ContentValidationField: Empty text, allowing');
+      // ContentValidationField: Empty text, allowing
       setState(() {
         _hasError = false;
         _errorMessage = null;
@@ -91,10 +90,10 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
     });
 
     try {
-      print('🔍 ContentValidationField: Calling ContentModerationService...');
+      // ContentValidationField: Calling ContentModerationService
       final result = await ContentModerationService().check(_controller.text);
       
-      print('🔍 ContentValidationField: Result - isAllowed: ${result.isAllowed}, reason: ${result.reason}');
+      // ContentValidationField: Result received
       
       setState(() {
         _lastResult = result;
@@ -105,7 +104,7 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
       
       widget.onValidationChanged(result.isAllowed);
     } catch (e) {
-      print('🔍 ContentValidationField: Error during validation: $e');
+      // ContentValidationField: Error during validation
       setState(() {
         _hasError = false;
         _errorMessage = null;

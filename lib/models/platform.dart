@@ -26,7 +26,7 @@ enum PlatformType {
   bluesky,
   twitter,
   instagram,
-  rednote,
+  reddit,
   other;
 
   String get displayName {
@@ -47,8 +47,8 @@ enum PlatformType {
         return "X";
       case PlatformType.instagram:
         return "Instagram";
-      case PlatformType.rednote:
-        return "Rednote";
+      case PlatformType.reddit:
+        return "Reddit";
       case PlatformType.other:
         return "Website";
     }
@@ -72,7 +72,7 @@ enum PlatformType {
         return Colors.black;
       case PlatformType.instagram:
         return Colors.purple;
-      case PlatformType.rednote:
+      case PlatformType.reddit:
         return Colors.red;
       case PlatformType.other:
         return Colors.grey;

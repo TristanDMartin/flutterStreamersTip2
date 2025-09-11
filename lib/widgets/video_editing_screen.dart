@@ -222,7 +222,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha:0.5),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -240,7 +240,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  color: _getFilterColor().withOpacity(0.3),
+                  color: _getFilterColor().withValues(alpha:0.3),
                 ),
               ),
             ),
@@ -250,7 +250,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
+                  color: Colors.black.withValues(alpha:0.7),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
@@ -294,7 +294,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: TabBar(
@@ -304,7 +304,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           borderRadius: BorderRadius.circular(12),
         ),
         labelColor: Colors.white,
-        unselectedLabelColor: Colors.white.withOpacity(0.7),
+        unselectedLabelColor: Colors.white.withValues(alpha:0.7),
         tabs: const [
           Tab(text: 'Trim'),
           Tab(text: 'Audio'),
@@ -336,7 +336,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             Text(
               'Duration: ${_controller.value.duration.inSeconds}s',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 14,
               ),
             ),
@@ -347,7 +347,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           Container(
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha:0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: _isInitialized ? _buildTimelineSlider() : const Center(
@@ -370,7 +370,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha:0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
@@ -429,7 +429,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           Text(
             'Start: ${(_trimStart * (_controller.value.duration.inMilliseconds / 1000)).toStringAsFixed(1)}s | End: ${(_trimEnd * (_controller.value.duration.inMilliseconds / 1000)).toStringAsFixed(1)}s',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
               fontSize: 12,
             ),
           ),
@@ -570,7 +570,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                 scaleOnPress: 0.95,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.1),
+                    color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isSelected ? const Color(0xFF9248D2) : Colors.transparent,
@@ -615,12 +615,12 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
         decoration: BoxDecoration(
           color: isSelected 
               ? const Color(0xFF9248D2)
-              : Colors.white.withOpacity(0.1),
+              : Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected 
                 ? const Color(0xFF9248D2)
-                : Colors.white.withOpacity(0.3),
+                : Colors.white.withValues(alpha:0.3),
           ),
         ),
         child: Text(
@@ -657,14 +657,14 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: 'Add a caption...',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -679,7 +679,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha:0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
@@ -716,14 +716,14 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: 'Add hashtags (e.g., #gaming #fun #viral)',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
               border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -807,7 +807,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.1),
+          color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? const Color(0xFF9248D2) : Colors.transparent,
@@ -833,7 +833,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha:0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -861,7 +861,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               child: Container(
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(25),
                 ),
                 child: const Center(
@@ -975,9 +975,9 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 activeTrackColor: const Color(0xFF9248D2),
-                inactiveTrackColor: Colors.white.withOpacity(0.3),
+                inactiveTrackColor: Colors.white.withValues(alpha:0.3),
                 thumbColor: const Color(0xFF9248D2),
-                overlayColor: const Color(0xFF9248D2).withOpacity(0.2),
+                overlayColor: const Color(0xFF9248D2).withValues(alpha:0.2),
                 trackHeight: 4,
               ),
               child: RangeSlider(

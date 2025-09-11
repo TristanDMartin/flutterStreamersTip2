@@ -57,7 +57,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             // Loading Overlay
             if (authService.shouldShowLoading)
               Container(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha:0.3),
                 child: const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,

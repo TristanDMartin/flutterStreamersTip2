@@ -122,7 +122,7 @@ class PlaceholderSettingsPage extends StatelessWidget {
           children: [
             Icon(
               Icons.construction,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
@@ -138,7 +138,7 @@ class PlaceholderSettingsPage extends StatelessWidget {
             Text(
               'This page will be implemented here',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 16,
               ),
             ),

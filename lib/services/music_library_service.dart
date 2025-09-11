@@ -186,7 +186,7 @@ class MusicLibraryService {
       
       return filteredMusic.map((json) => MusicTrack.fromJson(json)).toList();
     } catch (e) {
-      print('Error searching music: $e');
+    // print('Error searching music: $e');
       return [];
     }
   }
@@ -232,11 +232,11 @@ class MusicLibraryService {
         await file.writeAsBytes(response.bodyBytes);
         return filePath;
       } else {
-        print('Failed to download track: ${response.statusCode}');
+    // print('Failed to download track: ${response.statusCode}');
         return null;
       }
     } catch (e) {
-      print('Error downloading track: $e');
+    // print('Error downloading track: $e');
       return null;
     }
   }
@@ -286,7 +286,7 @@ class MusicLibraryService {
     int limit = 20,
   }) async {
     if (_freesoundApiKey == 'YOUR_FREESOUND_API_KEY') {
-      print('Freesound API key not configured. Using curated music instead.');
+    // print('Freesound API key not configured. Using curated music instead.');
       return searchMusic(query: query, genre: genre, limit: limit);
     }
 
@@ -319,11 +319,11 @@ class MusicLibraryService {
           );
         }).toList();
       } else {
-        print('Freesound API error: ${response.statusCode}');
+    // print('Freesound API error: ${response.statusCode}');
         return searchMusic(query: query, genre: genre, limit: limit);
       }
     } catch (e) {
-      print('Freesound API error: $e');
+    // print('Freesound API error: $e');
       return searchMusic(query: query, genre: genre, limit: limit);
     }
   }
@@ -340,7 +340,7 @@ class MusicLibraryService {
         }
       }
     } catch (e) {
-      print('Error cleaning up downloaded tracks: $e');
+    // print('Error cleaning up downloaded tracks: $e');
     }
   }
 }

@@ -75,7 +75,7 @@ class LikeService {
         await saveLikeCounts(likeCounts);
       }
     } catch (e) {
-      print('Error updating local storage: $e');
+    // print('Error updating local storage: $e');
     }
   }
 
@@ -266,7 +266,7 @@ class LikeService {
         return isLiked;
       } catch (firebaseError) {
         // If Firebase fails, just return local storage result
-        print('Firebase check failed, using local storage: $firebaseError');
+    // print('Firebase check failed, using local storage: $firebaseError');
         return false;
       }
     } catch (e) {

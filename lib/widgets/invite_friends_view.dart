@@ -41,7 +41,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
         _outgoingInvites = invites.map((invite) => invite['toUid'] as String).toList();
       });
     } catch (e) {
-      print('Error loading outgoing invites: $e');
+    // print('Error loading outgoing invites: $e');
     }
   }
 
@@ -200,9 +200,9 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           width: 1,
         ),
       ),
@@ -210,7 +210,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
         children: [
           Icon(
             Icons.search,
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha:0.7),
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -249,7 +249,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
               },
               icon: Icon(
                 Icons.close,
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 size: 20,
               ),
             ),
@@ -266,14 +266,14 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
           children: [
             Icon(
               Icons.person_search,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha:0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
             Text(
               'Search for friends to invite',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 18,
                 fontWeight: FontWeight.w500,
               ),
@@ -282,7 +282,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
             Text(
               'Enter a username to find and invite friends',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha:0.5),
                 fontSize: 14,
               ),
               textAlign: TextAlign.center,
@@ -327,14 +327,14 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
           children: [
             Icon(
               Icons.search_off,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha:0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
             Text(
               'No users found for "$_searchQuery"',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 16,
               ),
               textAlign: TextAlign.center,
@@ -343,7 +343,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
             Text(
               'Try a different username',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha:0.5),
                 fontSize: 14,
               ),
               textAlign: TextAlign.center,
@@ -378,12 +378,12 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.1),
-                Colors.white.withOpacity(0.05),
+                Colors.white.withValues(alpha:0.1),
+                Colors.white.withValues(alpha:0.05),
               ],
             ),
             border: Border.all(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha:0.1),
               width: 1,
             ),
           ),
@@ -396,7 +396,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha:0.2),
                     width: 2,
                   ),
                 ),
@@ -407,20 +407,20 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
                             return Container(
-                              color: Colors.grey.withOpacity(0.3),
+                              color: Colors.grey.withValues(alpha:0.3),
                               child: Icon(
                                 Icons.person,
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withValues(alpha:0.6),
                                 size: 24,
                               ),
                             );
                           },
                         )
                       : Container(
-                          color: Colors.grey.withOpacity(0.3),
+                          color: Colors.grey.withValues(alpha:0.3),
                           child: Icon(
                             Icons.person,
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white.withValues(alpha:0.6),
                             size: 24,
                           ),
                         ),
@@ -445,7 +445,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
                     Text(
                       '@${user.username}',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha:0.7),
                         fontSize: 14,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -458,10 +458,10 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.2),
+                    color: Colors.green.withValues(alpha:0.2),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.green.withOpacity(0.3),
+                      color: Colors.green.withValues(alpha:0.3),
                       width: 1,
                     ),
                   ),
@@ -478,7 +478,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
                 ElevatedButton(
                   onPressed: () => _sendInvite(user),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withOpacity(0.1),
+                    backgroundColor: Colors.white.withValues(alpha:0.1),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     shape: RoundedRectangleBorder(

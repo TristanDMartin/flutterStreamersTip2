@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -42,7 +43,7 @@ class ErrorHandlingService {
     // Load offline data
     await _loadOfflineData();
     
-    print('🛡️ Error handling service initialized');
+    log('🛡️ Error handling service initialized');
   }
 
   /// Start monitoring network connectivity
@@ -56,7 +57,7 @@ class ErrorHandlingService {
         
         if (wasOnline != _isOnline) {
           _connectivityController.add(_isOnline);
-          print('🌐 Connectivity changed: ${_isOnline ? "Online" : "Offline"}');
+          log('🌐 Connectivity changed: ${_isOnline ? "Online" : "Offline"}');
           
           if (_isOnline) {
             _handleReconnection();
@@ -68,7 +69,7 @@ class ErrorHandlingService {
 
   /// Handle reconnection when coming back online
   void _handleReconnection() {
-    print('🔄 Handling reconnection...');
+    log('🔄 Handling reconnection...');
     // Retry failed operations
     _retryFailedOperations();
     // Sync offline data
@@ -146,12 +147,12 @@ class ErrorHandlingService {
   /// Log error for debugging
   void _logError(AppError error) {
     if (kDebugMode) {
-      print('❌ Error [${error.type}]: ${error.message}');
+    // print('❌ Error [${error.type}]: ${error.message}');
       if (error.originalError != null) {
-        print('   Original: ${error.originalError}');
+    // print('   Original: ${error.originalError}');
       }
       if (error.context != null) {
-        print('   Context: ${error.context}');
+    // print('   Context: ${error.context}');
       }
     }
   }
@@ -197,7 +198,7 @@ class ErrorHandlingService {
         }
         
         if (kDebugMode) {
-          print('🔄 Retrying operation $id (attempt $attempt/$attempts)');
+    // print('🔄 Retrying operation $id (attempt $attempt/$attempts)');
         }
         
         await Future.delayed(retryDelay * attempt);
@@ -218,24 +219,24 @@ class ErrorHandlingService {
   void _retryFailedOperations() {
     // This would implement retry logic for failed operations
     // stored during offline mode
-    print('🔄 Retrying failed operations...');
+    log('🔄 Retrying failed operations...');
   }
 
   /// Load offline data
   Future<void> _loadOfflineData() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      await SharedPreferences.getInstance();
       // Load offline data from SharedPreferences
-      print('📱 Loading offline data...');
+      log('📱 Loading offline data...');
     } catch (e) {
-      print('❌ Error loading offline data: $e');
+      log('❌ Error loading offline data: $e');
     }
   }
 
   /// Sync offline data when back online
   void _syncOfflineData() {
     // This would implement sync logic for offline data
-    print('🔄 Syncing offline data...');
+    log('🔄 Syncing offline data...');
   }
 
   /// Show error dialog to user

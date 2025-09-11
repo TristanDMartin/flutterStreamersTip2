@@ -14,7 +14,7 @@ class EndOfFeedView extends StatelessWidget {
             Icon(
               Icons.keyboard_arrow_down,
               size: 60,
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
             ),
             const SizedBox(height: 20),
             const Text(
@@ -32,7 +32,7 @@ class EndOfFeedView extends StatelessWidget {
                 "You've seen all the amazing content we have for you right now. Check back later for more! ✨",
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha:0.7),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -44,7 +44,7 @@ class EndOfFeedView extends StatelessWidget {
                   "Pull down to refresh and discover new content",
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha:0.5),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -52,7 +52,7 @@ class EndOfFeedView extends StatelessWidget {
                   "🔄 Latest videos • 🔥 Popular content",
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.white.withOpacity(0.4),
+                    color: Colors.white.withValues(alpha:0.4),
                   ),
                 ),
               ],

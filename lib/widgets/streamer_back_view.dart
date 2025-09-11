@@ -115,7 +115,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
         _loadSocialLinks(),
       ]);
     } catch (e) {
-      print('❌ Failed to load user data: $e');
+    // print('❌ Failed to load user data: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -134,12 +134,12 @@ class _StreamerBackViewState extends State<StreamerBackView>
         .listen(
       (DocumentSnapshot documentSnapshot) {
         if (documentSnapshot.exists) {
-          print('📡 Profile update detected, reloading data...');
+    // print('📡 Profile update detected, reloading data...');
           _loadUserData(); // Reload data when changes detected
         }
       },
       onError: (error) {
-        print('❌ Error listening for profile updates: $error');
+    // print('❌ Error listening for profile updates: $error');
       },
     );
   }
@@ -169,7 +169,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Error fetching bookmarked event IDs: $e');
+    // print('❌ Error fetching bookmarked event IDs: $e');
       }
     }
   }
@@ -216,7 +216,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Error loading calendar events: $e');
+    // print('❌ Error loading calendar events: $e');
       }
     }
   }
@@ -231,7 +231,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
         });
       }
     } catch (e) {
-      print('Error loading platforms: $e');
+    // print('Error loading platforms: $e');
     }
   }
 
@@ -245,7 +245,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
         });
       }
     } catch (e) {
-      print('Error loading social links: $e');
+    // print('Error loading social links: $e');
     }
   }
 
@@ -351,7 +351,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
   }
 
   Widget _buildTags() {
-    final hashtags = widget.streamer.hashtags ?? [];
+    final hashtags = widget.streamer.hashtags;
     if (hashtags.isEmpty) return const SizedBox.shrink();
 
     return Padding(
@@ -371,10 +371,10 @@ class _StreamerBackViewState extends State<StreamerBackView>
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 gradient: isSelected ? _selectedHashtagGradient : null,
-                color: isSelected ? null : Colors.white.withOpacity(0.1),
+                color: isSelected ? null : Colors.white.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha:0.2),
                       width: 1,
               ),
                   ),
@@ -424,7 +424,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Text(
-        widget.streamer.bio ?? 'No bio available',
+        widget.streamer.bio,
                 style: TextStyle(
           color: Colors.white.withValues(alpha: 0.75),
           fontSize: 16,
@@ -476,7 +476,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
         }
       } catch (e) {
         if (kDebugMode) {
-          print('Error launching URL: $e');
+    // print('Error launching URL: $e');
         }
       }
     }
@@ -509,7 +509,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
                 child: Text(
                   '+${events.length - 5} more…',
                   style: const TextStyle(
-                    color: Color(0xFF80FFFFFF),
+                    color: Color(0x80FFFFFF),
                     fontSize: 12,
                   ),
                 ),
@@ -631,68 +631,68 @@ class _StreamerBackViewState extends State<StreamerBackView>
   }
 
 
-  IconData _getPlatformIcon(String type) {
-    switch (type.toLowerCase()) {
-      case 'youtube':
-        return Icons.play_circle_filled;
-      case 'twitch':
-        return Icons.live_tv;
-      case 'instagram':
-        return Icons.camera_alt;
-      case 'tiktok':
-        return Icons.music_note;
-      case 'facebook':
-        return Icons.facebook;
-      case 'twitter':
-        return Icons.alternate_email;
-      case 'bluesky':
-        return Icons.cloud;
-      case 'kick':
-        return Icons.sports_esports;
-      case 'rednote':
-        return Icons.note;
-      default:
-        return Icons.link;
-    }
-  }
+  // IconData _getPlatformIcon(String type) {
+  //   switch (type.toLowerCase()) {
+  //     case 'youtube':
+  //       return Icons.play_circle_filled;
+  //     case 'twitch':
+  //       return Icons.live_tv;
+  //     case 'instagram':
+  //       return Icons.camera_alt;
+  //     case 'tiktok':
+  //       return Icons.music_note;
+  //     case 'facebook':
+  //       return Icons.facebook;
+  //     case 'twitter':
+  //       return Icons.alternate_email;
+  //     case 'bluesky':
+  //       return Icons.cloud;
+  //     case 'kick':
+  //       return Icons.sports_esports;
+  //     case 'rednote':
+  //       return Icons.note;
+  //     default:
+  //       return Icons.link;
+  //   }
+  // }
 
-  IconData _getSocialLinkIcon(String type) {
-    switch (type.toLowerCase()) {
-      case 'website':
-        return Icons.language;
-      case 'email':
-        return Icons.email;
-      case 'phone':
-        return Icons.phone;
-      case 'discord':
-        return Icons.chat;
-      case 'patreon':
-        return Icons.favorite;
-      case 'ko-fi':
-        return Icons.coffee;
-      default:
-        return Icons.link;
-    }
-  }
+  // IconData _getSocialLinkIcon(String type) {
+  //   switch (type.toLowerCase()) {
+  //     case 'website':
+  //       return Icons.language;
+  //     case 'email':
+  //       return Icons.email;
+  //     case 'phone':
+  //       return Icons.phone;
+  //     case 'discord':
+  //       return Icons.chat;
+  //     case 'patreon':
+  //       return Icons.favorite;
+  //     case 'ko-fi':
+  //       return Icons.coffee;
+  //     default:
+  //       return Icons.link;
+  //   }
+  // }
 
-  void _openPlatform(String? url) {
-    HapticFeedback.lightImpact();
-    // TODO: Open platform URL using url_launcher
-    print('Opening platform: $url');
-  }
+  // void _openPlatform(String? url) {
+  //   HapticFeedback.lightImpact();
+  //   // TODO: Open platform URL using url_launcher
+  //   print('Opening platform: $url');
+  // }
 
-  void _openSocialLink(String? url) {
-    HapticFeedback.lightImpact();
-    // TODO: Open social link URL using url_launcher
-    print('Opening social link: $url');
-  }
+  // void _openSocialLink(String? url) {
+  //   HapticFeedback.lightImpact();
+  //   // TODO: Open social link URL using url_launcher
+  //   print('Opening social link: $url');
+  // }
 
   // Event management methods
   void _deleteEvent(String eventId) {
     HapticFeedback.lightImpact();
     // TODO: Delete event from Firebase
     if (kDebugMode) {
-    print('Deleting event: $eventId');
+    // print('Deleting event: $eventId');
     }
     
     setState(() {
@@ -765,7 +765,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Error toggling bookmark: $e');
+    // print('❌ Error toggling bookmark: $e');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -797,10 +797,10 @@ class _EmptyStateWidget extends StatelessWidget {
                   return Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha:0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -810,13 +810,13 @@ class _EmptyStateWidget extends StatelessWidget {
             Icon(
               icon,
               size: 40,
-              color: const Color(0xFF80FFFFFF),
+              color: const Color(0x80FFFFFF),
             ),
             const SizedBox(height: 8),
                                 Text(
               message,
               style: const TextStyle(
-                color: Color(0xFFB3FFFFFF),
+                color: Color(0xB3FFFFFF),
                                     fontSize: 14,
                                   ),
                                 ),
@@ -874,7 +874,7 @@ class _ClickablePlatformRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final platformType = platform['type'] as String? ?? '';
     final username = platform['username'] as String? ?? '';
-    final url = platform['url'] as String? ?? '';
+    // final url = platform['url'] as String? ?? '';
     
     return GestureDetector(
       onTap: onTap,

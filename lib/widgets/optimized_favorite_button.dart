@@ -70,7 +70,7 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
       setState(() {
         _isFavorited = !_isFavorited;
       });
-      print('Error toggling favorite: $e');
+    // print('Error toggling favorite: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -82,7 +82,7 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
   Widget build(BuildContext context) {
     final size = widget.size ?? 24.0;
     final activeColor = widget.activeColor ?? const Color(0xFF9248D2);
-    final inactiveColor = widget.inactiveColor ?? Colors.white.withOpacity(0.85);
+    final inactiveColor = widget.inactiveColor ?? Colors.white.withValues(alpha:0.85);
 
     return GestureDetector(
       onTap: _toggleFavorite,
@@ -99,7 +99,7 @@ class _OptimizedFavoriteButtonState extends State<OptimizedFavoriteButton> {
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha:0.3),
                     borderRadius: BorderRadius.circular(size / 2),
                   ),
                   child: Center(

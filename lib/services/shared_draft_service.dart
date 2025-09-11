@@ -155,7 +155,7 @@ class SharedDraftService {
           .toList();
       _notifyDataChanged();
     } catch (e) {
-      print('Error loading shared drafts: $e');
+    // print('Error loading shared drafts: $e');
     }
   }
 
@@ -176,7 +176,7 @@ class SharedDraftService {
           .toList();
       _notifyDataChanged();
     } catch (e) {
-      print('Error loading connections: $e');
+    // print('Error loading connections: $e');
     }
   }
 
@@ -221,7 +221,7 @@ class SharedDraftService {
 
       return true;
     } catch (e) {
-      print('Error sharing draft: $e');
+    // print('Error sharing draft: $e');
       return false;
     }
   }
@@ -237,7 +237,7 @@ class SharedDraftService {
         'viewedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error marking draft as viewed: $e');
+    // print('Error marking draft as viewed: $e');
     }
   }
 
@@ -251,7 +251,7 @@ class SharedDraftService {
         'status': SharedDraftStatus.declined.name,
       });
     } catch (e) {
-      print('Error declining draft: $e');
+    // print('Error declining draft: $e');
     }
   }
 
@@ -263,7 +263,7 @@ class SharedDraftService {
           .doc(sharedDraftId)
           .delete();
     } catch (e) {
-      print('Error deleting shared draft: $e');
+    // print('Error deleting shared draft: $e');
     }
   }
 
@@ -308,7 +308,7 @@ class SharedDraftService {
 
       return true;
     } catch (e) {
-      print('Error adding connection: $e');
+    // print('Error adding connection: $e');
       return false;
     }
   }
@@ -326,7 +326,7 @@ class SharedDraftService {
           .doc(connectionId)
           .delete();
     } catch (e) {
-      print('Error removing connection: $e');
+    // print('Error removing connection: $e');
     }
   }
 }

@@ -14,7 +14,7 @@ class SocialIcons {
   static const String bluesky = '$_basePath/bluesky.png';
   static const String twitter = '$_basePath/twitter.png';
   static const String instagram = '$_basePath/instagram.png';
-  static const String rednote = '$_basePath/rednote.png';
+  static const String reddit = '$_basePath/reddit.png';
   static const String website = '$_basePath/website.png';
   
   // Default fallback icon
@@ -39,8 +39,8 @@ class SocialIcons {
         return twitter;
       case 'instagram':
         return instagram;
-      case 'rednote':
-        return rednote;
+      case 'reddit':
+        return reddit;
       case 'website':
         return website;
       default:
@@ -67,8 +67,8 @@ class SocialIcons {
         return twitter;
       case PlatformType.instagram:
         return instagram;
-      case PlatformType.rednote:
-        return rednote;
+      case PlatformType.reddit:
+        return reddit;
       case PlatformType.website:
         return website;
     }
@@ -84,7 +84,7 @@ class SocialIcons {
     bluesky,
     twitter,
     instagram,
-    rednote,
+    reddit,
     website,
   ];
   
@@ -98,7 +98,7 @@ class SocialIcons {
     'bluesky': 'BlueSky',
     'twitter': 'Twitter',
     'instagram': 'Instagram',
-    'rednote': 'RedNote',
+    'reddit': 'Reddit',
     'website': 'Website',
   };
 }
@@ -113,7 +113,7 @@ enum PlatformType {
   bluesky,
   twitter,
   instagram,
-  rednote,
+    reddit,
   website,
 }
 
@@ -137,7 +137,7 @@ extension PlatformTypeExtension on PlatformType {
         return 'Twitter';
       case PlatformType.instagram:
         return 'Instagram';
-      case PlatformType.rednote:
+      case PlatformType.reddit:
         return 'RedNote';
       case PlatformType.website:
         return 'Website';
@@ -164,7 +164,7 @@ extension PlatformTypeExtension on PlatformType {
         return const Color(0xFF1DA1F2); // Twitter blue
       case PlatformType.instagram:
         return const Color(0xFFE4405F); // Instagram pink
-      case PlatformType.rednote:
+      case PlatformType.reddit:
         return const Color(0xFFFF4500); // RedNote orange
       case PlatformType.website:
         return const Color(0xFF6C757D); // Website gray
@@ -189,8 +189,8 @@ extension PlatformTypeExtension on PlatformType {
         return 'https://twitter.com/';
       case PlatformType.instagram:
         return 'https://instagram.com/';
-      case PlatformType.rednote:
-        return 'https://rednote.com/';
+      case PlatformType.reddit:
+        return 'https://reddit.com/';
       case PlatformType.website:
         return 'https://';
     }

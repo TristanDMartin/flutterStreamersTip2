@@ -102,7 +102,7 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
                       helperStyle: TextStyle(color: Colors.grey[300], fontSize: 12),
                       hintStyle: TextStyle(color: Colors.grey[400]),
                       filled: true,
-                      fillColor: Colors.grey.withOpacity(0.1),
+                      fillColor: Colors.grey.withValues(alpha:0.1),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -134,7 +134,7 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
                       helperStyle: TextStyle(color: _getPasswordHelperColor(), fontSize: 12),
                       hintStyle: TextStyle(color: Colors.grey[400]),
                       filled: true,
-                      fillColor: Colors.grey.withOpacity(0.1),
+                      fillColor: Colors.grey.withValues(alpha:0.1),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -167,9 +167,9 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
+                        color: Colors.red.withValues(alpha:0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red.withOpacity(0.3)),
+                        border: Border.all(color: Colors.red.withValues(alpha:0.3)),
                       ),
                       child: Row(
                         children: [
@@ -203,7 +203,7 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _canContinue() && !isLoading 
                             ? const Color(0xFF1670de) 
-                            : Colors.grey.withOpacity(0.3),
+                            : Colors.grey.withValues(alpha:0.3),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -361,7 +361,7 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
     final identifier = _identifierController.text.trim();
     final password = _passwordController.text.trim();
     
-    print("📧 Continuing with email/username: $identifier");
+    // print("📧 Continuing with email/username: $identifier");
     
     // Clear previous errors immediately
     setState(() {
@@ -375,22 +375,22 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
       
       if (identifier.contains("@")) {
         // It's an email - use Firebase email auth
-        print("📧 Detected email input, using email authentication");
+    // print("📧 Detected email input, using email authentication");
         result = await authService.debouncedSignInWithEmail(identifier, password);
       } else {
         // It's a username - use username authentication
-        print("👤 Detected username input, using username authentication");
+    // print("👤 Detected username input, using username authentication");
         result = await authService.debouncedSignInWithUsername(identifier, password);
       }
       
       // Only process result if this is still the current request
       if (result.success) {
-        print("✅ Authentication successful (request: ${result.requestId})");
+    // print("✅ Authentication successful (request: ${result.requestId})");
         if (mounted) {
           Navigator.of(context).pop();
         }
       } else {
-        print("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
+    // print("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
         if (mounted) {
           setState(() {
             _errorMessage = _getUserFriendlyErrorMessage(result.error ?? 'Unknown error');
@@ -398,7 +398,7 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
         }
       }
     } catch (e) {
-      print("❌ Authentication error: $e");
+    // print("❌ Authentication error: $e");
       if (mounted) {
         setState(() {
           _errorMessage = _getUserFriendlyErrorMessage(e.toString());

@@ -247,7 +247,7 @@ class _VideoInsightsModalViewState extends State<VideoInsightsModalView> {
           Container(
             height: 200,
             decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.1),
+              color: Colors.grey.withValues(alpha:0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Center(
@@ -308,7 +308,7 @@ class InsightCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.1),
+        color: Colors.grey.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

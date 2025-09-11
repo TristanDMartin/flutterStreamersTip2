@@ -169,10 +169,10 @@ class VideoAnalyticsService extends ChangeNotifier {
         transaction.set(analyticsRef, newData);
       });
       
-      print('✅ Successfully tracked video like for video: $videoId');
+    // print('✅ Successfully tracked video like for video: $videoId');
       await fetchAnalytics(videoId);
     } catch (error) {
-      print('❌ Error tracking video like: $error');
+    // print('❌ Error tracking video like: $error');
     }
   }
   
@@ -223,10 +223,10 @@ class VideoAnalyticsService extends ChangeNotifier {
         transaction.set(analyticsRef, newData);
       });
       
-      print('✅ Successfully tracked video comment for video: $videoId');
+    // print('✅ Successfully tracked video comment for video: $videoId');
       await fetchAnalytics(videoId);
     } catch (error) {
-      print('❌ Error tracking video comment: $error');
+    // print('❌ Error tracking video comment: $error');
     }
   }
   
@@ -277,10 +277,10 @@ class VideoAnalyticsService extends ChangeNotifier {
         transaction.set(analyticsRef, newData);
       });
       
-      print('✅ Successfully tracked video share for video: $videoId');
+    // print('✅ Successfully tracked video share for video: $videoId');
       await fetchAnalytics(videoId);
     } catch (error) {
-      print('❌ Error tracking video share: $error');
+    // print('❌ Error tracking video share: $error');
     }
   }
   
@@ -324,10 +324,10 @@ class VideoAnalyticsService extends ChangeNotifier {
         transaction.set(analyticsRef, newData);
       });
       
-      print('✅ Successfully tracked watch time for video: $videoId');
+    // print('✅ Successfully tracked watch time for video: $videoId');
       await fetchAnalytics(videoId);
     } catch (error) {
-      print('❌ Error tracking watch time: $error');
+    // print('❌ Error tracking watch time: $error');
     }
   }
   
@@ -343,12 +343,12 @@ class VideoAnalyticsService extends ChangeNotifier {
       if (document.exists && document.data() != null) {
         final analytics = VideoAnalytics.fromMap(videoId, document.data()!);
         _videoAnalytics[videoId] = analytics;
-        print('✅ Successfully fetched analytics for video: $videoId');
+    // print('✅ Successfully fetched analytics for video: $videoId');
       } else {
-        print('📊 No analytics data found for video: $videoId');
+    // print('📊 No analytics data found for video: $videoId');
       }
     } catch (error) {
-      print('❌ Error fetching analytics for video $videoId: $error');
+    // print('❌ Error fetching analytics for video $videoId: $error');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -383,12 +383,12 @@ class VideoAnalyticsService extends ChangeNotifier {
         if (documentSnapshot.exists && documentSnapshot.data() != null) {
           final analytics = VideoAnalytics.fromMap(videoId, documentSnapshot.data()!);
           _videoAnalytics[videoId] = analytics;
-          print('🔄 Real-time analytics update for video: $videoId');
+    // print('🔄 Real-time analytics update for video: $videoId');
           notifyListeners();
         }
       },
       onError: (error) {
-        print('❌ Error listening to analytics for video $videoId: $error');
+    // print('❌ Error listening to analytics for video $videoId: $error');
       },
     );
   }

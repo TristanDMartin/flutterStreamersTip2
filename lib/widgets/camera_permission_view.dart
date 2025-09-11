@@ -14,9 +14,10 @@ class CameraPermissionView extends StatefulWidget {
 }
 
 class _CameraPermissionViewState extends State<CameraPermissionView> {
-  final bool _showCamera = false;
-  final bool _showPermissionAlert = false;
-  final int _permissionStep = 0; // 0: camera, 1: microphone, 2: complete
+  // Unused fields commented out
+  // final bool _showCamera = false;
+  // final bool _showPermissionAlert = false;
+  // final int _permissionStep = 0; // 0: camera, 1: microphone, 2: complete
 
   @override
   void initState() {
@@ -221,7 +222,7 @@ class _CameraPermissionViewState extends State<CameraPermissionView> {
         Text(
           subtitle,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
             fontSize: 12,
           ),
           textAlign: TextAlign.center,
@@ -283,7 +284,7 @@ class _CameraPermissionViewState extends State<CameraPermissionView> {
           width: 30,
           height: 20,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(6),
           ),
           child: const Icon(
@@ -306,7 +307,7 @@ class _CameraPermissionViewState extends State<CameraPermissionView> {
       child: Text(
         text,
         style: TextStyle(
-          color: isSelected ? Colors.white : Colors.white.withOpacity(0.6),
+          color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.6),
           fontSize: 12,
           fontWeight: FontWeight.w500,
         ),
@@ -318,7 +319,7 @@ class _CameraPermissionViewState extends State<CameraPermissionView> {
     return Text(
       text,
       style: TextStyle(
-        color: Colors.white.withOpacity(0.6),
+        color: Colors.white.withValues(alpha: 0.6),
         fontSize: 12,
         fontWeight: FontWeight.w500,
       ),

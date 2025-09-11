@@ -172,7 +172,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
     } catch (e) {
       // Don't revert on error - keep the UI state
       // The like state should persist locally even if Firebase fails
-      print('Background like operation failed (keeping UI state): $e');
+    // print('Background like operation failed (keeping UI state): $e');
     }
   }
 
@@ -197,7 +197,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
       }
     } catch (e) {
       // If floating hearts fail, just continue - not critical
-      print('Floating hearts animation error: $e');
+    // print('Floating hearts animation error: $e');
     }
   }
 

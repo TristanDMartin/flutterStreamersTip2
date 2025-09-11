@@ -37,7 +37,7 @@ class _OptimizedShareButtonState extends State<OptimizedShareButton> {
       await ShareServiceOptimized().shareVideo(widget.video);
       widget.onShareCompleted?.call();
     } catch (e) {
-      print('Error sharing video: $e');
+    // print('Error sharing video: $e');
     } finally {
       setState(() {
         _isSharing = false;
@@ -48,7 +48,7 @@ class _OptimizedShareButtonState extends State<OptimizedShareButton> {
   @override
   Widget build(BuildContext context) {
     final size = widget.size ?? 24.0;
-    final color = widget.color ?? Colors.white.withOpacity(0.85);
+    final color = widget.color ?? Colors.white.withValues(alpha:0.85);
 
     return GestureDetector(
       onTap: _handleShare,
@@ -65,7 +65,7 @@ class _OptimizedShareButtonState extends State<OptimizedShareButton> {
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha:0.3),
                     borderRadius: BorderRadius.circular(size / 2),
                   ),
                   child: Center(

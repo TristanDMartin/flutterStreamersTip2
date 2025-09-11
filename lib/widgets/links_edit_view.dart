@@ -22,7 +22,7 @@ class _LinksEditViewState extends State<LinksEditView> {
   // Allowed platform types matching your design system
   static const List<String> _allowedPlatforms = [
     'twitch', 'youtube', 'kick', 'tiktok', 'instagram', 
-    'twitter', 'bluesky', 'rednote', 'facebook', 'other'
+    'twitter', 'bluesky', 'reddit', 'facebook', 'other'
   ];
 
   @override
@@ -297,7 +297,7 @@ class _LinksEditViewState extends State<LinksEditView> {
         return const Color(0xFF1DA1F2);
       case 'instagram':
         return const Color(0xFFE4405F);
-      case 'rednote':
+      case 'reddit':
         return const Color(0xFFFF4500);
       default:
         return Colors.grey;
@@ -322,7 +322,7 @@ class _LinksEditViewState extends State<LinksEditView> {
         return Icons.flutter_dash;
       case 'instagram':
         return Icons.camera_alt;
-      case 'rednote':
+      case 'reddit':
         return Icons.note;
       default:
         return Icons.link;
@@ -347,7 +347,7 @@ class _LinksEditViewState extends State<LinksEditView> {
         return 'Twitter';
       case 'instagram':
         return 'Instagram';
-      case 'rednote':
+      case 'reddit':
         return 'RedNote';
       default:
         return platformType;

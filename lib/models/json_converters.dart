@@ -20,7 +20,7 @@ class ColorConverter implements JsonConverter<Color, int> {
   @override
   Color fromJson(int json) => Color(json);
   @override
-  int toJson(Color object) => object.value;
+  int toJson(Color object) => object.toARGB32();
 }
 
 class UserConverter implements JsonConverter<app.User, Map<String, dynamic>> {

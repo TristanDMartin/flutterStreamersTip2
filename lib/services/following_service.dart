@@ -49,7 +49,7 @@ class FollowingService {
       await batch.commit();
       return true;
     } catch (e) {
-      print('Error following user: $e');
+    // print('Error following user: $e');
       return false;
     }
   }
@@ -92,7 +92,7 @@ class FollowingService {
       await batch.commit();
       return true;
     } catch (e) {
-      print('Error unfollowing user: $e');
+    // print('Error unfollowing user: $e');
       return false;
     }
   }
@@ -112,7 +112,7 @@ class FollowingService {
 
       return doc.exists;
     } catch (e) {
-      print('Error checking follow status: $e');
+    // print('Error checking follow status: $e');
       return false;
     }
   }
@@ -131,7 +131,7 @@ class FollowingService {
 
       return snapshot.docs.map((doc) => doc.id).toList();
     } catch (e) {
-      print('Error getting following list: $e');
+    // print('Error getting following list: $e');
       return [];
     }
   }
@@ -150,7 +150,7 @@ class FollowingService {
 
       return snapshot.docs.map((doc) => doc.id).toList();
     } catch (e) {
-      print('Error getting followers list: $e');
+    // print('Error getting followers list: $e');
       return [];
     }
   }
@@ -172,7 +172,7 @@ class FollowingService {
       final doc = await _firestore.collection('users').doc(userId).get();
       return doc.data()?['followerCount'] ?? 0;
     } catch (e) {
-      print('Error getting follower count: $e');
+    // print('Error getting follower count: $e');
       return 0;
     }
   }
@@ -183,7 +183,7 @@ class FollowingService {
       final doc = await _firestore.collection('users').doc(userId).get();
       return doc.data()?['followingCount'] ?? 0;
     } catch (e) {
-      print('Error getting following count: $e');
+    // print('Error getting following count: $e');
       return 0;
     }
   }

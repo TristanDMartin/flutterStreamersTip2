@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import '../models/bookmark_event.dart';
@@ -59,7 +58,7 @@ class EnhancedBookmarkService {
       _isInitialized = true;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: Error initializing: $e');
+    // print('❌ EnhancedBookmarkService: Error initializing: $e');
       }
     } finally {
       _isLoading = false;
@@ -88,11 +87,11 @@ class EnhancedBookmarkService {
       });
 
       if (kDebugMode) {
-        print('✅ EnhancedBookmarkService: FCM token registered');
+    // print('✅ EnhancedBookmarkService: FCM token registered');
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: Failed to register FCM token: $e');
+    // print('❌ EnhancedBookmarkService: Failed to register FCM token: $e');
       }
     }
   }
@@ -126,7 +125,7 @@ class EnhancedBookmarkService {
       _notifyBookmarksChanged();
     } catch (e) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: Error loading bookmarks: $e');
+    // print('❌ EnhancedBookmarkService: Error loading bookmarks: $e');
       }
     }
   }
@@ -143,14 +142,14 @@ class EnhancedBookmarkService {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: No authenticated user');
+    // print('❌ EnhancedBookmarkService: No authenticated user');
       }
       return false;
     }
 
     if (_bookmarkedEventIds.contains(eventId)) {
       if (kDebugMode) {
-        print('✅ EnhancedBookmarkService: Event already bookmarked: $eventId');
+    // print('✅ EnhancedBookmarkService: Event already bookmarked: $eventId');
       }
       return true; // Already bookmarked
     }
@@ -174,9 +173,9 @@ class EnhancedBookmarkService {
       };
 
       if (kDebugMode) {
-        print('📝 EnhancedBookmarkService: Saving bookmark for event: $eventId');
-        print('📝 EnhancedBookmarkService: User ID: ${currentUser.uid}');
-        print('📝 EnhancedBookmarkService: Creator ID: $creatorId');
+    // print('📝 EnhancedBookmarkService: Saving bookmark for event: $eventId');
+    // print('📝 EnhancedBookmarkService: User ID: ${currentUser.uid}');
+    // print('📝 EnhancedBookmarkService: Creator ID: $creatorId');
       }
 
       // Use merge to avoid overwriting existing data
@@ -205,17 +204,17 @@ class EnhancedBookmarkService {
       _notifyBookmarksChanged();
       
       if (kDebugMode) {
-        print('✅ EnhancedBookmarkService: Successfully bookmarked event: $title');
+    // print('✅ EnhancedBookmarkService: Successfully bookmarked event: $title');
       }
       
       return true;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: Error bookmarking event: $e');
-        print('❌ EnhancedBookmarkService: Error type: ${e.runtimeType}');
+    // print('❌ EnhancedBookmarkService: Error bookmarking event: $e');
+    // print('❌ EnhancedBookmarkService: Error type: ${e.runtimeType}');
         if (e is FirebaseException) {
-          print('❌ EnhancedBookmarkService: Firebase error code: ${e.code}');
-          print('❌ EnhancedBookmarkService: Firebase error message: ${e.message}');
+    // print('❌ EnhancedBookmarkService: Firebase error code: ${e.code}');
+    // print('❌ EnhancedBookmarkService: Firebase error message: ${e.message}');
         }
       }
       return false;
@@ -259,13 +258,13 @@ class EnhancedBookmarkService {
       _notifyBookmarksChanged();
       
       if (kDebugMode) {
-        print('✅ EnhancedBookmarkService: Deleted bookmark: $eventId');
+    // print('✅ EnhancedBookmarkService: Deleted bookmark: $eventId');
       }
       
       return true;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: Error deleting bookmark: $e');
+    // print('❌ EnhancedBookmarkService: Error deleting bookmark: $e');
       }
       return false;
     } finally {
@@ -304,13 +303,13 @@ class EnhancedBookmarkService {
       _notifyBookmarksChanged();
       
       if (kDebugMode) {
-        print('✅ EnhancedBookmarkService: Toggled notification for $eventId: $notify');
+    // print('✅ EnhancedBookmarkService: Toggled notification for $eventId: $notify');
       }
       
       return true;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: Error toggling notification: $e');
+    // print('❌ EnhancedBookmarkService: Error toggling notification: $e');
       }
       return false;
     } finally {
@@ -392,7 +391,7 @@ class EnhancedBookmarkService {
           .toList();
     } catch (e) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: Error getting bookmarks: $e');
+    // print('❌ EnhancedBookmarkService: Error getting bookmarks: $e');
       }
       return [];
     }
@@ -405,7 +404,7 @@ class EnhancedBookmarkService {
       return bookmarks.map((bookmark) => bookmark.eventId).toSet();
     } catch (e) {
       if (kDebugMode) {
-        print('❌ EnhancedBookmarkService: Error fetching bookmarked event IDs: $e');
+    // print('❌ EnhancedBookmarkService: Error fetching bookmarked event IDs: $e');
       }
       return <String>{};
     }

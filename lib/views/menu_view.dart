@@ -118,7 +118,7 @@ class MenuView extends StatelessWidget {
         Text(
           '@${user?.email?.split('@')[0] ?? 'username'}',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha:0.7),
             fontSize: 16,
           ),
         ),
@@ -230,7 +230,7 @@ class MenuView extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha:0.2),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -258,7 +258,7 @@ class MenuView extends StatelessWidget {
             Text(
               subtitle,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha:0.8),
                 fontSize: 12,
               ),
               textAlign: TextAlign.center,
@@ -361,7 +361,7 @@ class _PlaceholderPage extends StatelessWidget {
           children: [
             Icon(
               Icons.construction,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha:0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
@@ -377,7 +377,7 @@ class _PlaceholderPage extends StatelessWidget {
             Text(
               'This page will be implemented here',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 16,
               ),
             ),

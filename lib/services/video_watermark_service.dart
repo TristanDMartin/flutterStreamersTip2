@@ -20,7 +20,7 @@ class VideoWatermarkService {
     try {
       // For now, we'll return the original file
       // In a real implementation, you would use FFmpeg or similar to add watermark
-      print('🎬 Adding watermark for platforms: ${selectedPlatforms.join(', ')}');
+    // print('🎬 Adding watermark for platforms: ${selectedPlatforms.join(', ')}');
       
       // TODO: Implement actual video watermarking with FFmpeg
       // This would involve:
@@ -30,7 +30,7 @@ class VideoWatermarkService {
       
       return videoFile;
     } catch (e) {
-      print('❌ Error adding watermark: $e');
+    // print('❌ Error adding watermark: $e');
       return videoFile; // Return original file if watermarking fails
     }
   }

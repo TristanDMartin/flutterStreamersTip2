@@ -3,6 +3,7 @@
 /// 
 /// This file contains all the models and algorithms needed for the NetworkView
 /// including relationship management, user connections, and network analytics.
+library network_models;
 
 /// ======== CORE MODELS ========
 

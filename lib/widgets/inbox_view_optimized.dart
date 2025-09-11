@@ -1602,7 +1602,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     });
     
     final userProfile = _userProfiles[otherUserId];
-    final isOnline = _onlineStatus[otherUserId] ?? false;
+    // final isOnline = _onlineStatus[otherUserId] ?? false; // Unused variable commented out
     
     if (mounted) {
       Navigator.of(context).push(

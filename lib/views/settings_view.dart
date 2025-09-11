@@ -161,7 +161,7 @@ class _SettingsViewState extends State<SettingsView> {
         color: const Color(0xFF0E1220),
         border: Border(
           bottom: BorderSide(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha:0.1),
             width: 1,
           ),
         ),
@@ -191,10 +191,10 @@ class _SettingsViewState extends State<SettingsView> {
       margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -208,11 +208,11 @@ class _SettingsViewState extends State<SettingsView> {
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           hintText: 'Search settings...',
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+          hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
           border: InputBorder.none,
           icon: Icon(
             Icons.search,
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha:0.5),
           ),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
@@ -224,7 +224,7 @@ class _SettingsViewState extends State<SettingsView> {
                   },
                   icon: Icon(
                     Icons.clear,
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha:0.5),
                   ),
                 )
               : null,
@@ -251,10 +251,10 @@ class _SettingsViewState extends State<SettingsView> {
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withValues(alpha:0.05),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha:0.1),
               width: 1,
             ),
           ),
@@ -286,7 +286,7 @@ class _SettingsViewState extends State<SettingsView> {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha:0.1),
               width: 1,
             ),
           ),
@@ -296,7 +296,7 @@ class _SettingsViewState extends State<SettingsView> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -322,7 +322,7 @@ class _SettingsViewState extends State<SettingsView> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha:0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -331,7 +331,7 @@ class _SettingsViewState extends State<SettingsView> {
             ),
             Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha:0.5),
               size: 16,
             ),
           ],
@@ -351,7 +351,7 @@ class _SettingsViewState extends State<SettingsView> {
             icon: const Icon(Icons.swap_horiz),
             label: const Text('Switch Account'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.1),
+              backgroundColor: Colors.white.withValues(alpha:0.1),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
@@ -371,7 +371,7 @@ class _SettingsViewState extends State<SettingsView> {
             icon: const Icon(Icons.add),
             label: const Text('Add Account'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.1),
+              backgroundColor: Colors.white.withValues(alpha:0.1),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
@@ -391,7 +391,7 @@ class _SettingsViewState extends State<SettingsView> {
             icon: const Icon(Icons.logout),
             label: const Text('Log Out'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.withOpacity(0.2),
+              backgroundColor: Colors.red.withValues(alpha:0.2),
               foregroundColor: Colors.red,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
@@ -475,7 +475,7 @@ class _PlaceholderPage extends StatelessWidget {
           children: [
             Icon(
               Icons.construction,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha:0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
@@ -491,7 +491,7 @@ class _PlaceholderPage extends StatelessWidget {
             Text(
               'This page will be implemented here',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 fontSize: 16,
               ),
             ),

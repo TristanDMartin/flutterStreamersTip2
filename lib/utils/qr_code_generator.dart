@@ -8,11 +8,11 @@ class QRCodeGenerator {
     Color foregroundColor = Colors.black,
     Color backgroundColor = Colors.white,
   }) {
-    print('🔍 QRCodeGenerator: Starting generation for string: $data');
-    print('🔍 QRCodeGenerator: Size: $size');
+    // print('🔍 QRCodeGenerator: Starting generation for string: $data');
+    // print('🔍 QRCodeGenerator: Size: $size');
 
     if (data.isEmpty) {
-      print('❌ QR Code: Empty string provided');
+    // print('❌ QR Code: Empty string provided');
       return Container(
         width: size,
         height: size,
@@ -21,30 +21,36 @@ class QRCodeGenerator {
       );
     }
 
-    print('🔍 QRCodeGenerator: Data length: ${data.length}');
+    // print('🔍 QRCodeGenerator: Data length: ${data.length}');
 
     try {
       final qrCode = QrPainter(
         data: data,
         version: QrVersions.auto,
         errorCorrectionLevel: QrErrorCorrectLevel.H,
-        color: foregroundColor,
-        emptyColor: backgroundColor,
+        eyeStyle: QrEyeStyle(
+          eyeShape: QrEyeShape.square,
+          color: foregroundColor,
+        ),
+        dataModuleStyle: QrDataModuleStyle(
+          dataModuleShape: QrDataModuleShape.square,
+          color: foregroundColor,
+        ),
         gapless: false,
         embeddedImage: null,
         embeddedImageStyle: null,
         // embeddedImageEmitsError removed (not supported by current qr_flutter)
       );
 
-      print('🔍 QRCodeGenerator: QrPainter created successfully');
-      print('✅ QR Code: Generated successfully for string: $data');
+    // print('🔍 QRCodeGenerator: QrPainter created successfully');
+    // print('✅ QR Code: Generated successfully for string: $data');
 
       return CustomPaint(
         size: Size(size, size),
         painter: qrCode,
       );
     } catch (e) {
-      print('❌ QRCodeGenerator: Error generating QR code: $e');
+    // print('❌ QRCodeGenerator: Error generating QR code: $e');
       return Container(
         width: size,
         height: size,
@@ -76,11 +82,11 @@ class QRCodeGenerator {
     Color foregroundColor = Colors.black,
     Color backgroundColor = Colors.white,
   }) {
-    print('🔍 QRCodeGenerator: Starting generation with QrImageView for string: $data');
-    print('🔍 QRCodeGenerator: Size: $size');
+    // print('🔍 QRCodeGenerator: Starting generation with QrImageView for string: $data');
+    // print('🔍 QRCodeGenerator: Size: $size');
 
     if (data.isEmpty) {
-      print('❌ QR Code: Empty string provided');
+    // print('❌ QR Code: Empty string provided');
       return Container(
         width: size,
         height: size,
@@ -89,7 +95,7 @@ class QRCodeGenerator {
       );
     }
 
-    print('🔍 QRCodeGenerator: Data length: ${data.length}');
+    // print('🔍 QRCodeGenerator: Data length: ${data.length}');
 
     try {
       final qrCode = QrImageView(
@@ -97,19 +103,26 @@ class QRCodeGenerator {
         version: QrVersions.auto,
         errorCorrectionLevel: QrErrorCorrectLevel.H,
         size: size,
-        foregroundColor: foregroundColor,
+        eyeStyle: QrEyeStyle(
+          eyeShape: QrEyeShape.square,
+          color: foregroundColor,
+        ),
+        dataModuleStyle: QrDataModuleStyle(
+          dataModuleShape: QrDataModuleShape.square,
+          color: foregroundColor,
+        ),
         backgroundColor: backgroundColor,
         embeddedImage: null,
         embeddedImageStyle: null,
         // embeddedImageEmitsError removed (not supported by current qr_flutter)
       );
 
-      print('🔍 QRCodeGenerator: QrImageView created successfully');
-      print('✅ QR Code: Generated successfully with QrImageView for string: $data');
+    // print('🔍 QRCodeGenerator: QrImageView created successfully');
+    // print('✅ QR Code: Generated successfully with QrImageView for string: $data');
 
       return qrCode;
     } catch (e) {
-      print('❌ QRCodeGenerator: Error generating QR code with QrImageView: $e');
+    // print('❌ QRCodeGenerator: Error generating QR code with QrImageView: $e');
       return Container(
         width: size,
         height: size,

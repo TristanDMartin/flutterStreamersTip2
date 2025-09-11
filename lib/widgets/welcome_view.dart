@@ -108,7 +108,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                     height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.1 * _pulseAnimation.value),
+                      color: Colors.white.withValues(alpha:0.1 * _pulseAnimation.value),
                     ),
                   ),
                 );
@@ -124,7 +124,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                     height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.05 * _pulseAnimation.value),
+                      color: Colors.white.withValues(alpha:0.05 * _pulseAnimation.value),
                     ),
                   ),
                 );
@@ -140,7 +140,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                     height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.03 * _pulseAnimation.value),
+                      color: Colors.white.withValues(alpha:0.03 * _pulseAnimation.value),
                     ),
                   ),
                 );
@@ -166,8 +166,8 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                     cacheWidth: 240,
                     cacheHeight: 240,
                     errorBuilder: (context, error, stackTrace) {
-                      print('Logo loading error in welcome view: $error');
-                      print('Stack trace: $stackTrace');
+    // print('Logo loading error in welcome view: $error');
+    // print('Stack trace: $stackTrace');
                       return Container(
                         color: Colors.white,
                         child: const Center(
@@ -244,7 +244,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
         style: TextStyle(
           fontSize: _clampFontSize(context, 28, 44), // Clamp between 28pt and 44pt
           fontWeight: FontWeight.w600, // Semibold
-          color: Colors.white.withOpacity(0.96), // 96% opacity for on-brand
+          color: Colors.white.withValues(alpha:0.96), // 96% opacity for on-brand
           height: 1.1, // Tight line height
           letterSpacing: -0.3, // -1% tracking
         ),
@@ -320,7 +320,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                 widget.onProceedToLogin();
               },
               style: TextButton.styleFrom(
-                foregroundColor: Colors.white.withOpacity(0.75), // 75% opacity
+                foregroundColor: Colors.white.withValues(alpha:0.75), // 75% opacity
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
               child: Text(
@@ -328,7 +328,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                 style: TextStyle(
                   fontSize: 16, // Body/footnote size
                   fontWeight: FontWeight.w600, // Semibold
-                  color: Colors.white.withOpacity(0.75),
+                  color: Colors.white.withValues(alpha:0.75),
                 ),
               ),
             ),
@@ -350,7 +350,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                 _devLogin();
               },
               style: TextButton.styleFrom(
-                foregroundColor: Colors.orange.withOpacity(0.9), // Orange for dev
+                foregroundColor: Colors.orange.withValues(alpha:0.9), // Orange for dev
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
               child: Text(
@@ -358,7 +358,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                 style: TextStyle(
                   fontSize: 16, // Body/footnote size
                   fontWeight: FontWeight.w600, // Semibold
-                  color: Colors.orange.withOpacity(0.9),
+                  color: Colors.orange.withValues(alpha:0.9),
                 ),
               ),
             ),
@@ -376,7 +376,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
       
       // The AppStartupWrapper will automatically detect the login state change
       // and navigate to MainTabView, so we don't need to navigate manually here
-      print("✅ Bypass login completed - AppStartupWrapper will handle navigation");
+    // print("✅ Bypass login completed - AppStartupWrapper will handle navigation");
       
     } catch (e) {
       // Show error if bypass fails

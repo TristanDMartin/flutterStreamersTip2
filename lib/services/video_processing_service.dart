@@ -445,7 +445,7 @@ class VideoProcessingService {
         }
       }
     } catch (e) {
-      print('Error cleaning up temp files: $e');
+    // print('Error cleaning up temp files: $e');
     }
   }
 

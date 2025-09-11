@@ -29,7 +29,7 @@ class LoadingMoreView extends StatelessWidget {
               "Keep scrolling for endless content! 🎬",
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
               ),
               textAlign: TextAlign.center,
             ),

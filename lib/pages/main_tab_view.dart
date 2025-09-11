@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
@@ -50,13 +51,13 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         try {
           final profileUpdateService = ProfileUpdateService();
           await profileUpdateService.initialize();
-          print('✅ MainTabView: ProfileUpdateService initialized for user: ${authService.currentUser!.displayName}');
+          log('✅ MainTabView: ProfileUpdateService initialized for user: ${authService.currentUser!.displayName}');
         } catch (e) {
-          print('❌ MainTabView: Error initializing ProfileUpdateService: $e');
+          log('❌ MainTabView: Error initializing ProfileUpdateService: $e');
         }
         
         // Data sync will be handled by the individual views
-        print('🔄 MainTabView: Starting data sync for user: ${authService.currentUser!.displayName}');
+        log('🔄 MainTabView: Starting data sync for user: ${authService.currentUser!.displayName}');
       }
     });
   }

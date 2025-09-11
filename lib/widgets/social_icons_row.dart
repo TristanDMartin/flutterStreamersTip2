@@ -26,35 +26,37 @@ class SocialIconsRow extends StatelessWidget {
 
   // Adaptive sizing based on device and content size
   double _getIconSize(BuildContext context) {
-    final textScaleFactor = MediaQuery.of(context).textScaleFactor;
+    final textScaler = MediaQuery.of(context).textScaler;
     const baseSize = 20.0;
+    final scale = textScaler.scale(1.0);
     
-    if (textScaleFactor >= 1.8) return baseSize * 1.8;
-    if (textScaleFactor >= 1.6) return baseSize * 1.6;
-    if (textScaleFactor >= 1.4) return baseSize * 1.4;
-    if (textScaleFactor >= 1.2) return baseSize * 1.2;
+    if (scale >= 1.8) return baseSize * 1.8;
+    if (scale >= 1.6) return baseSize * 1.6;
+    if (scale >= 1.4) return baseSize * 1.4;
+    if (scale >= 1.2) return baseSize * 1.2;
     return baseSize;
   }
 
   double _getIconSpacing(BuildContext context) {
-    final textScaleFactor = MediaQuery.of(context).textScaleFactor;
+    final textScaler = MediaQuery.of(context).textScaler;
+    final scale = textScaler.scale(1.0);
     
-    if (textScaleFactor >= 1.8) return 32;
-    if (textScaleFactor >= 1.6) return 28;
-    if (textScaleFactor >= 1.4) return 24;
-    if (textScaleFactor >= 1.2) return 20;
+    if (scale >= 1.8) return 32;
+    if (scale >= 1.6) return 28;
+    if (scale >= 1.4) return 24;
+    if (scale >= 1.2) return 20;
     return 16;
   }
 
-  Color _getIconColor() {
-    return Colors.white.withOpacity(0.8);
-  }
+  // Color _getIconColor() {
+  //   return Colors.white.withValues(alpha: 0.8);
+  // }
 
   @override
   Widget build(BuildContext context) {
     final iconSize = _getIconSize(context);
     final iconSpacing = _getIconSpacing(context);
-    final iconColor = _getIconColor();
+    // final iconColor = _getIconColor();
 
     return LayoutBuilder(
       builder: (context, constraints) {

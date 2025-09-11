@@ -298,7 +298,7 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.grey[50],
+        color: isSelected ? Colors.blue.withValues(alpha:0.1) : Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: isSelected ? Border.all(color: Colors.blue, width: 2) : null,
       ),
@@ -317,10 +317,10 @@ class _MusicSelectionWidgetState extends State<MusicSelectionWidget>
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.blue.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.music_note,
                   color: Colors.blue,
                   size: 24,

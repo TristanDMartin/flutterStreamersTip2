@@ -37,7 +37,7 @@ class UploadJobStorageService {
       final json = jsonDecode(content) as Map<String, dynamic>;
       return UploadJob.fromJson(json);
     } catch (e) {
-      print('❌ Error loading upload job $localId: $e');
+    // print('❌ Error loading upload job $localId: $e');
       return null;
     }
   }
@@ -55,7 +55,7 @@ class UploadJobStorageService {
           final json = jsonDecode(content) as Map<String, dynamic>;
           jobs.add(UploadJob.fromJson(json));
         } catch (e) {
-          print('❌ Error loading upload job from ${file.path}: $e');
+    // print('❌ Error loading upload job from ${file.path}: $e');
         }
       }
     }

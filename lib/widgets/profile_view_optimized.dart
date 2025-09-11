@@ -2,10 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user.dart' as app_user;
-import '../models/streamer_card.dart';
-import '../models/calendar_event.dart';
 import '../services/profile_update_service.dart';
 import '../views/menu_view.dart';
 import 'edit_profile_view.dart';
@@ -90,87 +87,87 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _isFront = !_isFront;
   }
 
-  PlatformType _parsePlatformType(String type) {
-    switch (type.toLowerCase()) {
-      case 'twitch':
-        return PlatformType.twitch;
-      case 'youtube':
-        return PlatformType.youtube;
-      case 'kick':
-        return PlatformType.kick;
-      case 'tiktok':
-        return PlatformType.tiktok;
-      case 'facebook':
-        return PlatformType.facebook;
-      case 'bluesky':
-        return PlatformType.bluesky;
-      case 'twitter':
-        return PlatformType.twitter;
-      case 'instagram':
-        return PlatformType.instagram;
-      case 'rednote':
-        return PlatformType.rednote;
-      default:
-        return PlatformType.other;
-    }
-  }
+  // PlatformType _parsePlatformType(String type) {
+  //   switch (type.toLowerCase()) {
+  //     case 'twitch':
+  //       return PlatformType.twitch;
+  //     case 'youtube':
+  //       return PlatformType.youtube;
+  //     case 'kick':
+  //       return PlatformType.kick;
+  //     case 'tiktok':
+  //       return PlatformType.tiktok;
+  //     case 'facebook':
+  //       return PlatformType.facebook;
+  //     case 'bluesky':
+  //       return PlatformType.bluesky;
+  //     case 'twitter':
+  //       return PlatformType.twitter;
+  //     case 'instagram':
+  //       return PlatformType.instagram;
+  //     case 'rednote':
+  //       return PlatformType.rednote;
+  //     default:
+  //       return PlatformType.other;
+  //   }
+  // }
 
-  List<String> _parseHashtags(dynamic hashtagsData) {
-    if (hashtagsData == null) return [];
-    
-    if (hashtagsData is List<dynamic>) {
-      return hashtagsData.cast<String>();
-    } else if (hashtagsData is String) {
-      // Handle comma-separated string like "Badge, chill"
-      return hashtagsData.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
-    }
-    
-    return [];
-  }
+  // List<String> _parseHashtags(dynamic hashtagsData) {
+  //   if (hashtagsData == null) return [];
+  //   
+  //   if (hashtagsData is List<dynamic>) {
+  //     return hashtagsData.cast<String>();
+  //   } else if (hashtagsData is String) {
+  //     // Handle comma-separated string like "Badge, chill"
+  //     return hashtagsData.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
+  //   }
+  //   
+  //   return [];
+  // }
 
   void _openStreamerCard() {
     if (kDebugMode) {
-      print('ProfileView: StreamerCard button tapped');
+    // print('ProfileView: StreamerCard button tapped');
     }
     HapticFeedback.lightImpact();
     
     try {
       // Convert user data to StreamerCard
-      final userData = _currentUserData;
+      // final userData = _currentUserData;
       if (kDebugMode) {
-        print('ProfileView: User data keys: ${userData.keys}');
+    // print('ProfileView: User data keys: ${userData.keys}');
       }
-    final streamerCard = StreamerCard(
-      id: userData['id'] as String? ?? '',
-      displayName: userData['displayName'] as String? ?? '',
-      username: userData['username'] as String? ?? '',
-      bio: userData['bio'] as String? ?? '',
-      avatarURL: userData['avatarUrl'] as String?,
-      platforms: (userData['platforms'] as List<dynamic>?)?.map((p) {
-        final platformMap = p as Map<String, dynamic>;
-        return Platform(
-          id: platformMap['id'] as String? ?? '',
-          type: _parsePlatformType(platformMap['type'] as String? ?? ''),
-          username: platformMap['username'] as String? ?? '',
-          followers: (platformMap['followers'] as num?)?.toInt() ?? 0,
-          url: platformMap['url'] as String?,
-        );
-      }).toList() ?? [],
-      hashtags: _parseHashtags(userData['hashtags']),
-      calendarEvents: (userData['calendarEvents'] as List<dynamic>?)?.map((e) {
-        final eventMap = e as Map<String, dynamic>;
-        return CalendarEvent(
-          id: eventMap['id'] as String? ?? '',
-          title: eventMap['title'] as String? ?? '',
-          description: eventMap['description'] as String? ?? '',
-          date: (eventMap['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
-        );
-      }).toList() ?? [],
-      onlineStatus: userData['status'] as String? ?? 'offline',
-    );
+    // final streamerCard = StreamerCard(
+    //   id: userData['id'] as String? ?? '',
+    //   displayName: userData['displayName'] as String? ?? '',
+    //   username: userData['username'] as String? ?? '',
+    //   bio: userData['bio'] as String? ?? '',
+    //   avatarURL: userData['avatarUrl'] as String?,
+    //   platforms: (userData['platforms'] as List<dynamic>?)?.map((p) {
+    //     final platformMap = p as Map<String, dynamic>;
+    //     return Platform(
+    //       id: platformMap['id'] as String? ?? '',
+    //       type: _parsePlatformType(platformMap['type'] as String? ?? ''),
+    //       username: platformMap['username'] as String? ?? '',
+    //       followers: (platformMap['followers'] as num?)?.toInt() ?? 0,
+    //       url: platformMap['url'] as String?,
+    //     );
+    //   }).toList() ?? [],
+    //   hashtags: _parseHashtags(userData['hashtags']),
+    //   calendarEvents: (userData['calendarEvents'] as List<dynamic>?)?.map((e) {
+    //     final eventMap = e as Map<String, dynamic>;
+    //     return CalendarEvent(
+    //       id: eventMap['id'] as String? ?? '',
+    //       title: eventMap['title'] as String? ?? '',
+    //       description: eventMap['description'] as String? ?? '',
+    //       date: (eventMap['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    //     );
+    //   }).toList() ?? [],
+    //   onlineStatus: userData['status'] as String? ?? 'offline',
+    // );
     
       if (kDebugMode) {
-        print('ProfileView: Navigating to StreamerCardView');
+    // print('ProfileView: Navigating to StreamerCardView');
       }
       
     Navigator.of(context).push(
@@ -183,7 +180,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             // Handle follow action
             HapticFeedback.lightImpact();
             if (kDebugMode) {
-              print('ProfileView: Follow action triggered for user: $userId');
+    // print('ProfileView: Follow action triggered for user: $userId');
             }
             // TODO: Implement follow functionality
           },
@@ -191,7 +188,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             // Handle message action
             HapticFeedback.lightImpact();
             if (kDebugMode) {
-              print('ProfileView: Message action triggered for user: $userId');
+    // print('ProfileView: Message action triggered for user: $userId');
             }
             // TODO: Implement message functionality
           },
@@ -199,7 +196,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             // Handle share action
             HapticFeedback.lightImpact();
             if (kDebugMode) {
-              print('ProfileView: Share action triggered for user: $userId');
+    // print('ProfileView: Share action triggered for user: $userId');
             }
             // TODO: Implement share functionality
           },
@@ -208,7 +205,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
     } catch (e) {
       if (kDebugMode) {
-        print('ProfileView: Error opening StreamerCard: $e');
+    // print('ProfileView: Error opening StreamerCard: $e');
       }
       // Show error to user
       ScaffoldMessenger.of(context).showSnackBar(
@@ -231,19 +228,19 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       if (isCurrentUser && _profileUpdateService.isDataLoaded) {
         _cachedUserData = _profileUpdateService.userData ?? widget.user.toMap();
         if (kDebugMode) {
-          print('ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
+    // print('ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
         }
         return _cachedUserData!;
       }
       // Otherwise use the widget user data
       _cachedUserData = widget.user.toMap();
       if (kDebugMode) {
-        print('ProfileView: Using widget user data: ${_cachedUserData?.keys}');
+    // print('ProfileView: Using widget user data: ${_cachedUserData?.keys}');
       }
       return _cachedUserData!;
     } catch (e) {
       if (kDebugMode) {
-        print('ProfileView: Error getting user data: $e');
+    // print('ProfileView: Error getting user data: $e');
       }
       // Fallback to basic user data
       return {
@@ -342,7 +339,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
               ),
               onPressed: () {
                 if (kDebugMode) {
-                  print('ProfileView: Card button onPressed called');
+    // print('ProfileView: Card button onPressed called');
                 }
                 // Show immediate feedback
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -357,7 +354,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             IconButton(
               icon: Icon(
                 Icons.more_horiz,
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 size: 24,
               ),
               onPressed: () {
@@ -413,9 +410,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         Container(
           width: 112,
           height: 112,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const SweepGradient(
+            gradient: SweepGradient(
               colors: [
                 Color(0xFFFF6B9D), // Pink
                 Color(0xFF955CFF), // Purple
@@ -426,9 +423,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
           ),
           padding: const EdgeInsets.all(4),
           child: Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: const Color(0xFF0A0A0A),
+              color: Color(0xFF0A0A0A),
             ),
             padding: const EdgeInsets.all(4),
             child: CircleAvatar(
@@ -477,7 +474,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         Text(
           '@${_currentUserData['username'] ?? 'unknown'}',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.75),
+            color: Colors.white.withValues(alpha:0.75),
             fontSize: 18,
             fontWeight: FontWeight.w600,
             height: 1.0,
@@ -516,7 +513,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha:0.7),
             fontSize: 16,
             fontWeight: FontWeight.w600,
             height: 1.0,
@@ -608,10 +605,10 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       height: 56,
       margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withOpacity(0.15),
+          color: Colors.white.withValues(alpha:0.15),
           width: 1,
         ),
       ),
@@ -636,11 +633,11 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
           curve: Curves.easeInOut,
           margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white.withOpacity(0.08) : Colors.transparent,
+            color: isSelected ? Colors.white.withValues(alpha:0.08) : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: isSelected
                 ? Border.all(
-                    color: Colors.white.withOpacity(0.25),
+                    color: Colors.white.withValues(alpha:0.25),
                     width: 1,
                   )
                 : null,
@@ -649,7 +646,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             child: AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+                color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),

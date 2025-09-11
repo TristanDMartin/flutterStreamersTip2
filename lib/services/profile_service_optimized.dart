@@ -32,7 +32,7 @@ class ProfileServiceOptimized {
       }
       return null;
     } catch (e) {
-      print('Error getting user profile: $e');
+    // print('Error getting user profile: $e');
       return null;
     }
   }
@@ -60,7 +60,7 @@ class ProfileServiceOptimized {
       _videosCache[userId] = videos;
       return videos;
     } catch (e) {
-      print('Error getting user videos: $e');
+    // print('Error getting user videos: $e');
       return [];
     }
   }
@@ -95,7 +95,7 @@ class ProfileServiceOptimized {
       }
       return [];
     } catch (e) {
-      print('Error getting user events: $e');
+    // print('Error getting user events: $e');
       return [];
     }
   }
@@ -126,7 +126,7 @@ class ProfileServiceOptimized {
       }
       return [];
     } catch (e) {
-      print('Error getting user platforms: $e');
+    // print('Error getting user platforms: $e');
       return [];
     }
   }
@@ -141,7 +141,7 @@ class ProfileServiceOptimized {
       
       return true;
     } catch (e) {
-      print('Error updating user profile: $e');
+    // print('Error updating user profile: $e');
       return false;
     }
   }
@@ -182,7 +182,7 @@ class ProfileServiceOptimized {
       
       return true;
     } catch (e) {
-      print('Error following user: $e');
+    // print('Error following user: $e');
       return false;
     }
   }
@@ -226,7 +226,7 @@ class ProfileServiceOptimized {
       
       return true;
     } catch (e) {
-      print('Error unfollowing user: $e');
+    // print('Error unfollowing user: $e');
       return false;
     }
   }
@@ -245,7 +245,7 @@ class ProfileServiceOptimized {
 
       return query.docs.isNotEmpty;
     } catch (e) {
-      print('Error checking follow status: $e');
+    // print('Error checking follow status: $e');
       return false;
     }
   }

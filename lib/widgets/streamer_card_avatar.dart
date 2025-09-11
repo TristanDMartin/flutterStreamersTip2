@@ -48,7 +48,7 @@ class StreamerCardAvatar extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF25E5D2).withOpacity(0.6),
+                  color: const Color(0xFF25E5D2).withValues(alpha:0.6),
                   blurRadius: 8,
                   offset: const Offset(0, 0),
                 ),

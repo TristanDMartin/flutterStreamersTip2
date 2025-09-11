@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/comment.dart';
@@ -311,7 +310,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
+              const Icon(
                 Icons.info_outline,
                 color: Colors.orange,
                 size: 48,
@@ -398,7 +397,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       decoration: BoxDecoration(
         color: Colors.black,
         border: Border(
-          top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+          top: BorderSide(color: Colors.white.withValues(alpha:0.1), width: 1),
         ),
       ),
       child: Row(

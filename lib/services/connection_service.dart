@@ -34,7 +34,7 @@ class ConnectionService {
         return app_user.User.fromMap(data);
       }).toList();
     } catch (e) {
-      print('Error getting connections: $e');
+    // print('Error getting connections: $e');
       return [];
     }
   }
@@ -51,7 +51,7 @@ class ConnectionService {
 
       return connectionDoc.exists;
     } catch (e) {
-      print('Error checking connection: $e');
+    // print('Error checking connection: $e');
       return false;
     }
   }
@@ -90,7 +90,7 @@ class ConnectionService {
 
       return true;
     } catch (e) {
-      print('Error sending connection request: $e');
+    // print('Error sending connection request: $e');
       return false;
     }
   }
@@ -163,7 +163,7 @@ class ConnectionService {
       await batch.commit();
       return true;
     } catch (e) {
-      print('Error accepting connection request: $e');
+    // print('Error accepting connection request: $e');
       return false;
     }
   }
@@ -211,7 +211,7 @@ class ConnectionService {
       await batch.commit();
       return true;
     } catch (e) {
-      print('Error rejecting connection request: $e');
+    // print('Error rejecting connection request: $e');
       return false;
     }
   }
@@ -238,7 +238,7 @@ class ConnectionService {
         };
       }).toList();
     } catch (e) {
-      print('Error getting pending invites: $e');
+    // print('Error getting pending invites: $e');
       return [];
     }
   }
@@ -265,7 +265,7 @@ class ConnectionService {
         };
       }).toList();
     } catch (e) {
-      print('Error getting outgoing invites: $e');
+    // print('Error getting outgoing invites: $e');
       return [];
     }
   }
@@ -286,7 +286,7 @@ class ConnectionService {
 
       return invitesSnapshot.docs.isNotEmpty;
     } catch (e) {
-      print('Error checking invite status: $e');
+    // print('Error checking invite status: $e');
       return false;
     }
   }
@@ -313,7 +313,7 @@ class ConnectionService {
           })
           .toList();
     } catch (e) {
-      print('Error searching users: $e');
+    // print('Error searching users: $e');
       return [];
     }
   }
@@ -347,7 +347,7 @@ class ConnectionService {
       await batch.commit();
       return true;
     } catch (e) {
-      print('Error removing connection: $e');
+    // print('Error removing connection: $e');
       return false;
     }
   }

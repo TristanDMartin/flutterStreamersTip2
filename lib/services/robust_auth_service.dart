@@ -53,9 +53,9 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   RobustAuthenticationService() {
     _auth.authStateChanges().listen((firebase_auth.User? user) {
-      print("🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
+    // print("🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
       if (user != null) {
-        print("👤 User: ${user.email} (${user.uid})");
+    // print("👤 User: ${user.email} (${user.uid})");
         _handleUserSignIn(user);
       } else {
         _currentUser = null;
@@ -109,7 +109,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     _debounceTimer = Timer(_debounceDelay, () async {
       // Check if this is still the latest request
       if (_currentRequestId != null && _currentRequestId != requestId) {
-        print("🚫 Ignoring stale request: $requestId (current: $_currentRequestId)");
+    // print("🚫 Ignoring stale request: $requestId (current: $_currentRequestId)");
         return;
       }
       
@@ -118,26 +118,26 @@ class RobustAuthenticationService extends ChangeNotifier {
       notifyListeners();
       
       try {
-        print("🚀 Starting $requestType authentication (request: $requestId)");
+    // print("🚀 Starting $requestType authentication (request: $requestId)");
         final result = await authFunction(requestId);
         
         // Only process if this is still the current request
         if (_currentRequestId == requestId) {
           _currentRequestId = null;
           if (result.success) {
-            print("✅ $requestType authentication successful (request: $requestId)");
+    // print("✅ $requestType authentication successful (request: $requestId)");
           } else {
-            print("❌ $requestType authentication failed: ${result.error} (request: $requestId)");
+    // print("❌ $requestType authentication failed: ${result.error} (request: $requestId)");
           }
           notifyListeners();
         } else {
-          print("🚫 Ignoring stale response for request: $requestId");
+    // print("🚫 Ignoring stale response for request: $requestId");
         }
       } catch (e) {
         // Only process if this is still the current request
         if (_currentRequestId == requestId) {
           _currentRequestId = null;
-          print("❌ $requestType authentication error: $e (request: $requestId)");
+    // print("❌ $requestType authentication error: $e (request: $requestId)");
           notifyListeners();
         }
       }
@@ -148,7 +148,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     
     // Check if this is still the latest request
     if (_currentRequestId != null && _currentRequestId != requestId) {
-      print("🚫 Ignoring stale request: $requestId (current: $_currentRequestId)");
+    // print("🚫 Ignoring stale request: $requestId (current: $_currentRequestId)");
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -161,20 +161,20 @@ class RobustAuthenticationService extends ChangeNotifier {
     notifyListeners();
     
     try {
-      print("🚀 Starting $requestType authentication (request: $requestId)");
+    // print("🚀 Starting $requestType authentication (request: $requestId)");
       final result = await authFunction(requestId);
       
       // Only process if this is still the current request
       if (_currentRequestId == requestId) {
         _currentRequestId = null;
         if (result.success) {
-          print("✅ $requestType authentication successful (request: $requestId)");
+    // print("✅ $requestType authentication successful (request: $requestId)");
         } else {
-          print("❌ $requestType authentication failed: ${result.error} (request: $requestId)");
+    // print("❌ $requestType authentication failed: ${result.error} (request: $requestId)");
         }
         notifyListeners();
       } else {
-        print("🚫 Ignoring stale response for request: $requestId");
+    // print("🚫 Ignoring stale response for request: $requestId");
       }
       
       return result;
@@ -182,7 +182,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Only process if this is still the current request
       if (_currentRequestId == requestId) {
         _currentRequestId = null;
-        print("❌ $requestType authentication error: $e (request: $requestId)");
+    // print("❌ $requestType authentication error: $e (request: $requestId)");
         notifyListeners();
       }
       
@@ -201,7 +201,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     String requestId,
   ) async {
     try {
-      print("📧 Starting email authentication for: $email (request: $requestId)");
+    // print("📧 Starting email authentication for: $email (request: $requestId)");
       
       final userCredential = await _auth.signInWithEmailAndPassword(
         email: email, 
@@ -238,7 +238,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     String requestId,
   ) async {
     try {
-      print("🔐 Looking up user by username: $username (request: $requestId)");
+    // print("🔐 Looking up user by username: $username (request: $requestId)");
       
       // First, find the user by username in Firestore (try both cases)
       QuerySnapshot usersQuery = await _firestore
@@ -266,20 +266,20 @@ class RobustAuthenticationService extends ChangeNotifier {
       }
       
       if (usersQuery.docs.isEmpty) {
-        print("❌ Username not found: $username (tried original, lowercase, uppercase)");
+    // print("❌ Username not found: $username (tried original, lowercase, uppercase)");
         
         // Debug: List all usernames in the database
-        print("🔍 Debug: Listing all usernames in database...");
+    // print("🔍 Debug: Listing all usernames in database...");
         try {
           final allUsersQuery = await _firestore.collection('users').limit(10).get();
-          for (final doc in allUsersQuery.docs) {
-            final data = doc.data();
-            final dbUsername = data['username'] as String?;
-            final dbEmail = data['email'] as String?;
-            print("👤 Found user: username='$dbUsername', email='$dbEmail'");
+          for (final _ in allUsersQuery.docs) {
+            // final data = doc.data();
+            // final dbUsername = data['username'] as String?;
+            // final dbEmail = data['email'] as String?;
+    // print("👤 Found user: username='$dbUsername', email='$dbEmail'");
           }
         } catch (e) {
-          print("❌ Error listing users: $e");
+    // print("❌ Error listing users: $e");
         }
         
         return AuthRequestResult(
@@ -301,7 +301,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
       
-      print("📧 Found email for username $username: $email (request: $requestId)");
+    // print("📧 Found email for username $username: $email (request: $requestId)");
       
       // Now sign in with the email and password
       return await signInWithEmail(email, password, requestId);
@@ -318,7 +318,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Sign in with Google (debounced, single-flight)
   Future<AuthRequestResult> signInWithGoogle(String requestId) async {
     try {
-      print("🔐 Starting Google Sign-In process (request: $requestId)");
+    // print("🔐 Starting Google Sign-In process (request: $requestId)");
       
       // First, sign out any existing Google session to avoid conflicts
       await _googleSignIn.signOut();
@@ -333,7 +333,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
       
-      print("✅ Google Sign-In successful for: ${googleUser.email}");
+    // print("✅ Google Sign-In successful for: ${googleUser.email}");
       
       try {
         final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
@@ -351,11 +351,11 @@ class RobustAuthenticationService extends ChangeNotifier {
           idToken: googleAuth.idToken,
         );
         
-        print("🔐 Signing in to Firebase with Google credential");
+    // print("🔐 Signing in to Firebase with Google credential");
         final userCredential = await _auth.signInWithCredential(credential);
         
         if (userCredential.user != null) {
-          print("✅ Firebase authentication successful for: ${userCredential.user!.email}");
+    // print("✅ Firebase authentication successful for: ${userCredential.user!.email}");
           // The auth state listener will handle the rest
           return AuthRequestResult(
             requestId: requestId,
@@ -370,7 +370,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           );
         }
       } catch (authError) {
-        print("❌ Firebase authentication error: $authError");
+    // print("❌ Firebase authentication error: $authError");
         // Sign out from Google if Firebase auth fails
         await _googleSignIn.signOut();
         return AuthRequestResult(
@@ -380,7 +380,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
     } catch (e) {
-      print("❌ Google Sign-In error: $e");
+    // print("❌ Google Sign-In error: $e");
       
       // Provide more specific error messages
       String errorMessage = e.toString();
@@ -420,18 +420,19 @@ class RobustAuthenticationService extends ChangeNotifier {
     final requestId = _generateRequestId();
     _currentRequestId = requestId;
     
-    print("🧪 Quick test login with technqs credentials");
+    // cspell:ignore technqs
+    // print("🧪 Quick test login with technqs credentials");
     
     try {
       // First try to sign in
       try {
         final userCredential = await _auth.signInWithEmailAndPassword(
-          email: 'technqs@example.com',
+          email: 'technqs@example.com', // cspell:ignore technqs Ntizzle
           password: 'Ntizzle1@1988',
         );
         
         if (userCredential.user != null) {
-          print("✅ Quick test login successful");
+    // print("✅ Quick test login successful");
           await _handleUserSignIn(userCredential.user!);
           _isLoggedIn = true;
           notifyListeners();
@@ -443,26 +444,26 @@ class RobustAuthenticationService extends ChangeNotifier {
           );
         }
       } catch (signInError) {
-        print("⚠️ Sign in failed, trying to create account: $signInError");
+    // print("⚠️ Sign in failed, trying to create account: $signInError");
         
         // If sign in fails, try to create the account
         try {
           final userCredential = await _auth.createUserWithEmailAndPassword(
-            email: 'technqs@example.com',
+            email: 'technqs@example.com', // cspell:ignore technqs Ntizzle
             password: 'Ntizzle1@1988',
           );
           
           if (userCredential.user != null) {
-            print("✅ Test account created successfully");
+    // print("✅ Test account created successfully");
             
             // Update display name
-            await userCredential.user!.updateDisplayName('technqs');
+            await userCredential.user!.updateDisplayName('technqs'); // cspell:ignore technqs
             
             // Create user document in Firestore
             await _createUserDocument(
               userCredential.user!,
-              displayName: 'technqs',
-              username: 'technqs',
+              displayName: 'technqs', // cspell:ignore technqs
+              username: 'technqs', // cspell:ignore technqs
             );
             
             // Handle sign in
@@ -477,7 +478,7 @@ class RobustAuthenticationService extends ChangeNotifier {
             );
           }
         } catch (createError) {
-          print("❌ Account creation failed: $createError");
+    // print("❌ Account creation failed: $createError");
           return AuthRequestResult(
             requestId: requestId,
             success: false,
@@ -486,14 +487,14 @@ class RobustAuthenticationService extends ChangeNotifier {
         }
       }
       
-      print("❌ Quick test login failed - no user returned");
+    // print("❌ Quick test login failed - no user returned");
       return AuthRequestResult(
         requestId: requestId,
         success: false,
         error: 'No user returned from Firebase',
       );
     } catch (e) {
-      print("❌ Quick test login error: $e");
+    // print("❌ Quick test login error: $e");
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -507,7 +508,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     final requestId = _generateRequestId();
     _currentRequestId = requestId;
     
-    print("🚀 Bypass login - creating mock user for development");
+    // print("🚀 Bypass login - creating mock user for development");
     
     try {
       // Create a mock user for development
@@ -530,9 +531,9 @@ class RobustAuthenticationService extends ChangeNotifier {
       _isLoggedIn = true;
       notifyListeners();
       
-      print("✅ Bypass login successful - mock user created");
-      print("🔔 Mock user ID: ${mockUser.id}");
-      print("🔔 Mock user display name: ${mockUser.displayName}");
+    // print("✅ Bypass login successful - mock user created");
+    // print("🔔 Mock user ID: ${mockUser.id}");
+    // print("🔔 Mock user display name: ${mockUser.displayName}");
       
       return AuthRequestResult(
         requestId: requestId,
@@ -540,7 +541,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         user: _currentUser,
       );
     } catch (e) {
-      print("❌ Bypass login error: $e");
+    // print("❌ Bypass login error: $e");
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -551,31 +552,31 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Mock follow functionality for development
   Future<bool> mockFollowUser(String targetUserId) async {
-    print("🔔 Mock follow user called for: $targetUserId");
-    print("🔔 Current user: ${_currentUser?.displayName} (${_currentUser?.id})");
+    // print("🔔 Mock follow user called for: $targetUserId");
+    // print("🔔 Current user: ${_currentUser?.displayName} (${_currentUser?.id})");
     
     // Simulate a successful follow operation
     await Future.delayed(const Duration(milliseconds: 500));
     
-    print("✅ Mock follow successful for: $targetUserId");
+    // print("✅ Mock follow successful for: $targetUserId");
     return true;
   }
 
   /// Mock unfollow functionality for development
   Future<bool> mockUnfollowUser(String targetUserId) async {
-    print("🔔 Mock unfollow user called for: $targetUserId");
-    print("🔔 Current user: ${_currentUser?.displayName} (${_currentUser?.id})");
+    // print("🔔 Mock unfollow user called for: $targetUserId");
+    // print("🔔 Current user: ${_currentUser?.displayName} (${_currentUser?.id})");
     
     // Simulate a successful unfollow operation
     await Future.delayed(const Duration(milliseconds: 500));
     
-    print("✅ Mock unfollow successful for: $targetUserId");
+    // print("✅ Mock unfollow successful for: $targetUserId");
     return true;
   }
 
   /// Sign up with email and password
   Future<void> signUpWithEmail(String email, String password, String displayName, String username) async {
-    print("📝 Signing up with email: $email");
+    // print("📝 Signing up with email: $email");
     
     try {
       // Create user with Firebase Auth
@@ -585,7 +586,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       );
       
       if (userCredential.user != null) {
-        print("✅ User created successfully");
+    // print("✅ User created successfully");
         
         // Update display name
         await userCredential.user!.updateDisplayName(displayName);
@@ -602,12 +603,12 @@ class RobustAuthenticationService extends ChangeNotifier {
         _isLoggedIn = true;
         notifyListeners();
         
-        print("✅ Sign up completed successfully");
+    // print("✅ Sign up completed successfully");
       } else {
         throw Exception('No user returned from Firebase');
       }
     } catch (e) {
-      print("❌ Sign up error: $e");
+    // print("❌ Sign up error: $e");
       rethrow;
     }
   }
@@ -630,28 +631,28 @@ class RobustAuthenticationService extends ChangeNotifier {
         'isDeleted': false,
       });
       
-      print("✅ User document created in Firestore");
+    // print("✅ User document created in Firestore");
     } catch (e) {
-      print("❌ Error creating user document: $e");
+    // print("❌ Error creating user document: $e");
       rethrow;
     }
   }
 
   /// Handle user sign in and load user data from Firestore
   Future<void> _handleUserSignIn(firebase_auth.User firebaseUser) async {
-    print("🔐 handleUserSignIn called for user: ${firebaseUser.uid}");
-    print("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
-    print("📧 User email: ${firebaseUser.email ?? 'nil'}");
+    // print("🔐 handleUserSignIn called for user: ${firebaseUser.uid}");
+    // print("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
+    // print("📧 User email: ${firebaseUser.email ?? 'nil'}");
     
     try {
       final userRef = _firestore.collection("users").doc(firebaseUser.uid);
       final snapshot = await userRef.get();
       
-      print("📄 Firestore document fetch completed");
-      print("🔐 Document exists: ${snapshot.exists}");
+    // print("📄 Firestore document fetch completed");
+    // print("🔐 Document exists: ${snapshot.exists}");
       
       if (snapshot.exists) {
-        print("🔐 User document found in Firestore");
+    // print("🔐 User document found in Firestore");
         final data = snapshot.data()!;
         
         // Decode hashtags - handle both List and String formats
@@ -700,7 +701,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         _isCheckingAuth = false;
         notifyListeners();
         
-        print("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
+    // print("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
         
         // Set up real-time listener for user data changes
         _setupUserDataListener(firebaseUser.uid);
@@ -709,7 +710,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         await _ensureUserDocumentExists();
         
       } else {
-        print("🔐 Creating new user document in Firestore");
+    // print("🔐 Creating new user document in Firestore");
         
         // Generate a unique username from display name
         final baseUsername = firebaseUser.displayName?.toLowerCase().replaceAll(' ', '') ?? 'user';
@@ -732,13 +733,13 @@ class RobustAuthenticationService extends ChangeNotifier {
         _isCheckingAuth = false;
         notifyListeners();
         
-        print("✅ New user signed in successfully - isLoggedIn: $_isLoggedIn");
+    // print("✅ New user signed in successfully - isLoggedIn: $_isLoggedIn");
         
         // Set up real-time listener for the new user
         _setupUserDataListener(firebaseUser.uid);
       }
     } catch (e) {
-      print("❌ Error in handleUserSignIn: $e");
+    // print("❌ Error in handleUserSignIn: $e");
       _isCheckingAuth = false;
       notifyListeners();
     }
@@ -746,7 +747,7 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Set up real-time listener for user data changes
   void _setupUserDataListener(String userId) {
-    print("👂 Setting up real-time listener for user: $userId");
+    // print("👂 Setting up real-time listener for user: $userId");
     
     _firestore.collection("users").doc(userId)
         .snapshots()
@@ -759,9 +760,9 @@ class RobustAuthenticationService extends ChangeNotifier {
         final currentAvatarURLString = _currentUser!.avatarURL ?? '';
         
         if (newAvatarURLString != currentAvatarURLString && newAvatarURLString.isNotEmpty) {
-          print("🔄 Avatar URL changed in Firestore - updating app");
-          print("📸 Old: $currentAvatarURLString");
-          print("📸 New: $newAvatarURLString");
+    // print("🔄 Avatar URL changed in Firestore - updating app");
+    // print("📸 Old: $currentAvatarURLString");
+    // print("📸 New: $newAvatarURLString");
           
           _currentUser = User(
             id: _currentUser!.id,
@@ -799,7 +800,7 @@ class RobustAuthenticationService extends ChangeNotifier {
             newUsername != _currentUser!.username ||
             newBio != _currentUser!.bio ||
             newHashtags.toString() != _currentUser!.hashtags.toString()) {
-          print("🔄 User data changed in Firestore - updating app");
+    // print("🔄 User data changed in Firestore - updating app");
           
           _currentUser = User(
             id: _currentUser!.id,
@@ -864,9 +865,9 @@ class RobustAuthenticationService extends ChangeNotifier {
       }
       
       await _firestore.collection('users').doc(user.id).set(userData);
-      print("✅ User saved to Firestore successfully");
+    // print("✅ User saved to Firestore successfully");
     } catch (e) {
-      print("❌ Error saving user to Firestore: $e");
+    // print("❌ Error saving user to Firestore: $e");
       rethrow;
     }
   }
@@ -890,16 +891,16 @@ class RobustAuthenticationService extends ChangeNotifier {
       _minimumSpinnerTimer?.cancel();
       _isMinimumSpinnerActive = false;
       notifyListeners();
-      print("✅ User signed out successfully");
+    // print("✅ User signed out successfully");
     } catch (e) {
-      print("❌ Error signing out: $e");
+    // print("❌ Error signing out: $e");
     }
   }
 
   /// Update user calendar events in Firestore
   Future<void> updateUserCalendarEvents(List<dynamic> events) async {
     if (_currentUser == null) {
-      print('❌ No current user to update calendar events');
+    // print('❌ No current user to update calendar events');
       return;
     }
 
@@ -915,9 +916,9 @@ class RobustAuthenticationService extends ChangeNotifier {
         'calendarEvents': eventsData,
       });
 
-      print('✅ Calendar events successfully updated in Firestore');
+    // print('✅ Calendar events successfully updated in Firestore');
     } catch (e) {
-      print('❌ Error updating calendar events in Firestore: $e');
+    // print('❌ Error updating calendar events in Firestore: $e');
       rethrow;
     }
   }

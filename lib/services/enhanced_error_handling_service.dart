@@ -189,12 +189,12 @@ class EnhancedErrorHandlingService {
     _errorStreamController.add(errorDetails);
 
     // Log to console for debugging
-    print('🚨 Error: ${errorDetails.type} - ${errorDetails.message}');
+    // print('🚨 Error: ${errorDetails.type} - ${errorDetails.message}');
     if (technicalDetails != null) {
-      print('🔧 Technical: $technicalDetails');
+    // print('🔧 Technical: $technicalDetails');
     }
     if (context != null) {
-      print('📋 Context: $context');
+    // print('📋 Context: $context');
     }
 
     // Store in persistent storage for analytics
@@ -515,9 +515,9 @@ class EnhancedErrorHandlingService {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
+                      color: Colors.blue.withValues(alpha:0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      border: Border.all(color: Colors.blue.withValues(alpha:0.3)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -685,7 +685,7 @@ class EnhancedErrorHandlingService {
   Future<void> _storeErrorForAnalytics(ErrorDetails errorDetails) async {
     // This would store errors in a local database or send to analytics service
     // For now, just print to console
-    print('📊 Error Analytics: ${errorDetails.type} at ${errorDetails.timestamp}');
+    // print('📊 Error Analytics: ${errorDetails.type} at ${errorDetails.timestamp}');
   }
 
   /// Clear error history

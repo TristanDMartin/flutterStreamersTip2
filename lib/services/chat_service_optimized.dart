@@ -38,7 +38,7 @@ class ChatServiceOptimized {
       _messagesCache[chatId] = messages;
       return messages.reversed.toList(); // Return in chronological order
     } catch (e) {
-      print('Error getting messages: $e');
+    // print('Error getting messages: $e');
       return [];
     }
   }
@@ -72,7 +72,7 @@ class ChatServiceOptimized {
 
       return true;
     } catch (e) {
-      print('Error sending message: $e');
+    // print('Error sending message: $e');
       return false;
     }
   }
@@ -106,7 +106,7 @@ class ChatServiceOptimized {
 
       return true;
     } catch (e) {
-      print('Error sending GIF message: $e');
+    // print('Error sending GIF message: $e');
       return false;
     }
   }
@@ -134,7 +134,7 @@ class ChatServiceOptimized {
       await batch.commit();
       return true;
     } catch (e) {
-      print('Error marking messages as read: $e');
+    // print('Error marking messages as read: $e');
       return false;
     }
   }
@@ -148,7 +148,7 @@ class ChatServiceOptimized {
       }
       return null;
     } catch (e) {
-      print('Error getting user info: $e');
+    // print('Error getting user info: $e');
       return null;
     }
   }
@@ -197,7 +197,7 @@ class ChatServiceOptimized {
           .delete();
       return true;
     } catch (e) {
-      print('Error deleting message: $e');
+    // print('Error deleting message: $e');
       return false;
     }
   }
@@ -213,7 +213,7 @@ class ChatServiceOptimized {
           .update({'text': newText});
       return true;
     } catch (e) {
-      print('Error updating message: $e');
+    // print('Error updating message: $e');
       return false;
     }
   }
@@ -234,7 +234,7 @@ class ChatServiceOptimized {
 
       return query.docs.length;
     } catch (e) {
-      print('Error getting unread count: $e');
+    // print('Error getting unread count: $e');
       return 0;
     }
   }

@@ -220,19 +220,19 @@ class SocialIconsDemo extends StatelessWidget {
             SocialPlatformIcon(
               platform: PlatformType.twitch,
               size: 44.0,
-              backgroundColor: Colors.purple.withOpacity(0.2),
+              backgroundColor: Colors.purple.withValues(alpha:0.2),
               onTap: () => _showPlatformInfo(context, PlatformType.twitch),
             ),
             SocialPlatformIcon(
               platform: PlatformType.youtube,
               size: 44.0,
-              backgroundColor: Colors.red.withOpacity(0.2),
+              backgroundColor: Colors.red.withValues(alpha:0.2),
               onTap: () => _showPlatformInfo(context, PlatformType.youtube),
             ),
             SocialPlatformIcon(
               platform: PlatformType.kick,
               size: 44.0,
-              backgroundColor: Colors.green.withOpacity(0.2),
+              backgroundColor: Colors.green.withValues(alpha:0.2),
               onTap: () => _showPlatformInfo(context, PlatformType.kick),
             ),
           ],

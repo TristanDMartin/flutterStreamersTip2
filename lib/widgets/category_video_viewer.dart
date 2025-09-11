@@ -36,7 +36,7 @@ class _CategoryVideoViewerState extends ConsumerState<CategoryVideoViewer> {
   }
 
   void _initializeHomeViewModel() {
-    final homeViewModel = ref.read(hp.homeProvider.notifier);
+    // final homeViewModel = ref.read(hp.homeProvider.notifier);
     
     // Set UserManager in HomeViewModel for like persistence
     // homeViewModel.setUserManager(userManager); // method not present
@@ -57,15 +57,15 @@ class _CategoryVideoViewerState extends ConsumerState<CategoryVideoViewer> {
 
     // Record watched category if video index is valid
     if (_videos.asMap().containsKey(index)) {
-      final video = _videos[index];
+      // final video = _videos[index];
       // TODO: record watched category if needed
     }
   }
 
-  void _onShowProfile(HomeVideo video) {
-    // TODO: Implement profile navigation
-    print('Show profile for user: ${video.creator.id}');
-  }
+  // void _onShowProfile(HomeVideo video) {
+  //   // TODO: Implement profile navigation
+  //   print('Show profile for user: ${video.creator.id}');
+  // }
 
   void _onShowComments(HomeVideo video) {
     // CommentsView not available yet
@@ -80,10 +80,10 @@ class _CategoryVideoViewerState extends ConsumerState<CategoryVideoViewer> {
     );
   }
 
-  Future<void> _refreshVideoData(String videoId) async {
-    // Refresh the specific video data to get updated comment count
-    // TODO: implement when API available
-  }
+  // Future<void> _refreshVideoData(String videoId) async {
+  //   // Refresh the specific video data to get updated comment count
+  //   // TODO: implement when API available
+  // }
 
   @override
   Widget build(BuildContext context) {

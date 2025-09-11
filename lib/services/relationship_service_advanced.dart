@@ -16,7 +16,7 @@ class RelationshipServiceAdvanced extends ChangeNotifier {
   List<User> _following = [];
   List<User> _followers = [];
   List<User> _connections = [];
-  List<User> _suggested = [];
+  final List<User> _suggested = [];
   bool _isLoading = false;
 
   // Getters for reactive updates

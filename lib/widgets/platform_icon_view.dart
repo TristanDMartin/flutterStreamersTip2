@@ -9,7 +9,7 @@ enum PlatformType {
   bluesky,
   twitter,
   instagram,
-  rednote,
+  reddit,
   other,
 }
 
@@ -44,7 +44,7 @@ class PlatformIconView extends StatelessWidget {
         icon = TwitterIcon(size: size);
       case PlatformType.instagram:
         icon = InstagramIcon(size: size);
-      case PlatformType.rednote:
+      case PlatformType.reddit:
         icon = RednoteIcon(size: size);
       case PlatformType.other:
         icon = WebsiteIcon(size: size);
@@ -413,7 +413,7 @@ class PlatformIconViewPreview extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              PlatformIconView(PlatformType.rednote, size: 30),
+              PlatformIconView(PlatformType.reddit, size: 30),
               SizedBox(width: 15),
               PlatformIconView(PlatformType.other, size: 30),
             ],

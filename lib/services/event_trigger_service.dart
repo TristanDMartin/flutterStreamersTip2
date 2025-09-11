@@ -16,7 +16,7 @@ class EventTriggerService extends ChangeNotifier {
     required String followerId,
     required String followingId,
   }) async {
-    print("🔄 EventTriggerService: Follow event triggered - $followerId -> $followingId");
+    // print("🔄 EventTriggerService: Follow event triggered - $followerId -> $followingId");
     
     // Update follower count
     await _updateFollowerCount(followingId, 1);
@@ -35,7 +35,7 @@ class EventTriggerService extends ChangeNotifier {
     required String followerId,
     required String followingId,
   }) async {
-    print("🔄 EventTriggerService: Unfollow event triggered - $followerId -> $followingId");
+    // print("🔄 EventTriggerService: Unfollow event triggered - $followerId -> $followingId");
     
     // Update follower count
     await _updateFollowerCount(followingId, -1);
@@ -52,7 +52,7 @@ class EventTriggerService extends ChangeNotifier {
     required String videoOwnerId,
     String? postThumbnailUrl,
   }) async {
-    print("🔄 EventTriggerService: Like event triggered - $likerId -> $videoId");
+    // print("🔄 EventTriggerService: Like event triggered - $likerId -> $videoId");
     
     // Update like count
     await _updateLikeCount(videoId, 1);
@@ -74,7 +74,7 @@ class EventTriggerService extends ChangeNotifier {
     required String videoId,
     required String videoOwnerId,
   }) async {
-    print("🔄 EventTriggerService: Unlike event triggered - $likerId -> $videoId");
+    // print("🔄 EventTriggerService: Unlike event triggered - $likerId -> $videoId");
     
     // Update like count
     await _updateLikeCount(videoId, -1);
@@ -92,7 +92,7 @@ class EventTriggerService extends ChangeNotifier {
     required String commentText,
     String? postThumbnailUrl,
   }) async {
-    print("🔄 EventTriggerService: Comment event triggered - $commenterId -> $videoId");
+    // print("🔄 EventTriggerService: Comment event triggered - $commenterId -> $videoId");
     
     // Update comment count
     await _updateCommentCount(videoId, 1);
@@ -122,7 +122,7 @@ class EventTriggerService extends ChangeNotifier {
     required String videoId,
     String? postThumbnailUrl,
   }) async {
-    print("🔄 EventTriggerService: Tag event triggered - $taggerId -> $taggedUserId");
+    // print("🔄 EventTriggerService: Tag event triggered - $taggerId -> $taggedUserId");
     
     // Create notification
     await _notificationService?.handleTagEvent(
@@ -143,7 +143,7 @@ class EventTriggerService extends ChangeNotifier {
   // MARK: - Batch Event Processing
   
   Future<void> processBatchEvents(List<EventData> events) async {
-    print("🔄 EventTriggerService: Processing batch of ${events.length} events");
+    // print("🔄 EventTriggerService: Processing batch of ${events.length} events");
     
     final notifications = <Map<String, dynamic>>[];
     
@@ -224,7 +224,7 @@ class EventTriggerService extends ChangeNotifier {
     // Process notifications in batch
     await _notificationService?.processBatchNotifications(notifications);
     
-    print("✅ EventTriggerService: Batch processing completed");
+    // print("✅ EventTriggerService: Batch processing completed");
   }
   
   // MARK: - Firestore Operations
@@ -234,9 +234,9 @@ class EventTriggerService extends ChangeNotifier {
       await _db.collection("users").doc(userId).update({
         "followerCount": FieldValue.increment(increment),
       });
-      print("✅ Updated follower count for user: $userId");
+    // print("✅ Updated follower count for user: $userId");
     } catch (e) {
-      print("❌ Error updating follower count: $e");
+    // print("❌ Error updating follower count: $e");
     }
   }
   
@@ -245,9 +245,9 @@ class EventTriggerService extends ChangeNotifier {
       await _db.collection("videos").doc(videoId).update({
         "likeCount": FieldValue.increment(increment),
       });
-      print("✅ Updated like count for video: $videoId");
+    // print("✅ Updated like count for video: $videoId");
     } catch (e) {
-      print("❌ Error updating like count: $e");
+    // print("❌ Error updating like count: $e");
     }
   }
   
@@ -256,9 +256,9 @@ class EventTriggerService extends ChangeNotifier {
       await _db.collection("videos").doc(videoId).update({
         "commentCount": FieldValue.increment(increment),
       });
-      print("✅ Updated comment count for video: $videoId");
+    // print("✅ Updated comment count for video: $videoId");
     } catch (e) {
-      print("❌ Error updating comment count: $e");
+    // print("❌ Error updating comment count: $e");
     }
   }
   
@@ -272,9 +272,9 @@ class EventTriggerService extends ChangeNotifier {
         "followingId": followingId,
         "timestamp": FieldValue.serverTimestamp(),
       });
-      print("✅ Created relationship: $followerId -> $followingId");
+    // print("✅ Created relationship: $followerId -> $followingId");
     } catch (e) {
-      print("❌ Error creating relationship: $e");
+    // print("❌ Error creating relationship: $e");
     }
   }
   
@@ -292,9 +292,9 @@ class EventTriggerService extends ChangeNotifier {
       for (final document in snapshot.docs) {
         await document.reference.delete();
       }
-      print("✅ Removed relationship: $followerId -> $followingId");
+    // print("✅ Removed relationship: $followerId -> $followingId");
     } catch (e) {
-      print("❌ Error removing relationship: $e");
+    // print("❌ Error removing relationship: $e");
     }
   }
   
@@ -308,9 +308,9 @@ class EventTriggerService extends ChangeNotifier {
         "videoId": videoId,
         "timestamp": FieldValue.serverTimestamp(),
       });
-      print("✅ Created like: $likerId -> $videoId");
+    // print("✅ Created like: $likerId -> $videoId");
     } catch (e) {
-      print("❌ Error creating like: $e");
+    // print("❌ Error creating like: $e");
     }
   }
   
@@ -328,9 +328,9 @@ class EventTriggerService extends ChangeNotifier {
       for (final document in snapshot.docs) {
         await document.reference.delete();
       }
-      print("✅ Removed like: $likerId -> $videoId");
+    // print("✅ Removed like: $likerId -> $videoId");
     } catch (e) {
-      print("❌ Error removing like: $e");
+    // print("❌ Error removing like: $e");
     }
   }
   
@@ -346,9 +346,9 @@ class EventTriggerService extends ChangeNotifier {
         "commentText": commentText,
         "timestamp": FieldValue.serverTimestamp(),
       });
-      print("✅ Created comment: $commenterId -> $videoId");
+    // print("✅ Created comment: $commenterId -> $videoId");
     } catch (e) {
-      print("❌ Error creating comment: $e");
+    // print("❌ Error creating comment: $e");
     }
   }
   
@@ -364,9 +364,9 @@ class EventTriggerService extends ChangeNotifier {
         "videoId": videoId,
         "timestamp": FieldValue.serverTimestamp(),
       });
-      print("✅ Created tag: $taggerId -> $taggedUserId");
+    // print("✅ Created tag: $taggerId -> $taggedUserId");
     } catch (e) {
-      print("❌ Error creating tag: $e");
+    // print("❌ Error creating tag: $e");
     }
   }
 }
