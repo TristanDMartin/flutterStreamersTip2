@@ -243,21 +243,16 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
               'assets/logo.png',
               width: 120,
               height: 120,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
-    // print('Logo loading error in onboarding: $error');
-    // print('Stack trace: $stackTrace');
-    // print('Trying to load logo from: assets/logo.png');
+                print('❌ OnboardingView: Error loading logo: $error');
                 return Container(
-                  color: Colors.white,
+                  color: Colors.grey[800],
                   child: const Center(
-                    child: Text(
-                      'LOGO',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF7B24E1),
-                      ),
+                    child: Icon(
+                      Icons.play_circle_filled,
+                      size: 60,
+                      color: Colors.white,
                     ),
                   ),
                 );

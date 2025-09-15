@@ -188,68 +188,80 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0A),
-        elevation: 0,
-        title: const Text(
-          'Bookmarks',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
           ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: const Color(0xFF955CFF),
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.grey,
-          tabs: const [
-            Tab(text: 'Upcoming'),
-            Tab(text: 'Live'),
-            Tab(text: 'Past'),
-          ],
-        ),
-      ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF955CFF),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            title: const Text(
+              'Bookmarks',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
               ),
-            )
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Colors.red,
-                        size: 64,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _error!,
-                        style: const TextStyle(color: Colors.red),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _initializeBookmarks,
-                        child: const Text('Retry'),
-                      ),
-                    ],
+            ),
+            bottom: TabBar(
+              controller: _tabController,
+              indicatorColor: const Color(0xFF955CFF),
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.grey,
+              tabs: const [
+                Tab(text: 'Upcoming'),
+                Tab(text: 'Live'),
+                Tab(text: 'Past'),
+              ],
+            ),
+          ),
+          body: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF955CFF),
                   ),
                 )
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildBookmarkList(EventStatus.upcoming),
-                    _buildBookmarkList(EventStatus.live),
-                    _buildBookmarkList(EventStatus.past),
-                  ],
-                ),
+              : _error != null
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.red,
+                            size: 64,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.red),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _initializeBookmarks,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildBookmarkList(EventStatus.upcoming),
+                        _buildBookmarkList(EventStatus.live),
+                        _buildBookmarkList(EventStatus.past),
+                      ],
+                    ),
+        ),
+      ),
     );
   }
 
@@ -294,9 +306,13 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
   Widget _buildBookmarkCard(BookmarkEvent bookmark) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: const Color(0xFF1A1A1A),
+      color: Colors.white.withValues(alpha: 0.1),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1,
+        ),
       ),
       child: InkWell(
         onTap: () => _showBookmarkDetails(bookmark),

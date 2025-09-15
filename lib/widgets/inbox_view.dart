@@ -351,26 +351,31 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
                         const SizedBox(width: 4),
                         Consumer(
                           builder: (context, ref, child) {
-                            // TODO: Add unread messages count provider
-                            const unreadCount = 0; // Placeholder
-                            if (unreadCount > 0) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Text(
-                                  '$unreadCount',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
+                            final unreadCountAsync = ref.watch(unreadMessagesProvider);
+                            return unreadCountAsync.when(
+                              data: (unreadCount) {
+                                if (unreadCount > 0) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      unreadCount > 99 ? '99+' : unreadCount.toString(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              },
+                              loading: () => const SizedBox.shrink(),
+                              error: (_, __) => const SizedBox.shrink(),
+                            );
                           },
                         ),
                       ],

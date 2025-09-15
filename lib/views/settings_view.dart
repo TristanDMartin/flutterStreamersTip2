@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fa;
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -21,21 +20,29 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0E1220),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(context),
-            
-            // Search Field
-            _buildSearchField(),
-            
-            // Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Header
+              _buildHeader(context),
+              
+              // Search Field
+              _buildSearchField(),
+              
+              // Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Account Section
@@ -139,16 +146,12 @@ class _SettingsViewState extends State<SettingsView> {
                     ),
                     
                     const SizedBox(height: 40),
-                    
-                    // Footer Actions
-                    _buildFooterActions(context),
-                    
-                    const SizedBox(height: 40),
                   ],
                 ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -158,10 +161,10 @@ class _SettingsViewState extends State<SettingsView> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF0E1220),
+        color: Colors.transparent,
         border: Border(
           bottom: BorderSide(
-            color: Colors.white.withValues(alpha:0.1),
+            color: Colors.white.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -251,10 +254,10 @@ class _SettingsViewState extends State<SettingsView> {
         const SizedBox(height: 16),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha:0.05),
+            color: Colors.white.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withValues(alpha:0.1),
+              color: Colors.white.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
@@ -340,107 +343,7 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget _buildFooterActions(BuildContext context) {
-    return Column(
-      children: [
-        // Switch Account Button
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () => _navigateToPage(context, 'Switch Account'),
-            icon: const Icon(Icons.swap_horiz),
-            label: const Text('Switch Account'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha:0.1),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-        
-        const SizedBox(height: 12),
-        
-        // Add Account Button
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () => _navigateToPage(context, 'Add Account'),
-            icon: const Icon(Icons.add),
-            label: const Text('Add Account'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha:0.1),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-        
-        const SizedBox(height: 12),
-        
-        // Log Out Button
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () => _showLogOutDialog(context),
-            icon: const Icon(Icons.logout),
-            label: const Text('Log Out'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.withValues(alpha:0.2),
-              foregroundColor: Colors.red,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
-  void _showLogOutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF0E1220),
-        title: const Text(
-          'Log Out',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Are you sure you want to log out?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              fa.FirebaseAuth.instance.signOut();
-              // Navigate back to login screen
-              Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-            },
-            child: const Text(
-              'Log Out',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _navigateToPage(BuildContext context, String pageName) {
     Navigator.of(context).push(

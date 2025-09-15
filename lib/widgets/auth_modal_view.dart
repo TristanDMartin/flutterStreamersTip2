@@ -25,10 +25,17 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     final authService = ref.watch(robustAuthServiceProvider);
 
     return Material(
-      color: Colors.black,
+      color: Colors.transparent,
       child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+            ),
+          ),
+          child: Stack(
           children: [
             SafeArea(
               child: Padding(
@@ -117,6 +124,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             // ===== End Alert Dialog Overlay =====
           ],
         ),
+        ),
       ),
     );
   }
@@ -151,15 +159,40 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildAppLogoSection() {
-    return const Column(
+    return Column(
       children: [
-        Icon(
-          Icons.play_circle_fill,
-          size: 80,
-          color: Colors.white,
+        Image.asset(
+          'assets/logo.png',
+          width: 120,
+          height: 120,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            print('❌ Error loading logo: $error');
+            print('❌ Stack trace: $stackTrace');
+            // Fallback to gradient icon if logo fails to load
+            return ShaderMask(
+              shaderCallback: (Rect rect) {
+                return const LinearGradient(
+                  colors: [
+                    Color(0xFF9248D2),
+                    Color(0xFF7768DF),
+                    Color(0xFF1670DE),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ).createShader(rect);
+              },
+              blendMode: BlendMode.srcIn,
+              child: const Icon(
+                Icons.play_circle_filled,
+                size: 120,
+                color: Colors.white,
+              ),
+            );
+          },
         ),
-        SizedBox(height: 16),
-        Text(
+        const SizedBox(height: 16),
+        const Text(
           "StreamersTip",
           style: TextStyle(
             fontSize: 34,
@@ -167,8 +200,8 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             color: Colors.white,
           ),
         ),
-        SizedBox(height: 16),
-        Text(
+        const SizedBox(height: 16),
+        const Text(
           "Connect with your favorite streamers",
           style: TextStyle(
             fontSize: 16,
@@ -213,30 +246,6 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
         ),
         const SizedBox(height: 16),
 
-        // Test Login Button (for development)
-        _buildAuthButton(
-          icon: Icons.bug_report,
-          text: "Test Login (technqs)",
-          backgroundColor: const Color(0xFF9248D2),
-          textColor: Colors.white,
-          onTap: _testLogin,
-          disabled: authService.shouldShowLoading,
-        ),
-        const SizedBox(height: 16),
-
-        // Bypass Login Button (for development)
-        _buildAuthButton(
-          icon: Icons.rocket_launch,
-          text: "Bypass Login (Dev)",
-          backgroundColor: const Color(0xFF1670DE),
-          textColor: Colors.white,
-          onTap: _bypassLogin,
-          disabled: authService.shouldShowLoading,
-        ),
-        
-        const SizedBox(height: 16),
-        
-        // TODO: Add bypass login for development if needed
 
       ],
     );
@@ -298,13 +307,14 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           children: [
             TextButton(
               onPressed: () {
-                // TODO: Show terms
+                _showTermsDialog();
               },
               child: const Text(
                 "Terms of Service",
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.blue,
+                  color: Color(0xFF6137EB),
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -317,13 +327,14 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             ),
             TextButton(
               onPressed: () {
-                // TODO: Show privacy policy
+                _showPrivacyDialog();
               },
               child: const Text(
                 "Privacy Policy",
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.blue,
+                  color: Color(0xFF6137EB),
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -367,93 +378,81 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     }
   }
 
-  Future<void> _testLogin() async {
-    debugPrint("🧪 Test login tapped");
-    try {
-      final authService = ref.read(robustAuthServiceProvider);
-      
-      // Show loading state
-      if (mounted) {
-        setState(() {
-          _alertMessage = "Creating test account and signing in...";
-          _showAlert = true;
-        });
-      }
-      
-      final result = await authService.quickTestLogin();
-      
-      if (result.success) {
-        debugPrint("✅ Test login successful");
-        // Success - the auth state listener will handle navigation
-        if (mounted) {
-          setState(() {
-            _showAlert = false;
-          });
-        }
-      } else {
-        debugPrint("❌ Test login failed: ${result.error}");
-        if (mounted) {
-          setState(() {
-            _alertMessage = "Test login failed: ${result.error ?? 'Unknown error'}\n\nThis will create a new account if it doesn't exist.";
-            _showAlert = true;
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint("❌ Test login error: $e");
-      if (mounted) {
-        setState(() {
-          _alertMessage = "Test login error: $e\n\nThis will create a new account if it doesn't exist.";
-          _showAlert = true;
-        });
-      }
-    }
+  void _showTermsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          "Terms of Service",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        content: SingleChildScrollView(
+          child: const Text(
+            "By using StreamersTip, you agree to:\n\n"
+            "• Be respectful to all users\n"
+            "• Not share inappropriate content\n"
+            "• Follow community guidelines\n"
+            "• Respect intellectual property\n"
+            "• Use the service responsibly\n\n"
+            "We reserve the right to suspend accounts that violate these terms.\n\n"
+            "For complete terms, visit our website.",
+            style: TextStyle(color: Colors.white70, height: 1.3),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "Close",
+              style: TextStyle(color: Color(0xFF6137EB)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Future<void> _bypassLogin() async {
-    debugPrint("🚀 Bypass login tapped");
-    try {
-      final authService = ref.read(robustAuthServiceProvider);
-      
-      // Show loading state
-      if (mounted) {
-        setState(() {
-          _alertMessage = "Bypassing authentication for development...";
-          _showAlert = true;
-        });
-      }
-      
-      final result = await authService.bypassLogin();
-      
-      if (result.success) {
-        debugPrint("✅ Bypass login successful");
-        // Success - the auth state listener will handle navigation
-        if (mounted) {
-          setState(() {
-            _showAlert = false;
-          });
-        }
-      } else {
-        debugPrint("❌ Bypass login failed: ${result.error}");
-        if (mounted) {
-          setState(() {
-            _alertMessage = "Bypass login failed: ${result.error ?? 'Unknown error'}";
-            _showAlert = true;
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint("❌ Bypass login error: $e");
-      if (mounted) {
-        setState(() {
-          _alertMessage = "Bypass login error: $e";
-          _showAlert = true;
-        });
-      }
-    }
+  void _showPrivacyDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          "Privacy Policy",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        content: SingleChildScrollView(
+          child: const Text(
+            "We protect your privacy:\n\n"
+            "• We only collect necessary information\n"
+            "• Your data is encrypted and secure\n"
+            "• We don't sell your personal information\n"
+            "• You can delete your account anytime\n"
+            "• We comply with privacy regulations\n\n"
+            "For complete privacy policy, visit our website.",
+            style: TextStyle(color: Colors.white70, height: 1.3),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              "Close",
+              style: TextStyle(color: Color(0xFF6137EB)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  // TODO: Add bypass login method for development if needed
 }
 
 class _SignupLink extends StatelessWidget {

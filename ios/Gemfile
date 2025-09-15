@@ -1,0 +1,13 @@
+source "https://rubygems.org"
+
+# Pin Ruby version
+ruby "2.6.10"
+
+# Pin CocoaPods version that works with Ruby 2.6.10
+gem "cocoapods", "~> 1.11.3"
+
+# Pin compatible activesupport version
+gem "activesupport", "~> 6.0.6"
+
+# Pin ffi for compatibility
+gem "ffi", "~> 1.15.5"

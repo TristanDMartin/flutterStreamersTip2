@@ -227,22 +227,22 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                       ),
                     ],
                   ),
-                  child: Column(
+                  child: const Column(
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           CircleAvatar(
                             radius: 30,
-                            backgroundImage: const NetworkImage(
+                            backgroundImage: NetworkImage(
                               'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          SizedBox(width: 16),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Test Streamer',
                                   style: TextStyle(
                                     color: Colors.white,
@@ -250,15 +250,15 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const Text(
+                                Text(
                                   '@teststreamer',
                                   style: TextStyle(
                                     color: Colors.white70,
                                     fontSize: 14,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                const Text(
+                                SizedBox(height: 8),
+                                Text(
                                   'Tap to view full profile',
                                   style: TextStyle(
                                     color: Colors.white60,
@@ -268,7 +268,7 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                               ],
                             ),
                           ),
-                          const Icon(
+                          Icon(
                             Icons.arrow_forward_ios,
                             color: Colors.white,
                             size: 16,

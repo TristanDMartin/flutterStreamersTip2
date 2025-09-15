@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'settings_view.dart';
 import '../pages/bookmark_view.dart';
+import '../widgets/account_management_menu.dart';
 
 class MenuView extends StatelessWidget {
   const MenuView({super.key});
@@ -9,26 +10,35 @@ class MenuView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0E1220),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header with close button
-              _buildHeader(context),
-              
-              const SizedBox(height: 24),
-              
-              // Profile Section
-              _buildProfileSection(context),
-              
-              const SizedBox(height: 32),
-              
-              // Menu Grid
-              _buildMenuGrid(context),
-            ],
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header with close button
+                _buildHeader(context),
+                
+                const SizedBox(height: 24),
+                
+                // Profile Section
+                _buildProfileSection(context),
+                
+                const SizedBox(height: 32),
+                
+                // Menu Grid
+                _buildMenuGrid(context),
+              ],
+            ),
           ),
         ),
       ),
@@ -226,11 +236,15 @@ class MenuView extends StatelessWidget {
         decoration: BoxDecoration(
           color: isPrimary 
               ? const Color(0xFF9248D2) // Purple for primary card
-              : const Color(0xFF1A1F2E), // Dark blue-grey for other cards
+              : Colors.white.withValues(alpha: 0.1), // Semi-transparent white for other cards
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha:0.2),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -298,40 +312,63 @@ class MenuView extends StatelessWidget {
     );
   }
 
-  void _showLogOutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF0E1220),
-        title: const Text(
-          'Log Out',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Are you sure you want to log out?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white70),
+        void _showLogOutDialog(BuildContext context) {
+          showModalBottomSheet(
+            context: context,
+            backgroundColor: Colors.transparent,
+            isScrollControlled: true,
+            builder: (context) => Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+                ),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
             ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              fa.FirebaseAuth.instance.signOut();
-              // Navigate back to login screen
-              Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-            },
-            child: const Text(
-              'Log Out',
-              style: TextStyle(color: Colors.red),
+            const SizedBox(height: 24),
+            
+            // Title
+            const Text(
+              'Account Management',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              'Manage your account settings and sign out',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // Account Management Menu
+            const AccountManagementMenu(),
+            
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }

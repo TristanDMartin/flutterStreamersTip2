@@ -1,144 +1,181 @@
 import 'dart:async';
-import 'dart:developer';
+import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
-/// Service to manage video performance and prevent memory leaks
+/// Service for optimizing video performance like TikTok
 class VideoPerformanceService {
   static final VideoPerformanceService _instance = VideoPerformanceService._internal();
   factory VideoPerformanceService() => _instance;
   VideoPerformanceService._internal();
 
-  // Track active controllers to prevent memory leaks
-  final Map<String, VideoPlayerController> _activeControllers = {};
-  final Map<String, DateTime> _controllerTimestamps = {};
-  final Set<String> _disposingControllers = {};
-
-  // Performance settings
-  static const int _maxConcurrentControllers = 3;
-  static const Duration _controllerTimeout = Duration(seconds: 30);
-
-  /// Get or create a video controller with performance optimizations
-  Future<VideoPlayerController?> getController(String videoId, String videoUrl) async {
+  final Map<String, VideoPlayerController> _videoControllers = {};
+  final Map<String, bool> _videoPreloaded = {};
+  final Map<String, Widget> _thumbnailCache = {};
+  
+  // Preload next 3 videos for smooth scrolling
+  static const int _preloadCount = 3;
+  
+  /// Preload video for instant playback
+  Future<void> preloadVideo(String videoUrl, {String? thumbnailUrl}) async {
+    if (_videoPreloaded[videoUrl] == true) return;
+    
     try {
-      // Check if already exists and is valid
-      if (_activeControllers.containsKey(videoId)) {
-        final controller = _activeControllers[videoId]!;
-        if (controller.value.isInitialized) {
-          _controllerTimestamps[videoId] = DateTime.now();
-          return controller;
-        } else {
-          // Remove invalid controller
-          await _disposeController(videoId);
-        }
+      final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+      await controller.initialize();
+      
+      // Preload thumbnail
+      if (thumbnailUrl != null) {
+        _preloadThumbnail(thumbnailUrl);
       }
-
-      // Check if we're at capacity
-      if (_activeControllers.length >= _maxConcurrentControllers) {
-        await _evictOldestController();
-      }
-
-      // Create new controller
-      log('🎬 Creating video controller for: $videoId');
-      final controller = VideoPlayerController.networkUrl(
-        Uri.parse(videoUrl),
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true,
-          allowBackgroundPlayback: false,
+      
+      _videoControllers[videoUrl] = controller;
+      _videoPreloaded[videoUrl] = true;
+      
+      // Auto-dispose after 30 seconds of inactivity
+      Timer(const Duration(seconds: 30), () {
+        disposeVideo(videoUrl);
+      });
+    } catch (e) {
+      debugPrint('Error preloading video: $e');
+    }
+  }
+  
+  /// Preload thumbnail image
+  Future<void> _preloadThumbnail(String thumbnailUrl) async {
+    try {
+      final imageProvider = CachedNetworkImageProvider(thumbnailUrl);
+      await precacheImage(imageProvider, NavigationService.navigatorKey.currentContext!);
+    } catch (e) {
+      debugPrint('Error preloading thumbnail: $e');
+    }
+  }
+  
+  /// Get preloaded video controller
+  VideoPlayerController? getVideoController(String videoUrl) {
+    return _videoControllers[videoUrl];
+  }
+  
+  /// Alias for getVideoController
+  VideoPlayerController? getController(String videoUrl) {
+    return getVideoController(videoUrl);
+  }
+  
+  /// Check if video is preloaded
+  bool isVideoPreloaded(String videoUrl) {
+    return _videoPreloaded[videoUrl] == true;
+  }
+  
+  /// Preload multiple videos for smooth scrolling
+  Future<void> preloadVideoBatch(List<String> videoUrls, {List<String>? thumbnailUrls}) async {
+    final futures = <Future>[];
+    
+    for (int i = 0; i < videoUrls.length && i < _preloadCount; i++) {
+      final videoUrl = videoUrls[i];
+      final thumbnailUrl = thumbnailUrls != null && i < thumbnailUrls.length 
+          ? thumbnailUrls[i] 
+          : null;
+      
+      futures.add(preloadVideo(videoUrl, thumbnailUrl: thumbnailUrl));
+    }
+    
+    await Future.wait(futures);
+  }
+  
+  /// Dispose video controller
+  void disposeVideo(String videoUrl) {
+    final controller = _videoControllers[videoUrl];
+    if (controller != null) {
+      controller.dispose();
+      _videoControllers.remove(videoUrl);
+      _videoPreloaded[videoUrl] = false;
+    }
+  }
+  
+  /// Alias for disposeVideo
+  void disposeController(String videoUrl) {
+    disposeVideo(videoUrl);
+  }
+  
+  /// Dispose all videos
+  void disposeAll() {
+    for (final controller in _videoControllers.values) {
+      controller.dispose();
+    }
+    _videoControllers.clear();
+    _videoPreloaded.clear();
+    _thumbnailCache.clear();
+  }
+  
+  /// Get optimized video player widget
+  Widget getOptimizedVideoPlayer({
+    required String videoUrl,
+    required double width,
+    required double height,
+    bool autoPlay = true,
+    bool looping = true,
+    Widget? placeholder,
+  }) {
+    final controller = getVideoController(videoUrl);
+    
+    if (controller == null) {
+      return placeholder ?? Container(
+        width: width,
+        height: height,
+        color: Colors.black,
+        child: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
         ),
       );
-
-      // Initialize with timeout
-      await controller.initialize().timeout(
-        _controllerTimeout,
-        onTimeout: () {
-          log('⏰ Video controller initialization timeout for: $videoId');
-          throw TimeoutException('Video initialization timeout', _controllerTimeout);
-        },
-      );
-
-      // Store controller
-      _activeControllers[videoId] = controller;
-      _controllerTimestamps[videoId] = DateTime.now();
-
-      log('✅ Video controller created successfully: $videoId');
-      return controller;
-    } catch (e) {
-      log('❌ Error creating video controller for $videoId: $e');
-      return null;
     }
-  }
-
-  /// Dispose a video controller safely
-  Future<void> disposeController(String videoId) async {
-    await _disposeController(videoId);
-  }
-
-  /// Internal method to dispose controller
-  Future<void> _disposeController(String videoId) async {
-    if (_disposingControllers.contains(videoId)) {
-      return; // Already disposing
-    }
-
-    _disposingControllers.add(videoId);
-
-    try {
-      final controller = _activeControllers.remove(videoId);
-      if (controller != null) {
-        log('🗑️ Disposing video controller: $videoId');
-        
-        // Pause and dispose safely
-        if (controller.value.isInitialized) {
-          await controller.pause();
-        }
-        await controller.dispose();
-        
-        _controllerTimestamps.remove(videoId);
-        log('✅ Video controller disposed: $videoId');
-      }
-    } catch (e) {
-      log('❌ Error disposing video controller $videoId: $e');
-    } finally {
-      _disposingControllers.remove(videoId);
-    }
-  }
-
-  /// Evict the oldest controller to make room
-  Future<void> _evictOldestController() async {
-    if (_activeControllers.isEmpty) return;
-
-    String? oldestId;
-    DateTime? oldestTime;
-
-    for (final entry in _controllerTimestamps.entries) {
-      if (oldestTime == null || entry.value.isBefore(oldestTime)) {
-        oldestTime = entry.value;
-        oldestId = entry.key;
-      }
-    }
-
-    if (oldestId != null) {
-      log('🔄 Evicting oldest video controller: $oldestId');
-      await _disposeController(oldestId);
-    }
-  }
-
-  /// Clean up all controllers
-  Future<void> disposeAll() async {
-    log('🧹 Disposing all video controllers');
     
-    final controllerIds = List<String>.from(_activeControllers.keys);
-    for (final videoId in controllerIds) {
-      await _disposeController(videoId);
-    }
+    return SizedBox(
+      width: width,
+      height: height,
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: controller.value.size.width,
+          height: controller.value.size.height,
+          child: VideoPlayer(controller),
+        ),
+      ),
+    );
   }
+  
+  /// Get cached thumbnail widget
+  Widget getCachedThumbnail({
+    required String thumbnailUrl,
+    required double width,
+    required double height,
+    BoxFit fit = BoxFit.cover,
+  }) {
+    return CachedNetworkImage(
+      imageUrl: thumbnailUrl,
+      width: width,
+      height: height,
+      fit: fit,
+      placeholder: (context, url) => Container(
+        width: width,
+        height: height,
+        color: Colors.grey[300],
+        child: const Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+      errorWidget: (context, url, error) => Container(
+        width: width,
+        height: height,
+        color: Colors.grey[300],
+        child: const Icon(Icons.error),
+      ),
+      memCacheWidth: width.toInt(),
+      memCacheHeight: height.toInt(),
+    );
+  }
+}
 
-  /// Get performance stats
-  Map<String, dynamic> getPerformanceStats() {
-    return {
-      'activeControllers': _activeControllers.length,
-      'maxControllers': _maxConcurrentControllers,
-      'disposingControllers': _disposingControllers.length,
-      'controllerIds': _activeControllers.keys.toList(),
-    };
-  }
+/// Navigation service for global context access
+class NavigationService {
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 }

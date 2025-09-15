@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'enhanced_launch_screen.dart';
+import 'splash_screen.dart';
 import '../services/robust_auth_service.dart';
 import '../widgets/auth_modal_view.dart';
 import '../pages/main_tab_view.dart';
@@ -89,69 +90,8 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   }
 
   Widget _buildLoadingScreen() {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF9248D2), // Primary purple
-              Color(0xFF7768DF), // Secondary purple
-              Color(0xFF1670DE), // Primary blue
-              Color(0xFF3C8BD6), // Secondary blue
-              Color(0xFF4897D2), // Light blue
-            ],
-            stops: [0.0, 0.25, 0.5, 0.75, 1.0],
-          ),
-        ),
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Logo
-              Icon(
-                Icons.play_circle_filled,
-                size: 80,
-                color: Colors.white,
-              ),
-              
-              SizedBox(height: 24),
-              
-              // App name
-              Text(
-                'StreamersTip',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              
-              SizedBox(height: 16),
-              
-              // Loading indicator
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                strokeWidth: 2,
-              ),
-              
-              SizedBox(height: 16),
-              
-              // Loading text
-              Text(
-                'Initializing...',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white70,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return const SplashScreen(
+      duration: Duration(seconds: 3),
     );
   }
 }
@@ -249,69 +189,8 @@ class _CustomAppStartupWrapperState extends ConsumerState<CustomAppStartupWrappe
   }
 
   Widget _buildLoadingScreen() {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF9248D2), // Primary purple
-              Color(0xFF7768DF), // Secondary purple
-              Color(0xFF1670DE), // Primary blue
-              Color(0xFF3C8BD6), // Secondary blue
-              Color(0xFF4897D2), // Light blue
-            ],
-            stops: [0.0, 0.25, 0.5, 0.75, 1.0],
-          ),
-        ),
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Logo
-              Icon(
-                Icons.play_circle_filled,
-                size: 80,
-                color: Colors.white,
-              ),
-              
-              SizedBox(height: 24),
-              
-              // App name
-              Text(
-                'StreamersTip',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              
-              SizedBox(height: 16),
-              
-              // Loading indicator
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                strokeWidth: 2,
-              ),
-              
-              SizedBox(height: 16),
-              
-              // Loading text
-              Text(
-                'Initializing...',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white70,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return const SplashScreen(
+      duration: Duration(seconds: 3),
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../providers/feed_queue_provider.dart';
 import '../services/video_controller_pool_service.dart';
+import '../utils/performance_utils.dart';
 
 /// Home view with TikTok-style instant play
 class InstantPlayHomeView extends ConsumerStatefulWidget {
@@ -215,7 +216,7 @@ class _InstantPlayHomeViewState extends ConsumerState<InstantPlayHomeView> {
             end: Alignment.bottomCenter,
             colors: [
               Colors.transparent,
-              Colors.black.withOpacity(0.7),
+              Colors.black.withValues(alpha: 0.7),
             ],
           ),
         ),
@@ -279,23 +280,36 @@ class _InstantPlayHomeViewState extends ConsumerState<InstantPlayHomeView> {
 
   /// Build action button
   Widget _buildActionButton(IconData icon, String label) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          color: Colors.white,
-          size: 28,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
+    return OptimizedButton(
+      buttonId: 'action_${icon.codePoint}',
+      onPressed: () {
+        // Handle action button tap
+        PerformanceUtils.instantTap(
+          onTap: () {
+            // Add specific action logic here
+            debugPrint('Tapped $label button');
+          },
+          enableHaptic: true,
+        );
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
             color: Colors.white,
-            fontSize: 12,
+            size: 28,
           ),
-        ),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

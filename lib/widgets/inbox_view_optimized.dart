@@ -7,6 +7,7 @@ import '../models/user.dart' as app_user;
 import '../services/inbox_service_optimized.dart';
 import '../services/logging_service.dart';
 import '../services/offline_inbox_service.dart';
+import '../providers/unread_messages_provider.dart';
 import 'chat_view_optimized.dart';
 import 'new_message_view.dart';
 import 'draft_creation_view.dart';
@@ -62,6 +63,13 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     
     _initializeRealTimeUpdates();
     _fabAnimationController.forward();
+    
+    // Mark all messages as read when InboxView is opened
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await UnreadMessagesService.markAllVisibleAsRead();
+      // Force refresh the unread messages provider
+      ref.invalidate(unreadMessagesProvider);
+    });
   }
 
   @override
@@ -1600,6 +1608,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     setState(() {
       _unreadCounts[chat.id ?? ''] = 0;
     });
+    
+    // Force refresh the unread messages provider
+    ref.invalidate(unreadMessagesProvider);
     
     final userProfile = _userProfiles[otherUserId];
     // final isOnline = _onlineStatus[otherUserId] ?? false; // Unused variable commented out

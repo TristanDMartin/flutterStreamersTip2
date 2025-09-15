@@ -187,40 +187,28 @@ class _EnhancedLaunchScreenState extends State<EnhancedLaunchScreen>
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF9248D2), // Primary purple
-                    Color(0xFF7768DF), // Secondary purple
-                    Color(0xFF1670DE), // Primary blue
-                    Color(0xFF3C8BD6), // Secondary blue
-                    Color(0xFF4897D2), // Light blue
-                  ],
-                  stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                  colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
                 ),
               ),
               child: SafeArea(
-                child: Column(
-                  children: [
-                    // Top spacing
-                    const Spacer(flex: 2),
-                    
-                    // Logo section
-                    _buildLogoSection(),
-                    
-                    // Spacing
-                    const Spacer(flex: 1),
-                    
-                    // Text section
-                    _buildTextSection(),
-                    
-                    // Spacing
-                    const Spacer(flex: 1),
-                    
-                    // Loading section
-                    if (widget.showLoadingIndicator) _buildLoadingSection(),
-                    
-                    // Bottom spacing
-                    const Spacer(flex: 2),
-                  ],
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Logo section
+                      _buildLogoSection(),
+                      
+                      const SizedBox(height: 40),
+                      
+                      // Text section
+                      _buildTextSection(),
+                      
+                      const SizedBox(height: 60),
+                      
+                      // Loading section
+                      if (widget.showLoadingIndicator) _buildLoadingSection(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -229,6 +217,7 @@ class _EnhancedLaunchScreenState extends State<EnhancedLaunchScreen>
       ),
     );
   }
+
 
   Widget _buildLogoSection() {
     return AnimatedBuilder(
@@ -268,12 +257,15 @@ class _EnhancedLaunchScreenState extends State<EnhancedLaunchScreen>
   }
 
   Widget _buildLogoIcon() {
+    print('🎯 Attempting to load logo from: assets/logo.png');
     return Image.asset(
       'assets/logo.png',
       width: 80,
       height: 80,
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
+        print('❌ Error loading logo: $error');
+        print('❌ Stack trace: $stackTrace');
         // Fallback to gradient icon if logo fails to load
         return ShaderMask(
           shaderCallback: (Rect rect) {

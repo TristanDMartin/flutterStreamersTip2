@@ -135,7 +135,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
   /// Create sample videos for instant display (reduced to 3 for better performance)
   List<HomeVideo> _createSampleVideos() {
     return [
-      HomeVideo(
+      const HomeVideo(
         id: '1',
         creator: app_user.User(
           id: 'user1',
@@ -155,7 +155,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         mlScore: 0.95,
         categoryId: 'gaming',
       ),
-      HomeVideo(
+      const HomeVideo(
         id: '2',
         creator: app_user.User(
           id: 'user2',
@@ -175,7 +175,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         mlScore: 0.87,
         categoryId: 'entertainment',
       ),
-      HomeVideo(
+      const HomeVideo(
         id: '3',
         creator: app_user.User(
           id: 'user3',

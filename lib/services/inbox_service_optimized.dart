@@ -172,19 +172,25 @@ class InboxServiceOptimized {
     if (currentUser == null) return;
 
     try {
+      // Get all messages in this chat where current user is recipient but not in readBy
       final query = await _firestore
           .collection('chats')
           .doc(chatId)
           .collection('messages')
-          .where('senderId', isNotEqualTo: currentUser.uid)
-          .where('readBy', arrayContains: currentUser.uid)
+          .where('recipients', arrayContains: currentUser.uid)
           .get();
 
       final batch = _firestore.batch();
       for (final doc in query.docs) {
-        batch.update(doc.reference, {
-          'readBy': FieldValue.arrayUnion([currentUser.uid])
-        });
+        final messageData = doc.data();
+        final readBy = List<String>.from(messageData['readBy'] ?? []);
+        
+        // Only update if user is not already in readBy
+        if (!readBy.contains(currentUser.uid)) {
+          batch.update(doc.reference, {
+            'readBy': FieldValue.arrayUnion([currentUser.uid])
+          });
+        }
       }
       await batch.commit();
       _unreadCounts[chatId] = 0;

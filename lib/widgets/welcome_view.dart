@@ -159,25 +159,21 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                 ),
                 child: ClipOval(
                   child: Image.asset(
-                    'assets/images/logo.png',
+                    'assets/logo.png',
                     width: 120,
                     height: 120,
                     fit: BoxFit.contain,
                     cacheWidth: 240,
                     cacheHeight: 240,
                     errorBuilder: (context, error, stackTrace) {
-    // print('Logo loading error in welcome view: $error');
-    // print('Stack trace: $stackTrace');
+                      print('❌ WelcomeView: Error loading logo: $error');
                       return Container(
-                        color: Colors.white,
+                        color: Colors.grey[800],
                         child: const Center(
-                          child: Text(
-                            'LOGO',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF7B24E1),
-                            ),
+                          child: Icon(
+                            Icons.play_circle_filled,
+                            size: 60,
+                            color: Colors.white,
                           ),
                         ),
                       );
@@ -393,9 +389,9 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
 
   // Helper method to clamp font size based on accessibility settings
   double _clampFontSize(BuildContext context, double min, double max) {
-    final textScaleFactor = MediaQuery.of(context).textScaleFactor;
-    const baseSize = 36; // Base size for normal text scaling
-    final scaledSize = baseSize * textScaleFactor;
+    final textScaler = MediaQuery.of(context).textScaler;
+    const baseSize = 36.0; // Base size for normal text scaling
+    final scaledSize = textScaler.scale(baseSize);
     return scaledSize.clamp(min, max);
   }
 

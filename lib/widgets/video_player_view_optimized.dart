@@ -88,8 +88,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     
     try {
       // Use performance service to get optimized controller
-      _videoPlayerController = await VideoPerformanceService().getController(
-        widget.video.id,
+      _videoPlayerController = VideoPerformanceService().getController(
         widget.video.videoURL,
       );
       

@@ -431,12 +431,15 @@ class _EditProfileViewState extends State<EditProfileView> {
         builder: (context) => LinksEditView(
           platforms: currentPlatforms,
           onPlatformsUpdated: (updatedPlatforms) async {
+            // Capture context and scaffold messenger before async operations
+            final scaffoldMessenger = ScaffoldMessenger.of(context);
+            
             // Content moderation validation for platforms
             final moderationResult = ContentModerationService.validatePlatforms(updatedPlatforms);
             
             if (!moderationResult.isAllowed) {
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                scaffoldMessenger.showSnackBar(
                   SnackBar(
                     content: Text(moderationResult.reason ?? 'Platform contains inappropriate content'),
                     backgroundColor: Colors.red,
@@ -466,7 +469,7 @@ class _EditProfileViewState extends State<EditProfileView> {
             
             // Show success message
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              scaffoldMessenger.showSnackBar(
                 const SnackBar(
                   content: Text('Platforms updated successfully!'),
                   backgroundColor: Colors.green,

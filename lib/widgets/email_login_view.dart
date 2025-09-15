@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import 'robust_instant_response_button.dart';
 import 'forgot_password_dialog.dart';
+import 'signup_view.dart';
 
 class EmailLoginView extends ConsumerStatefulWidget {
   final VoidCallback? dismiss;
@@ -62,13 +63,9 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1a1a2e),
-              Color(0xFF16213e),
-              Color(0xFF0f3460),
-            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
           ),
         ),
         child: SafeArea(
@@ -92,30 +89,60 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                 // Identifier Field (Email or Username)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    controller: _identifierController,
-                    focusNode: _identifierFocusNode,
-                    enabled: !isLoading,
-                    decoration: InputDecoration(
-                      hintText: 'Email or username',
-                      helperText: 'Enter your email address or username',
-                      helperStyle: TextStyle(color: Colors.grey[300], fontSize: 12),
-                      hintStyle: TextStyle(color: Colors.grey[400]),
-                      filled: true,
-                      fillColor: Colors.grey.withValues(alpha:0.1),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withOpacity(0.15),
+                          Colors.white.withOpacity(0.05),
+                        ],
                       ),
-                      contentPadding: const EdgeInsets.all(16),
-                      prefixIcon: const Icon(Icons.person, color: Colors.grey),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
                     ),
-                    style: const TextStyle(color: Colors.white),
-                    textInputAction: TextInputAction.next,
-                    textCapitalization: TextCapitalization.none,
-                    keyboardType: TextInputType.emailAddress,
-                    onChanged: (_) => _validateForm(),
-                    onSubmitted: (_) => _passwordFocusNode.requestFocus(),
+                    child: TextField(
+                      controller: _identifierController,
+                      focusNode: _identifierFocusNode,
+                      enabled: !isLoading,
+                      decoration: InputDecoration(
+                        hintText: 'Email or username',
+                        helperText: 'Enter your email address or username',
+                        helperStyle: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.all(16),
+                        prefixIcon: const Icon(Icons.person, color: Colors.white70),
+                      ),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black54,
+                            blurRadius: 2,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      textInputAction: TextInputAction.next,
+                      textCapitalization: TextCapitalization.none,
+                      keyboardType: TextInputType.emailAddress,
+                      onChanged: (_) => _validateForm(),
+                      onSubmitted: (_) => _passwordFocusNode.requestFocus(),
+                    ),
                   ),
                 ),
                 
@@ -124,47 +151,83 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                 // Password Field with Visibility Toggle
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    controller: _passwordController,
-                    focusNode: _passwordFocusNode,
-                    enabled: !isLoading,
-                    obscureText: !_isPasswordVisible,
-                    decoration: InputDecoration(
-                      hintText: 'Password',
-                      helperText: _getPasswordHelperText(),
-                      helperStyle: TextStyle(
-                        color: _getPasswordHelperColor(),
-                        fontSize: 12,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withOpacity(0.15),
+                          Colors.white.withOpacity(0.05),
+                        ],
                       ),
-                      hintStyle: TextStyle(color: Colors.grey[400]),
-                      filled: true,
-                      fillColor: Colors.grey.withValues(alpha:0.1),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                        width: 1,
                       ),
-                      contentPadding: const EdgeInsets.all(16),
-                      prefixIcon: const Icon(Icons.lock, color: Colors.grey),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
-                          color: Colors.grey,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
                         ),
-                        onPressed: () {
-                          setState(() {
-                            _isPasswordVisible = !_isPasswordVisible;
-                          });
-                        },
-                      ),
+                      ],
                     ),
-                    style: const TextStyle(color: Colors.white),
-                    textInputAction: TextInputAction.done,
-                    maxLength: 18, // Hard limit
-                    inputFormatters: [
-                      FilteringTextInputFormatter.deny(RegExp(r'\s')), // No spaces
-                    ],
-                    onChanged: (_) => _validateForm(),
-                    onSubmitted: (_) => _continueWithEmail(),
+                    child: TextField(
+                      controller: _passwordController,
+                      focusNode: _passwordFocusNode,
+                      enabled: !isLoading,
+                      obscureText: !_isPasswordVisible,
+                      decoration: InputDecoration(
+                        hintText: 'Password',
+                        helperText: _getPasswordHelperText(),
+                        helperStyle: TextStyle(
+                          color: _getPasswordHelperColor(),
+                          fontSize: 12,
+                        ),
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.all(16),
+                        prefixIcon: const Icon(Icons.lock, color: Colors.white70),
+                        suffixIcon: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: IconButton(
+                            icon: Icon(
+                              _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                              color: Colors.white70,
+                              size: 20,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _isPasswordVisible = !_isPasswordVisible;
+                              });
+                            },
+                            tooltip: _isPasswordVisible ? 'Hide password' : 'Show password',
+                          ),
+                        ),
+                      ),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black54,
+                            blurRadius: 2,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      textInputAction: TextInputAction.done,
+                      maxLength: 18, // Hard limit
+                      inputFormatters: [
+                        FilteringTextInputFormatter.deny(RegExp(r'\s')), // No spaces
+                      ],
+                      onChanged: (_) => _validateForm(),
+                      onSubmitted: (_) => _continueWithEmail(),
+                    ),
                   ),
                 ),
                 
@@ -176,9 +239,16 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha:0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red.withValues(alpha:0.3)),
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red.withOpacity(0.3)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.red.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: Row(
                         children: [
@@ -187,7 +257,18 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                           Expanded(
                             child: Text(
                               _errorMessage!,
-                              style: const TextStyle(color: Colors.red, fontSize: 14),
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black54,
+                                    blurRadius: 1,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -198,7 +279,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                 
                 const SizedBox(height: 24),
                 
-                // iCloud Toggle
+                // Remember Me Toggle
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
@@ -210,15 +291,26 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                             _saveToiCloud = value;
                           });
                         },
-                        activeThumbColor: const Color(0xFF1670de),
+                        activeThumbColor: const Color(0xFF6137EB),
+                        activeTrackColor: const Color(0xFF6137EB).withOpacity(0.3),
+                        inactiveThumbColor: Colors.white70,
+                        inactiveTrackColor: Colors.white.withOpacity(0.2),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Save login info on your iCloud devices…',
+                          'Remember me on this device',
                           style: TextStyle(
-                            color: Colors.grey[300],
+                            color: Colors.white.withOpacity(0.8),
                             fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black54,
+                                blurRadius: 1,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -251,11 +343,18 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                         builder: (context) => const ForgotPasswordDialog(),
                       );
                     },
-                    child: const Text(
+                    child: Text(
                       'Forgot Password?',
                       style: TextStyle(
-                        color: Color(0xFF1670de),
-                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF6137EB),
+                        fontWeight: FontWeight.w600,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black54,
+                            blurRadius: 1,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -269,17 +368,38 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                   children: [
                     Text(
                       "Don't have an account? ",
-                      style: TextStyle(color: Colors.grey[400]),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontWeight: FontWeight.w500,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black54,
+                            blurRadius: 1,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
                     ),
                     GestureDetector(
                       onTap: () {
-                        // TODO: Navigate to signup
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const SignupView(),
+                          ),
+                        );
                       },
                       child: const Text(
                         'Sign up',
                         style: TextStyle(
-                          color: Color(0xFF1670de),
+                          color: Color(0xFF6137EB),
                           fontWeight: FontWeight.w600,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black54,
+                              blurRadius: 1,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -400,22 +520,22 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
       
       if (identifier.contains("@")) {
         // It's an email - use Firebase email auth
-    // print("📧 Detected email input, using email authentication");
+        print("📧 Detected email input, using email authentication for: $identifier");
         result = await authService.debouncedSignInWithEmail(identifier, password);
       } else {
         // It's a username - use username authentication
-    // print("👤 Detected username input, using username authentication");
+        print("👤 Detected username input, using username authentication for: $identifier");
         result = await authService.debouncedSignInWithUsername(identifier, password);
       }
       
       // Only process result if this is still the current request
       if (result.success) {
-    // print("✅ Authentication successful (request: ${result.requestId})");
+        print("✅ Authentication successful (request: ${result.requestId})");
         if (mounted) {
           Navigator.of(context).pop();
         }
       } else {
-    // print("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
+        print("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
         if (mounted) {
           setState(() {
             _errorMessage = _getUserFriendlyErrorMessage(result.error ?? 'Unknown error');
@@ -423,7 +543,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
         }
       }
     } catch (e) {
-    // print("❌ Authentication error: $e");
+      print("❌ Authentication error: $e");
       if (mounted) {
         setState(() {
           _errorMessage = _getUserFriendlyErrorMessage(e.toString());
@@ -433,11 +553,13 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
   }
 
   String _getUserFriendlyErrorMessage(String error) {
+    print("🔍 Processing error message: $error");
+    
     if (error.contains('user-not-found') || error.contains('Username not found')) {
       return 'No account found for that email/username';
     } else if (error.contains('wrong-password') || error.contains('Incorrect password')) {
       return 'Incorrect password. Try again.';
-    } else if (error.contains('too-many-requests')) {
+    } else if (error.contains('too-many-requests') || error.contains('Too many authentication attempts')) {
       return 'Too many attempts. Try again later.';
     } else if (error.contains('invalid-email')) {
       return 'Invalid email address';
@@ -449,6 +571,8 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
       return 'Request cancelled';
     } else if (error.contains('network-request-failed')) {
       return 'Network error. Check your connection.';
+    } else if (error.contains('email-already-in-use')) {
+      return 'This email is already registered. Try signing in instead.';
     } else {
       return 'Authentication failed. Please check your credentials';
     }

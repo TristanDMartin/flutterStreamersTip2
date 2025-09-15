@@ -11,6 +11,8 @@ import '../providers/status_provider.dart';
 import '../models/user_status.dart';
 import '../widgets/profile_video_feed_view.dart';
 import '../services/enhanced_bookmark_service.dart';
+import 'streamer_share_sheet.dart';
+import 'instant_response_button.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
   final String userId; // Changed from StreamerCard to userId for live data
@@ -45,7 +47,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _showBio = true;
   bool _showPlatforms = true;
   bool _showCalendar = true;
-  Set<String> _bookmarkedEventIds = {};
+  final Set<String> _bookmarkedEventIds = {};
   List<Map<String, dynamic>> _platforms = [];
   List<CalendarEvent> _calendarEvents = [];
   
@@ -857,10 +859,17 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 ),
               ),
               const SizedBox(width: 16),
-              const Icon(
-                Icons.more_horiz,
-                color: Colors.white,
-                size: 24,
+              InstantResponseButton(
+                onPressed: () => _showShareSheet(context),
+                hapticType: HapticFeedbackType.lightImpact,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  child: const Icon(
+                    Icons.more_horiz,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
               ),
             ],
           ),
@@ -2068,6 +2077,25 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
       }
     }
+  }
+
+  void _showShareSheet(BuildContext context) {
+    HapticFeedback.lightImpact();
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.7),
+      builder: (context) => StreamerShareSheet(
+        userId: widget.userId,
+        displayName: _userData?['displayName'] as String?,
+        profileImageUrl: _userData?['photoURL'] as String?,
+        onDismiss: () {
+          Navigator.of(context).pop();
+        },
+      ),
+    );
   }
 
 }

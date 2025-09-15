@@ -1,0 +1,375 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/robust_auth_service.dart';
+import 'add_account_modal.dart';
+import 'switch_account_modal.dart';
+import 'instant_response_button.dart';
+
+class AccountManagementMenu extends ConsumerWidget {
+  const AccountManagementMenu({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          _buildAccountOption(
+            context,
+            icon: Icons.swap_horiz,
+            title: 'Switch Account',
+            subtitle: 'Change to another account',
+            onTap: () => _handleSwitchAccount(context),
+          ),
+          _buildDivider(),
+          _buildAccountOption(
+            context,
+            icon: Icons.person_add,
+            title: 'Add Account',
+            subtitle: 'Add a new account',
+            onTap: () => _handleAddAccount(context),
+          ),
+          _buildDivider(),
+          _buildAccountOption(
+            context,
+            icon: Icons.logout,
+            title: 'Log Out',
+            subtitle: 'Sign out of your account',
+            onTap: () => _handleLogOut(context, ref),
+            isDestructive: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountOption(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    return InstantResponseButton(
+      onPressed: onTap,
+      hapticType: HapticFeedbackType.lightImpact,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDestructive 
+                    ? Colors.red.withValues(alpha: 0.2)
+                    : Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                color: isDestructive ? Colors.red : Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: isDestructive ? Colors.red : Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: isDestructive 
+                          ? Colors.red.withValues(alpha: 0.7)
+                          : Colors.white.withValues(alpha: 0.7),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white.withValues(alpha: 0.5),
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      color: Colors.white.withValues(alpha: 0.1),
+    );
+  }
+
+  void _handleSwitchAccount(BuildContext context) {
+    Navigator.of(context).pop(); // Close the menu
+    _showSwitchAccountModal(context);
+  }
+
+  void _showSwitchAccountModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => const SwitchAccountModal(),
+    );
+  }
+
+  void _handleAddAccount(BuildContext context) {
+    Navigator.of(context).pop(); // Close the menu
+    _showAddAccountModal(context);
+  }
+
+  void _showAddAccountModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => const AddAccountModal(),
+    );
+  }
+
+  void _handleLogOut(BuildContext context, WidgetRef ref) {
+    Navigator.of(context).pop(); // Close the menu
+    _showLogOutDialog(context, ref);
+  }
+
+        void _showLogOutDialog(BuildContext context, WidgetRef ref) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: Colors.transparent,
+              content: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+                  ),
+                  borderRadius: BorderRadius.all(Radius.circular(16)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Log Out',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Are you sure you want to log out?',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InstantResponseButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              hapticType: HapticFeedbackType.lightImpact,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    'Cancel',
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InstantResponseButton(
+                              onPressed: () async {
+                                Navigator.of(context).pop();
+                                await _performLogOut(context, ref);
+                              },
+                              hapticType: HapticFeedbackType.mediumImpact,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    'Log Out',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+  Future<void> _performLogOut(BuildContext context, WidgetRef ref) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+              ),
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Signing out...',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      // Use the robust auth service for proper logout
+      final authService = ref.read(robustAuthServiceProvider);
+      await authService.signOut();
+
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        // Navigate back to login screen
+        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        
+        // Show error dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: Colors.transparent,
+            content: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+                ),
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Logout Error',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Failed to log out. Please try again.\n\nError: ${e.toString()}',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 24),
+                    InstantResponseButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      hapticType: HapticFeedbackType.lightImpact,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF9248D2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'OK',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+}

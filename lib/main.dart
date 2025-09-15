@@ -1,18 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'widgets/app_startup_wrapper.dart';
 import 'services/analytics_service.dart';
 import 'services/error_handler_service.dart';
+import 'utils/performance_utils.dart';
+import 'services/memory_optimization_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Verify logo asset is bundled
+  try {
+    final manifest = await rootBundle.loadString('AssetManifest.json');
+    if (manifest.contains('assets/logo.png')) {
+      print('✅ Logo asset found in bundle');
+    } else {
+      print('❌ Logo asset NOT found in bundle. Manifest contains: ${manifest.substring(0, 200)}...');
+    }
+  } catch (e) {
+    print('❌ Asset verification failed: $e');
+  }
   
   // Initialize Firebase
   await Firebase.initializeApp();
   
   // Initialize production services
   await _initializeProductionServices();
+  
+  // Initialize performance optimizations
+  _initializePerformanceOptimizations();
   
   runApp(const ProviderScope(child: MyApp()));
 }
@@ -28,6 +46,41 @@ Future<void> _initializeProductionServices() async {
     debugPrint('✅ Production services initialized successfully');
   } catch (e) {
     debugPrint('❌ Error initializing production services: $e');
+  }
+}
+
+void _initializePerformanceOptimizations() {
+  // Enable performance optimizations
+  WidgetsBinding.instance.addObserver(PerformanceObserver());
+  
+  // Initialize memory optimization
+  MemoryOptimizationService().optimizeMemory();
+  
+  debugPrint('✅ Performance optimizations initialized');
+}
+
+class PerformanceObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    switch (state) {
+      case AppLifecycleState.paused:
+        // Optimize memory when app is paused
+        MemoryOptimizationService().optimizeMemory();
+        break;
+      case AppLifecycleState.resumed:
+        // Clean up when app is resumed
+        PerformanceUtils.cleanup();
+        break;
+      case AppLifecycleState.detached:
+        // Full cleanup when app is detached
+        MemoryOptimizationService().clearAll();
+        PerformanceUtils.cleanup();
+        break;
+      default:
+        break;
+    }
   }
 }
 

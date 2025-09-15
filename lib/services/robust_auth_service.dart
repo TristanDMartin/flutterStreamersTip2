@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
+import 'auth_rate_limiting_service.dart';
 
 /// Request-scoped authentication result
 class AuthRequestResult {
@@ -27,6 +28,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final AuthRateLimitingService _rateLimiter = AuthRateLimitingService();
   
   User? _currentUser;
   bool _isLoggedIn = false;
@@ -201,14 +203,31 @@ class RobustAuthenticationService extends ChangeNotifier {
     String requestId,
   ) async {
     try {
-    // print("📧 Starting email authentication for: $email (request: $requestId)");
+      // Check rate limiting first
+      if (await _rateLimiter.isRateLimited()) {
+        final message = await _rateLimiter.getRateLimitMessage();
+        print("🚫 Rate limited: $message");
+        return AuthRequestResult(
+          requestId: requestId,
+          success: false,
+          error: message ?? 'Too many authentication attempts. Please try again later.',
+        );
+      }
+      
+      print("📧 Starting email authentication for: $email (request: $requestId)");
       
       final userCredential = await _auth.signInWithEmailAndPassword(
         email: email, 
         password: password
       );
       
+      print("📧 Firebase auth result: user=${userCredential.user?.uid}");
+      
       if (userCredential.user != null) {
+        // Record successful authentication
+        await _rateLimiter.recordSuccess();
+        print("✅ Email authentication successful for: $email");
+        
         // User will be handled by auth state listener
         return AuthRequestResult(
           requestId: requestId,
@@ -216,6 +235,10 @@ class RobustAuthenticationService extends ChangeNotifier {
           user: _currentUser,
         );
       } else {
+        // Record failed attempt
+        await _rateLimiter.recordAttempt();
+        print("❌ Email authentication failed: no user returned");
+        
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -223,6 +246,10 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
     } catch (e) {
+      // Record failed attempt
+      await _rateLimiter.recordAttempt();
+      print("❌ Email authentication error: $e");
+      
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -238,6 +265,16 @@ class RobustAuthenticationService extends ChangeNotifier {
     String requestId,
   ) async {
     try {
+      // Check rate limiting first
+      if (await _rateLimiter.isRateLimited()) {
+        final message = await _rateLimiter.getRateLimitMessage();
+        return AuthRequestResult(
+          requestId: requestId,
+          success: false,
+          error: message ?? 'Too many authentication attempts. Please try again later.',
+        );
+      }
+      
     // print("🔐 Looking up user by username: $username (request: $requestId)");
       
       // First, find the user by username in Firestore (try both cases)
@@ -266,6 +303,9 @@ class RobustAuthenticationService extends ChangeNotifier {
       }
       
       if (usersQuery.docs.isEmpty) {
+        // Record failed attempt
+        await _rateLimiter.recordAttempt();
+        
     // print("❌ Username not found: $username (tried original, lowercase, uppercase)");
         
         // Debug: List all usernames in the database
@@ -294,6 +334,9 @@ class RobustAuthenticationService extends ChangeNotifier {
       final email = (userData as Map<String, dynamic>)['email'] as String?;
       
       if (email == null || email.isEmpty) {
+        // Record failed attempt
+        await _rateLimiter.recordAttempt();
+        
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -307,6 +350,9 @@ class RobustAuthenticationService extends ChangeNotifier {
       return await signInWithEmail(email, password, requestId);
       
     } catch (e) {
+      // Record failed attempt
+      await _rateLimiter.recordAttempt();
+      
       return AuthRequestResult(
         requestId: requestId,
         success: false,

@@ -13,8 +13,8 @@ class NetworkPolicyService {
   // Policy state
   bool _isInitialized = false;
   ConnectivityResult _currentConnectivity = ConnectivityResult.none;
-  int _batteryLevel = 100; // Simulated battery level
-  bool _isLowPowerMode = false; // Simulated low power mode
+  final int _batteryLevel = 100; // Simulated battery level
+  final bool _isLowPowerMode = false; // Simulated low power mode
   bool _prefetchEnabled = true;
   bool _prefetchMediaSegments = true;
   double _prefetchThreshold = 0.5;

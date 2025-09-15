@@ -373,7 +373,8 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
                     // Gallery button
                     GestureDetector(
                       onTap: () async {
-                        Navigator.pop(context); // Close camera screen
+                        final navigator = Navigator.of(context);
+                        navigator.pop(); // Close camera screen
                         // Open gallery instead
                         final XFile? image = await ImagePicker().pickImage(
                           source: ImageSource.gallery,
@@ -385,8 +386,8 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
                           widget.onImageCaptured(File(image.path));
                         } else {
                           // If user cancels gallery, close image picker modal too
-                          if (mounted) {
-                            Navigator.pop(context);
+                          if (mounted && navigator.canPop()) {
+                            navigator.pop();
                           }
                         }
                       },

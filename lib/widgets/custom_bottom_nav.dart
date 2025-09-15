@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:ui';
 import 'dart:io' show Platform;
 import '../providers/unread_messages_provider.dart';
+import '../utils/performance_utils.dart';
 
 class CustomBottomNav extends ConsumerWidget {
   final int currentIndex;
@@ -117,8 +118,9 @@ class CustomBottomNav extends ConsumerWidget {
       hint: isSelected ? 'Selected tab' : 'Tap to switch to $label tab',
       selected: isSelected,
       button: true,
-      child: GestureDetector(
-        onTap: () => onTap(index),
+      child: OptimizedButton(
+        buttonId: 'nav_$index',
+        onPressed: () => onTap(index),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -170,8 +172,9 @@ class CustomBottomNav extends ConsumerWidget {
       hint: isSelected ? 'Selected inbox tab' : 'Tap to open inbox',
       selected: isSelected,
       button: true,
-      child: GestureDetector(
-        onTap: () => onTap(3),
+      child: OptimizedButton(
+        buttonId: 'nav_inbox',
+        onPressed: () => onTap(3),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
