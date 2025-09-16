@@ -15,11 +15,7 @@ import '../services/robust_auth_service.dart';
 import '../services/like_service.dart';
 import '../services/video_performance_service.dart';
 import '../services/unified_avatar_service.dart';
-import '../widgets/action_button.dart';
-import '../widgets/optimized_like_button.dart';
 import '../widgets/comments_view_optimized.dart';
-import '../widgets/optimized_favorite_button.dart';
-import '../widgets/optimized_share_button.dart';
 
 class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final HomeVideo video;
@@ -62,7 +58,6 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   bool _hasIncrementedView = false;
   
   // Like state - simplified
-  final GlobalKey _likeIconKey = GlobalKey();
   
   // Track last tap position for floating hearts
   Offset _lastTapPosition = Offset.zero;
@@ -92,12 +87,19 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     PerformanceService().startVideoLoad(widget.video.id);
     
     try {
-      // Use performance service to get optimized controller
-      _videoPlayerController = VideoPerformanceService().getController(
-        widget.video.videoURL,
+      // Create video controller directly for instant loading
+      _videoPlayerController = VideoPlayerController.networkUrl(
+        Uri.parse(widget.video.videoURL),
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: true,
+          allowBackgroundPlayback: false,
+        ),
       );
       
-      if (_videoPlayerController != null && mounted) {
+      // Initialize the controller
+      await _videoPlayerController!.initialize();
+      
+      if (mounted) {
         setState(() {
           _isInitialized = true;
           _isPlaying = widget.isCurrentVideo;
@@ -109,8 +111,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         
         // Complete performance tracking
         PerformanceService().completeVideoLoad(widget.video.id, success: true);
-      } else {
-        throw Exception('Failed to create video controller');
+        log('✅ Video initialized successfully: ${widget.video.id}');
       }
     } catch (e) {
       log('❌ Error initializing video: $e');
@@ -353,33 +354,33 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         color: Colors.black,
         child: SafeArea(
           bottom: true,
-          child: Stack(
-            children: [
-              // Video player - Full screen
-              if (_isInitialized && _videoPlayerController != null)
-                Positioned.fill(
-                  child: FittedBox(
-                    fit: BoxFit.cover, // This ensures the video covers the entire screen
-                    child: SizedBox(
-                      width: _videoPlayerController!.value.size.width,
-                      height: _videoPlayerController!.value.size.height,
-                      child: VideoPlayer(_videoPlayerController!),
-                    ),
-                  ),
-                )
-              else
-                const Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+        child: Stack(
+          children: [
+            // Video player - Full screen
+            if (_isInitialized && _videoPlayerController != null)
+              Positioned.fill(
+                child: FittedBox(
+                  fit: BoxFit.cover, // This ensures the video covers the entire screen
+                  child: SizedBox(
+                    width: _videoPlayerController!.value.size.width,
+                    height: _videoPlayerController!.value.size.height,
+                    child: VideoPlayer(_videoPlayerController!),
                   ),
                 ),
-              
-              // UI Overlay
-              _buildUIOverlay(),
-              
-              // Action buttons overlay
-              _buildActionButtons(),
-            ],
+              )
+            else
+              const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+                ),
+              ),
+            
+            // UI Overlay
+            _buildUIOverlay(),
+            
+            // Action buttons overlay
+            _buildActionButtons(),
+          ],
           ),
         ),
       ),
@@ -390,7 +391,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     // Get safe area and bottom navigation height
     final mediaQuery = MediaQuery.of(context);
     final bottomPadding = mediaQuery.padding.bottom;
-    const bottomNavHeight = 100.0; // Increased bottom tab bar height to account for actual size
+    const bottomNavHeight = 120.0; // Increased bottom tab bar height to account for actual size
     const railWidth = 64.0; // action rail width
     
     // Since the home view uses extendBody: true, we need to account for the bottom nav
@@ -398,10 +399,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     return Positioned(
       left: 12,
       right: railWidth + 16, // leave room for the rail
-      bottom: bottomPadding + bottomNavHeight + 40, // Increased spacing for better clearance
+      bottom: bottomPadding + bottomNavHeight + 60, // Increased spacing for better clearance
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.4, // Limit height to prevent overflow
+          maxHeight: MediaQuery.of(context).size.height * 0.35, // Reduced height to prevent overflow
         ),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -478,24 +479,121 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
               ),
             ],
           ),
-        ),
+          ),
       ),
     );
   }
 
   Widget _buildActionButtons() {
-    return TikTokActionRail(
-      rightInset: 12.0, // 12dp right inset as specified
-      targetCenterPct: 0.62, // 62% from top (TikTok style)
-      bottomClearance: 140.0, // Increased clearance above caption block
-      onLike: () => _handleLike(),
-      onComment: () => _handleComment(),
-      onBookmark: () => _handleBookmark(),
-      onShare: () => _handleShare(),
-      onShowProfile: widget.onShowProfile,
-      video: widget.video,
-      isLiked: widget.isLiked,
-      isBookmarked: widget.isBookmarked,
+    final media = MediaQuery.of(context);
+    final safeBottom = media.viewPadding.bottom;
+    
+    // Button sizes - TikTok specs
+    const btnSize = 44.0; // 44x44dp minimum tap target
+    const gap = 14.0; // 14-16dp gaps between buttons
+    const count = 4; // like, comment, favorite, share
+    final groupHeight = (count * btnSize) + ((count - 1) * gap);
+    
+    // Calculate positioning directly
+    final screenHeight = media.size.height;
+    final desiredCenterY = screenHeight * 0.62; // 62% from top
+    
+    // Top so that the group is centered around desired Y
+    double top = desiredCenterY - (groupHeight / 2);
+    
+    // Clamp so the group never drops into the caption/nav zone
+    final minTop = 0.0;
+    final maxTop = (screenHeight - 180.0 - safeBottom) - groupHeight; // Increased clearance
+    top = top.clamp(minTop, maxTop);
+    
+    return Positioned(
+      top: top,
+      right: 12.0,
+        child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Like button
+          _buildActionButton(
+            icon: widget.isLiked ? Icons.favorite : Icons.favorite_border,
+            count: widget.video.likes.toString(),
+            onTap: _handleLike,
+            isActive: widget.isLiked,
+          ),
+          const SizedBox(height: 14),
+          
+          // Comment button
+          _buildActionButton(
+            icon: Icons.chat_bubble_outline,
+            count: widget.video.comments.toString(),
+            onTap: _handleComment,
+          ),
+          const SizedBox(height: 14),
+          
+          // Bookmark button
+          _buildActionButton(
+            icon: widget.isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+            count: widget.video.isFavorited ? '1' : '0',
+            onTap: _handleBookmark,
+            isActive: widget.isBookmarked,
+          ),
+          const SizedBox(height: 14),
+          
+          // Share button
+          _buildActionButton(
+            icon: Icons.share,
+            count: 'Share',
+            onTap: _handleShare,
+          ),
+          const SizedBox(height: 14),
+          
+          // Creator avatar
+          GestureDetector(
+            onTap: widget.onShowProfile,
+            child: UnifiedAvatarService().getAvatar(
+              imageUrl: widget.video.creator.avatarURL ?? '',
+              radius: 20,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildActionButton({
+    required IconData icon,
+    required String count,
+    required VoidCallback onTap,
+    bool isActive = false,
+  }) {
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isActive ? const Color(0xFF9248D2) : Colors.white.withValues(alpha: 0.85),
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              count,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+          ),
+        ],
+        ),
+      ),
     );
   }
 }
@@ -590,182 +688,3 @@ class _FloatingHeartOverlayState extends State<_FloatingHeartOverlay>
   }
 }
 
-/// TikTok-style action rail with precise positioning
-class TikTokActionRail extends StatelessWidget {
-  final double rightInset;
-  final double targetCenterPct;
-  final double bottomClearance;
-  final VoidCallback onLike;
-  final VoidCallback onComment;
-  final VoidCallback onBookmark;
-  final VoidCallback onShare;
-  final VoidCallback onShowProfile;
-  final HomeVideo video;
-  final bool isLiked;
-  final bool isBookmarked;
-
-  const TikTokActionRail({
-    super.key,
-    this.rightInset = 12.0,
-    this.targetCenterPct = 0.62, // 62% from top as specified
-    this.bottomClearance = 140.0, // Increased to ensure clearance above caption block
-    required this.onLike,
-    required this.onComment,
-    required this.onBookmark,
-    required this.onShare,
-    required this.onShowProfile,
-    required this.video,
-    required this.isLiked,
-    required this.isBookmarked,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final safeBottom = media.viewPadding.bottom;
-
-    // Button sizes - TikTok specs
-    const btnSize = 44.0; // 44x44dp minimum tap target
-    const gap = 14.0; // 14-16dp gaps between buttons
-    const count = 4; // like, comment, favorite, share
-    final groupHeight = (count * btnSize) + ((count - 1) * gap);
-
-    // Calculate positioning directly without LayoutBuilder
-    final screenHeight = media.size.height;
-    final desiredCenterY = screenHeight * targetCenterPct;
-
-    // Top so that the group is centered around desired Y
-    double top = desiredCenterY - (groupHeight / 2);
-
-    // Clamp so the group never drops into the caption/nav zone
-    final minTop = 0.0;
-    final maxTop = (screenHeight - bottomClearance - safeBottom) - groupHeight;
-    top = top.clamp(minTop, maxTop);
-
-    return Positioned(
-      top: top,
-      right: rightInset,
-      child: _RailButtons(
-        onLike: onLike,
-        onComment: onComment,
-        onBookmark: onBookmark,
-        onShare: onShare,
-        onShowProfile: onShowProfile,
-        video: video,
-        isLiked: isLiked,
-        isBookmarked: isBookmarked,
-      ),
-    );
-  }
-}
-
-class _RailButtons extends StatelessWidget {
-  final VoidCallback onLike;
-  final VoidCallback onComment;
-  final VoidCallback onBookmark;
-  final VoidCallback onShare;
-  final VoidCallback onShowProfile;
-  final HomeVideo video;
-  final bool isLiked;
-  final bool isBookmarked;
-
-  const _RailButtons({
-    required this.onLike,
-    required this.onComment,
-    required this.onBookmark,
-    required this.onShare,
-    required this.onShowProfile,
-    required this.video,
-    required this.isLiked,
-    required this.isBookmarked,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Like button
-        _buildActionButton(
-          icon: isLiked ? Icons.favorite : Icons.favorite_border,
-          count: video.likes.toString(),
-          onTap: onLike,
-          isActive: isLiked,
-        ),
-                     const SizedBox(height: 14),
-
-                     // Comment button
-                     _buildActionButton(
-                       icon: Icons.chat_bubble_outline,
-                       count: video.comments.toString(),
-                       onTap: onComment,
-                     ),
-                     const SizedBox(height: 14),
-
-                     // Bookmark button
-                     _buildActionButton(
-                       icon: isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                       count: video.isFavorited ? '1' : '0',
-                       onTap: onBookmark,
-                       isActive: isBookmarked,
-                     ),
-                     const SizedBox(height: 14),
-
-                     // Share button
-                     _buildActionButton(
-                       icon: Icons.share,
-                       count: 'Share',
-                       onTap: onShare,
-                     ),
-                     const SizedBox(height: 14),
-        
-        // Creator avatar
-        GestureDetector(
-          onTap: onShowProfile,
-          child: UnifiedAvatarService().getAvatar(
-            imageUrl: video.creator.avatarURL ?? '',
-            radius: 20,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required String count,
-    required VoidCallback onTap,
-    bool isActive = false,
-  }) {
-    return SizedBox(
-      width: 44,
-      height: 44,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isActive ? const Color(0xFF9248D2) : Colors.white.withValues(alpha: 0.85),
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              count,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.85),
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

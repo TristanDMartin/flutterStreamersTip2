@@ -391,6 +391,8 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
             onShowComments: () => _openComments(video.id),
             onShowShare: () => _shareVideo(video),
             onShowStreamerCard: () => _showStreamerCardModal(video.creator),
+            isLiked: video.isLiked,
+            isBookmarked: video.isFavorited,
           );
         },
       );
