@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
-import 'video_editing_screen.dart';
+import 'video_edit_view.dart';
 
 class VideoRecordingPreview extends StatefulWidget {
   final File videoFile;
@@ -202,11 +202,11 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
               // Navigate to video editing
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => VideoEditingScreen(
-                    videoFile: widget.videoFile,
-                    onSave: widget.onUseVideo,
-                    onCancel: () => Navigator.of(context).pop(),
-                  ),
+              builder: (context) => VideoEditView(
+                videoFile: widget.videoFile,
+                onNext: widget.onUseVideo,
+                onCancel: () => Navigator.of(context).pop(),
+              ),
                 ),
               );
             },

@@ -1,7 +1,9 @@
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/share_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
@@ -9,14 +11,15 @@ import '../models/home_video.dart';
 import '../widgets/video_player_view_optimized.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/favorites_provider.dart';
+import '../providers/following_provider.dart';
 import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
+import '../services/video_performance_service.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
 import '../widgets/comments_view_optimized.dart';
-import '../widgets/profile_view.dart';
-import '../widgets/streamer_card_view_optimized.dart';
+import '../widgets/streamer_card_view.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
 
@@ -96,6 +99,9 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
       // Use the new instant play loadVideos method
       await homeVM.loadVideos();
       
+      // Prewarm the first video for instant play (TikTok style)
+      await _prewarmFirstVideo();
+      
       log('✅ HomeView: Videos loaded successfully');
       debugPrint('✅ HomeView: Videos loaded successfully');
     } catch (e) {
@@ -103,6 +109,29 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
       debugPrint('❌ HomeView: Error in _loadVideos: $e');
       final error = ErrorHandlingService().handleError(e, context: 'load_videos');
       debugPrint('❌ HomeView: Error loading videos: ${error.message}');
+    }
+  }
+
+  /// Prewarm the first video for instant play (TikTok style)
+  Future<void> _prewarmFirstVideo() async {
+    try {
+      final homeState = ref.read(hp.homeProvider);
+      final videos = _feedTab == FeedTab.forYou ? homeState.forYouVideos : homeState.followingVideos;
+      
+      if (videos.isNotEmpty) {
+        final firstVideo = videos.first;
+        log('🔥 Prewarming first video: ${firstVideo.id}');
+        debugPrint('🔥 Prewarming first video: ${firstVideo.id}');
+        
+        // Prewarm the first video controller
+        await VideoPerformanceService().prewarm(firstVideo.id, firstVideo.videoURL);
+        
+        log('✅ First video prewarmed successfully');
+        debugPrint('✅ First video prewarmed successfully');
+      }
+    } catch (e) {
+      log('❌ Error prewarming first video: $e');
+      debugPrint('❌ Error prewarming first video: $e');
     }
   }
 
@@ -261,19 +290,6 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     );
   }
 
-  void _showProfile(User user) {
-    HapticFeedback.lightImpact();
-    // Navigate to user profile
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ProfileView(
-          user: user,
-          isCurrentUser: false,
-        ),
-      ),
-    );
-  }
 
   void _shareVideo(HomeVideo video) {
     HapticFeedback.lightImpact();
@@ -367,7 +383,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     } else {
       return PageView.builder(
         controller: _pageController,
-        scrollDirection: Axis.horizontal, // Changed from vertical to horizontal
+        scrollDirection: Axis.vertical, // TikTok-style vertical scrolling
         itemCount: videos.length,
         onPageChanged: (index) {
           if (mounted) {
@@ -387,7 +403,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
             homeViewModel: homeVM,
             showSheet: false,
             sheetType: '',
-            onShowProfile: () => _showProfile(video.creator),
+            onShowProfile: () => _showStreamerCardModal(video.creator),
             onShowComments: () => _openComments(video.id),
             onShowShare: () => _shareVideo(video),
             onShowStreamerCard: () => _showStreamerCardModal(video.creator),
@@ -444,10 +460,183 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                 // StreamerCard full-screen modal
                 if (_showStreamerCard && _currentStreamerCard != null)
                   Positioned.fill(
-                    child: StreamerCardViewOptimized(
-                      displayStreamer: _currentStreamerCard!,
+                    child: StreamerCardView(
+                      userId: _currentStreamerCard!.id,
                       currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
                       onDismiss: _dismissStreamerCard,
+                      onFollow: (userId) async {
+                        // Handle follow action
+                        HapticFeedback.lightImpact();
+                        if (kDebugMode) {
+                          print('HomeView: Follow action triggered for user: $userId');
+                        }
+                        
+                        try {
+                          // Get the following provider
+                          final followingNotifier = ref.read(followingProvider.notifier);
+                          
+                          // Check if already following
+                          final isCurrentlyFollowing = followingNotifier.isFollowing(userId);
+                          
+                          if (isCurrentlyFollowing) {
+                            // Unfollow the user
+                            final success = await followingNotifier.unfollowUser(userId);
+                            if (success) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Unfollowed user'),
+                                    backgroundColor: Colors.orange,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            } else {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to unfollow user'),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            }
+                          } else {
+                            // Follow the user
+                            final success = await followingNotifier.followUser(userId);
+                            if (success) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Following user'),
+                                    backgroundColor: Colors.green,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            } else {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to follow user'),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        } catch (e) {
+                          if (kDebugMode) {
+                            print('HomeView: Error in follow action: $e');
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error: ${e.toString()}'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      onMessage: (userId) {
+                        // Handle message action
+                        HapticFeedback.lightImpact();
+                        if (kDebugMode) {
+                          print('HomeView: Message action triggered for user: $userId');
+                        }
+                        
+                        // Show a dialog for messaging functionality
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Message User'),
+                            content: Text('Messaging functionality will be implemented here for user: $userId'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('Close'),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  // TODO: Navigate to chat/messaging screen
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Messaging feature coming soon!'),
+                                      backgroundColor: Colors.blue,
+                                    ),
+                                  );
+                                },
+                                child: const Text('Open Chat'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      onShare: (userId) async {
+                        // Handle share action
+                        HapticFeedback.lightImpact();
+                        if (kDebugMode) {
+                          print('HomeView: Share action triggered for user: $userId');
+                        }
+                        
+                        try {
+                          // Get user information for sharing
+                          final currentStreamer = _currentStreamerCard;
+                          if (currentStreamer == null) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('User information not available'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          
+                          // Generate share content for user profile
+                          final shareText = 'Check out @${currentStreamer.username} on StreamersTip!\n\n'
+                              '${currentStreamer.displayName}\n\n'
+                              'Follow them for amazing content!\n\n'
+                              '#StreamersTip #${currentStreamer.username}';
+                          
+                          final shareUrl = 'https://streamerstip.com/user/${currentStreamer.username}';
+                          
+                          // Use system share sheet
+                          await Share.share(
+                            '$shareText\n\n$shareUrl',
+                            subject: 'StreamersTip User Profile',
+                          );
+                          
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('User profile shared successfully!'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (kDebugMode) {
+                            print('HomeView: Error sharing user profile: $e');
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to share user profile: ${e.toString()}'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        }
+                      },
                     ),
                   ),
               ],

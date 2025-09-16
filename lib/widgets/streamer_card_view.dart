@@ -173,20 +173,90 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _loadPlatforms();
           _loadCalendarEvents();
         } else {
-          setState(() {
-            _error = 'User not found';
-            _isLoading = false;
-          });
+          // Fall back to sample data for sample users
+          _loadSampleUserData();
         }
       }
     }, onError: (error) {
       if (mounted) {
-        setState(() {
-          _error = error.toString();
-          _isLoading = false;
-        });
+        // Try sample data as fallback
+        _loadSampleUserData();
       }
     });
+  }
+
+  void _loadSampleUserData() {
+    // Sample data for demo users
+    final sampleUsers = {
+      'user1': {
+        'id': 'user1',
+        'username': 'streamer1',
+        'displayName': 'Streamer One',
+        'avatarURL': 'https://i.pravatar.cc/200?img=1',
+        'bio': 'Professional gamer and content creator. Love sharing amazing gaming moments! 🎮',
+        'hashtags': ['gaming', 'streaming', 'esports'],
+        'onlineStatus': 'online',
+        'postCount': 42,
+        'followerCount': 1250,
+        'followingCount': 89,
+        'aiSelf': 'Passionate gamer who loves creating content and connecting with the community.',
+        'platforms': [
+          {'type': 'twitch', 'username': 'streamer1', 'followers': 1250},
+          {'type': 'youtube', 'username': 'streamer1', 'followers': 890},
+        ],
+        'calendarEvents': [
+          {
+            'id': 'event1',
+            'title': 'Gaming Stream',
+            'description': 'Playing the latest games with viewers',
+            'date': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+          },
+        ],
+      },
+      'user2': {
+        'id': 'user2',
+        'username': 'streamer2',
+        'displayName': 'Streamer Two',
+        'avatarURL': 'https://i.pravatar.cc/200?img=2',
+        'bio': 'Creative content creator sharing cool tricks and entertaining moments! 🔥',
+        'hashtags': ['entertainment', 'tricks', 'fun'],
+        'onlineStatus': 'online',
+        'postCount': 28,
+        'followerCount': 890,
+        'followingCount': 156,
+        'aiSelf': 'Creative entertainer who loves sharing fun and engaging content.',
+        'platforms': [
+          {'type': 'tiktok', 'username': 'streamer2', 'followers': 890},
+          {'type': 'instagram', 'username': 'streamer2', 'followers': 456},
+        ],
+        'calendarEvents': [
+          {
+            'id': 'event2',
+            'title': 'Trick Tutorial',
+            'description': 'Teaching cool tricks to followers',
+            'date': DateTime.now().add(const Duration(days: 2)).toIso8601String(),
+          },
+        ],
+      },
+    };
+
+    final sampleData = sampleUsers[widget.userId];
+    if (sampleData != null) {
+      setState(() {
+        _userData = sampleData;
+        _isLoading = false;
+        _error = null;
+      });
+      _loadStats();
+      _checkRelationshipStatus();
+      _loadPlatforms();
+      _loadCalendarEvents();
+    } else {
+      setState(() {
+        _error = 'User not found';
+        _isLoading = false;
+      });
+    }
   }
 
   void _loadStats() {

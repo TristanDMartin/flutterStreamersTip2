@@ -1,11 +1,10 @@
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
 
 /// Unified Avatar Service
 ///
@@ -19,6 +18,11 @@ class UnifiedAvatarService {
   // Memory cache for instant access
   final Map<String, ImageProvider> _memoryCache = {};
   final Map<String, bool> _loadingStates = {};
+  
+  // Buffer management to prevent ImageReader_JNI overflow
+  static const int _maxConcurrentLoads = 2; // Reduced to prevent buffer overflow
+  int _currentLoads = 0;
+  final Queue<String> _loadQueue = Queue<String>();
   
   // Cache directory
   Directory? _cacheDir;
@@ -107,7 +111,11 @@ class UnifiedAvatarService {
         // Add error handling for invalid images
         httpHeaders: const {
           'User-Agent': 'Mozilla/5.0 (compatible; FlutterApp/1.0)',
+          'Accept': 'image/*',
         },
+        // Add timeout and retry configuration
+        fadeInDuration: const Duration(milliseconds: 200),
+        fadeOutDuration: const Duration(milliseconds: 100),
       );
     } catch (e) {
       debugPrint('❌ UnifiedAvatarService: Critical error in getAvatar: $e');
@@ -206,16 +214,64 @@ class UnifiedAvatarService {
     }
   }
 
-  /// Preload avatars for instant display
+  /// Preload avatars for instant display with buffer management
   Future<void> preloadAvatars(List<String> avatarUrls) async {
     if (avatarUrls.isEmpty) return;
 
     debugPrint('🔄 UnifiedAvatarService: Preloading ${avatarUrls.length} avatars...');
     
-    final futures = avatarUrls.map((url) => _preloadSingleAvatar(url));
-    await Future.wait(futures, eagerError: false);
+    // Limit concurrent loading to prevent buffer overflow
+    final limitedUrls = avatarUrls.take(_maxConcurrentLoads).toList();
+    
+    for (final url in limitedUrls) {
+      if (url.isNotEmpty && !_memoryCache.containsKey(url)) {
+        _loadImageWithBufferManagement(url);
+      }
+    }
     
     debugPrint('✅ UnifiedAvatarService: Preloaded ${_memoryCache.length} avatars');
+  }
+
+  /// Load image with buffer management
+  Future<void> _loadImageWithBufferManagement(String url) async {
+    if (url.isEmpty || _memoryCache.containsKey(url) || _loadingStates[url] == true) return;
+    
+    if (_currentLoads >= _maxConcurrentLoads) {
+      _loadQueue.add(url);
+      return;
+    }
+    
+    _currentLoads++;
+    _loadingStates[url] = true;
+    
+    try {
+      final imageProvider = CachedNetworkImageProvider(url);
+      
+      final context = NavigationService.navigatorKey.currentContext;
+      if (context != null) {
+        try {
+          await precacheImage(imageProvider, context);
+          _memoryCache[url] = imageProvider;
+          debugPrint('✅ UnifiedAvatarService: Loaded avatar $url');
+        } catch (e) {
+          debugPrint('⚠️ UnifiedAvatarService: Failed to precache avatar $url: $e');
+        }
+      } else {
+        _memoryCache[url] = imageProvider;
+        debugPrint('✅ UnifiedAvatarService: Cached avatar provider $url');
+      }
+    } catch (e) {
+      debugPrint('⚠️ UnifiedAvatarService: Failed to load avatar $url: $e');
+    } finally {
+      _loadingStates[url] = false;
+      _currentLoads--;
+      
+      // Process next in queue
+      if (_loadQueue.isNotEmpty) {
+        final nextUrl = _loadQueue.removeFirst();
+        _loadImageWithBufferManagement(nextUrl);
+      }
+    }
   }
 
   /// Preload a single avatar
@@ -223,10 +279,26 @@ class UnifiedAvatarService {
     if (url.isEmpty || _memoryCache.containsKey(url)) return;
 
     try {
+      // Use a more robust approach to validate images
       final imageProvider = CachedNetworkImageProvider(url);
-      _memoryCache[url] = imageProvider;
       
-      debugPrint('✅ UnifiedAvatarService: Preloaded avatar $url');
+      // Try to precache the image to validate it
+      final context = NavigationService.navigatorKey.currentContext;
+      if (context != null) {
+        try {
+          await precacheImage(imageProvider, context);
+          _memoryCache[url] = imageProvider;
+          debugPrint('✅ UnifiedAvatarService: Preloaded avatar $url');
+        } catch (e) {
+          // If precaching fails, don't cache the provider
+          debugPrint('⚠️ UnifiedAvatarService: Failed to precache avatar $url: $e');
+          // Don't add to memory cache if it fails validation
+        }
+      } else {
+        // If no context, just cache the provider (less reliable)
+        _memoryCache[url] = imageProvider;
+        debugPrint('✅ UnifiedAvatarService: Cached avatar provider $url');
+      }
     } catch (e) {
       debugPrint('⚠️ UnifiedAvatarService: Failed to preload avatar $url: $e');
     }

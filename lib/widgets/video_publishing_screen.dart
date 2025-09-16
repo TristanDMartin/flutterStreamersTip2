@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
 import 'dart:math';
@@ -194,8 +195,16 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0E1220),
-      body: Column(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+          ),
+        ),
+        child: Column(
         children: [
           // Header
           _buildHeader(),
@@ -237,6 +246,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           // Bottom Actions
           _buildBottomActions(),
         ],
+        ),
       ),
     );
   }
@@ -252,11 +262,26 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: widget.onCancel,
-            child: const Icon(
-              Icons.arrow_back_ios,
-              color: Colors.white,
-              size: 24,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              widget.onCancel();
+            },
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: const Icon(
+                Icons.chevron_left,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -418,7 +443,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           Text(
             'Choose the category that best fits your video',
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.7),
+              color: Colors.white.withOpacity(0.7),
               fontSize: 14,
             ),
           ),
@@ -426,10 +451,10 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           // Category Dropdown
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha:0.05),
+              color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.white.withValues(alpha:0.1),
+                color: Colors.white.withOpacity(0.2),
                 width: 1,
               ),
             ),
@@ -641,21 +666,32 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0E1220),
-        border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha:0.1)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            const Color(0xFF1C135D).withOpacity(0.8),
+          ],
         ),
       ),
       child: Row(
         children: [
           Expanded(
             child: GestureDetector(
-              onTap: widget.onCancel,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                widget.onCancel();
+              },
               child: Container(
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(25),
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 1,
+                  ),
                 ),
                 child: const Center(
                   child: Text(
@@ -673,19 +709,29 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           const SizedBox(width: 16),
           Expanded(
             child: GestureDetector(
-              onTap: (_isUploading || _isModerating) ? null : _publishVideo,
+              onTap: (_isUploading || _isModerating) ? null : () {
+                HapticFeedback.lightImpact();
+                _publishVideo();
+              },
               child: Container(
                 height: 50,
                 decoration: BoxDecoration(
                   gradient: (_isUploading || _isModerating)
                       ? null
                       : const LinearGradient(
-                          colors: [Color(0xFF9248D2), Color(0xFF1670DE)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
                         ),
-                  color: (_isUploading || _isModerating) ? Colors.grey : null,
-                  borderRadius: BorderRadius.circular(25),
+                  color: (_isUploading || _isModerating) ? Colors.grey.withOpacity(0.3) : null,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: (_isUploading || _isModerating) ? null : [
+                    BoxShadow(
+                      color: const Color(0xFF9248D2).withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Center(
                   child: _isModerating

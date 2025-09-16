@@ -34,7 +34,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   late Animation<double> _flipAnimation;
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
   bool _isFront = true;
-  late ProfileUpdateService _profileUpdateService;
+  ProfileUpdateService? _profileUpdateService;
   Map<String, dynamic>? _cachedUserData;
 
   @override
@@ -58,12 +58,12 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _profileUpdateService = ProfileUpdateService();
     
     // Listen for profile updates
-    _profileUpdateService.addProfileViewListener(_onProfileUpdated);
+    _profileUpdateService?.addProfileViewListener(_onProfileUpdated);
   }
 
   @override
   void dispose() {
-    _profileUpdateService.removeProfileViewListener(_onProfileUpdated);
+    _profileUpdateService?.removeProfileViewListener(_onProfileUpdated);
     _segmentedController.dispose();
     _flipController.dispose();
     super.dispose();
@@ -175,7 +175,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       MaterialPageRoute(
         builder: (context) => StreamerCardView(
           userId: widget.user.id,
-          currentUserId: _profileUpdateService.currentUser?.uid,
+          currentUserId: _profileUpdateService?.currentUser?.uid,
           onDismiss: () => Navigator.of(context).pop(),
           onFollow: (userId) {
             // Handle follow action
@@ -222,12 +222,12 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   Map<String, dynamic> get _currentUserData {
     try {
       // Check if this is the current user by comparing user IDs
-      final currentUserId = _profileUpdateService.currentUser?.uid;
+      final currentUserId = _profileUpdateService?.currentUser?.uid;
       final isCurrentUser = currentUserId != null && currentUserId == widget.user.id;
       
       // If this is the current user, get data from ProfileUpdateService
-      if (isCurrentUser && _profileUpdateService.isDataLoaded) {
-        _cachedUserData = _profileUpdateService.userData ?? widget.user.toMap();
+      if (isCurrentUser && _profileUpdateService?.isDataLoaded == true) {
+        _cachedUserData = _profileUpdateService?.userData ?? widget.user.toMap();
         if (kDebugMode) {
     // print('ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
         }

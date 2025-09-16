@@ -35,7 +35,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   String? _uploadError;
   DateTime? _lastNameChangeDate;
   bool _canChangeName = true;
-  late final ProfileUpdateService _profileUpdateService;
+  ProfileUpdateService? _profileUpdateService;
   
   // Gradient colors matching your design system
   static const List<Color> _gradientColors = [
@@ -155,7 +155,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     
     // Update all profile views through ProfileUpdateService
     try {
-      await _profileUpdateService.updateUserData(updateData);
+      await _profileUpdateService?.updateUserData(updateData);
     } catch (e) {
       // Error updating profile views, using fallback
       if (kDebugMode) {
@@ -391,7 +391,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                 
                 // Update ProfileUpdateService to notify all views
                 try {
-                  await _profileUpdateService.updateUserData({'status': status.name});
+                  await _profileUpdateService?.updateUserData({'status': status.name});
                   // Status updated successfully
                 } catch (e) {
                   // Error updating status, using fallback

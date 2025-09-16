@@ -22,7 +22,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   bool isPlatformsExpanded = true;
   bool isCalendarExpanded = true;
   String? _selectedHashtag;
-  late final ProfileUpdateService _profileUpdateService;
+  ProfileUpdateService? _profileUpdateService;
 
   @override
   void initState() {
@@ -30,12 +30,12 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     _profileUpdateService = ProfileUpdateService();
     
     // Listen for profile updates
-    _profileUpdateService.addProfileBackViewListener(_onProfileUpdated);
+    _profileUpdateService?.addProfileBackViewListener(_onProfileUpdated);
   }
 
   @override
   void dispose() {
-    _profileUpdateService.removeProfileBackViewListener(_onProfileUpdated);
+    _profileUpdateService?.removeProfileBackViewListener(_onProfileUpdated);
     super.dispose();
   }
 
@@ -51,12 +51,12 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   /// Get the current user data, either from widget or from ProfileUpdateService
   Map<String, dynamic> get _currentUserData {
     // Check if this is the current user by comparing user IDs
-    final currentUserId = _profileUpdateService.currentUser?.uid;
+    final currentUserId = _profileUpdateService?.currentUser?.uid;
     final isCurrentUser = currentUserId != null && currentUserId == widget.user['id'];
     
     // If this is the current user, get data from ProfileUpdateService
-    if (isCurrentUser && _profileUpdateService.isDataLoaded) {
-      return _profileUpdateService.userData ?? widget.user;
+    if (isCurrentUser && _profileUpdateService?.isDataLoaded == true) {
+      return _profileUpdateService?.userData ?? widget.user;
     }
     // Otherwise use the widget user data
     return widget.user;

@@ -21,8 +21,16 @@ class VideoPerformanceService {
     if (_videoPreloaded[videoUrl] == true) return;
     
     try {
-      final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse(videoUrl),
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: true,
+          allowBackgroundPlayback: false,
+        ),
+      );
       await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(0); // Start muted for autoplay compliance
       
       // Preload thumbnail
       if (thumbnailUrl != null) {
@@ -40,6 +48,30 @@ class VideoPerformanceService {
       debugPrint('Error preloading video: $e');
     }
   }
+
+  /// Prewarm video controller for instant play (TikTok style)
+  Future<VideoPlayerController> prewarm(String id, String url) async {
+    if (_videoControllers[url] != null) {
+      return _videoControllers[url]!;
+    }
+    
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      videoPlayerOptions: VideoPlayerOptions(
+        mixWithOthers: true,
+        allowBackgroundPlayback: false,
+      ),
+    );
+    await controller.initialize();
+    await controller.setLooping(true);
+    await controller.setVolume(0); // Start muted for autoplay compliance
+    _videoControllers[url] = controller;
+    _videoPreloaded[url] = true;
+    return controller;
+  }
+
+  /// Get ready controller (warm start)
+  VideoPlayerController? getReady(String url) => _videoControllers[url];
   
   /// Preload thumbnail image
   Future<void> _preloadThumbnail(String thumbnailUrl) async {

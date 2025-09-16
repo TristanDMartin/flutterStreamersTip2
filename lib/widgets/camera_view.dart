@@ -7,8 +7,9 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:async';
 import 'video_recording_preview.dart';
-import 'video_editing_screen.dart' as editing;
+import 'video_edit_view.dart';
 import '../services/enhanced_error_handling_service.dart';
+import 'capture_button.dart';
 
 
 enum NavigationState {
@@ -36,15 +37,14 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
   VideoPlayerController? _previewController;
   bool _isInitialized = false;
   bool _isFrontCamera = false;
-  double _recordingProgress = 0.0;
+  // _recordingProgress removed - now handled by CaptureButton
   int _recordingDuration = 0;
   late AnimationController _pulseController;
   late AnimationController _recordButtonController;
   
   // New UI state variables
-  bool _isFlashOn = false;
-  bool _showFilters = false;
-  String _selectedFilter = 'none';
+  // _isFlashOn removed - flash button no longer available
+  // Filter-related variables removed - no longer needed
   bool _showGrid = false;
   bool _showTimer = false;
   int _timerValue = 0;
@@ -60,6 +60,16 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
   bool _isFocusing = false;
   late AnimationController _focusAnimationController;
   final EnhancedErrorHandlingService _errorHandler = EnhancedErrorHandlingService();
+  
+  // Menu button debounce
+  bool _isMenuButtonPressed = false;
+  Timer? _debounceTimer;
+  
+  void _resetMenuDebounce() {
+    _debounceTimer?.cancel();
+    _isMenuButtonPressed = false;
+    debugPrint('Menu debounce reset');
+  }
 
   @override
   void initState() {
@@ -87,6 +97,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
     _recordButtonController.dispose();
     _focusAnimationController.dispose();
     _recordingTimer?.cancel();
+    _resetMenuDebounce();
     super.dispose();
   }
 
@@ -169,7 +180,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
       setState(() {
         _isRecording = true;
         _recordingDuration = 0;
-        _recordingProgress = 0.0;
+        // _recordingProgress removed - now handled by CaptureButton
       });
 
       // Start recording timer
@@ -221,7 +232,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
       if (_isRecording && mounted) {
         setState(() {
           _recordingDuration++;
-          _recordingProgress = (_recordingDuration / 60.0).clamp(0.0, 1.0);
+          // _recordingProgress removed - now handled by CaptureButton
         });
       } else {
         timer.cancel();
@@ -261,10 +272,10 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
     // Navigate to video editing screen
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => editing.VideoEditingScreen(
+        builder: (context) => VideoEditView(
           videoFile: _currentVideoFile!,
           onCancel: () => Navigator.of(context).pop(),
-          onSave: _onSaveVideo,
+          onNext: _onSaveVideo,
         ),
       ),
     );
@@ -292,38 +303,33 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
   }
 
   // New UI methods
-  void _toggleFlash() {
-    if (_cameraController != null && _cameraController!.value.isInitialized) {
+  // _toggleFlash method removed - flash button no longer available
+
+  // _toggleFilters method removed - no longer needed
+
+  void _toggleGrid() {
+    if (mounted) {
       setState(() {
-        _isFlashOn = !_isFlashOn;
+        _showGrid = !_showGrid;
       });
-      _cameraController!.setFlashMode(_isFlashOn ? FlashMode.torch : FlashMode.off);
     }
   }
 
-  void _toggleFilters() {
-    setState(() {
-      _showFilters = !_showFilters;
-    });
-  }
-
-  void _toggleGrid() {
-    setState(() {
-      _showGrid = !_showGrid;
-    });
-  }
-
   void _toggleTimer() {
-    setState(() {
-      _showTimer = !_showTimer;
-      if (!_showTimer) _timerValue = 0;
-    });
+    if (mounted) {
+      setState(() {
+        _showTimer = !_showTimer;
+        if (!_showTimer) _timerValue = 0;
+      });
+    }
   }
 
   void _setTimer(int seconds) {
-    setState(() {
-      _timerValue = seconds;
-    });
+    if (mounted) {
+      setState(() {
+        _timerValue = seconds;
+      });
+    }
   }
 
   // Focus and zoom methods
@@ -418,26 +424,55 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
   }
 
   Future<void> _capturePhoto() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    if (_cameraController == null || !_cameraController!.value.isInitialized || !mounted) return;
 
     try {
       final XFile photo = await _cameraController!.takePicture();
-      setState(() {
-        _lastCapturedImage = File(photo.path);
-      });
-      HapticFeedback.lightImpact();
+      if (mounted) {
+        setState(() {
+          _lastCapturedImage = File(photo.path);
+        });
+        HapticFeedback.lightImpact();
+      }
     } catch (e) {
       debugPrint('Error capturing photo: $e');
+      // Show error to user if needed
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error capturing photo: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
   void _showSettingsMenu() {
+    // Prevent multiple rapid taps with a timeout
+    if (_isMenuButtonPressed) {
+      debugPrint('Menu button pressed but debounced - ignoring');
+      return;
+    }
+    
+    debugPrint('Opening settings menu');
+    _isMenuButtonPressed = true;
+    
+    // Auto-reset debounce after 2 seconds as a safety measure
+    _debounceTimer = Timer(const Duration(seconds: 2), () {
+      debugPrint('Auto-resetting menu debounce flag');
+      _resetMenuDebounce();
+    });
+    
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF0E1220),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      isDismissible: true,
+      enableDrag: true,
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -457,8 +492,16 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               title: 'Grid Lines',
               subtitle: 'Show composition grid',
               onTap: () {
+                debugPrint('Grid Lines tapped - resetting debounce');
                 Navigator.pop(context);
-                _toggleGrid();
+                // Reset debounce immediately when menu item is tapped
+                _resetMenuDebounce();
+                // Use a small delay to ensure modal is fully closed
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  if (mounted) {
+                    _toggleGrid();
+                  }
+                });
               },
             ),
             _buildSettingsItem(
@@ -466,26 +509,34 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               title: 'Timer',
               subtitle: 'Set countdown timer',
               onTap: () {
+                debugPrint('Timer tapped - resetting debounce');
                 Navigator.pop(context);
-                _showTimerOptions();
+                // Reset debounce immediately when menu item is tapped
+                _resetMenuDebounce();
+                // Use a small delay to ensure modal is fully closed
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  if (mounted) {
+                    _showTimerOptions();
+                  }
+                });
               },
             ),
-            _buildSettingsItem(
-              icon: Icons.flash_on,
-              title: 'Flash',
-              subtitle: _isFlashOn ? 'Flash On' : 'Flash Off',
-              onTap: () {
-                Navigator.pop(context);
-                _toggleFlash();
-              },
-            ),
+            // Flash option removed - flash button no longer available
             _buildSettingsItem(
               icon: Icons.photo_camera,
               title: 'Take Photo',
               subtitle: 'Capture a photo',
               onTap: () {
+                debugPrint('Take Photo tapped - resetting debounce');
                 Navigator.pop(context);
-                _capturePhoto();
+                // Reset debounce immediately when menu item is tapped
+                _resetMenuDebounce();
+                // Use a small delay to ensure modal is fully closed
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  if (mounted) {
+                    _capturePhoto();
+                  }
+                });
               },
             ),
           ],
@@ -639,10 +690,10 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
     }
     
     if (_navigationState == NavigationState.editDescription && _currentVideoFile != null) {
-      return editing.VideoEditingScreen(
+      return VideoEditView(
         videoFile: _currentVideoFile!,
         onCancel: _onBack,
-        onSave: _onSaveVideo,
+        onNext: _onSaveVideo,
       );
     }
 
@@ -665,16 +716,14 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
           // Bottom Controls (Gallery, Record, Switch Camera)
           _buildBottomControls(),
 
-          // Recording Progress
-          if (_isRecording) _buildRecordingProgress(),
+          // Recording Progress - Removed (now handled by CaptureButton)
 
           // Mode Selector
 
           // Grid Lines
           if (_showGrid) _buildGridLines(),
 
-          // Filters Overlay
-          if (_showFilters) _buildFiltersOverlay(),
+          // Filters Overlay - removed (no longer needed)
 
           // Timer Overlay
           if (_showTimer && _timerValue > 0) _buildTimerOverlay(),
@@ -772,11 +821,11 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
       top: MediaQuery.of(context).padding.top + 8,
       left: 16,
       right: 16,
-      child: Row(
+      child: const Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           // Time display
-          const Text(
+          Text(
             '3:28', // This would be dynamic in a real app
             style: TextStyle(
               color: Colors.white,
@@ -787,25 +836,11 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
           // Status indicators (Signal, Wi-Fi, Battery)
           Row(
             children: [
-              const Icon(Icons.signal_cellular_4_bar, color: Colors.white, size: 16),
-              const SizedBox(width: 4),
-              const Icon(Icons.wifi, color: Colors.white, size: 16),
-              const SizedBox(width: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha:0.3),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  '29',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
+              Icon(Icons.signal_cellular_4_bar, color: Colors.white, size: 16),
+              SizedBox(width: 4),
+              Icon(Icons.wifi, color: Colors.white, size: 16),
+              SizedBox(width: 4),
+              Icon(Icons.battery_2_bar, color: Colors.white, size: 16),
             ],
           ),
         ],
@@ -838,20 +873,23 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               ),
             ),
           ),
-          // Flash toggle
-          GestureDetector(
-            onTap: _toggleFlash,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha:0.5),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(
-                _isFlashOn ? Icons.flash_on : Icons.flash_off,
-                color: Colors.white,
-                size: 20,
+          // Menu button - moved from right controls
+          Semantics(
+            label: 'Menu, button',
+            child: GestureDetector(
+              onTap: _showSettingsMenu,
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha:0.5),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  Icons.keyboard_arrow_down,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
             ),
           ),
@@ -861,49 +899,8 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
   }
 
   Widget _buildRightControls() {
-    return Positioned(
-      right: 16,
-      top: MediaQuery.of(context).padding.top + 100,
-      child: Column(
-        children: [
-          // Filters button
-          GestureDetector(
-            onTap: _toggleFilters,
-            child: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha:0.5),
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: const Icon(
-                Icons.face,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Settings/More button
-          GestureDetector(
-            onTap: _showSettingsMenu,
-            child: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha:0.5),
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: const Icon(
-                Icons.keyboard_arrow_down,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    // Right controls removed - menu button moved to top controls
+    return const SizedBox.shrink();
   }
 
   Widget _buildBottomControls() {
@@ -942,56 +939,16 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
                     ),
             ),
           ),
-          // Record Button
+          // Record Button - New CaptureButton Widget
           GestureDetector(
-            onTap: _isRecording ? _stopRecording : _startRecording,
-            onLongPress: _capturePhoto,
-            onTapDown: (_) => _recordButtonController.forward(),
-            onTapUp: (_) => _recordButtonController.reverse(),
-            onTapCancel: () => _recordButtonController.reverse(),
-            child: AnimatedBuilder(
-              animation: _recordButtonController,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: 1.0 - (_recordButtonController.value * 0.1),
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF9248D2), Color(0xFF1670DE)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 4,
-                      ),
-                    ),
-                    child: _isRecording
-                        ? AnimatedBuilder(
-                            animation: _pulseController,
-                            builder: (context, child) {
-                              return Container(
-                                margin: EdgeInsets.all(8 + (_pulseController.value * 4)),
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.red,
-                                ),
-                              );
-                            },
-                          )
-                        : Container(
-                            margin: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                            ),
-                          ),
-                  ),
-                );
-              },
+            onLongPress: _capturePhoto, // Long press for photo capture
+            child: CaptureButton(
+              size: 80,
+              ringWidth: 8,
+              duration: const Duration(seconds: 60), // 60 second max recording
+              isRecording: _isRecording, // Pass recording state
+              onStart: _startRecording,
+              onFinish: _stopRecording,
             ),
           ),
           // Switch Camera
@@ -1016,55 +973,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildRecordingProgress() {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 80,
-      left: 16,
-      right: 16,
-      child: Column(
-        children: [
-          // Recording indicator
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'REC ${_recordingDuration}s',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Progress bar
-          LinearProgressIndicator(
-            value: _recordingProgress,
-            backgroundColor: Colors.white.withValues(alpha: 0.3),
-            valueColor: const AlwaysStoppedAnimation<Color>(Colors.red),
-            minHeight: 4,
-          ),
-        ],
-      ),
-    );
-  }
+  // _buildRecordingProgress() method removed - recording progress now handled by CaptureButton
 
 
   Widget _buildGridLines() {
@@ -1075,69 +984,7 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildFiltersOverlay() {
-    return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 120,
-      left: 0,
-      right: 0,
-      child: Container(
-        height: 100,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha:0.8),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: 10,
-                itemBuilder: (context, index) {
-                  final filters = ['None', 'Vintage', 'B&W', 'Sepia', 'Cool', 'Warm', 'Bright', 'Dark', 'Blur', 'Sharp'];
-                  final isSelected = _selectedFilter == filters[index].toLowerCase();
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedFilter = filters[index].toLowerCase();
-                      });
-                    },
-                    child: Container(
-                      width: 60,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Text(
-                          filters[index],
-                          style: TextStyle(
-                            color: isSelected ? Colors.black : Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // _buildFiltersOverlay method removed - no longer needed
 
   Widget _buildTimerOverlay() {
     return Positioned(

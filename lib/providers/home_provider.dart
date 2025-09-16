@@ -115,19 +115,19 @@ class HomeViewModel extends StateNotifier<HomeState> {
     }
   }
 
-  /// Preload avatars for instant display
+  /// Preload avatars for instant display (limited to prevent buffer overflow)
   Future<void> _preloadAvatars() async {
     try {
       final avatarUrls = <String>[];
       
-      // Collect avatar URLs from current videos
-      for (final video in state.forYouVideos) {
+      // Only preload first 2 videos to prevent buffer overflow
+      for (final video in state.forYouVideos.take(2)) {
         if (video.creator.avatarURL?.isNotEmpty == true) {
           avatarUrls.add(video.creator.avatarURL!);
         }
       }
       
-      for (final video in state.followingVideos) {
+      for (final video in state.followingVideos.take(2)) {
         if (video.creator.avatarURL?.isNotEmpty == true) {
           avatarUrls.add(video.creator.avatarURL!);
         }
@@ -164,7 +164,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
     }
   }
 
-  /// Create sample videos for instant display (reduced to 3 for better performance)
+  /// Create sample videos for instant display (reduced to 2 for better performance)
   List<HomeVideo> _createSampleVideos() {
     return [
       const HomeVideo(
@@ -173,10 +173,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
           id: 'user1',
           username: 'streamer1',
           displayName: 'Streamer One',
-          avatarURL: 'https://picsum.photos/200/200?random=1',
+          avatarURL: 'https://i.pravatar.cc/200?img=1',
         ),
         videoURL: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        thumbnailURL: 'https://picsum.photos/400/600?random=1',
+        thumbnailURL: 'https://i.pravatar.cc/400?img=1',
         likes: 1250,
         comments: 89,
         views: 15420,
@@ -193,10 +193,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
           id: 'user2',
           username: 'streamer2',
           displayName: 'Streamer Two',
-          avatarURL: 'https://picsum.photos/200/200?random=2',
+          avatarURL: 'https://i.pravatar.cc/200?img=2',
         ),
         videoURL: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-        thumbnailURL: 'https://picsum.photos/400/600?random=2',
+        thumbnailURL: 'https://i.pravatar.cc/400?img=2',
         likes: 890,
         comments: 45,
         views: 9870,
@@ -206,26 +206,6 @@ class HomeViewModel extends StateNotifier<HomeState> {
         isDraft: false,
         mlScore: 0.87,
         categoryId: 'entertainment',
-      ),
-      const HomeVideo(
-        id: '3',
-        creator: app_user.User(
-          id: 'user3',
-          username: 'streamer3',
-          displayName: 'Streamer Three',
-          avatarURL: 'https://picsum.photos/200/200?random=3',
-        ),
-        videoURL: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        thumbnailURL: 'https://picsum.photos/400/600?random=3',
-        likes: 2100,
-        comments: 156,
-        views: 23450,
-        caption: 'Epic fail compilation 😂',
-        isLiked: false,
-        isFavorited: true,
-        isDraft: false,
-        mlScore: 0.92,
-        categoryId: 'comedy',
       ),
     ];
   }

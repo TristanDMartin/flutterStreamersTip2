@@ -29,7 +29,6 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _textFadeAnimation;
   late Animation<double> _textSlideAnimation;
   late Animation<double> _loadingAnimation;
-  late Animation<Offset> _slideAnimation;
   
   Timer? _splashTimer;
   bool _isComplete = false;
@@ -106,13 +105,7 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
     );
     
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0.3, 0.0),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.easeOutCubic,
-    ));
+    // _slideAnimation removed - no longer used
   }
 
   void _startSplashSequence() {
@@ -198,7 +191,6 @@ class _SplashScreenState extends State<SplashScreen>
 
 
   Widget _buildLogoSection() {
-    print('🎯 SplashScreen: Building logo section');
     return AnimatedBuilder(
       animation: _logoController,
       builder: (context, child) {
@@ -234,8 +226,6 @@ class _SplashScreenState extends State<SplashScreen>
                     height: 50,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
-                      print('❌ SplashScreen: Error loading logo: $error');
-                      print('❌ SplashScreen: Stack trace: $stackTrace');
                       return const Icon(
                         Icons.play_circle_filled,
                         size: 50,
@@ -265,7 +255,7 @@ class _SplashScreenState extends State<SplashScreen>
               children: [
                 const Text(
                   'StreamersTip',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -275,7 +265,7 @@ class _SplashScreenState extends State<SplashScreen>
                 const SizedBox(height: 12),
                 const Text(
                   'Connect • Create • Share',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w400,
                     color: Colors.white70,

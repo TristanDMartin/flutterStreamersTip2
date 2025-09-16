@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/home_video.dart';
 import '../providers/home_provider.dart';
@@ -16,6 +17,7 @@ import '../services/like_service.dart';
 import '../services/video_performance_service.dart';
 import '../services/unified_avatar_service.dart';
 import '../widgets/comments_view_optimized.dart';
+import '../widgets/streamer_share_sheet.dart';
 
 class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final HomeVideo video;
@@ -51,13 +53,12 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   ConsumerState<VideoPlayerViewOptimized> createState() => _VideoPlayerViewOptimizedState();
 }
 
-class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimized> {
+class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimized> 
+    with WidgetsBindingObserver {
   VideoPlayerController? _videoPlayerController;
   bool _isInitialized = false;
   bool _isPlaying = false;
   bool _hasIncrementedView = false;
-  
-  // Like state - simplified
   
   // Track last tap position for floating hearts
   Offset _lastTapPosition = Offset.zero;
@@ -65,21 +66,69 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeVideo();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    
     // Track performance
     PerformanceService().trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
     
     // Use performance service to dispose controller safely
     if (_videoPlayerController != null) {
-      VideoPerformanceService().disposeController(widget.video.id);
+      VideoPerformanceService().disposeController(widget.video.videoURL);
       _videoPlayerController = null;
     }
     
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoPlayerViewOptimized oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_videoPlayerController == null || !_isInitialized) return;
+    
+    // React when the page becomes current/non-current
+    if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
+      if (widget.isCurrentVideo) {
+        _videoPlayerController!.play();
+        setState(() => _isPlaying = true);
+      } else {
+        _videoPlayerController!.pause();
+        setState(() => _isPlaying = false);
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (_videoPlayerController == null || !_isInitialized) return;
+    
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        _videoPlayerController!.pause();
+        setState(() => _isPlaying = false);
+        break;
+      case AppLifecycleState.resumed:
+        if (widget.isCurrentVideo) {
+          _videoPlayerController!.play();
+          setState(() => _isPlaying = true);
+        }
+        break;
+      case AppLifecycleState.detached:
+        _videoPlayerController!.pause();
+        setState(() => _isPlaying = false);
+        break;
+      case AppLifecycleState.hidden:
+        _videoPlayerController!.pause();
+        setState(() => _isPlaying = false);
+        break;
+    }
   }
 
   Future<void> _initializeVideo() async {
@@ -87,17 +136,25 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     PerformanceService().startVideoLoad(widget.video.id);
     
     try {
-      // Create video controller directly for instant loading
-      _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.video.videoURL),
+      // Try warm controller first (TikTok style)
+      _videoPlayerController = VideoPerformanceService().getReady(widget.video.videoURL);
+      
+      if (_videoPlayerController == null) {
+        // Create new controller if not prewarmed
+        _videoPlayerController = VideoPlayerController.networkUrl(
+          Uri.parse(widget.video.videoURL),
         videoPlayerOptions: VideoPlayerOptions(
           mixWithOthers: true,
           allowBackgroundPlayback: false,
         ),
-      );
-      
-      // Initialize the controller
-      await _videoPlayerController!.initialize();
+        );
+        
+        if (!_videoPlayerController!.value.isInitialized) {
+          await _videoPlayerController!.initialize();
+        }
+        await _videoPlayerController!.setLooping(true);
+        await _videoPlayerController!.setVolume(0); // Start muted for autoplay compliance
+      }
       
       if (mounted) {
         setState(() {
@@ -196,7 +253,19 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   void _handleShare() {
     // Handle share button tap
     HapticFeedback.lightImpact();
-    // TODO: Implement share functionality
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StreamerShareSheet(
+          userId: widget.video.creator.id,
+          displayName: widget.video.creator.displayName,
+          profileImageUrl: widget.video.creator.avatarURL,
+          onDismiss: () => Navigator.of(context).pop(),
+        );
+      },
+    );
   }
 
   void _handleFollow(WidgetRef ref) {
@@ -350,37 +419,80 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       onTap: _handleTap,
       onDoubleTap: _handleDoubleTap,
       onDoubleTapDown: _handleDoubleTapDown,
-      child: Container(
-        color: Colors.black,
-        child: SafeArea(
-          bottom: true,
-        child: Stack(
-          children: [
-            // Video player - Full screen
-            if (_isInitialized && _videoPlayerController != null)
+      child: SizedBox.expand(
+        child: Container(
+          color: Colors.black,
+          child: Stack(
+            children: [
+              // Video player with optimized rendering
               Positioned.fill(
-                child: FittedBox(
-                  fit: BoxFit.cover, // This ensures the video covers the entire screen
-                  child: SizedBox(
-                    width: _videoPlayerController!.value.size.width,
-                    height: _videoPlayerController!.value.size.height,
-                    child: VideoPlayer(_videoPlayerController!),
-                  ),
-                ),
-              )
-            else
-              const Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-                ),
+                child: _isInitialized && _videoPlayerController != null
+                    ? _buildVideoPlayer()
+                    : _buildPosterPlaceholder(),
               ),
-            
-            // UI Overlay
-            _buildUIOverlay(),
-            
-            // Action buttons overlay
-            _buildActionButtons(),
-          ],
+              
+              // UI Overlay
+              _buildUIOverlay(),
+              
+              // Action buttons overlay
+              _buildActionButtons(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPosterPlaceholder() {
+    // Use thumbnail if available, otherwise show gradient
+    if (widget.video.thumbnailURL != null && widget.video.thumbnailURL!.isNotEmpty) {
+      return SizedBox.expand(
+        child: CachedNetworkImage(
+          imageUrl: widget.video.thumbnailURL!,
+          fit: BoxFit.cover,
+          memCacheHeight: 800, // Limit memory usage
+          memCacheWidth: 400,
+          maxWidthDiskCache: 800,
+          maxHeightDiskCache: 1600,
+          placeholder: (context, url) => _buildGradientPlaceholder(),
+          errorWidget: (context, url, error) => _buildGradientPlaceholder(),
+        ),
+      );
+    } else {
+      return _buildGradientPlaceholder();
+    }
+  }
+
+  Widget _buildGradientPlaceholder() {
+    return SizedBox.expand(
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF1A1A1A),
+              Color(0xFF2D2D2D),
+              Color(0xFF1A1A1A),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoPlayer() {
+    if (_videoPlayerController == null) return _buildGradientPlaceholder();
+    
+    return SizedBox.expand(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _videoPlayerController!.value.size.width,
+          height: _videoPlayerController!.value.size.height,
+          child: VideoPlayer(
+            _videoPlayerController!,
+            key: ValueKey(_videoPlayerController!.dataSource),
           ),
         ),
       ),
@@ -388,128 +500,125 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   Widget _buildUIOverlay() {
-    // Get safe area and bottom navigation height
-    final mediaQuery = MediaQuery.of(context);
-    final bottomPadding = mediaQuery.padding.bottom;
-    const bottomNavHeight = 120.0; // Increased bottom tab bar height to account for actual size
-    const railWidth = 64.0; // action rail width
+    final media = MediaQuery.of(context);
+    final safeBottom = media.viewPadding.bottom;
     
-    // Since the home view uses extendBody: true, we need to account for the bottom nav
-    // that extends behind the content
+    // Constants
+    const navHeight = 72.0;
+    const railWidth = 64.0;
+    const leftInset = 12.0;
+    const rightInset = railWidth + 16;
+    
+    // Position caption block directly above bottom navigation
+    final bottomPosition = safeBottom + navHeight + 35.0;
+    
     return Positioned(
-      left: 12,
-      right: railWidth + 16, // leave room for the rail
-      bottom: bottomPadding + bottomNavHeight + 60, // Increased spacing for better clearance
+      left: leftInset,
+      right: rightInset,
+      bottom: bottomPosition,
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.35, // Reduced height to prevent overflow
+          maxHeight: media.size.height * 0.25, // Use maxHeight instead of fixed height
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Creator row: avatar + username + follow pill
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: widget.onShowProfile,
-                    child: UnifiedAvatarService().getAvatar(
-                      imageUrl: widget.video.creator.avatarURL ?? '',
-                      radius: 16, // Smaller radius as specified
-                    ),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Creator row: avatar + username + follow pill
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: widget.onShowProfile,
+                  child: UnifiedAvatarService().getAvatar(
+                    imageUrl: widget.video.creator.avatarURL ?? '',
+                    radius: 16,
                   ),
-                  const SizedBox(width: 8), // 8-12pt gap as specified
-                  Flexible(
-                    child: GestureDetector(
-                      onTap: widget.onShowProfile,
-                      child: Text(
-                        '@${widget.video.creator.username}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: GestureDetector(
+                    onTap: widget.onShowProfile,
+                    child: Text(
+                      '@${widget.video.creator.username}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8), // 8-12pt gap as specified
-                  // Follow pill next to username
-                  Consumer(
-                    builder: (context, ref, child) {
-                      final isFollowing = ref.watch(followingProvider).followingList.contains(widget.video.creator.id);
-                      return GestureDetector(
-                        onTap: () => _handleFollow(ref),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isFollowing ? Colors.grey[600] : const Color(0xFF9248D2),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            isFollowing ? 'Following' : 'Follow',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+                ),
+                const SizedBox(width: 8),
+                // Follow pill next to username
+                Consumer(
+                  builder: (context, ref, child) {
+                    final isFollowing = ref.watch(followingProvider).followingList.contains(widget.video.creator.id);
+                    return GestureDetector(
+                      onTap: () => _handleFollow(ref),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isFollowing ? Colors.grey[600] : const Color(0xFF9248D2),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          isFollowing ? 'Following' : 'Follow',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // Video caption with overflow protection
-              Flexible(
-                child: Text(
-                  widget.video.caption,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    height: 1.2,
-                  ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Video caption with overflow protection
+            Flexible(
+              child: Text(
+                widget.video.caption,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  height: 1.2,
                 ),
               ),
-            ],
-          ),
-          ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildActionButtons() {
     final media = MediaQuery.of(context);
-    final safeBottom = media.viewPadding.bottom;
     
-    // Button sizes - TikTok specs
-    const btnSize = 44.0; // 44x44dp minimum tap target
-    const gap = 14.0; // 14-16dp gaps between buttons
-    const count = 4; // like, comment, favorite, share
+    // Button specifications
+    const btnSize = 44.0;
+    const gap = 16.0;
+    const count = 4;
     final groupHeight = (count * btnSize) + ((count - 1) * gap);
     
-    // Calculate positioning directly
+    // Calculate position - TikTok style (higher up on screen)
+    const rightInset = 12.0;
+    const targetCenterY = 0.70; // 65% from top of screen
+    
     final screenHeight = media.size.height;
-    final desiredCenterY = screenHeight * 0.62; // 62% from top
-    
-    // Top so that the group is centered around desired Y
-    double top = desiredCenterY - (groupHeight / 2);
-    
-    // Clamp so the group never drops into the caption/nav zone
-    final minTop = 0.0;
-    final maxTop = (screenHeight - 180.0 - safeBottom) - groupHeight; // Increased clearance
-    top = top.clamp(minTop, maxTop);
+    final desiredCenterY = screenHeight * targetCenterY;
+    final top = (desiredCenterY - groupHeight / 2).clamp(0.0, screenHeight - groupHeight);
     
     return Positioned(
       top: top,
-      right: 12.0,
-        child: Column(
+      right: rightInset,
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Like button
@@ -519,7 +628,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
             onTap: _handleLike,
             isActive: widget.isLiked,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           
           // Comment button
           _buildActionButton(
@@ -527,7 +636,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
             count: widget.video.comments.toString(),
             onTap: _handleComment,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           
           // Bookmark button
           _buildActionButton(
@@ -536,7 +645,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
             onTap: _handleBookmark,
             isActive: widget.isBookmarked,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           
           // Share button
           _buildActionButton(
@@ -544,7 +653,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
             count: 'Share',
             onTap: _handleShare,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           
           // Creator avatar
           GestureDetector(
@@ -565,33 +674,34 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     required VoidCallback onTap,
     bool isActive = false,
   }) {
+    const btnSize = 44.0;
     return SizedBox(
-      width: 44,
-      height: 44,
+      width: btnSize,
+      height: btnSize,
       child: InkWell(
         onTap: () {
           HapticFeedback.lightImpact();
           onTap();
         },
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(btnSize / 2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              color: isActive ? const Color(0xFF9248D2) : Colors.white.withValues(alpha: 0.85),
+              color: isActive ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.85),
               size: 24,
             ),
             const SizedBox(height: 4),
             Text(
               count,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.85),
+                color: Colors.white.withOpacity(0.85),
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
               ),
-          ),
-        ],
+            ),
+          ],
         ),
       ),
     );
@@ -687,4 +797,3 @@ class _FloatingHeartOverlayState extends State<_FloatingHeartOverlay>
     );
   }
 }
-
