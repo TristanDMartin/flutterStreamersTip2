@@ -7,9 +7,21 @@ import 'services/analytics_service.dart';
 import 'services/error_handler_service.dart';
 import 'utils/performance_utils.dart';
 import 'services/memory_optimization_service.dart';
+import 'services/network_config_service.dart';
+import 'services/google_services_fix.dart';
+import 'services/unified_avatar_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize network configuration first (for SSL certificate handling)
+  NetworkConfigService.initialize();
+  
+  // Initialize Google Services fix
+  await GoogleServicesFix.initialize();
+  
+  // Initialize Unified Avatar Service for instant loading
+  await UnifiedAvatarService().initialize();
   
   // Verify logo asset is bundled
   try {

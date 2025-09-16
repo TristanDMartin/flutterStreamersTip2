@@ -1,4 +1,5 @@
 import 'calendar_event.dart';
+import '../utils/data_parsing_utils.dart';
 
 class User {
   final String id;
@@ -37,11 +38,11 @@ class User {
       bio: data['bio'],
       avatarURL: data['avatarURL'],
       onlineStatus: data['onlineStatus'] ?? 'online',
-      hashtags: List<String>.from(data['hashtags'] ?? []),
+      hashtags: parseStringList(data['hashtags']),
       aiSelf: data['aiSelf'] ?? '',
-      postCount: data['postCount'] ?? 0,
-      followerCount: data['followerCount'] ?? 0,
-      followingCount: data['followingCount'] ?? 0,
+      postCount: parseInteger(data['postCount']),
+      followerCount: parseInteger(data['followerCount']),
+      followingCount: parseInteger(data['followingCount']),
       calendarEvents: (data['calendarEvents'] as List<dynamic>?)
           ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
           .toList() ?? [],

@@ -22,86 +22,92 @@ class CustomBottomNav extends ConsumerWidget {
     final bottomPadding = mediaQuery.padding.bottom;
     final isIOS = Platform.isIOS;
     
-    // Platform-specific padding adjustments
-    final extraBottomPadding = isIOS ? 8.0 : 4.0;
+    // Platform-specific padding adjustments - increased to prevent overflow
+    final extraBottomPadding = isIOS ? 12.0 : 8.0;
     final totalBottomPadding = bottomPadding + extraBottomPadding;
     
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(25),
-          topRight: Radius.circular(25),
-        ),
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        minHeight: 60 + totalBottomPadding, // Minimum height to prevent overflow
+        maxHeight: 100 + totalBottomPadding, // Maximum height to prevent overflow
       ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(25),
-          topRight: Radius.circular(25),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(25),
+            topRight: Radius.circular(25),
+          ),
         ),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25), // Stronger blur for liquid glass
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(25),
-                topRight: Radius.circular(25),
-              ),
-              // Enhanced liquid glass effect with better contrast
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.white.withValues(alpha: 0.15), // Brighter top glass layer
-                  Colors.white.withValues(alpha: 0.08), // Middle glass layer
-                  Colors.black.withValues(alpha: 0.4), // Darker bottom glass layer
-                ],
-                stops: const [0.0, 0.5, 1.0],
-              ),
-              // Enhanced glass border effect
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.3),
-                width: 1.5,
-              ),
-              // Enhanced shadows for more depth
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 40,
-                  spreadRadius: 0,
-                  offset: const Offset(0, -15),
-                ),
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  blurRadius: 25,
-                  spreadRadius: 0,
-                  offset: const Offset(0, 8),
-                ),
-                // Inner glow effect
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  blurRadius: 15,
-                  spreadRadius: -5,
-                  offset: const Offset(0, 0),
-                ),
-              ],
-            ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(25),
+            topRight: Radius.circular(25),
+          ),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25), // Stronger blur for liquid glass
             child: Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 15,
-                bottom: totalBottomPadding,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildNavItem(0, Icons.home, 'Home'),
-                  _buildNavItem(1, Icons.people, 'Network'),
-                  _buildAddButton(),
-                  _buildInboxNavItem(ref),
-                  _buildNavItem(4, Icons.account_circle_outlined, 'Profile'),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(25),
+                  topRight: Radius.circular(25),
+                ),
+                // Enhanced liquid glass effect with better contrast
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.15), // Brighter top glass layer
+                    Colors.white.withValues(alpha: 0.08), // Middle glass layer
+                    Colors.black.withValues(alpha: 0.4), // Darker bottom glass layer
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+                // Enhanced glass border effect
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  width: 1.5,
+                ),
+                // Enhanced shadows for more depth
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 40,
+                    spreadRadius: 0,
+                    offset: const Offset(0, -15),
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    blurRadius: 25,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 8),
+                  ),
+                  // Inner glow effect
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    blurRadius: 15,
+                    spreadRadius: -5,
+                    offset: const Offset(0, 0),
+                  ),
                 ],
+              ),
+              child: Container(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 15,
+                  bottom: totalBottomPadding,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildNavItem(0, Icons.home, 'Home'),
+                    _buildNavItem(1, Icons.people, 'Network'),
+                    _buildAddButton(),
+                    _buildInboxNavItem(ref),
+                    _buildNavItem(4, Icons.account_circle_outlined, 'Profile'),
+                  ],
+                ),
               ),
             ),
           ),

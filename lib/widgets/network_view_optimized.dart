@@ -4,6 +4,7 @@ import '../models/user.dart';
 import '../models/streamer_card.dart';
 import '../services/network_service_optimized.dart';
 import 'streamer_card_view_optimized.dart';
+import '../services/unified_avatar_service.dart';
 
 class NetworkViewOptimized extends StatefulWidget {
   const NetworkViewOptimized({super.key});
@@ -227,15 +228,13 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                       ),
                     ],
                   ),
-                  child: const Column(
+                  child: Column(
                     children: [
                       Row(
                         children: [
-                          CircleAvatar(
+                          UnifiedAvatarService().getAvatar(
+                            imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
                             radius: 30,
-                            backgroundImage: NetworkImage(
-                              'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-                            ),
                           ),
                           SizedBox(width: 16),
                           Expanded(
@@ -370,22 +369,9 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
       ),
       child: Row(
         children: [
-          CircleAvatar(
+          UnifiedAvatarService().getAvatar(
+            imageUrl: user.avatarURL ?? '',
             radius: 24,
-            backgroundImage: user.avatarURL != null
-                ? NetworkImage(user.avatarURL!)
-                : null,
-            child: user.avatarURL == null
-                ? Text(
-                    user.displayName.isNotEmpty
-                        ? user.displayName[0].toUpperCase()
-                        : 'U',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                : null,
           ),
           const SizedBox(width: 12),
           Expanded(

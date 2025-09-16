@@ -11,6 +11,7 @@ import 'profile_back_view.dart';
 import 'online_status_indicator.dart';
 import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
+import '../services/unified_avatar_service.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -230,6 +231,13 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         if (kDebugMode) {
     // print('ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
         }
+        
+        // Save main user avatar for persistence
+        final avatarUrl = _cachedUserData?['avatarURL'] ?? widget.user.avatarURL;
+        if (avatarUrl != null && avatarUrl.isNotEmpty) {
+          UnifiedAvatarService().saveMainUserAvatar(avatarUrl);
+        }
+        
         return _cachedUserData!;
       }
       // Otherwise use the widget user data
@@ -237,6 +245,12 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       if (kDebugMode) {
     // print('ProfileView: Using widget user data: ${_cachedUserData?.keys}');
       }
+      
+      // Save main user avatar for persistence if this is the current user
+      if (isCurrentUser && widget.user.avatarURL?.isNotEmpty == true) {
+        UnifiedAvatarService().saveMainUserAvatar(widget.user.avatarURL!);
+      }
+      
       return _cachedUserData!;
     } catch (e) {
       if (kDebugMode) {
@@ -428,18 +442,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
               color: Color(0xFF0A0A0A),
             ),
             padding: const EdgeInsets.all(4),
-            child: CircleAvatar(
+            child: UnifiedAvatarService().getMainUserAvatar(
+              imageUrl: _currentUserData['avatarURL'] ?? '',
               radius: 48,
-              backgroundImage: _currentUserData['avatarURL'] != null
-                  ? NetworkImage(_currentUserData['avatarURL'])
-                  : null,
-              child: _currentUserData['avatarURL'] == null
-                  ? const Icon(
-                      Icons.person,
-                      size: 48,
-                      color: Colors.white,
-                    )
-                  : null,
             ),
           ),
         ),

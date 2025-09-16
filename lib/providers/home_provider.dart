@@ -9,6 +9,7 @@ import '../services/user_service.dart';
 import '../services/favorites_service.dart';
 import '../services/following_feed_service.dart';
 import '../services/comments_service.dart';
+import '../services/unified_avatar_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
 
@@ -79,6 +80,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
       // Fetch fresh data in background
       _fetchFreshVideosInBackground();
       
+      // Preload avatars for instant display
+      _preloadAvatars();
+      
       state = state.copyWith(hasLoaded: true, isLoading: false);
       log('✅ loadVideos() completed successfully');
     } catch (e) {
@@ -108,6 +112,34 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('🎯 Current state - forYouVideos: ${state.forYouVideos.length}, followingVideos: ${state.followingVideos.length}, isLoading: ${state.isLoading}');
     } catch (e) {
       log('❌ Error loading cached videos: $e');
+    }
+  }
+
+  /// Preload avatars for instant display
+  Future<void> _preloadAvatars() async {
+    try {
+      final avatarUrls = <String>[];
+      
+      // Collect avatar URLs from current videos
+      for (final video in state.forYouVideos) {
+        if (video.creator.avatarURL?.isNotEmpty == true) {
+          avatarUrls.add(video.creator.avatarURL!);
+        }
+      }
+      
+      for (final video in state.followingVideos) {
+        if (video.creator.avatarURL?.isNotEmpty == true) {
+          avatarUrls.add(video.creator.avatarURL!);
+        }
+      }
+      
+      // Preload avatars for instant display
+      if (avatarUrls.isNotEmpty) {
+        await UnifiedAvatarService().preloadAvatars(avatarUrls);
+        log('✅ Preloaded ${avatarUrls.length} avatars for instant display');
+      }
+    } catch (e) {
+      log('⚠️ Failed to preload avatars: $e');
     }
   }
 

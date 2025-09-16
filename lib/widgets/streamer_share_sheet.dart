@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'instant_response_button.dart';
 import '../providers/service_providers.dart';
+import '../services/unified_avatar_service.dart';
 
 class StreamerShareSheet extends ConsumerWidget {
   final String userId;
@@ -23,37 +24,36 @@ class StreamerShareSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return SafeArea(
       top: false,
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 28,
+              offset: Offset(0, -8),
+              color: Colors.black26,
             ),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-            boxShadow: [
-              BoxShadow(
-                blurRadius: 28,
-                offset: Offset(0, -8),
-                color: Colors.black26,
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildGrabber(),
-              _buildHeaderRow(context),
-              const SizedBox(height: 8),
-              _buildSendToCarousel(context, ref),
-              const SizedBox(height: 12),
-              _buildActionsRow(context, isPrimary: true),
-              const SizedBox(height: 12),
-              _buildActionsRow(context, isPrimary: false),
-              const SizedBox(height: 12),
-            ],
-          ),
+          ],
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildGrabber(),
+            _buildHeaderRow(context),
+            const SizedBox(height: 8),
+            _buildSendToCarousel(context, ref),
+            const SizedBox(height: 12),
+            _buildActionsRow(context, isPrimary: true),
+            const SizedBox(height: 12),
+            _buildActionsRow(context, isPrimary: false),
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );
@@ -178,16 +178,13 @@ class StreamerShareSheet extends ConsumerWidget {
                   ),
                 ],
               ),
-              child: avatarUrl != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(28),
-                      child: Image.network(
-                        avatarUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(name),
-                      ),
-                    )
-                  : _buildInitialsAvatar(name),
+        child: avatarUrl != null
+            ? UnifiedAvatarService().getAvatar(
+                imageUrl: avatarUrl,
+                radius: 28,
+                errorWidget: _buildInitialsAvatar(name),
+              )
+            : _buildInitialsAvatar(name),
             ),
             const SizedBox(height: 4),
             Text(

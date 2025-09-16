@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
 import 'auth_rate_limiting_service.dart';
+import 'google_services_fix.dart';
 
 /// Request-scoped authentication result
 class AuthRequestResult {
@@ -428,17 +429,8 @@ class RobustAuthenticationService extends ChangeNotifier {
     } catch (e) {
     // print("❌ Google Sign-In error: $e");
       
-      // Provide more specific error messages
-      String errorMessage = e.toString();
-      if (e.toString().contains('network_error')) {
-        errorMessage = 'Network error. Please check your internet connection.';
-      } else if (e.toString().contains('sign_in_canceled')) {
-        errorMessage = 'Sign-in was cancelled.';
-      } else if (e.toString().contains('sign_in_failed')) {
-        errorMessage = 'Sign-in failed. Please try again.';
-      } else if (e.toString().contains('PigeonUserDetails')) {
-        errorMessage = 'Google Sign-In configuration error. Please try again.';
-      }
+      // Use Google Services fix for error handling
+      String errorMessage = GoogleServicesFix.getGoogleServicesErrorMessage(e);
       
       return AuthRequestResult(
         requestId: requestId,
@@ -928,7 +920,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<void> signOut() async {
     try {
       await _auth.signOut();
-      await _googleSignIn.signOut();
+      await GoogleServicesFix.signOutFromGoogle();
       _currentUser = null;
       _isLoggedIn = false;
       _isCheckingAuth = false;
@@ -937,7 +929,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       _minimumSpinnerTimer?.cancel();
       _isMinimumSpinnerActive = false;
       notifyListeners();
-    // print("✅ User signed out successfully");
+      debugPrint("✅ User signed out successfully");
     } catch (e) {
     // print("❌ Error signing out: $e");
     }

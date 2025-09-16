@@ -13,6 +13,7 @@ import '../widgets/profile_video_feed_view.dart';
 import '../services/enhanced_bookmark_service.dart';
 import 'streamer_share_sheet.dart';
 import 'instant_response_button.dart';
+import '../services/unified_avatar_service.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
   final String userId; // Changed from StreamerCard to userId for live data
@@ -715,13 +716,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                     icon: const Icon(Icons.arrow_back, color: Colors.white),
                   ),
                   const SizedBox(width: 12),
-                  CircleAvatar(
-                    backgroundImage: avatarURL != null
-                        ? NetworkImage(avatarURL!)
-                        : null,
-                    child: avatarURL == null
-                        ? const Icon(Icons.person, color: Colors.white)
-                        : null,
+                  UnifiedAvatarService().getAvatar(
+                    imageUrl: avatarURL ?? '',
+                    radius: 20,
                   ),
                   const SizedBox(width: 12),
                   Expanded(

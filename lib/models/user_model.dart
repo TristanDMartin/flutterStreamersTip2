@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:equatable/equatable.dart';
+import '../utils/data_parsing_utils.dart';
 
 /// User Model - Complete implementation matching SwiftUI User class
 /// 
@@ -52,19 +53,20 @@ class User extends Equatable {
         (e) => e.value == data['onlineStatus'],
         orElse: () => OnlineStatus.offline,
       ),
-      hashtags: List<String>.from(data['hashtags'] ?? []),
+      hashtags: parseStringList(data['hashtags']),
       aiSelf: data['aiSelf'] ?? '',
       socialLinks: (data['socialLinks'] as List<dynamic>?)
           ?.map((s) => SocialLink.fromMap(s as Map<String, dynamic>))
           .toList() ?? [],
-      postCount: data['postCount'] ?? 0,
-      followerCount: data['followerCount'] ?? 0,
-      followingCount: data['followingCount'] ?? 0,
+      postCount: parseInteger(data['postCount']),
+      followerCount: parseInteger(data['followerCount']),
+      followingCount: parseInteger(data['followingCount']),
       calendarEvents: (data['calendarEvents'] as List<dynamic>?)
           ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
           .toList() ?? [],
     );
   }
+
 
   Map<String, dynamic> toMap() {
     return {

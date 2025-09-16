@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'analytics_service.dart';
+import 'network_error_handler.dart';
 
 class ErrorHandlerService {
   static ErrorHandlerService? _instance;
@@ -29,6 +30,15 @@ class ErrorHandlerService {
     debugPrint('🚨 Flutter Error: ${details.exception}');
     debugPrint('📍 Stack trace: ${details.stack}');
     
+    // Check if it's a network-related error
+    String userMessage;
+    if (NetworkErrorHandler.isNetworkError(details.exception)) {
+      userMessage = NetworkErrorHandler.getErrorMessage(details.exception);
+      debugPrint('🌐 Network Error: ${NetworkErrorHandler.getDebugMessage(details.exception)}');
+    } else {
+      userMessage = 'Something went wrong. Please try again.';
+    }
+    
     // Track error in analytics
     AnalyticsService.instance.trackError(
       details.exception.toString(),
@@ -37,13 +47,22 @@ class ErrorHandlerService {
     );
     
     // Show user-friendly error message
-    _showErrorSnackBar('Something went wrong. Please try again.');
+    _showErrorSnackBar(userMessage);
   }
   
   // Handle platform errors
   void _handlePlatformError(Object error, StackTrace stack) {
     debugPrint('🚨 Platform Error: $error');
     debugPrint('📍 Stack trace: $stack');
+    
+    // Check if it's a network-related error
+    String userMessage;
+    if (NetworkErrorHandler.isNetworkError(error)) {
+      userMessage = NetworkErrorHandler.getErrorMessage(error);
+      debugPrint('🌐 Network Error: ${NetworkErrorHandler.getDebugMessage(error)}');
+    } else {
+      userMessage = 'A system error occurred. Please restart the app.';
+    }
     
     // Track error in analytics
     AnalyticsService.instance.trackError(
@@ -53,7 +72,7 @@ class ErrorHandlerService {
     );
     
     // Show user-friendly error message
-    _showErrorSnackBar('A system error occurred. Please restart the app.');
+    _showErrorSnackBar(userMessage);
   }
   
   // Handle network errors
@@ -249,6 +268,21 @@ class ErrorHandlerService {
     }
     
     _showErrorSnackBar(userMessage);
+  }
+  
+  // Handle SSL certificate errors specifically
+  void handleSSLError(dynamic error) {
+    debugPrint('🔒 SSL Error: ${NetworkErrorHandler.getDebugMessage(error)}');
+    
+    // Track SSL error in analytics
+    AnalyticsService.instance.trackError(
+      'SSL Error: ${error.toString()}',
+      null,
+      fatal: false,
+    );
+    
+    // Show user-friendly SSL error message
+    _showErrorSnackBar(NetworkErrorHandler.getErrorMessage(error));
   }
   
   // Handle recovery actions
