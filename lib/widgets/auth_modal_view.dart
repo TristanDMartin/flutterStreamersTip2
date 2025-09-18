@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
+import '../views/terms_of_service_view.dart';
 import 'signup_view.dart';
 import 'email_login_view.dart';
 
@@ -265,26 +266,31 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
         onTap: disabled ? null : onTap,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          height: 48, // Match ProfileView button height
           decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.transparent, width: 1),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileView gradient
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(24), // Match ProfileView pill shape
           ),
-          child: Row(
-            children: [
-              Icon(icon, size: 24, color: textColor),
-              const SizedBox(width: 12),
-              Text(
-                text,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w500,
-                  color: textColor,
+          child: Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 20, color: Colors.white),
+                const SizedBox(width: 12),
+                Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              const Spacer(),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -379,39 +385,9 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   void _showTermsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          "Terms of Service",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-        ),
-        content: SingleChildScrollView(
-          child: const Text(
-            "By using StreamersTip, you agree to:\n\n"
-            "• Be respectful to all users\n"
-            "• Not share inappropriate content\n"
-            "• Follow community guidelines\n"
-            "• Respect intellectual property\n"
-            "• Use the service responsibly\n\n"
-            "We reserve the right to suspend accounts that violate these terms.\n\n"
-            "For complete terms, visit our website.",
-            style: TextStyle(color: Colors.white70, height: 1.3),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              "Close",
-              style: TextStyle(color: Color(0xFF6137EB)),
-            ),
-          ),
-        ],
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const TermsOfServiceView(),
       ),
     );
   }

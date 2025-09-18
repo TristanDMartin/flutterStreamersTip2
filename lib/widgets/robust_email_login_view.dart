@@ -375,22 +375,22 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
       
       if (identifier.contains("@")) {
         // It's an email - use Firebase email auth
-    // print("📧 Detected email input, using email authentication");
+    print("📧 Detected email input, using email authentication");
         result = await authService.debouncedSignInWithEmail(identifier, password);
       } else {
         // It's a username - use username authentication
-    // print("👤 Detected username input, using username authentication");
+    print("👤 Detected username input, using username authentication");
         result = await authService.debouncedSignInWithUsername(identifier, password);
       }
       
       // Only process result if this is still the current request
       if (result.success) {
-    // print("✅ Authentication successful (request: ${result.requestId})");
+    print("✅ Authentication successful (request: ${result.requestId})");
         if (mounted) {
           Navigator.of(context).pop();
         }
       } else {
-    // print("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
+    print("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
         if (mounted) {
           setState(() {
             _errorMessage = _getUserFriendlyErrorMessage(result.error ?? 'Unknown error');

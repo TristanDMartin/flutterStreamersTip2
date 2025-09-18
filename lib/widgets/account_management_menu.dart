@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/robust_auth_service.dart';
+import '../services/simple_logout_service.dart';
 import 'add_account_modal.dart';
 import 'switch_account_modal.dart';
 import 'instant_response_button.dart';
@@ -227,8 +227,12 @@ class AccountManagementMenu extends ConsumerWidget {
                           Expanded(
                             child: InstantResponseButton(
                               onPressed: () async {
+                                print('🔐 Logout button tapped!');
+                                print('🔐 Closing dialog...');
                                 Navigator.of(context).pop();
-                                await _performLogOut(context, ref);
+                                print('🔐 Dialog closed, calling SimpleLogoutService.logout...');
+                                final result = await SimpleLogoutService.logout(context);
+                                print('🔐 SimpleLogoutService.logout completed with result: $result');
                               },
                               hapticType: HapticFeedbackType.mediumImpact,
                               child: Container(
@@ -259,117 +263,5 @@ class AccountManagementMenu extends ConsumerWidget {
           );
         }
 
-  Future<void> _performLogOut(BuildContext context, WidgetRef ref) async {
-    try {
-      // Show loading indicator
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => Center(
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-              ),
-              borderRadius: BorderRadius.all(Radius.circular(16)),
-            ),
-            child: const Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Signing out...',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      // Use the robust auth service for proper logout
-      final authService = ref.read(robustAuthServiceProvider);
-      await authService.signOut();
-
-      // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        // Navigate back to login screen
-        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-      }
-    } catch (e) {
-      // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        
-        // Show error dialog
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: Colors.transparent,
-            content: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-                ),
-                borderRadius: BorderRadius.all(Radius.circular(16)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Logout Error',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Failed to log out. Please try again.\n\nError: ${e.toString()}',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 24),
-                    InstantResponseButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      hapticType: HapticFeedbackType.lightImpact,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF9248D2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'OK',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      }
-    }
-  }
 
 }

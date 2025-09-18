@@ -18,6 +18,7 @@ class RobustInstantResponseButton extends StatefulWidget {
   final String? loadingText;
   final IconData? icon;
   final double borderRadius;
+  final Gradient? gradient;
 
   const RobustInstantResponseButton({
     super.key,
@@ -35,6 +36,7 @@ class RobustInstantResponseButton extends StatefulWidget {
     this.loadingText,
     this.icon,
     this.borderRadius = 8.0,
+    this.gradient,
   });
 
   @override
@@ -143,61 +145,89 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
     return SizedBox(
       height: widget.height ?? 50,
       width: widget.width,
-      child: ElevatedButton(
-        onPressed: isDisabled ? null : _debouncedOnPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: textColor,
-          padding: widget.padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(widget.borderRadius),
-          ),
-          elevation: 0,
-        ),
-        child: shouldShowLoading
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      child: widget.gradient != null && !isDisabled
+          ? GestureDetector(
+              onTap: isDisabled ? null : _debouncedOnPressed,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: widget.gradient,
+                  borderRadius: BorderRadius.circular(widget.borderRadius),
+                ),
+                child: ElevatedButton(
+                  onPressed: null, // Disable built-in onPressed since we're using GestureDetector
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: textColor,
+                    padding: widget.padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(widget.borderRadius),
                     ),
+                    elevation: 0,
+                    shadowColor: Colors.transparent,
                   ),
-                  if (widget.loadingText != null) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      widget.loadingText!,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
-              )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.icon != null) ...[
-                    Icon(widget.icon, size: 20),
-                    const SizedBox(width: 8),
-                  ],
-                  Text(
-                    widget.text,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+                  child: _buildButtonContent(textColor),
+                ),
               ),
-      ),
+            )
+          : ElevatedButton(
+              onPressed: isDisabled ? null : _debouncedOnPressed,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: backgroundColor,
+                foregroundColor: textColor,
+                padding: widget.padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(widget.borderRadius),
+                ),
+                elevation: 0,
+              ),
+              child: _buildButtonContent(textColor),
+            ),
     );
+  }
+
+  Widget _buildButtonContent(Color? textColor) {
+    return shouldShowLoading
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              if (widget.loadingText != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  widget.loadingText!,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.icon != null) ...[
+                Icon(widget.icon, size: 20),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                widget.text,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          );
   }
 }
 
@@ -229,10 +259,16 @@ class RobustAuthButton extends StatelessWidget {
       enabled: enabled,
       loadingText: loadingText,
       icon: icon,
-      backgroundColor: const Color(0xFF1670de),
+      backgroundColor: const Color(0xFF955CFF), // Fallback color
       textColor: Colors.white,
       debounceDelay: const Duration(milliseconds: 400),
       minimumSpinnerTime: const Duration(milliseconds: 500),
+      borderRadius: 24, // Match ProfileView pill shape
+      gradient: const LinearGradient(
+        colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileView gradient
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      ),
     );
   }
 }

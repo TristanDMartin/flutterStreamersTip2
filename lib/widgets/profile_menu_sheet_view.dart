@@ -370,10 +370,29 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
     );
   }
 
-  void _logout() {
-    final authService = ref.read(authServiceProvider);
-    authService.signOut();
-    widget.onDismiss();
+  void _logout() async {
+    try {
+      // Check if widget is still mounted
+      if (!mounted) return;
+      
+      final authService = ref.read(authServiceProvider);
+      await authService.signOut();
+      
+      // Check if widget is still mounted before dismissing
+      if (mounted) {
+        widget.onDismiss();
+      }
+    } catch (e) {
+      // Handle logout error gracefully
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Logout failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 

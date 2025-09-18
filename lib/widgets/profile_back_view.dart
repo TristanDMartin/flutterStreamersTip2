@@ -54,11 +54,26 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     final currentUserId = _profileUpdateService?.currentUser?.uid;
     final isCurrentUser = currentUserId != null && currentUserId == widget.user['id'];
     
+    print("🔍 ProfileBackView: Widget user ID: ${widget.user['id']}");
+    print("🔍 ProfileBackView: ProfileUpdateService user ID: $currentUserId");
+    print("🔍 ProfileBackView: Is current user: $isCurrentUser");
+    
     // If this is the current user, get data from ProfileUpdateService
     if (isCurrentUser && _profileUpdateService?.isDataLoaded == true) {
+      print("🔍 ProfileBackView: Using ProfileUpdateService data");
       return _profileUpdateService?.userData ?? widget.user;
     }
+    
+    // For current user, always use the correct Firebase user ID
+    if (isCurrentUser) {
+      print("🔍 ProfileBackView: Using correct Firebase user ID: $currentUserId");
+      final correctedUserData = Map<String, dynamic>.from(widget.user);
+      correctedUserData['id'] = currentUserId;
+      return correctedUserData;
+    }
+    
     // Otherwise use the widget user data
+    print("🔍 ProfileBackView: Using widget user data");
     return widget.user;
   }
 
@@ -66,12 +81,25 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget build(BuildContext context) {
     final String userId = _currentUserData['id'] as String;
     
+    print("🔍 ProfileBackView: Looking for user with ID: $userId");
+    print("🔍 ProfileBackView: Current user data: $_currentUserData");
+    
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
           .snapshots(),
       builder: (context, snapshot) {
+        print("🔍 ProfileBackView: StreamBuilder state: ${snapshot.connectionState}");
+        print("🔍 ProfileBackView: Has data: ${snapshot.hasData}");
+        print("🔍 ProfileBackView: Has error: ${snapshot.hasError}");
+        if (snapshot.hasData) {
+          print("🔍 ProfileBackView: Document exists: ${snapshot.data!.exists}");
+        }
+        if (snapshot.hasError) {
+          print("🔍 ProfileBackView: Error: ${snapshot.error}");
+        }
+        
         // Handle loading state
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildLoadingState();
@@ -84,6 +112,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         
         // Handle no data state
         if (!snapshot.hasData || !snapshot.data!.exists) {
+          print("🔍 ProfileBackView: No data or document doesn't exist - showing Profile Not Found");
           return _buildNoDataState();
         }
         

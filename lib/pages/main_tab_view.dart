@@ -10,8 +10,8 @@ import '../widgets/inbox_view_optimized.dart';
 import 'home_view.dart';
 import '../models/user.dart';
 import '../services/network_view_model_advanced.dart';
-import '../services/relationship_service_advanced.dart';
 import '../services/profile_update_service.dart';
+import '../services/clean_relationship_service.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
   const MainTabView({super.key});
@@ -24,14 +24,12 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   int _currentIndex = 0;
   late PageController _pageController;
   late NetworkViewModelAdvanced _networkViewModel;
-  late RelationshipServiceAdvanced _relationshipService;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
     _networkViewModel = NetworkViewModelAdvanced();
-    _relationshipService = RelationshipServiceAdvanced();
     _startDataSync();
   }
 
@@ -45,6 +43,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   void _startDataSync() {
     // Initialize data synchronization after login
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Initialize clean relationship service
+      await CleanRelationshipService().initialize();
+      
       final authService = ref.read(robustAuthServiceProvider);
       if (authService.isLoggedIn && authService.currentUser != null) {
         // Initialize ProfileUpdateService for cross-view updates
@@ -114,6 +115,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     // Navigate to profile view as full screen
     final authService = ref.read(robustAuthServiceProvider);
     if (authService.currentUser != null) {
+      print("🔍 MainTabView: Creating User object with ID: ${authService.currentUser!.id}");
+      print("🔍 MainTabView: AuthService currentUser: ${authService.currentUser}");
+      
       final user = User(
         id: authService.currentUser!.id,
         username: authService.currentUser!.username,
@@ -125,6 +129,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         aiSelf: authService.currentUser!.aiSelf,
         calendarEvents: authService.currentUser!.calendarEvents,
       );
+      
+      print("🔍 MainTabView: Created User object with ID: ${user.id}");
+      
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => ProfileViewOptimized(user: user, isCurrentUser: true),
@@ -149,10 +156,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
           // Home View
           const HomeView(),
           // Network View
-          NetworkView(
-            vm: _networkViewModel,
-            relationshipService: _relationshipService,
-          ),
+          const NetworkView(),
           // Creation Screen (handled by floating action button)
           const Center(
             child: Column(
@@ -184,6 +188,50 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       bottomNavigationBar: CustomBottomNav(
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
+      ),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Auth Status Indicator
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: ref.watch(robustAuthServiceProvider).isLoggedIn 
+                  ? Colors.green 
+                  : Colors.red,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              ref.watch(robustAuthServiceProvider).isLoggedIn 
+                  ? 'LOGGED IN' 
+                  : 'NOT LOGGED IN',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // User Info
+          if (ref.watch(robustAuthServiceProvider).currentUser != null)
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '@${ref.watch(robustAuthServiceProvider).currentUser!.username}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
       ),
     );
   }

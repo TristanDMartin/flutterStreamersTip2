@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_service.dart';
+import '../views/terms_of_service_view.dart';
 import 'email_login_view.dart';
 
 class LoginView extends ConsumerStatefulWidget {
@@ -161,7 +162,11 @@ class _LoginViewState extends ConsumerState<LoginView> {
                                 children: [
                                   TextButton(
                                     onPressed: () {
-                                      // TODO: Show terms
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) => const TermsOfServiceView(),
+                                        ),
+                                      );
                                     },
                                     child: const Text(
                                       "Terms of Service",
@@ -307,36 +312,37 @@ class LoginButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        height: 48, // Match ProfileView button height
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.grey.withValues(alpha: 0.2),
-            width: 1,
+          gradient: const LinearGradient(
+            colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileView gradient
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
           ),
+          borderRadius: BorderRadius.circular(24), // Match ProfileView pill shape
         ),
-        child: Row(
-          children: [
-            Icon(
-              iconName,
-              size: 20,
-              color: Colors.black,
-            ),
-            
-            const SizedBox(width: 12),
-            
-            Text(
-              text,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w500,
-                color: Colors.black,
+        child: Center(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                iconName,
+                size: 20,
+                color: Colors.white,
               ),
-            ),
-            
-            const Spacer(),
-          ],
+              
+              const SizedBox(width: 12),
+              
+              Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

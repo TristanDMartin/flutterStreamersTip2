@@ -1,10 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read public user profiles and write their own
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+  // Users can read public user profiles and write their own
+  match /users/{userId} {
+    // Allow unauthenticated reads for username lookups during login
+    allow read: if true;
+    allow write: if request.auth != null && request.auth.uid == userId;
       
       // Allow any authenticated user to update follower/following counts
       allow update: if request.auth != null;
