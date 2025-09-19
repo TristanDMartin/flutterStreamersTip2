@@ -9,6 +9,8 @@ import '../services/enhanced_error_handling_service.dart';
 import '../services/video_watermark_service.dart';
 import '../services/upload_status_manager.dart';
 import '../services/optimistic_video_service.dart';
+import '../services/hashtag_lock_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class VideoPublishingScreen extends StatefulWidget {
   final File videoFile;
@@ -785,14 +787,35 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
 
   Widget _buildHashtagChip(String hashtag) {
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (_hashtags.contains(hashtag)) {
+      onTap: () async {
+        if (_hashtags.contains(hashtag)) {
+          setState(() {
             _hashtags.remove(hashtag);
+          });
+        } else {
+          // Validate hashtag before adding
+          final cleaned = hashtag.replaceAll('#', '');
+          final currentUser = FirebaseAuth.instance.currentUser;
+          final hashtagService = HashtagLockService();
+          final validation = await hashtagService.validateHashtag(cleaned, currentUser?.uid);
+          
+          if (validation.isValid) {
+            setState(() {
+              _hashtags.add(hashtag);
+            });
           } else {
-            _hashtags.add(hashtag);
+            // Show error message
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(validation.errorMessage ?? 'Invalid hashtag'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
           }
-        });
+        }
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

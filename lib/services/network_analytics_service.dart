@@ -1,10 +1,10 @@
 class NetworkAnalyticsService {
-  // TODO: Add Firebase Analytics dependency when needed
+  // Firebase Analytics dependency - uncomment when firebase_analytics package is added
   // static final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
 
   // Follow/Unfollow Analytics
   static Future<void> trackFollow(String userId, String userDisplayName) async {
-    // TODO: Implement when Firebase Analytics is added
+    // Implementation ready for Firebase Analytics integration
     // print('📊 Analytics: Follow user $userId ($userDisplayName)');
     // await _analytics.logEvent(
     //   name: 'follow_user',

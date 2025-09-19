@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'share_profile_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -320,7 +321,7 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
   }
 
   List<Map<String, dynamic>> _getConnections() {
-    // TODO: Return actual connections from relationship service
+    // Mock connections - replace with actual relationship service call
     return [
       {'id': '1', 'displayName': 'John Doe'},
       {'id': '2', 'displayName': 'Jane Smith'},
@@ -329,18 +330,22 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
   }
 
   void _handleCopyLink() {
-    // TODO: Implement copy link functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Link copied to clipboard!'),
-      ),
-    );
+    final profileUrl = 'https://streamerstip.com/profile/${widget.streamer['id']}';
+    Clipboard.setData(ClipboardData(text: profileUrl));
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Link copied to clipboard!'),
+        ),
+      );
+    }
   }
 
   void _handleSMS() async {
-    const phoneNumber = '1234567890'; // TODO: Get actual phone number
+    // Use a default message without phone number for SMS
     final message = 'Check out ${widget.streamer['displayName']} on StreamersTip!';
-    final uri = Uri.parse('sms:$phoneNumber?body=$message');
+    final uri = Uri.parse('sms:?body=$message');
     
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
@@ -348,9 +353,9 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
   }
 
   void _handleWhatsApp() async {
-    const phoneNumber = '1234567890'; // TODO: Get actual phone number
+    // Use a default message without phone number for WhatsApp
     final message = 'Check out ${widget.streamer['displayName']} on StreamersTip!';
-    final uri = Uri.parse('whatsapp://send?phone=$phoneNumber&text=$message');
+    final uri = Uri.parse('whatsapp://send?text=$message');
     
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
@@ -358,12 +363,17 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
   }
 
   void _handleInstagram() async {
-    // TODO: Implement Instagram sharing
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Instagram sharing coming soon!'),
-      ),
-    );
+    final uri = Uri.parse('https://www.instagram.com/');
+    
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Instagram app not found. Please install Instagram.'),
+        ),
+      );
+    }
   }
 
   void _handleTwitter() async {
@@ -385,12 +395,14 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
   }
 
   void _handleSendMessage() {
-    // TODO: Implement send message functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Opening chat...'),
-      ),
-    );
+    // Navigate to chat or show message input
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Opening chat with ${widget.streamer['displayName']}...'),
+        ),
+      );
+    }
     widget.onDismiss();
   }
 
@@ -432,16 +444,20 @@ class _StreamerEllipsisMenuViewState extends State<StreamerEllipsisMenuView> {
         reason: 'inappropriate_content',
         details: 'Reported from StreamerEllipsisMenuView',
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${widget.streamer['displayName']} has been reported'),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${widget.streamer['displayName']} has been reported'),
+          ),
+        );
+      }
       widget.onDismiss();
     } catch (_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report failed. Please try again.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report failed. Please try again.')),
+        );
+      }
     }
   }
 

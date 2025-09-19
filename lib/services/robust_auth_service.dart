@@ -8,6 +8,7 @@ import '../models/user.dart';
 import '../models/calendar_event.dart';
 import 'auth_rate_limiting_service.dart';
 import 'google_services_fix.dart';
+import 'username_lock_service.dart';
 
 /// Request-scoped authentication result
 class AuthRequestResult {
@@ -30,6 +31,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AuthRateLimitingService _rateLimiter = AuthRateLimitingService();
+  final UsernameLockService _usernameLockService = UsernameLockService();
   
   User? _currentUser;
   bool _isLoggedIn = false;
@@ -191,7 +193,6 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Check rate limiting first
       if (await _rateLimiter.isRateLimited()) {
         final message = await _rateLimiter.getRateLimitMessage();
-        print("🚫 Rate limited: $message");
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -199,19 +200,16 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
       
-      print("📧 Starting email authentication for: $email (request: $requestId)");
       
       final userCredential = await _auth.signInWithEmailAndPassword(
         email: email, 
         password: password
       );
       
-      print("📧 Firebase auth result: user=${userCredential.user?.uid}");
       
       if (userCredential.user != null) {
         // Record successful authentication
         await _rateLimiter.recordSuccess();
-        print("✅ Email authentication successful for: $email");
         
         // User will be handled by auth state listener
         return AuthRequestResult(
@@ -222,7 +220,6 @@ class RobustAuthenticationService extends ChangeNotifier {
       } else {
         // Record failed attempt
         await _rateLimiter.recordAttempt();
-        print("❌ Email authentication failed: no user returned");
         
         return AuthRequestResult(
           requestId: requestId,
@@ -233,7 +230,6 @@ class RobustAuthenticationService extends ChangeNotifier {
     } catch (e) {
       // Record failed attempt
       await _rateLimiter.recordAttempt();
-      print("❌ Email authentication error: $e");
       
       return AuthRequestResult(
         requestId: requestId,
@@ -260,7 +256,6 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
       
-    print("🔐 Looking up user by username: $username (request: $requestId)");
       
       // First, find the user by username in Firestore (try both cases)
       QuerySnapshot usersQuery = await _firestore
@@ -291,21 +286,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         // Record failed attempt
         await _rateLimiter.recordAttempt();
         
-    print("❌ Username not found: $username (tried original, lowercase, uppercase)");
-        
-        // Debug: List all usernames in the database
-    print("🔍 Debug: Listing all usernames in database...");
-        try {
-          final allUsersQuery = await _firestore.collection('users').limit(10).get();
-          for (final doc in allUsersQuery.docs) {
-            final data = doc.data();
-            final dbUsername = data['username'] as String?;
-            final dbEmail = data['email'] as String?;
-            print("👤 Found user: username='$dbUsername', email='$dbEmail'");
-          }
-        } catch (e) {
-    print("❌ Error listing users: $e");
-        }
+        // Debug information removed for production
         
         return AuthRequestResult(
           requestId: requestId,
@@ -401,7 +382,6 @@ class RobustAuthenticationService extends ChangeNotifier {
           );
         }
       } catch (authError) {
-    print("❌ Firebase authentication error: $authError");
         // Sign out from Google if Firebase auth fails
         await _googleSignIn.signOut();
         return AuthRequestResult(
@@ -411,7 +391,6 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
     } catch (e) {
-    print("❌ Google Sign-In error: $e");
       
       // Use Google Services fix for error handling
       String errorMessage = GoogleServicesFix.getGoogleServicesErrorMessage(e);
@@ -598,9 +577,18 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Sign up with email and password
   Future<void> signUpWithEmail(String email, String password, String displayName, String username) async {
-    // print("📝 Signing up with email: $email");
+    print("📝 Signing up with email: $email");
     
     try {
+      // Validate username first
+      final usernameValidation = await _usernameLockService.validateUsername(username);
+      if (!usernameValidation.isValid) {
+        throw Exception(usernameValidation.errorMessage ?? 'Invalid username');
+      }
+      
+      // Check if user already exists and handle account deletion scenarios
+      await _handleExistingUserCheck(email);
+      
       // Create user with Firebase Auth
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -608,7 +596,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       );
       
       if (userCredential.user != null) {
-    // print("✅ User created successfully");
+        print("✅ User created successfully");
         
         // Update display name
         await userCredential.user!.updateDisplayName(displayName);
@@ -625,13 +613,36 @@ class RobustAuthenticationService extends ChangeNotifier {
         _isLoggedIn = true;
         notifyListeners();
         
-    // print("✅ Sign up completed successfully");
+        print("✅ Sign up completed successfully");
       } else {
         throw Exception('No user returned from Firebase');
       }
     } catch (e) {
-    // print("❌ Sign up error: $e");
+      print("❌ Sign up error: $e");
+      print("❌ Error type: ${e.runtimeType}");
       rethrow;
+    }
+  }
+
+  /// Handle existing user check for account deletion scenarios
+  Future<void> _handleExistingUserCheck(String email) async {
+    try {
+      // Check if user exists in Firestore
+      final userQuery = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      
+      if (userQuery.docs.isNotEmpty) {
+        print("⚠️ User with email $email still exists in Firestore");
+        // Optionally delete the Firestore document if it exists
+        await userQuery.docs.first.reference.delete();
+        print("🧹 Deleted existing Firestore document for $email");
+      }
+    } catch (e) {
+      print("⚠️ Error checking existing user: $e");
+      // Continue with signup even if check fails
     }
   }
 
@@ -662,16 +673,11 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Handle user sign in and load user data from Firestore
   Future<void> _handleUserSignIn(firebase_auth.User firebaseUser) async {
-    print("🔐 handleUserSignIn called for user: ${firebaseUser.uid}");
-    print("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
-    print("📧 User email: ${firebaseUser.email ?? 'nil'}");
     
     try {
       final userRef = _firestore.collection("users").doc(firebaseUser.uid);
       final snapshot = await userRef.get();
       
-    print("📄 Firestore document fetch completed");
-    print("🔐 Document exists: ${snapshot.exists}");
       
       if (snapshot.exists) {
     // print("🔐 User document found in Firestore");
@@ -732,13 +738,10 @@ class RobustAuthenticationService extends ChangeNotifier {
         await _ensureUserDocumentExists();
         
       } else {
-        print("🔐 Creating new user document in Firestore for existing user");
-        print("🔐 User ID: ${firebaseUser.uid}");
         
         // For existing users who don't have a Firestore document, create one
         final baseUsername = firebaseUser.email?.split('@')[0] ?? 'user';
         final username = await _generateUniqueUsername(baseUsername);
-        print("🔐 Username: $username");
         
         final user = User(
           id: firebaseUser.uid,
@@ -761,7 +764,6 @@ class RobustAuthenticationService extends ChangeNotifier {
         _isCheckingAuth = false;
         notifyListeners();
         
-        print("✅ New user document created successfully - isLoggedIn: $_isLoggedIn");
         
         // Set up real-time listener for the new user
         _setupUserDataListener(firebaseUser.uid);
@@ -855,13 +857,10 @@ class RobustAuthenticationService extends ChangeNotifier {
     int counter = 1;
     
     while (true) {
-      final query = await _firestore
-          .collection('users')
-          .where('username', isEqualTo: username.toLowerCase())
-          .limit(1)
-          .get();
+      // Check if username is available (not taken and not reserved)
+      final isAvailable = await _usernameLockService.isUsernameAvailable(username);
       
-      if (query.docs.isEmpty) {
+      if (isAvailable) {
         return username;
       }
       
@@ -893,9 +892,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       }
       
       await _firestore.collection('users').doc(user.id).set(userData);
-      print("✅ User saved to Firestore successfully");
     } catch (e) {
-      print("❌ Error saving user to Firestore: $e");
       rethrow;
     }
   }

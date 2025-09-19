@@ -2,6 +2,7 @@
 /// 
 /// This file contains utility functions for safely parsing data from Firestore
 /// and other sources, handling type mismatches gracefully.
+library data_parsing_utils;
 
 /// Safely parse a dynamic value as a list of strings
 /// Handles cases where the data might be a string, list, or other type

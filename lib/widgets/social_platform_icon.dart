@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/social_icons.dart';
+import 'brand_icons.dart';
 
 /// A widget that displays social platform icons with proper asset management
 class SocialPlatformIcon extends StatelessWidget {
@@ -66,33 +67,35 @@ class SocialPlatformIcon extends StatelessWidget {
   }
 
   Widget _buildIcon() {
-    return Image.asset(
-      platform.iconPath,
-      width: size * 0.7,
-      height: size * 0.7,
-      color: iconColor,
-      errorBuilder: (context, error, stackTrace) {
-        // Fallback to a colored circle with platform initial
-        return Container(
-          width: size * 0.7,
-          height: size * 0.7,
-          decoration: BoxDecoration(
-            color: platform.brandColor,
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Text(
-              platform.displayName[0].toUpperCase(),
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: size * 0.3,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        );
-      },
+    return BrandIcon(
+      platformType: _getPlatformString(platform),
+      size: size * 0.7,
     );
+  }
+
+  String _getPlatformString(PlatformType platform) {
+    switch (platform) {
+      case PlatformType.twitch:
+        return 'twitch';
+      case PlatformType.youtube:
+        return 'youtube';
+      case PlatformType.kick:
+        return 'kick';
+      case PlatformType.tiktok:
+        return 'tiktok';
+      case PlatformType.facebook:
+        return 'facebook';
+      case PlatformType.bluesky:
+        return 'bluesky';
+      case PlatformType.twitter:
+        return 'twitter';
+      case PlatformType.instagram:
+        return 'instagram';
+      case PlatformType.reddit:
+        return 'reddit';
+      case PlatformType.website:
+        return 'other';
+    }
   }
 }
 

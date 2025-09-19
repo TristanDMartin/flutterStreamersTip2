@@ -1,5 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import '../views/streamer_card_page.dart';
+import '../models/user.dart';
+import 'unified_avatar_service.dart' as nav;
 // import 'package:firebase_auth/firebase_auth.dart' as fa; // Not used here
 
 class URLHandlerService extends ChangeNotifier {
@@ -145,9 +149,30 @@ class URLHandlerService extends ChangeNotifier {
   
   
   Future<void> _navigateToStreamerCard(StreamerCard streamerCard) async {
-    // Post notification to navigate to streamer card
-    // In Flutter, you would typically use a navigation service or callback
-    // print("🔄 Navigate to streamer card: ${streamerCard.username}");
+    // Convert StreamerCard to User model for StreamerCardPage
+    final user = User(
+      id: streamerCard.id,
+      displayName: streamerCard.displayName,
+      username: streamerCard.username,
+      bio: streamerCard.bio,
+      avatarURL: streamerCard.avatarURL,
+      onlineStatus: streamerCard.isOnline ? 'online' : 'offline',
+      hashtags: const [], // Default empty hashtags
+      followerCount: 0, // Default values
+      followingCount: 0,
+      postCount: 0,
+    );
+    
+    // Get the current navigator context
+    final context = nav.NavigationService.navigatorKey.currentContext;
+    if (context != null) {
+      // Navigate to StreamerCardPage
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => StreamerCardPage(user: user),
+        ),
+      );
+    }
     
     // Clear the pending URL
     _pendingURL = null;

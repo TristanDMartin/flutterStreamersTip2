@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'brand_icons.dart';
 
 class LinksEditView extends StatefulWidget {
   final List<Map<String, dynamic>> platforms;
@@ -22,7 +23,7 @@ class _LinksEditViewState extends State<LinksEditView> {
   // Allowed platform types matching your design system
   static const List<String> _allowedPlatforms = [
     'twitch', 'youtube', 'kick', 'tiktok', 'instagram', 
-    'twitter', 'bluesky', 'reddit', 'facebook', 'other'
+    'twitter', 'discord', 'bluesky', 'reddit', 'facebook', 'other'
   ];
 
   @override
@@ -264,70 +265,12 @@ class _LinksEditViewState extends State<LinksEditView> {
   }
 
   Widget _buildPlatformIcon(String platformType) {
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: _getPlatformColor(platformType),
-      ),
-      child: Icon(
-        _getPlatformIcon(platformType),
-        color: Colors.white,
-        size: 16,
-      ),
+    return BrandIcon(
+      platformType: platformType,
+      size: 24.0,
     );
   }
 
-  Color _getPlatformColor(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return const Color(0xFF9146FF);
-      case 'youtube':
-        return const Color(0xFFFF0000);
-      case 'kick':
-        return const Color(0xFF53FC18);
-      case 'tiktok':
-        return const Color(0xFF000000);
-      case 'facebook':
-        return const Color(0xFF1877F2);
-      case 'bluesky':
-        return const Color(0xFF0085FF);
-      case 'twitter':
-        return const Color(0xFF1DA1F2);
-      case 'instagram':
-        return const Color(0xFFE4405F);
-      case 'reddit':
-        return const Color(0xFFFF4500);
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getPlatformIcon(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return Icons.tv;
-      case 'youtube':
-        return Icons.play_circle;
-      case 'kick':
-        return Icons.sports_esports;
-      case 'tiktok':
-        return Icons.music_note;
-      case 'facebook':
-        return Icons.facebook;
-      case 'bluesky':
-        return Icons.cloud;
-      case 'twitter':
-        return Icons.flutter_dash;
-      case 'instagram':
-        return Icons.camera_alt;
-      case 'reddit':
-        return Icons.note;
-      default:
-        return Icons.link;
-    }
-  }
 
   String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {
@@ -344,11 +287,13 @@ class _LinksEditViewState extends State<LinksEditView> {
       case 'bluesky':
         return 'Bluesky';
       case 'twitter':
-        return 'Twitter';
+        return 'X';
+      case 'discord':
+        return 'Discord';
       case 'instagram':
         return 'Instagram';
       case 'reddit':
-        return 'RedNote';
+        return 'Reddit';
       default:
         return platformType;
     }

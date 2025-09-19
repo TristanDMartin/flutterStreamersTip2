@@ -74,6 +74,51 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
+                    // App Logo Section
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 32),
+                      child: Column(
+                        children: [
+                          Image.asset(
+                            'assets/logo.png',
+                            width: 100,
+                            height: 100,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return ShaderMask(
+                                shaderCallback: (Rect rect) {
+                                  return const LinearGradient(
+                                    colors: [
+                                      Color(0xFF9248D2),
+                                      Color(0xFF7768DF),
+                                      Color(0xFF1670DE),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ).createShader(rect);
+                                },
+                                blendMode: BlendMode.srcIn,
+                                child: const Icon(
+                                  Icons.play_circle_filled,
+                                  size: 100,
+                                  color: Colors.white,
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            "StreamersTip",
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
                     // Title
                     const Text(
                       "Sign in with email or username",
@@ -411,7 +456,36 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     final identifier = _identifierController.text.trim();
     final password = _passwordController.text.trim();
     
-    if (identifier.isEmpty || password.isEmpty) return;
+    // Input validation
+    if (identifier.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter your email or username';
+      });
+      return;
+    }
+    
+    if (password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter your password';
+      });
+      return;
+    }
+    
+    // Validate email format if it looks like an email
+    if (identifier.contains('@') && !_isValidEmail(identifier)) {
+      setState(() {
+        _errorMessage = 'Please enter a valid email address';
+      });
+      return;
+    }
+    
+    // Validate username format if it's not an email
+    if (!identifier.contains('@') && !_isValidUsername(identifier)) {
+      setState(() {
+        _errorMessage = 'Username must be 3-20 characters and contain only letters, numbers, and underscores';
+      });
+      return;
+    }
     
     final authService = ref.read(robustAuthServiceProvider.notifier);
     AuthRequestResult result;
@@ -425,22 +499,18 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
       // Determine if it's an email or username
       if (identifier.contains("@")) {
         // It's an email - use email authentication
-        print("📧 Detected email input, using email authentication for: $identifier");
         result = await authService.debouncedSignInWithEmail(identifier, password);
       } else {
         // It's a username - use username authentication
-        print("👤 Detected username input, using username authentication for: $identifier");
         result = await authService.debouncedSignInWithUsername(identifier, password);
       }
       
       // Only process result if this is still the current request
       if (result.success) {
-        print("✅ Authentication successful (request: ${result.requestId})");
         if (mounted) {
           Navigator.of(context).pop();
         }
       } else {
-        print("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
         if (mounted) {
           setState(() {
             _errorMessage = _getUserFriendlyErrorMessage(result.error ?? 'Unknown error');
@@ -448,7 +518,6 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
         }
       }
     } catch (e) {
-      print("❌ Authentication error: $e");
       if (mounted) {
         setState(() {
           _errorMessage = _getUserFriendlyErrorMessage(e.toString());
@@ -485,5 +554,11 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
     setState(() {
       // This will trigger a rebuild to update button state and helper text
     });
+  }
+
+  bool _isValidUsername(String username) {
+    // Username should be 3-20 characters, alphanumeric and underscores only
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9_]{3,20}$');
+    return usernameRegex.hasMatch(username);
   }
 }

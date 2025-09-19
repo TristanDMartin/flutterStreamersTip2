@@ -156,7 +156,7 @@ class BackgroundUploadService {
         .child('$videoId.jpg');
 
     // Create a simple placeholder thumbnail
-    // TODO: Implement actual thumbnail generation
+    // Note: In production, this would use FFmpeg or video_thumbnail package to extract a frame
     final placeholderData = await _createPlaceholderThumbnail();
     
     final uploadTask = ref.putData(Uint8List.fromList(placeholderData));

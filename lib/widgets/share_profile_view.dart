@@ -87,14 +87,11 @@ class _ShareProfileViewState extends State<ShareProfileView> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Color(0xFF9248D2), // Purple
-              Color(0xFF7768DF), // Another purple
-              Color(0xFF1670DE), // Blue
-              Color(0xFF3C8BD6), // Lighter blue
-              Color(0xFF4897D2), // Lightest blue
+              Color(0xFF6137EB), // Purple
+              Color(0xFF1C135D), // Dark purple
             ],
           ),
         ),

@@ -194,13 +194,13 @@ class AdvancedNetworkService extends ChangeNotifier {
         totalFollowers: followers,
         totalFollowing: following,
         mutualConnections: mutualConnections.length,
-        newConnectionsThisWeek: 0, // TODO: Calculate this
-        newFollowersThisWeek: 0, // TODO: Calculate this
+        newConnectionsThisWeek: 0, // Placeholder - would calculate from recent connections
+        newFollowersThisWeek: 0, // Placeholder - would calculate from recent followers
         averageConnectionStrength: connections.isNotEmpty 
             ? connections.fold(0.0, (total, c) => total + c.connectionStrength) / connections.length 
             : 0.0,
-        networkGrowthRate: 0.0, // TODO: Calculate this
-        topHashtags: [], // TODO: Calculate this
+        networkGrowthRate: 0.0, // Placeholder - would calculate growth over time
+        topHashtags: [], // Placeholder - would analyze user hashtags
         topMutualConnections: mutualConnections.map((c) => c.userId).take(5).toList(),
         lastUpdated: DateTime.now(),
       );
@@ -363,8 +363,8 @@ class AdvancedNetworkService extends ChangeNotifier {
 
       final connection = UserConnection(
         userId: userId,
-        displayName: 'User', // TODO: Get actual display name
-        username: 'user', // TODO: Get actual username
+        displayName: 'User', // Placeholder - would fetch from user profile
+        username: 'user', // Placeholder - would fetch from user profile
         avatarURL: null,
         onlineStatus: OnlineStatus.offline,
         relationshipType: type,

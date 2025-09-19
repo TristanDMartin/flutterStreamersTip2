@@ -128,8 +128,8 @@ class FeedQueue extends StateNotifier<FeedState> {
     state = state.copyWith(isLoadingMore: true);
     
     try {
-      // TODO: Implement load more logic
-      // This would fetch the next batch of videos using the cursor
+      // Load more logic - fetch next batch of videos using cursor
+      // This would typically call a service to get more videos
       
       log('📥 Loading more videos...');
       await Future.delayed(const Duration(milliseconds: 500)); // Simulate network

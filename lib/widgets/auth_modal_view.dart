@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import '../views/terms_of_service_view.dart';
+import '../views/privacy_policy_view.dart';
 import 'signup_view.dart';
 import 'email_login_view.dart';
 
@@ -393,38 +394,9 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   void _showPrivacyDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          "Privacy Policy",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-        ),
-        content: SingleChildScrollView(
-          child: const Text(
-            "We protect your privacy:\n\n"
-            "• We only collect necessary information\n"
-            "• Your data is encrypted and secure\n"
-            "• We don't sell your personal information\n"
-            "• You can delete your account anytime\n"
-            "• We comply with privacy regulations\n\n"
-            "For complete privacy policy, visit our website.",
-            style: TextStyle(color: Colors.white70, height: 1.3),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              "Close",
-              style: TextStyle(color: Color(0xFF6137EB)),
-            ),
-          ),
-        ],
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const PrivacyPolicyView(),
       ),
     );
   }

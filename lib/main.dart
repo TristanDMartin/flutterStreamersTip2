@@ -9,7 +9,7 @@ import 'utils/performance_utils.dart';
 import 'services/memory_optimization_service.dart';
 import 'services/network_config_service.dart';
 import 'services/google_services_fix.dart';
-import 'services/unified_avatar_service.dart';
+import 'services/unified_avatar_service.dart' as nav;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +21,7 @@ void main() async {
   await GoogleServicesFix.initialize();
   
   // Initialize Unified Avatar Service for instant loading
-  await UnifiedAvatarService().initialize();
+  await nav.UnifiedAvatarService().initialize();
   
   // Verify logo asset is bundled
   try {
@@ -103,6 +103,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'StreamersTip',
+      navigatorKey: nav.NavigationService.navigatorKey,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,

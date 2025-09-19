@@ -3,15 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart' as app_user;
+import '../models/user_status.dart';
+import '../providers/status_provider.dart';
 import '../services/profile_update_service.dart';
 import '../views/menu_view.dart';
 import 'edit_profile_view.dart';
 import 'share_profile_view.dart';
 import 'profile_back_view.dart';
-import 'online_status_indicator.dart';
 import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
+import 'setup_hashtag_permissions_widget.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -291,6 +293,18 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       backgroundColor: Colors.black,
       extendBody: true,
       extendBodyBehindAppBar: true,
+      floatingActionButton: widget.isCurrentUser ? FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const SetupHashtagPermissionsWidget(),
+            ),
+          );
+        },
+        backgroundColor: Colors.orange,
+        child: const Icon(Icons.admin_panel_settings, color: Colors.white),
+      ) : null,
       body: AnimatedBuilder(
         animation: _flipAnimation,
         builder: (context, child) {
@@ -420,6 +434,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   Widget _buildAvatarWithGradientRing() {
     return Stack(
+      clipBehavior: Clip.none,
       children: [
         Container(
           width: 112,
@@ -428,36 +443,76 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             shape: BoxShape.circle,
             gradient: SweepGradient(
               colors: [
-                Color(0xFFFF6B9D), // Pink
-                Color(0xFF955CFF), // Purple
-                Color(0xFF3D99F7), // Blue
-                Color(0xFFFF6B9D), // Pink
+                Color(0xFFFF6CAB),
+                Color(0xFF8E54E9),
+                Color(0xFF3D99F7),
+                Color(0xFFFF6CAB),
               ],
             ),
           ),
-          padding: const EdgeInsets.all(4),
+          child: Center(
           child: Container(
-            decoration: const BoxDecoration(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Color(0xFF0A0A0A),
-            ),
-            padding: const EdgeInsets.all(4),
-            child: UnifiedAvatarService().getMainUserAvatar(
-              imageUrl: _currentUserData['avatarURL'] ?? '',
-              radius: 48,
+                color: Colors.black.withValues(alpha: 0.2),
+              ),
+              child: ClipOval(
+                child: _currentUserData['avatarURL'] != null && _currentUserData['avatarURL'].toString().isNotEmpty
+                    ? Image.network(
+                        _currentUserData['avatarURL'],
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+              ),
             ),
           ),
         ),
-        // Online status indicator
+        // Online status indicator - show based on real-time status
         if (widget.isCurrentUser)
-          AvatarOnlineIndicator(
-            userId: _currentUserData['id'] ?? '',
-            avatarSize: 112,
-            indicatorSize: 18,
-            showBorder: true,
-            borderColor: Colors.white,
-            borderWidth: 3,
-            showShadow: true,
+          Consumer(
+            builder: (context, ref, child) {
+              final statusAsync = ref.watch(userStatusProvider(_currentUserData['id'] ?? ''));
+              
+              return statusAsync.when(
+                data: (presence) {
+                  if (presence.status != UserStatus.offline) {
+                    return Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(presence.status),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _getStatusColor(presence.status).withValues(alpha: 0.5),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (error, stack) => const SizedBox.shrink(),
+              );
+            },
           ),
       ],
     );
@@ -709,5 +764,20 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         ),
       ],
     );
+  }
+
+  Color _getStatusColor(UserStatus status) {
+    switch (status) {
+      case UserStatus.online:
+        return const Color(0xFF4CAF50); // Green
+      case UserStatus.offline:
+        return const Color(0xFF9E9E9E); // Grey
+      case UserStatus.busy:
+        return const Color(0xFFFF9800); // Orange
+      case UserStatus.dnd:
+        return const Color(0xFFF44336); // Red
+      case UserStatus.streaming:
+        return const Color(0xFF9C27B0); // Purple
+    }
   }
 }

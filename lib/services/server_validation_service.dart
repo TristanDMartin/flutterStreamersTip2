@@ -9,7 +9,7 @@ class ServerValidationService {
   factory ServerValidationService() => _instance;
   ServerValidationService._internal();
 
-  // TODO: Replace with your actual API endpoint
+  // API endpoint configuration - replace with actual server URL
   static const String _baseUrl = 'https://your-api-domain.com/api';
   static const String _validationEndpoint = '/validate-content';
 

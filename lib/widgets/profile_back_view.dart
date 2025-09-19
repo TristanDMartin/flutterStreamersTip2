@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/calendar_event.dart';
 import '../services/robust_auth_service.dart';
 import '../services/profile_update_service.dart';
+import 'brand_icons.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
@@ -1016,18 +1017,9 @@ class _ClickablePlatformRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _getPlatformColor(platformType),
-                ),
-                child: Icon(
-                  _getPlatformIcon(platformType),
-                  color: Colors.white,
-                  size: 20,
-                ),
+              BrandIcon(
+                platformType: platformType,
+                size: 40,
               ),
               
               const SizedBox(width: 16),
@@ -1070,57 +1062,7 @@ class _ClickablePlatformRow extends StatelessWidget {
     );
   }
 
-  Color _getPlatformColor(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return const Color(0xFF9146FF);
-      case 'youtube':
-        return const Color(0xFFFF0000);
-      case 'kick':
-        return const Color(0xFF53FC18);
-      case 'tiktok':
-        return const Color(0xFF000000);
-      case 'facebook':
-        return const Color(0xFF1877F2);
-      case 'bluesky':
-        return const Color(0xFF0085FF);
-      case 'twitter':
-        return const Color(0xFF1DA1F2);
-      case 'instagram':
-        return const Color(0xFFE4405F);
-      // cspell:ignore reddit
-      case 'reddit':
-        return const Color(0xFFFF4500);
-      default:
-        return Colors.grey;
-    }
-  }
 
-  IconData _getPlatformIcon(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return Icons.tv;
-      case 'youtube':
-        return Icons.play_circle;
-      case 'kick':
-        return Icons.sports_esports;
-      case 'tiktok':
-        return Icons.music_note;
-      case 'facebook':
-        return Icons.facebook;
-      case 'bluesky':
-        return Icons.cloud;
-      case 'twitter':
-        return Icons.flutter_dash;
-      case 'instagram':
-        return Icons.camera_alt;
-      // cspell:ignore reddit
-      case 'reddit':
-        return Icons.note;
-      default:
-        return Icons.link;
-    }
-  }
 
   String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {

@@ -13,6 +13,7 @@ import '../widgets/profile_video_feed_view.dart';
 import '../services/enhanced_bookmark_service.dart';
 import 'streamer_share_sheet.dart';
 import 'instant_response_button.dart';
+import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
@@ -2507,9 +2508,8 @@ class _ClickablePlatformRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              _getPlatformIcon(platformType),
-              color: Colors.white,
+            BrandIcon(
+              platformType: platformType,
               size: 24,
             ),
             const SizedBox(width: 12),
@@ -2547,26 +2547,6 @@ class _ClickablePlatformRow extends StatelessWidget {
     );
   }
 
-  IconData _getPlatformIcon(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return Icons.live_tv;
-      case 'youtube':
-        return Icons.play_circle;
-      case 'kick':
-        return Icons.sports_esports;
-      case 'tiktok':
-        return Icons.music_note;
-      case 'facebook':
-        return Icons.facebook;
-      case 'twitter':
-        return Icons.alternate_email;
-      case 'instagram':
-        return Icons.camera_alt;
-      default:
-        return Icons.link;
-    }
-  }
 
   String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {

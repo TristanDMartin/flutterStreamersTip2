@@ -7,12 +7,14 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../models/user_status.dart';
+import 'username_lock_service.dart';
 
 class AuthenticationService extends ChangeNotifier {
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
+  final UsernameLockService _usernameLockService = UsernameLockService();
   
   User? _currentUser;
   bool _isLoading = false;
@@ -163,13 +165,10 @@ class AuthenticationService extends ChangeNotifier {
     int counter = 1;
     
     while (true) {
-      final query = _firestore
-          .collection('users')
-          .where('username', isEqualTo: username)
-          .limit(1);
+      // Check if username is available (not taken and not reserved)
+      final isAvailable = await _usernameLockService.isUsernameAvailable(username);
       
-      final snapshot = await query.get();
-      if (snapshot.docs.isEmpty) {
+      if (isAvailable) {
         return username;
       }
       

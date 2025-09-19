@@ -104,7 +104,9 @@ class PerformanceUtils {
   
   /// Memory cleanup
   static void cleanup() {
-    _debounceTimers.values.forEach((timer) => timer.cancel());
+    for (final timer in _debounceTimers.values) {
+      timer.cancel();
+    }
     _debounceTimers.clear();
     _buttonStates.clear();
   }

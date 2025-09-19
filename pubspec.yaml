@@ -43,6 +43,7 @@ dependencies:
   flutter_hooks: ^0.20.3
   hooks_riverpod: ^2.4.9
   equatable: ^2.0.5
+  flutter_svg: ^2.0.9
   
   # Video Processing
   path_provider: ^2.1.1

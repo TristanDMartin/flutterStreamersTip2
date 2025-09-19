@@ -4,7 +4,9 @@ import 'share_profile_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/video_service_provider.dart';
+import '../providers/status_provider.dart';
 import '../models/home_video.dart';
+import '../models/user_status.dart';
 import 'edit_profile_view.dart';
 import '../repositories/user_repository.dart';
 import '../views/menu_view.dart';
@@ -524,47 +526,87 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> with TickerPr
   }
 
   Widget _buildAvatarWithGradientRing() {
-    return Container(
-      width: 112,
-      height: 112,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: SweepGradient(
-          colors: [
-            Color(0xFFFF6CAB), // Pink
-            Color(0xFF8E54E9), // Purple
-            Color(0xFF3D99F7), // Blue
-            Color(0xFFFF6CAB), // Pink
-          ],
-        ),
-      ),
-      child: Center(
-        child: Container(
-          width: 104,
-          height: 104,
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 112,
+          height: 112,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.black,
+            gradient: SweepGradient(
+              colors: [
+                Color(0xFFFF6CAB),
+                Color(0xFF8E54E9),
+                Color(0xFF3D99F7),
+                Color(0xFFFF6CAB),
+              ],
+            ),
           ),
-          child: ClipOval(
-            child: widget.user['avatarURL'] != null && widget.user['avatarURL'].toString().isNotEmpty
-                ? Image.network(
-                    widget.user['avatarURL'],
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const Icon(
-                      Icons.person,
-                      color: Colors.white,
-                      size: 48,
-                    ),
-                  )
-                : const Icon(
-                    Icons.person,
-                    color: Colors.white,
-                    size: 48,
-                  ),
+          child: Center(
+            child: Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.2),
+              ),
+              child: ClipOval(
+                child: widget.user['avatarURL'] != null && widget.user['avatarURL'].toString().isNotEmpty
+                    ? Image.network(
+                        widget.user['avatarURL'],
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+              ),
+            ),
           ),
         ),
-      ),
+        // Online status indicator - show based on real-time status
+        Consumer(
+          builder: (context, ref, child) {
+            final statusAsync = ref.watch(userStatusProvider(widget.user['id'] ?? ''));
+            
+            return statusAsync.when(
+              data: (presence) {
+                if (presence.status != UserStatus.offline) {
+                  return Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(presence.status),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _getStatusColor(presence.status).withValues(alpha: 0.5),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (error, stack) => const SizedBox.shrink(),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -710,6 +752,21 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> with TickerPr
 
   Widget _buildProfileContent() {
     return const SizedBox.shrink();
+  }
+
+  Color _getStatusColor(UserStatus status) {
+    switch (status) {
+      case UserStatus.online:
+        return const Color(0xFF4CAF50); // Green
+      case UserStatus.offline:
+        return const Color(0xFF9E9E9E); // Grey
+      case UserStatus.busy:
+        return const Color(0xFFFF9800); // Orange
+      case UserStatus.dnd:
+        return const Color(0xFFF44336); // Red
+      case UserStatus.streaming:
+        return const Color(0xFF9C27B0); // Purple
+    }
   }
 
   // Unused modal methods removed

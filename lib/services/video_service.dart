@@ -6,7 +6,7 @@ class VideoService {
     required int pageSize,
     String? lastDocument,
   }) async {
-    // TODO: Implement actual Firestore fetch
+    // Placeholder - would fetch videos from Firestore
     await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
     
     // Return sample videos for testing
@@ -26,7 +26,7 @@ class VideoService {
     required int pageSize,
     String? lastDocument,
   }) async {
-    // TODO: Implement actual Firestore fetch
+    // Placeholder - would fetch following videos from Firestore
     await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
     
     // Filter videos to only show those from followed users
@@ -46,7 +46,7 @@ class VideoService {
   }
 
   Future<bool> toggleLike(String videoId) async {
-    // TODO: Implement actual like toggle
+    // Placeholder - would toggle like status in Firestore
     await Future.delayed(const Duration(milliseconds: 300)); // Simulate network delay
     return true;
   }

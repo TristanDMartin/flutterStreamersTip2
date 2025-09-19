@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/rate_limiting_service.dart';
+import '../services/hashtag_lock_service.dart';
 import '../widgets/content_validation_field.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class EditFieldView extends ConsumerStatefulWidget {
   final String title;
@@ -81,7 +83,7 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
     super.dispose();
   }
 
-  void _addHashtag(String hashtag) {
+  void _addHashtag(String hashtag) async {
     final cleaned = hashtag.trim().replaceAll('#', '');
     if (cleaned.isEmpty || 
         _selectedHashtags.contains(cleaned) || 
@@ -90,8 +92,25 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
       return;
     }
 
-    // TODO: Implement authService.canUseHashtag and restricted hashtags logic
-    // For now, we'll add the hashtag directly
+    // Check if hashtag is reserved and user is authorized
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final hashtagService = HashtagLockService();
+    final validation = await hashtagService.validateHashtag(cleaned, currentUser?.uid);
+    
+    if (!validation.isValid) {
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(validation.errorMessage ?? 'Invalid hashtag'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _selectedHashtags.add(cleaned);
       _hashtagController.clear();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SignupView extends ConsumerStatefulWidget {
   const SignupView({super.key});
@@ -740,6 +741,69 @@ class _SignupViewState extends ConsumerState<SignupView> {
                               
                               const SizedBox(height: 16),
                               
+                              // Troubleshooting Buttons
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  TextButton(
+                                    onPressed: () async {
+                                      await _clearFirebaseAuthState();
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text("Cache cleared. Try signing up again."),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: Text(
+                                      "Clear Cache",
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontSize: 12,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () async {
+                                      final email = _emailController.text.trim();
+                                      if (email.isNotEmpty) {
+                                        await _forceDeleteAuthAccount(email);
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text("Attempted to delete existing account. Try signing up again."),
+                                              backgroundColor: Colors.orange,
+                                            ),
+                                          );
+                                        }
+                                      } else {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text("Please enter an email first"),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    child: Text(
+                                      "Delete Existing Account",
+                                      style: TextStyle(
+                                        color: Colors.red.withOpacity(0.8),
+                                        fontSize: 12,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              
+                              const SizedBox(height: 8),
+                              
                               // Sign In Link
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1024,7 +1088,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
 
   String _getSignupErrorMessage(String error) {
     if (error.contains('email-already-in-use')) {
-      return 'This email is already registered. If you just deleted your account, please wait a few minutes and try again, or try signing in instead.';
+      return 'This email is already registered in Firebase Auth. Use the "Delete Existing Account" button below to remove it, or try signing in instead.';
     } else if (error.contains('invalid-email')) {
       return 'Please enter a valid email address.';
     } else if (error.contains('weak-password')) {
@@ -1050,6 +1114,9 @@ class _SignupViewState extends ConsumerState<SignupView> {
     }
     
     try {
+      // Clear any existing Firebase Auth state
+      await _clearFirebaseAuthState();
+      
       final authService = ref.read(robustAuthServiceProvider.notifier);
       await authService.signUpWithEmail(
         _emailController.text.trim(),
@@ -1063,11 +1130,61 @@ class _SignupViewState extends ConsumerState<SignupView> {
       }
     } catch (e) {
       if (mounted) {
+        // Enhanced error logging for debugging
+        print("🔍 Signup Error Details: ${e.toString()}");
+        print("🔍 Error Type: ${e.runtimeType}");
+        
         setState(() {
           _alertMessage = _getSignupErrorMessage(e.toString());
           _showAlert = true;
         });
       }
+    }
+  }
+
+  /// Clear Firebase Auth state to resolve caching issues
+  Future<void> _clearFirebaseAuthState() async {
+    try {
+      // Sign out any existing user
+      await FirebaseAuth.instance.signOut();
+      
+      // Clear any cached data
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      print("🧹 Firebase Auth state cleared");
+    } catch (e) {
+      print("⚠️ Error clearing Firebase Auth state: $e");
+    }
+  }
+
+  /// Force delete Firebase Auth account (for troubleshooting)
+  Future<void> _forceDeleteAuthAccount(String email) async {
+    try {
+      print("🗑️ Attempting to force delete Firebase Auth account for: $email");
+      
+      // Try to sign in with a temporary password to get the user
+      // This is a workaround for the email-already-in-use issue
+      try {
+        // First, try to sign in with a dummy password to get the user object
+        final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: "temp123456", // This will fail, but we'll catch it
+        );
+        
+        if (credential.user != null) {
+          await credential.user!.delete();
+          print("✅ Firebase Auth account deleted successfully");
+        }
+      } catch (e) {
+        print("⚠️ Could not delete Firebase Auth account: $e");
+        // This is expected if the password is wrong
+      }
+      
+      // Clear any remaining state
+      await FirebaseAuth.instance.signOut();
+      
+    } catch (e) {
+      print("❌ Error in force delete: $e");
     }
   }
 }

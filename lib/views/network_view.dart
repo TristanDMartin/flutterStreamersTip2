@@ -371,7 +371,7 @@ class _NetworkViewState extends State<NetworkView> {
           _nextTab();
         }
       },
-      child: Container(
+      child: SizedBox(
         height: 160,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,

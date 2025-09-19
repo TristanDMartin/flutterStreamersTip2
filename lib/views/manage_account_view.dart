@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Comprehensive Manage Account screen with TikTok-style design
@@ -227,7 +226,7 @@ class _ManageAccountViewState extends State<ManageAccountView> {
                 ],
               ),
             ),
-            Icon(
+            const Icon(
               Icons.arrow_forward_ios,
               color: Colors.white30,
               size: 16,

@@ -6,7 +6,9 @@ import 'video_publishing_screen.dart';
 import 'instant_response_button.dart';
 import '../services/video_processing_service.dart';
 import '../services/music_library_service.dart';
+import '../services/hashtag_lock_service.dart';
 import 'music_selection_widget.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class VideoEditingScreen extends StatefulWidget {
   final File videoFile;
@@ -704,13 +706,39 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           
           // Hashtag input
           TextField(
-            onChanged: (value) {
+            onChanged: (value) async {
               // Extract hashtags from text
               final hashtagRegex = RegExp(r'#\w+');
               final matches = hashtagRegex.allMatches(value);
+              final extractedHashtags = matches.map((match) => match.group(0)!).toList();
+              
+              // Validate each hashtag
+              final currentUser = FirebaseAuth.instance.currentUser;
+              final hashtagService = HashtagLockService();
+              final validHashtags = <String>[];
+              
+              for (final hashtag in extractedHashtags) {
+                final cleaned = hashtag.replaceAll('#', '');
+                final validation = await hashtagService.validateHashtag(cleaned, currentUser?.uid);
+                if (validation.isValid) {
+                  validHashtags.add(hashtag);
+                } else {
+                  // Show error for invalid hashtag
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('${validation.errorMessage} for #$cleaned'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                }
+              }
+              
               setState(() {
                 _hashtags.clear();
-                _hashtags.addAll(matches.map((match) => match.group(0)!));
+                _hashtags.addAll(validHashtags);
               });
             },
             style: const TextStyle(color: Colors.white),

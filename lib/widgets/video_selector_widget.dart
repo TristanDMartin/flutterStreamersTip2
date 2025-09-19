@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/profile_video.dart';
-import '../models/user.dart';
 import '../services/insights_firebase_service.dart';
 
 /// Widget for selecting which video to analyze in Insights
@@ -64,7 +64,9 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
           _videos = <ProfileVideo>[];
         });
       }
-      print('Error loading videos: $error');
+      if (kDebugMode) {
+        print('Error loading videos: $error');
+      }
     });
     
     // Uncomment the line below to test with mock data instead:
@@ -79,74 +81,11 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
     // });
   }
 
-  List<ProfileVideo> _getMockVideos() {
-    // Mock data - in real implementation, this would come from ProfileVideoFeed
-    final mockUser = const User(
-      id: 'current-user',
-      username: 'currentuser',
-      displayName: 'Current User',
-    );
-    
-    return [
-      ProfileVideo(
-        id: 'video1',
-        creator: mockUser,
-        videoURL: 'https://example.com/video1.mp4',
-        thumbnailURL: 'https://picsum.photos/300/400?random=1',
-        duration: 23.75,
-        caption: 'Amazing sunset timelapse',
-        createdAt: DateTime.now().subtract(const Duration(hours: 2)), // Too new for insights
-        likes: 1250,
-        comments: 89,
-        views: 15420,
-        shares: 23,
-      ),
-      ProfileVideo(
-        id: 'video2',
-        creator: mockUser,
-        videoURL: 'https://example.com/video2.mp4',
-        thumbnailURL: 'https://picsum.photos/300/400?random=2',
-        duration: 45.2,
-        caption: 'Cooking tutorial part 1',
-        createdAt: DateTime.now().subtract(const Duration(hours: 12)), // Too new for insights
-        likes: 890,
-        comments: 156,
-        views: 8760,
-        shares: 45,
-      ),
-      ProfileVideo(
-        id: 'video3',
-        creator: mockUser,
-        videoURL: 'https://example.com/video3.mp4',
-        thumbnailURL: 'https://picsum.photos/300/400?random=3',
-        duration: 12.8,
-        caption: 'Quick tip for beginners',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)), // Has insights
-        likes: 2100,
-        comments: 234,
-        views: 18900,
-        shares: 67,
-      ),
-      ProfileVideo(
-        id: 'video4',
-        creator: mockUser,
-        videoURL: 'https://example.com/video4.mp4',
-        thumbnailURL: 'https://picsum.photos/300/400?random=4',
-        duration: 67.4,
-        caption: 'Full workout routine',
-        createdAt: DateTime.now().subtract(const Duration(days: 5)), // Has insights
-        likes: 3200,
-        comments: 445,
-        views: 25600,
-        shares: 123,
-      ),
-    ];
-  }
 
   String _formatDuration(double seconds) {
     final minutes = (seconds / 60).floor();
     final remainingSeconds = (seconds % 60).round();
-    return '${minutes}:${remainingSeconds.toString().padLeft(2, '0')}';
+    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
   String _formatDate(DateTime date) {

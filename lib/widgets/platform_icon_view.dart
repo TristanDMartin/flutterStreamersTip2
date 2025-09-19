@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'brand_icons.dart';
 
 enum PlatformType {
   twitch,
@@ -8,6 +9,7 @@ enum PlatformType {
   facebook,
   bluesky,
   twitter,
+  discord,
   instagram,
   reddit,
   other,
@@ -25,345 +27,40 @@ class PlatformIconView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget icon;
-    
+    return BrandIcon(
+      platformType: _getPlatformString(platformType),
+      size: size,
+    );
+  }
+
+  String _getPlatformString(PlatformType platformType) {
     switch (platformType) {
       case PlatformType.twitch:
-        icon = TwitchIcon(size: size);
+        return 'twitch';
       case PlatformType.youtube:
-        icon = YouTubeIcon(size: size);
+        return 'youtube';
       case PlatformType.kick:
-        icon = KickIcon(size: size);
+        return 'kick';
       case PlatformType.tiktok:
-        icon = TikTokIcon(size: size);
+        return 'tiktok';
       case PlatformType.facebook:
-        icon = FacebookIcon(size: size);
+        return 'facebook';
       case PlatformType.bluesky:
-        icon = BlueSkyIcon(size: size);
+        return 'bluesky';
       case PlatformType.twitter:
-        icon = TwitterIcon(size: size);
+        return 'twitter';
+      case PlatformType.discord:
+        return 'discord';
       case PlatformType.instagram:
-        icon = InstagramIcon(size: size);
+        return 'instagram';
       case PlatformType.reddit:
-        icon = RednoteIcon(size: size);
+        return 'reddit';
       case PlatformType.other:
-        icon = WebsiteIcon(size: size);
+        return 'other';
     }
-
-    return SizedBox(
-      width: size,
-      height: size,
-      child: icon,
-    );
   }
 }
 
-// MARK: - Individual Platform Icons
-
-class TwitchIcon extends StatelessWidget {
-  final double size;
-
-  const TwitchIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Placeholder for Twitch icon - replace with actual asset
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: const Color(0xFF9146FF), // Twitch purple
-        borderRadius: BorderRadius.circular(size / 2),
-      ),
-      child: const Icon(
-        Icons.tv,
-        color: Colors.white,
-        size: 16,
-      ),
-    );
-  }
-}
-
-class YouTubeIcon extends StatelessWidget {
-  final double size;
-
-  const YouTubeIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Red background
-        Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: Colors.red,
-            borderRadius: BorderRadius.circular(size * 0.15),
-          ),
-        ),
-        
-        // White play button (triangle)
-        Positioned(
-          left: size * 0.05,
-          top: size * 0.35,
-          child: CustomPaint(
-            size: Size(size * 0.3, size * 0.3),
-            painter: TrianglePainter(),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class KickIcon extends StatelessWidget {
-  final double size;
-
-  const KickIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Colors.green,
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Text(
-          "K",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: size * 0.6,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class TikTokIcon extends StatelessWidget {
-  final double size;
-
-  const TikTokIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(size * 0.2),
-      ),
-      child: Icon(
-        Icons.music_note,
-        color: Colors.white,
-        size: size * 0.6,
-      ),
-    );
-  }
-}
-
-class FacebookIcon extends StatelessWidget {
-  final double size;
-
-  const FacebookIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Placeholder for Facebook icon - replace with actual asset
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1877F2), // Facebook blue
-        shape: BoxShape.circle,
-      ),
-      child: const Icon(
-        Icons.facebook,
-        color: Colors.white,
-        size: 16,
-      ),
-    );
-  }
-}
-
-class BlueSkyIcon extends StatelessWidget {
-  final double size;
-
-  const BlueSkyIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Colors.cyan,
-        shape: BoxShape.circle,
-      ),
-      child: Icon(
-        Icons.cloud,
-        color: Colors.white,
-        size: size * 0.6,
-      ),
-    );
-  }
-}
-
-class TwitterIcon extends StatelessWidget {
-  final double size;
-
-  const TwitterIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(size * 0.2),
-      ),
-      child: Center(
-        child: Text(
-          "X",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: size * 0.6,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class InstagramIcon extends StatelessWidget {
-  final double size;
-
-  const InstagramIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Placeholder for Instagram icon - replace with actual asset
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Color(0xFFE4405F), // Instagram pink
-        shape: BoxShape.circle,
-      ),
-      child: const Icon(
-        Icons.camera_alt,
-        color: Colors.white,
-        size: 16,
-      ),
-    );
-  }
-}
-
-class RednoteIcon extends StatelessWidget {
-  final double size;
-
-  const RednoteIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.red,
-        borderRadius: BorderRadius.circular(size * 0.2),
-      ),
-      child: Icon(
-        Icons.note,
-        color: Colors.white,
-        size: size * 0.6,
-      ),
-    );
-  }
-}
-
-class WebsiteIcon extends StatelessWidget {
-  final double size;
-
-  const WebsiteIcon({
-    super.key,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Colors.grey,
-        shape: BoxShape.circle,
-      ),
-      child: Icon(
-        Icons.language,
-        color: Colors.white,
-        size: size * 0.6,
-      ),
-    );
-  }
-}
-
-// MARK: - Helper Views
-
-class TrianglePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-
-    final path = Path();
-    path.moveTo(0, 0);
-    path.lineTo(size.width, size.height / 2);
-    path.lineTo(0, size.height);
-    path.close();
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
 
 // Preview widget for testing
 class PlatformIconViewPreview extends StatelessWidget {
@@ -403,7 +100,7 @@ class PlatformIconViewPreview extends StatelessWidget {
               SizedBox(width: 15),
               PlatformIconView(PlatformType.twitter, size: 30),
               SizedBox(width: 15),
-              PlatformIconView(PlatformType.instagram, size: 30),
+              PlatformIconView(PlatformType.discord, size: 30),
             ],
           ),
           
@@ -413,6 +110,8 @@ class PlatformIconViewPreview extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              PlatformIconView(PlatformType.instagram, size: 30),
+              SizedBox(width: 15),
               PlatformIconView(PlatformType.reddit, size: 30),
               SizedBox(width: 15),
               PlatformIconView(PlatformType.other, size: 30),

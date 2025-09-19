@@ -414,7 +414,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                 onShowShare: () => _shareVideo(video),
                 onShowStreamerCard: () => _showStreamerCardModal(video.creator),
                 isLiked: video.isLiked,
-                isBookmarked: video.isFavorited,
+                isBookmarked: video.isFavorited, // cSpell:ignore Favorited
               );
             },
           ),
@@ -478,6 +478,9 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                           print('HomeView: Follow action triggered for user: $userId');
                         }
                         
+                        // Capture context before async operations
+                        final scaffoldMessenger = ScaffoldMessenger.of(context);
+                        
                         try {
                           // Get the following provider
                           final followingNotifier = ref.read(followingProvider.notifier);
@@ -490,21 +493,21 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                             final success = await followingNotifier.unfollowUser(userId);
                             if (success) {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
+                                scaffoldMessenger.showSnackBar(
+                                  const SnackBar(
                                     content: Text('Unfollowed user'),
                                     backgroundColor: Colors.orange,
-                                    duration: const Duration(seconds: 2),
+                                    duration: Duration(seconds: 2),
                                   ),
                                 );
                               }
                             } else {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
+                                scaffoldMessenger.showSnackBar(
+                                  const SnackBar(
                                     content: Text('Failed to unfollow user'),
                                     backgroundColor: Colors.red,
-                                    duration: const Duration(seconds: 2),
+                                    duration: Duration(seconds: 2),
                                   ),
                                 );
                               }
@@ -514,21 +517,21 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                             final success = await followingNotifier.followUser(userId);
                             if (success) {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
+                                scaffoldMessenger.showSnackBar(
+                                  const SnackBar(
                                     content: Text('Following user'),
                                     backgroundColor: Colors.green,
-                                    duration: const Duration(seconds: 2),
+                                    duration: Duration(seconds: 2),
                                   ),
                                 );
                               }
                             } else {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
+                                scaffoldMessenger.showSnackBar(
+                                  const SnackBar(
                                     content: Text('Failed to follow user'),
                                     backgroundColor: Colors.red,
-                                    duration: const Duration(seconds: 2),
+                                    duration: Duration(seconds: 2),
                                   ),
                                 );
                               }
@@ -539,7 +542,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                             print('HomeView: Error in follow action: $e');
                           }
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            scaffoldMessenger.showSnackBar(
                               SnackBar(
                                 content: Text('Error: ${e.toString()}'),
                                 backgroundColor: Colors.red,
@@ -570,7 +573,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                               TextButton(
                                 onPressed: () {
                                   Navigator.of(context).pop();
-                                  // TODO: Navigate to chat/messaging screen
+                                  // Navigate to chat/messaging screen
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text('Messaging feature coming soon!'),
@@ -591,12 +594,15 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                           print('HomeView: Share action triggered for user: $userId');
                         }
                         
+                        // Capture context before async operations
+                        final scaffoldMessenger = ScaffoldMessenger.of(context);
+                        
                         try {
                           // Get user information for sharing
                           final currentStreamer = _currentStreamerCard;
                           if (currentStreamer == null) {
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              scaffoldMessenger.showSnackBar(
                                 const SnackBar(
                                   content: Text('User information not available'),
                                   backgroundColor: Colors.red,
@@ -621,7 +627,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                           );
                           
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            scaffoldMessenger.showSnackBar(
                               const SnackBar(
                                 content: Text('User profile shared successfully!'),
                                 backgroundColor: Colors.green,
@@ -634,7 +640,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                             print('HomeView: Error sharing user profile: $e');
                           }
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            scaffoldMessenger.showSnackBar(
                               SnackBar(
                                 content: Text('Failed to share user profile: ${e.toString()}'),
                                 backgroundColor: Colors.red,

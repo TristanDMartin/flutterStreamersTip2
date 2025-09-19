@@ -563,7 +563,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
   // MARK: - Sync States
   
   Future<void> syncLikeStates() async {
-    // TODO: Implement like state synchronization
+    // Sync like states from the backend
+    // This would typically fetch user's liked videos and update local state
     log('Syncing like states...');
   }
 

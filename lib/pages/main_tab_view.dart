@@ -152,13 +152,13 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             _currentIndex = index;
           });
         },
-        children: [
+        children: const [
           // Home View
-          const HomeView(),
+          HomeView(),
           // Network View
-          const NetworkView(),
+          NetworkView(),
           // Creation Screen (handled by floating action button)
-          const Center(
+          Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -176,11 +176,11 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             ),
           ),
           // Inbox (handled by navigation)
-          const Center(
+          Center(
             child: Icon(Icons.mail_outline, size: 80, color: Colors.grey),
           ),
           // Profile (handled by navigation)
-          const Center(
+          Center(
             child: Icon(Icons.account_circle_outlined, size: 80, color: Colors.grey),
           ),
         ],

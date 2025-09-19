@@ -107,5 +107,11 @@ service cloud.firestore {
     // Note: All user subcollections are now handled by the wildcard pattern above
     // This includes: bookmarks, deviceTokens, bookmarkedEvents, presence, videos, 
     // followers, following, likedVideos, connections, and any future subcollections
+    
+    // Hashtag permissions - allow authenticated users to read and write
+    match /hashtag_permissions/{hashtag} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
   }
 }

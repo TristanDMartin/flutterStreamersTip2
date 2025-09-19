@@ -22,7 +22,7 @@ class VideoWatermarkService {
       // In a real implementation, you would use FFmpeg or similar to add watermark
     // print('🎬 Adding watermark for platforms: ${selectedPlatforms.join(', ')}');
       
-      // TODO: Implement actual video watermarking with FFmpeg
+      // Placeholder - would implement video watermarking with FFmpeg
       // This would involve:
       // 1. Loading the logo image
       // 2. Using FFmpeg to overlay the logo on the video

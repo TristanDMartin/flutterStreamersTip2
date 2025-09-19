@@ -231,13 +231,15 @@ class InsightsFirebaseService extends ChangeNotifier {
         views: data['views'] ?? 0,
         shares: data['shares'] ?? 0,
         isLiked: data['isLiked'] ?? false,
-        isFavorited: data['isFavorited'] ?? false,
+        isFavorited: data['isFavorited'] ?? false, // cSpell:ignore Favorited
         isDraft: data['isDraft'] ?? false,
         mlScore: (data['mlScore'] ?? 0.0).toDouble(),
         categoryId: data['categoryId'] ?? '',
       );
     } catch (e) {
-      print('Error mapping video data: $e');
+      if (kDebugMode) {
+        print('Error mapping video data: $e');
+      }
       return null;
     }
   }
@@ -317,7 +319,7 @@ class InsightsFirebaseService extends ChangeNotifier {
     
     return ageData.entries.map((entry) {
       final count = entry.value as int;
-      final total = ageData.values.fold<int>(0, (sum, value) => sum + (value as int));
+      final total = ageData.values.fold<int>(0, (totalSum, value) => totalSum + (value as int));
       final percentage = total > 0 ? (count / total) * 100 : 0.0;
       
       return AgeGroup(
@@ -333,7 +335,7 @@ class InsightsFirebaseService extends ChangeNotifier {
     
     return locationData.entries.map((entry) {
       final views = entry.value as int;
-      final total = locationData.values.fold<int>(0, (sum, value) => sum + (value as int));
+      final total = locationData.values.fold<int>(0, (totalSum, value) => totalSum + (value as int));
       final percentage = total > 0 ? (views / total) * 100 : 0.0;
       
       return Location(

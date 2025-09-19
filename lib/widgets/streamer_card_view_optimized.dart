@@ -10,6 +10,7 @@ import '../services/profile_update_service.dart';
 import '../widgets/chat_view_optimized.dart';
 import '../models/chat.dart' as app_chat;
 import 'online_status_indicator.dart';
+import 'brand_icons.dart';
 
 class StreamerCardViewOptimized extends StatefulWidget {
   final StreamerCard displayStreamer;
@@ -1089,19 +1090,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             ),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _getPlatformColor(platform.type.name),
+                  BrandIcon(
+                    platformType: platform.type.name,
+                    size: 40,
                   ),
-                  child: Icon(
-                    _getPlatformIcon(platform.type.name),
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1232,53 +1224,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     }
   }
 
-  Color _getPlatformColor(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return const Color(0xFF9146FF);
-      case 'youtube':
-        return const Color(0xFFFF0000);
-      case 'kick':
-        return const Color(0xFF53FC18);
-      case 'tiktok':
-        return const Color(0xFF000000);
-      case 'facebook':
-        return const Color(0xFF1877F2);
-      case 'twitter':
-      case 'x':
-        return const Color(0xFF1DA1F2);
-      case 'instagram':
-        return const Color(0xFFE4405F);
-      case 'reddit':
-        return const Color(0xFFFF4500);
-      default:
-        return const Color(0xFF6B7280);
-    }
-  }
 
-  IconData _getPlatformIcon(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return Icons.videogame_asset;
-      case 'youtube':
-        return Icons.play_circle;
-      case 'kick':
-        return Icons.sports_esports;
-      case 'tiktok':
-        return Icons.music_video;
-      case 'facebook':
-        return Icons.facebook;
-      case 'twitter':
-      case 'x':
-        return Icons.alternate_email;
-      case 'instagram':
-        return Icons.camera_alt;
-      case 'reddit':
-        return Icons.forum;
-      default:
-        return Icons.link;
-    }
-  }
 
 
 

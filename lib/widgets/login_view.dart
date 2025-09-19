@@ -18,14 +18,13 @@ class LoginView extends ConsumerStatefulWidget {
 }
 
 class _LoginViewState extends ConsumerState<LoginView> {
-  // final bool _showSignup = false; // Unused field commented out
   bool _showEmailLogin = false;
   bool _showAlert = false;
   String _alertMessage = "";
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
-    // final authService = ref.watch(authServiceProvider); // Unused variable commented out
     
     // Show EmailLoginView if requested
     if (_showEmailLogin) {
@@ -66,7 +65,7 @@ class _LoginViewState extends ConsumerState<LoginView> {
                         
                         IconButton(
                           onPressed: () {
-                            // TODO: Show help/support
+                            // Help/support functionality can be added here
                           },
                           icon: const Icon(
                             Icons.help_outline,
@@ -118,18 +117,12 @@ class _LoginViewState extends ConsumerState<LoginView> {
                               // Google Button
                               LoginButton(
                                 iconName: Icons.language,
-                                text: "Continue with Google",
-                                onTap: _signInWithGoogle,
+                                text: _isLoading ? "Signing in..." : "Continue with Google",
+                                onTap: _isLoading ? null : _signInWithGoogle,
+                                isLoading: _isLoading,
                               ),
                               
                               const SizedBox(height: 16),
-                              
-                              // TEMPORARY: Bypass Login for Testing
-                              LoginButton(
-                                iconName: Icons.skip_next,
-                                text: "🚀 Bypass Login (Dev)",
-                                onTap: _bypassLogin,
-                              ),
                             ],
                           ),
                           
@@ -260,7 +253,11 @@ class _LoginViewState extends ConsumerState<LoginView> {
   }
 
   Future<void> _signInWithGoogle() async {
-    // print("🟢 Google sign-in tapped"); // Commented out for production
+    if (_isLoading) return;
+    
+    setState(() {
+      _isLoading = true;
+    });
     
     try {
       final authService = ref.read(authServiceProvider.notifier);
@@ -271,37 +268,27 @@ class _LoginViewState extends ConsumerState<LoginView> {
         setState(() {
           _alertMessage = e.toString();
           _showAlert = true;
+          _isLoading = false;
         });
       }
     }
   }
 
-  Future<void> _bypassLogin() async {
-    // print("🚀 Bypass login tapped - logging in as technqs"); // Commented out for production
-    
-    try {
-      final authService = ref.read(authServiceProvider.notifier);
-      await authService.bypassLoginAsTechnqs();
-    } catch (e) {
-      setState(() {
-        _alertMessage = "Bypass failed: ${e.toString()}";
-        _showAlert = true;
-      });
-    }
-  }
 }
 
 // MARK: - Login Button Component
 class LoginButton extends StatelessWidget {
   final IconData iconName;
   final String text;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool isLoading;
 
   const LoginButton({
     super.key,
     required this.iconName,
     required this.text,
-    required this.onTap,
+    this.onTap,
+    this.isLoading = false,
   });
 
   @override
@@ -312,8 +299,12 @@ class LoginButton extends StatelessWidget {
         width: double.infinity,
         height: 48, // Match ProfileView button height
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: onTap != null ? const LinearGradient(
             colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileView gradient
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ) : const LinearGradient(
+            colors: [Color(0xFF666666), Color(0xFF555555)], // Disabled gradient
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
@@ -323,13 +314,24 @@ class LoginButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                iconName,
-                size: 20,
-                color: Colors.white,
-              ),
-              
-              const SizedBox(width: 12),
+              if (isLoading) ...[
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ] else ...[
+                Icon(
+                  iconName,
+                  size: 20,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 12),
+              ],
               
               Text(
                 text,

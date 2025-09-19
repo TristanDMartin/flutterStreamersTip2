@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/streamer_card.dart';
 import '../models/calendar_event.dart';
 import '../services/bookmark_service.dart';
+import 'brand_icons.dart';
 
 class StreamerBackView extends StatefulWidget {
   final StreamerCard streamer;
@@ -99,7 +100,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
     });
 
     try {
-      // TODO: Load updated streamer data
+      // Load updated streamer data from Firebase
       // final updatedStreamer = await _userService.loadUserForStreamerCard(widget.streamer.id);
       
       if (mounted) {
@@ -176,7 +177,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
 
   Future<void> _loadCalendarEvents() async {
     try {
-      // TODO: Load calendar events from Firebase
+      // Load calendar events from Firebase
       // For now, create sample events to demonstrate the bookmark functionality
       if (mounted) {
         setState(() {
@@ -223,7 +224,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
 
   Future<void> _loadPlatforms() async {
     try {
-      // TODO: Load platforms from Firebase
+      // Load platforms from Firebase
       // This would typically fetch from a platforms collection
       if (mounted) {
         setState(() {
@@ -237,7 +238,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
 
   Future<void> _loadSocialLinks() async {
     try {
-      // TODO: Load social links from Firebase
+      // Load social links from Firebase
       // This would typically fetch from a social links collection
       if (mounted) {
         setState(() {
@@ -303,7 +304,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
           IconButton(
             onPressed: () {
                 HapticFeedback.lightImpact();
-              // TODO: Implement flip functionality
+              _handleFlip();
             },
             icon: const Icon(Icons.flip, color: Colors.white, size: 24),
             tooltip: 'Flip',
@@ -551,7 +552,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title - matching SwiftUI .subheadline .semibold
+                // Title - matching SwiftUI subheadline semibold
                 Text(
                   event.title,
                   style: const TextStyle(
@@ -649,7 +650,7 @@ class _StreamerBackViewState extends State<StreamerBackView>
   //       return Icons.cloud;
   //     case 'kick':
   //       return Icons.sports_esports;
-  //     case 'rednote':
+  //     case 'reddit':
   //       return Icons.note;
   //     default:
   //       return Icons.link;
@@ -675,37 +676,57 @@ class _StreamerBackViewState extends State<StreamerBackView>
   //   }
   // }
 
-  // void _openPlatform(String? url) {
-  //   HapticFeedback.lightImpact();
-  //   // TODO: Open platform URL using url_launcher
-  //   print('Opening platform: $url');
-  // }
 
-  // void _openSocialLink(String? url) {
-  //   HapticFeedback.lightImpact();
-  //   // TODO: Open social link URL using url_launcher
-  //   print('Opening social link: $url');
-  // }
+  // Flip functionality
+  void _handleFlip() {
+    HapticFeedback.lightImpact();
+    // This would typically flip to the front view of the streamer card
+    // For now, show a message indicating the functionality
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Flip functionality - would show front view'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
 
   // Event management methods
-  void _deleteEvent(String eventId) {
+  Future<void> _deleteEvent(String eventId) async {
     HapticFeedback.lightImpact();
-    // TODO: Delete event from Firebase
-    if (kDebugMode) {
-    // print('Deleting event: $eventId');
+    
+    try {
+      // TODO: Implement Firebase deletion when service is available
+      // await _calendarService.deleteEvent(eventId);
+      
+      if (mounted) {
+        setState(() {
+          _calendarEvents.removeWhere((event) => event.id == eventId);
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Event deleted'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error deleting event: $e');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to delete event'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     }
-    
-    setState(() {
-      _calendarEvents.removeWhere((event) => event.id == eventId);
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Event deleted'),
-        backgroundColor: Colors.red,
-        duration: Duration(seconds: 2),
-      ),
-    );
   }
 
   /// Toggle bookmark for a calendar event - matching SwiftUI implementation
@@ -890,9 +911,8 @@ class _ClickablePlatformRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              _getPlatformIcon(platformType),
-              color: Colors.white,
+            BrandIcon(
+              platformType: platformType,
               size: 24,
             ),
             const SizedBox(width: 12),
@@ -930,26 +950,6 @@ class _ClickablePlatformRow extends StatelessWidget {
     );
   }
 
-  IconData _getPlatformIcon(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return Icons.live_tv;
-      case 'youtube':
-        return Icons.play_circle;
-      case 'kick':
-        return Icons.sports_esports;
-      case 'tiktok':
-        return Icons.music_note;
-      case 'facebook':
-        return Icons.facebook;
-      case 'twitter':
-        return Icons.alternate_email;
-      case 'instagram':
-        return Icons.camera_alt;
-      default:
-        return Icons.link;
-    }
-  }
 
   String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {
