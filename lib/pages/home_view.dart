@@ -296,6 +296,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     ShareServiceOptimized().shareVideo(video);
   }
 
+
   void _showStreamerCardModal(User user) {
     HapticFeedback.lightImpact();
     
@@ -331,7 +332,10 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     final videos = _feedTab == FeedTab.forYou ? homeState.forYouVideos : homeState.followingVideos;
     final isLoading = _feedTab == FeedTab.forYou ? homeState.isLoading : homeState.isLoading;
     
-    if (isLoading) {
+    // Show loading state if we're loading OR if videos are empty but we haven't loaded yet
+    final shouldShowLoading = isLoading || (!homeState.hasLoaded && videos.isEmpty);
+    
+    if (shouldShowLoading) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -351,6 +355,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
         ),
       );
     } else if (videos.isEmpty) {
+      // Only show "No videos available" if we've actually loaded but found no videos
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -381,37 +386,39 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
         ),
       );
     } else {
-      return PageView.builder(
-        controller: _pageController,
-        scrollDirection: Axis.vertical, // TikTok-style vertical scrolling
-        itemCount: videos.length,
-        onPageChanged: (index) {
-          if (mounted) {
-            setState(() {
-              _currentIndex = index;
-            });
-          }
-        },
-        itemBuilder: (context, index) {
-          final video = videos[index];
-          final homeVM = ref.read(hp.homeProvider.notifier);
-          return VideoPlayerViewOptimized(
-            key: ValueKey(video.id),
-            video: video,
-            isCurrentVideo: index == _currentIndex,
-            isFirstVideo: index == 0,
-            homeViewModel: homeVM,
-            showSheet: false,
-            sheetType: '',
-            onShowProfile: () => _showStreamerCardModal(video.creator),
-            onShowComments: () => _openComments(video.id),
-            onShowShare: () => _shareVideo(video),
-            onShowStreamerCard: () => _showStreamerCardModal(video.creator),
-            isLiked: video.isLiked,
-            isBookmarked: video.isFavorited,
-          );
-        },
-      );
+        return SizedBox.expand(
+          child: PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.vertical, // TikTok-style vertical scrolling
+            itemCount: videos.length,
+            onPageChanged: (index) {
+              if (mounted) {
+                setState(() {
+                  _currentIndex = index;
+                });
+              }
+            },
+            itemBuilder: (context, index) {
+              final video = videos[index];
+              final homeVM = ref.read(hp.homeProvider.notifier);
+              return VideoPlayerViewOptimized(
+                key: ValueKey(video.id),
+                video: video,
+                isCurrentVideo: index == _currentIndex,
+                isFirstVideo: index == 0,
+                homeViewModel: homeVM,
+                showSheet: false,
+                sheetType: '',
+                onShowProfile: () => _showStreamerCardModal(video.creator),
+                onShowComments: () => _openComments(video.id),
+                onShowShare: () => _shareVideo(video),
+                onShowStreamerCard: () => _showStreamerCardModal(video.creator),
+                isLiked: video.isLiked,
+                isBookmarked: video.isFavorited,
+              );
+            },
+          ),
+        );
     }
   }
 
@@ -722,6 +729,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
             ),
           ),
           const Spacer(),
+          const SizedBox(width: 16),
           // Discover button - bare icon with soft shadow
           InkResponse(
             onTap: () {

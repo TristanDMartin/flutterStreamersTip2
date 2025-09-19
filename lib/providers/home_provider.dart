@@ -68,17 +68,17 @@ class HomeViewModel extends StateNotifier<HomeState> {
       return;
     }
     
-    log('🚀 Starting instant play implementation...');
+    log('🚀 Starting video loading...');
     
-    // Don't show loading state - implement instant play
-    // state = state.copyWith(isLoading: true);
+    // Show loading state initially
+    state = state.copyWith(isLoading: true);
     
     try {
       // Try to load cached data first for instant display
       await _loadCachedVideos();
       
       // Fetch fresh data in background
-      _fetchFreshVideosInBackground();
+      await _fetchFreshVideosInBackground();
       
       // Preload avatars for instant display
       _preloadAvatars();
@@ -87,7 +87,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('✅ loadVideos() completed successfully');
     } catch (e) {
       log('❌ Error loading videos: $e');
-      state = state.copyWith(isLoading: false);
+      state = state.copyWith(isLoading: false, hasLoaded: true);
     }
   }
 
@@ -146,7 +146,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
   /// Fetch fresh videos in background
   Future<void> _fetchFreshVideosInBackground() async {
     try {
-      // Fetch fresh data without showing loading state
+      log('🔄 Fetching fresh videos...');
+      
+      // Fetch fresh data
       await fetchForYouVideos(reset: true);
       
       // Get the current user's following IDs to load their network videos
@@ -158,9 +160,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
       await syncFavoriteStates();
       await syncCommentCounts();
       
-      log('✅ Fresh videos loaded in background');
+      log('✅ Fresh videos loaded: ${state.forYouVideos.length} forYou, ${state.followingVideos.length} following');
     } catch (e) {
       log('❌ Error fetching fresh videos: $e');
+      // If fresh videos fail, keep the sample videos but log the error
     }
   }
 

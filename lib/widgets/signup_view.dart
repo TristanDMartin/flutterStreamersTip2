@@ -492,6 +492,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                       controller: _passwordController,
                                       focusNode: _passwordFocusNode,
                                       enabled: true,
+                                      maxLength: 18, // Match Email/Username view limit
                                       decoration: InputDecoration(
                                         labelText: 'Password',
                                         labelStyle: TextStyle(
@@ -523,6 +524,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         ),
                                         border: InputBorder.none,
                                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                                        counterText: '', // Hide character counter
                                         suffixIcon: SizedBox(
                                           width: 44,
                                           height: 44,
@@ -615,6 +617,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                   controller: _confirmPasswordController,
                                   focusNode: _confirmPasswordFocusNode,
                                   enabled: true,
+                                  maxLength: 18, // Match Email/Username view limit
                                   decoration: InputDecoration(
                                     labelText: 'Confirm Password',
                                     labelStyle: TextStyle(
@@ -646,6 +649,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                     ),
                                     border: InputBorder.none,
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                                    counterText: '', // Hide character counter
                                     suffixIcon: SizedBox(
                                       width: 44,
                                       height: 44,
@@ -813,6 +817,17 @@ class _SignupViewState extends ConsumerState<SignupView> {
                     style: const TextStyle(color: Colors.white70, height: 1.3),
                   ),
                   actions: [
+                    if (_alertMessage.contains('email is already registered'))
+                      TextButton(
+                        onPressed: () {
+                          setState(() => _showAlert = false);
+                          Navigator.of(context).pop(); // Go back to login screen
+                        },
+                        child: const Text(
+                          "Sign In Instead",
+                          style: TextStyle(color: Color(0xFF6137EB)),
+                        ),
+                      ),
                     TextButton(
                       onPressed: () => setState(() => _showAlert = false),
                       child: const Text("OK"),
@@ -1007,6 +1022,24 @@ class _SignupViewState extends ConsumerState<SignupView> {
     return username;
   }
 
+  String _getSignupErrorMessage(String error) {
+    if (error.contains('email-already-in-use')) {
+      return 'This email is already registered. If you just deleted your account, please wait a few minutes and try again, or try signing in instead.';
+    } else if (error.contains('invalid-email')) {
+      return 'Please enter a valid email address.';
+    } else if (error.contains('weak-password')) {
+      return 'Password is too weak. Please use a stronger password.';
+    } else if (error.contains('operation-not-allowed')) {
+      return 'Email/password accounts are not enabled. Please contact support.';
+    } else if (error.contains('network-request-failed')) {
+      return 'Network error. Please check your internet connection.';
+    } else if (error.contains('too-many-requests')) {
+      return 'Too many attempts. Please wait a moment and try again.';
+    } else {
+      return 'Registration failed. Please try again.';
+    }
+  }
+
   Future<void> _signUp() async {
     if (_generatedUsername.isEmpty) {
       setState(() {
@@ -1031,7 +1064,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _alertMessage = e.toString();
+          _alertMessage = _getSignupErrorMessage(e.toString());
           _showAlert = true;
         });
       }

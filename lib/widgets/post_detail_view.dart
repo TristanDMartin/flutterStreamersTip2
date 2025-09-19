@@ -719,7 +719,6 @@ class EllipsisMenuView extends StatelessWidget {
 
   Widget _buildUserActionsGrid() {
     final actions = [
-      {"title": "Analytics", "icon": Icons.analytics, "color": Colors.grey},
       {"title": "Download", "icon": Icons.download, "color": Colors.grey},
       {"title": "Delete", "icon": Icons.delete, "color": Colors.red},
     ];

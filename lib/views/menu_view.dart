@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'settings_view.dart';
 import '../pages/bookmark_view.dart';
 import '../widgets/account_management_menu.dart';
+import '../widgets/insights_view.dart';
 
 class MenuView extends StatelessWidget {
   const MenuView({super.key});
@@ -156,13 +157,6 @@ class MenuView extends StatelessWidget {
         ),
         _buildMenuCard(
           context,
-          icon: Icons.headphones,
-          title: 'Get Started',
-          subtitle: 'Get started with tips',
-          onTap: () => _navigateToPage(context, 'Get Started'),
-        ),
-        _buildMenuCard(
-          context,
           icon: Icons.support_agent,
           title: 'Contact Support',
           subtitle: 'Get help & support',
@@ -195,13 +189,6 @@ class MenuView extends StatelessWidget {
           title: 'Insights',
           subtitle: 'Performance data',
           onTap: () => _navigateToPage(context, 'Insights'),
-        ),
-        _buildMenuCard(
-          context,
-          icon: Icons.analytics,
-          title: 'Analytics',
-          subtitle: 'Detailed metrics',
-          onTap: () => _navigateToPage(context, 'Analytics'),
         ),
         _buildMenuCard(
           context,
@@ -291,6 +278,12 @@ class MenuView extends StatelessWidget {
     switch (pageName) {
       case 'Bookmarks':
         page = const BookmarkView();
+        break;
+      case 'Insights':
+        page = const InsightsView(
+          videoId: 'general-insights',
+          videoTitle: 'General Insights',
+        );
         break;
       default:
         page = _PlaceholderPage(title: pageName);

@@ -89,10 +89,6 @@ final menuRoutes = [
     path: '/insights',
     builder: (context, state) => const PlaceholderSettingsPage(title: 'Insights'),
   ),
-  GoRoute(
-    path: '/analytics',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Analytics'),
-  ),
 ];
 
 // Placeholder widget for existing pages

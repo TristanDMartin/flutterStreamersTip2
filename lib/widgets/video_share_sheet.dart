@@ -247,18 +247,6 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
         
         Column(
           children: [
-            VideoShareActionButton(
-              title: "Analytics",
-              icon: Icons.analytics,
-              color: Colors.blue,
-              onTap: () {
-                // setState(() {
-                //   _showAnalytics = true;
-                // });
-              },
-            ),
-            
-            const SizedBox(height: 12),
             
             VideoShareActionButton(
               title: "Download",

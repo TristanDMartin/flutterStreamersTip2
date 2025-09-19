@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'manage_account_view.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -346,9 +347,20 @@ class _SettingsViewState extends State<SettingsView> {
 
 
   void _navigateToPage(BuildContext context, String pageName) {
+    Widget page;
+    
+    switch (pageName) {
+      case 'Manage Account':
+        page = const ManageAccountView();
+        break;
+      default:
+        page = _PlaceholderPage(title: pageName);
+        break;
+    }
+    
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => _PlaceholderPage(title: pageName),
+        builder: (context) => page,
       ),
     );
   }

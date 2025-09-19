@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_service.dart';
 import '../views/terms_of_service_view.dart';
+import '../views/privacy_policy_view.dart';
 import 'email_login_view.dart';
 
 class LoginView extends ConsumerStatefulWidget {
@@ -61,15 +62,6 @@ class _LoginViewState extends ConsumerState<LoginView> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
-                        IconButton(
-                          onPressed: widget.dismiss,
-                          icon: const Icon(
-                            Icons.chevron_left,
-                            size: 18,
-                            color: Colors.black,
-                          ),
-                        ),
-                        
                         const Spacer(),
                         
                         IconButton(
@@ -172,7 +164,8 @@ class _LoginViewState extends ConsumerState<LoginView> {
                                       "Terms of Service",
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Colors.blue,
+                                        color: Color(0xFF6137EB),
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ),
@@ -187,13 +180,18 @@ class _LoginViewState extends ConsumerState<LoginView> {
                                   
                                   TextButton(
                                     onPressed: () {
-                                      // TODO: Show terms
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) => const PrivacyPolicyView(),
+                                        ),
+                                      );
                                     },
                                     child: const Text(
                                       "Privacy Policy",
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Colors.blue,
+                                        color: Color(0xFF6137EB),
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ),

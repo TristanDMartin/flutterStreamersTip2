@@ -73,14 +73,6 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
                         },
                       ),
                       const SizedBox(height: 12),
-                      _buildMenuItem(
-                        icon: Icons.analytics,
-                        label: 'Analytics',
-                        onTap: () {
-                          // Placeholder
-                        },
-                      ),
-                      const SizedBox(height: 12),
                       
                       // Switch Account Button with Dropdown
                       _buildSwitchAccountSection(),

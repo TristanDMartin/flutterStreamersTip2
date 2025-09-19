@@ -162,7 +162,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           _isPlaying = widget.isCurrentVideo;
         });
         
-        if (_isPlaying) {
+        // Small delay to ensure smooth transition
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        if (_isPlaying && mounted) {
           _videoPlayerController!.play();
         }
         
@@ -419,25 +422,23 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       onTap: _handleTap,
       onDoubleTap: _handleDoubleTap,
       onDoubleTapDown: _handleDoubleTapDown,
-      child: SizedBox.expand(
-        child: Container(
-          color: Colors.black,
-          child: Stack(
-            children: [
-              // Video player with optimized rendering
-              Positioned.fill(
-                child: _isInitialized && _videoPlayerController != null
-                    ? _buildVideoPlayer()
-                    : _buildPosterPlaceholder(),
-              ),
-              
-              // UI Overlay
-              _buildUIOverlay(),
-              
-              // Action buttons overlay
-              _buildActionButtons(),
-            ],
-          ),
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Colors.black,
+        child: Stack(
+          children: [
+            // Video player with optimized rendering
+            _isInitialized && _videoPlayerController != null
+                ? _buildVideoPlayer()
+                : _buildPosterPlaceholder(),
+            
+            // UI Overlay
+            _buildUIOverlay(),
+            
+            // Action buttons overlay
+            _buildActionButtons(),
+          ],
         ),
       ),
     );
@@ -446,25 +447,49 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   Widget _buildPosterPlaceholder() {
     // Use thumbnail if available, otherwise show gradient
     if (widget.video.thumbnailURL != null && widget.video.thumbnailURL!.isNotEmpty) {
-      return SizedBox.expand(
+      return Positioned.fill(
         child: CachedNetworkImage(
           imageUrl: widget.video.thumbnailURL!,
           fit: BoxFit.cover,
-          memCacheHeight: 800, // Limit memory usage
-          memCacheWidth: 400,
-          maxWidthDiskCache: 800,
-          maxHeightDiskCache: 1600,
-          placeholder: (context, url) => _buildGradientPlaceholder(),
-          errorWidget: (context, url, error) => _buildGradientPlaceholder(),
+          memCacheHeight: 200, // Reduced memory usage
+          memCacheWidth: 200,
+          maxWidthDiskCache: 400,
+          maxHeightDiskCache: 400,
+          placeholder: (context, url) => _buildLoadingPlaceholder(),
+          errorWidget: (context, url, error) => _buildLoadingPlaceholder(),
         ),
       );
     } else {
-      return _buildGradientPlaceholder();
+      return _buildLoadingPlaceholder();
     }
   }
 
+  Widget _buildLoadingPlaceholder() {
+    return Positioned.fill(
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF1A1A1A),
+              Color(0xFF2D2D2D),
+              Color(0xFF1A1A1A),
+            ],
+          ),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+            strokeWidth: 2,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildGradientPlaceholder() {
-    return SizedBox.expand(
+    return Positioned.fill(
       child: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -484,9 +509,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   Widget _buildVideoPlayer() {
     if (_videoPlayerController == null) return _buildGradientPlaceholder();
     
-    return SizedBox.expand(
+    return Positioned.fill(
       child: FittedBox(
         fit: BoxFit.cover,
+        alignment: Alignment.center,
         child: SizedBox(
           width: _videoPlayerController!.value.size.width,
           height: _videoPlayerController!.value.size.height,

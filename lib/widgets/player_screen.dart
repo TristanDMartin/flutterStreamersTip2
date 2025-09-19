@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/home_video.dart';
+import '../providers/home_provider.dart' as hp;
 import '../providers/video_service_provider.dart';
-import 'video_player_view_simple.dart';
+import 'video_player_view_optimized.dart';
 
 enum PlayerMode {
   homeFeed,
@@ -31,7 +32,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   late PageController _pageController;
   late List<HomeVideo> _videos;
   int _currentIndex = 0;
-  bool _isMuted = false;
 
   @override
   void initState() {
@@ -63,24 +63,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
   }
 
-  void _onVideoUnfavorited(String videoId) {
-    // Remove from local list
-    setState(() {
-      _videos.removeWhere((video) => video.id == videoId);
-    });
-
-    // If we're at the end, go back
-    if (_currentIndex >= _videos.length) {
-      Navigator.of(context).pop();
-    } else {
-      // Stay on current video (which is now the next one)
-      _pageController.animateToPage(
-        _currentIndex,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,14 +96,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             itemCount: _videos.length,
             itemBuilder: (context, index) {
               final video = _videos[index];
-              return VideoPlayerViewSimple(
+              return VideoPlayerViewOptimized(
                 video: video,
-                isMuted: _isMuted,
-                isPlaying: _currentIndex == index,
-                onMuteChanged: () => setState(() => _isMuted = !_isMuted),
-                onVideoUnfavorited: () => _onVideoUnfavorited(video.id),
-                showForYouToggle: widget.mode == PlayerMode.homeFeed,
-                showDiscoverButton: widget.mode == PlayerMode.homeFeed,
+                isCurrentVideo: _currentIndex == index,
+                isFirstVideo: index == 0,
+                homeViewModel: ref.read(hp.homeProvider.notifier),
+                showSheet: false,
+                sheetType: '',
+                onShowProfile: () {},
+                onShowComments: () {},
+                onShowShare: () {},
+                onShowStreamerCard: () {},
+                isLiked: false,
+                isBookmarked: false,
               );
             },
           ),

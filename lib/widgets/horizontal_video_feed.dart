@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/home_video.dart';
 import '../providers/home_provider.dart' as hp;
 import '../models/user.dart';
-import 'video_player_view.dart';
+import 'video_player_view_optimized.dart';
 import 'loading_more_view.dart';
 import 'end_of_feed_view.dart';
 import 'dart:async'; // Added for Timer
@@ -103,7 +103,7 @@ class _HorizontalVideoFeedState extends ConsumerState<HorizontalVideoFeed>
           itemBuilder: (context, index) {
             if (index < widget.videos.length) {
               final video = widget.videos[index];
-              return VideoPlayerView(
+              return VideoPlayerViewOptimized(
                 video: video,
                 isCurrentVideo: index == widget.currentVideoIndex,
                 isFirstVideo: index == 0,
@@ -116,6 +116,8 @@ class _HorizontalVideoFeedState extends ConsumerState<HorizontalVideoFeed>
                 onShowStreamerCard: () {
                   // TODO: Present streamer card page
                 },
+                isLiked: video.isLiked,
+                isBookmarked: video.isFavorited,
               );
             } else if (index == widget.videos.length && widget.homeViewModel.isLoadingMore) {
               // Loading indicator at the end when loading more content

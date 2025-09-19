@@ -55,6 +55,13 @@ class RobustAuthenticationService extends ChangeNotifier {
   Map<String, dynamic>? get currentUserProfile => _currentUserProfile;
 
   RobustAuthenticationService() {
+    // Set initial loading state
+    _isCheckingAuth = true;
+    
+    // Check initial authentication state asynchronously
+    _checkInitialAuthState();
+    
+    // Listen to authentication state changes
     _auth.authStateChanges().listen((firebase_auth.User? user) {
     // print("🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
       if (user != null) {
@@ -67,6 +74,21 @@ class RobustAuthenticationService extends ChangeNotifier {
         notifyListeners();
       }
     });
+  }
+
+  /// Check the initial authentication state when the service is created
+  void _checkInitialAuthState() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser != null) {
+      // User is already logged in, handle the sign in asynchronously
+      await _handleUserSignIn(currentUser);
+    } else {
+      // No user is logged in, set the state immediately
+      _currentUser = null;
+      _isLoggedIn = false;
+      _isCheckingAuth = false;
+      notifyListeners();
+    }
   }
 
   @override
@@ -95,7 +117,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   /// Check if we should show loading state
-  bool get shouldShowLoading => isRequestInFlight || _isMinimumSpinnerActive;
+  bool get shouldShowLoading => isRequestInFlight || _isMinimumSpinnerActive || _isCheckingAuth;
 
   /// Debounced authentication with single-flight protection
   Future<AuthRequestResult> _debouncedAuth(
