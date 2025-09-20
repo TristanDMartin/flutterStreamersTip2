@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/video.dart';
 
 class VideoShareSheet extends StatefulWidget {
@@ -386,11 +387,24 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
     widget.onDismiss?.call();
   }
 
-  void _shareViaSystem() {
-    final videoLink = "https://streamerstip.com/video/${widget.video.id}";
-    // TODO: Implement native system share sheet using share_plus package
-    print("📤 Sharing via system: $videoLink");
-    widget.onDismiss?.call();
+  void _shareViaSystem() async {
+    try {
+      final videoLink = "https://streamerstip.com/video/${widget.video.id}";
+      final shareText = "Check out this awesome video on StreamersTip!\n$videoLink";
+      
+      await Share.share(
+        shareText,
+        subject: 'StreamersTip Video: ${widget.video.caption.isNotEmpty ? widget.video.caption : "Untitled"}',
+      );
+      
+      // Log the share action (replace with proper logging framework)
+      debugPrint("📤 Shared via system: $videoLink");
+    } catch (e) {
+      // Handle share errors gracefully
+      debugPrint("❌ Error sharing via system: $e");
+    } finally {
+      widget.onDismiss?.call();
+    }
   }
 
   void _downloadVideo() {

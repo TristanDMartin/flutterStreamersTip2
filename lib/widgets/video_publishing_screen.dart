@@ -272,10 +272,10 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   width: 1,
                 ),
               ),
@@ -445,7 +445,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           Text(
             'Choose the category that best fits your video',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
               fontSize: 14,
             ),
           ),
@@ -453,10 +453,10 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           // Category Dropdown
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 width: 1,
               ),
             ),
@@ -673,7 +673,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           end: Alignment.bottomCenter,
           colors: [
             Colors.transparent,
-            const Color(0xFF1C135D).withOpacity(0.8),
+            const Color(0xFF1C135D).withValues(alpha: 0.8),
           ],
         ),
       ),
@@ -688,10 +688,10 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
               child: Container(
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     width: 1,
                   ),
                 ),
@@ -725,11 +725,11 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                         ),
-                  color: (_isUploading || _isModerating) ? Colors.grey.withOpacity(0.3) : null,
+                  color: (_isUploading || _isModerating) ? Colors.grey.withValues(alpha: 0.3) : null,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: (_isUploading || _isModerating) ? null : [
                     BoxShadow(
-                      color: const Color(0xFF9248D2).withOpacity(0.3),
+                      color: const Color(0xFF9248D2).withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -1211,16 +1211,20 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
       });
 
       if (uploadResult.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Video saved as draft 📝'),
-            backgroundColor: Color(0xFF9248D2),
-            duration: Duration(seconds: 3),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Video saved as draft 📝'),
+              backgroundColor: Color(0xFF9248D2),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
         widget.onPublish();
       } else {
-        _showUploadErrorDialog(uploadResult.error ?? 'Failed to save draft');
+        if (mounted) {
+          _showUploadErrorDialog(uploadResult.error ?? 'Failed to save draft');
+        }
       }
     } catch (e) {
       await _errorHandler.handleError(

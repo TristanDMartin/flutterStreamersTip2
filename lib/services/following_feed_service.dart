@@ -37,20 +37,30 @@ class FollowingFeedService {
       return FollowingFeedResult(items: <HomeVideo>[], nextCursor: null);
     }
 
-    // 2) Fetch recent videos in batches of 10 ids
-    final DateTime windowStart = DateTime.now().subtract(const Duration(days: 30));
+    // 2) Fetch recent videos in optimized batches (reduced from 10 to 5 for better performance)
+    final DateTime windowStart = DateTime.now().subtract(const Duration(days: 7)); // Reduced from 30 to 7 days
     final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-    for (int i = 0; i < creatorIds.length; i += 10) {
-      final chunk = creatorIds.sublist(i, math.min(i + 10, creatorIds.length));
+    
+    // Limit to top 20 creators to prevent excessive queries
+    final limitedCreatorIds = creatorIds.take(20).toList();
+    
+    for (int i = 0; i < limitedCreatorIds.length; i += 5) { // Reduced batch size from 10 to 5
+      final chunk = limitedCreatorIds.sublist(i, math.min(i + 5, limitedCreatorIds.length));
       if (chunk.isEmpty) continue;
-      final snap = await _db
-          .collection('videos')
-          .where('creatorId', whereIn: chunk)
-          .where('createdAt', isGreaterThan: Timestamp.fromDate(windowStart))
-          .orderBy('createdAt', descending: true)
-          .limit(200)
-          .get();
-      docs.addAll(snap.docs);
+      
+      try {
+        final snap = await _db
+            .collection('videos')
+            .where('creatorId', whereIn: chunk)
+            .where('createdAt', isGreaterThan: Timestamp.fromDate(windowStart))
+            .orderBy('createdAt', descending: true)
+            .limit(50) // Reduced from 200 to 50
+            .get();
+        docs.addAll(snap.docs);
+      } catch (e) {
+        // Skip failed batches to prevent total failure
+        continue;
+      }
     }
 
     if (docs.isEmpty) {

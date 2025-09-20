@@ -113,5 +113,21 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null;
     }
+    
+    // Shared drafts permissions - allow users to read and write their own drafts
+    match /shared_drafts/{draftId} {
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.senderId || 
+         request.auth.uid == resource.data.receiverId);
+      allow write: if request.auth != null && 
+        (request.auth.uid == resource.data.senderId || 
+         request.auth.uid == resource.data.receiverId);
+    }
+    
+    // Video analytics permissions - allow users to read and write their own analytics
+    match /video_analytics/{videoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
   }
 }

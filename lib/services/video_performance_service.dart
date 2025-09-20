@@ -13,8 +13,8 @@ class VideoPerformanceService {
   final Map<String, bool> _videoPreloaded = {};
   final Map<String, Widget> _thumbnailCache = {};
   
-  // Preload next 3 videos for smooth scrolling
-  static const int _preloadCount = 3;
+  // Reduced preload count for better performance
+  static const int _preloadCount = 1; // Reduced from 3 to 1
   
   /// Preload video for instant playback
   Future<void> preloadVideo(String videoUrl, {String? thumbnailUrl}) async {
@@ -40,8 +40,8 @@ class VideoPerformanceService {
       _videoControllers[videoUrl] = controller;
       _videoPreloaded[videoUrl] = true;
       
-      // Auto-dispose after 30 seconds of inactivity
-      Timer(const Duration(seconds: 30), () {
+      // Reduced auto-dispose time for better memory management
+      Timer(const Duration(seconds: 15), () { // Reduced from 30 to 15 seconds
         disposeVideo(videoUrl);
       });
     } catch (e) {

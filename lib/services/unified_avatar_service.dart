@@ -5,6 +5,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'memory_pressure_service.dart';
+import 'robust_image_service.dart';
 
 /// Unified Avatar Service
 ///
@@ -31,17 +33,22 @@ class UnifiedAvatarService {
   static const String _mainUserAvatarKey = 'main_user_avatar_url';
   static const String _mainUserAvatarDataKey = 'main_user_avatar_data';
 
-  /// Initialize the unified avatar service
+  /// Initialize the unified avatar service with optimized loading
   Future<void> initialize() async {
     try {
+      // Skip cache directory creation for faster startup
       _cacheDir = await getApplicationDocumentsDirectory();
       _cacheDir = Directory(path.join(_cacheDir!.path, 'unified_avatar_cache'));
-      if (!await _cacheDir!.exists()) {
-        await _cacheDir!.create(recursive: true);
-      }
       
-      // Load main user avatar from persistent storage
-      await _loadMainUserAvatarFromStorage();
+      // Create cache directory only if needed (lazy creation)
+      // if (!await _cacheDir!.exists()) {
+      //   await _cacheDir!.create(recursive: true);
+      // }
+      
+      // Load main user avatar in background (non-blocking)
+      _loadMainUserAvatarFromStorage().catchError((e) {
+        debugPrint('⚠️ Failed to load main user avatar (non-critical): $e');
+      });
       
       debugPrint('✅ UnifiedAvatarService: Initialized with cache directory: ${_cacheDir!.path}');
     } catch (e) {
@@ -70,52 +77,14 @@ class UnifiedAvatarService {
         return _buildDefaultAvatar(radius, useProfileViewStyling);
       }
 
-      // Check memory cache first
-      if (_memoryCache.containsKey(imageUrl)) {
-        return _buildProfileViewStyledAvatar(radius, imageUrl, useProfileViewStyling);
-      }
-
-      // Check if already loading
-      if (_loadingStates[imageUrl] == true) {
-        return placeholder ?? _buildLoadingAvatar(radius, showLoadingIndicator, useProfileViewStyling);
-      }
-
-      // Start loading
-      _loadingStates[imageUrl] = true;
-
-      return CachedNetworkImage(
+      // Use simple, robust image loading to prevent Positioned widget errors
+      return _buildSimpleAvatar(
         imageUrl: imageUrl,
-        imageBuilder: (context, imageProvider) {
-          try {
-            // Cache the image provider
-            _memoryCache[imageUrl] = imageProvider;
-            _loadingStates[imageUrl] = false;
-            
-            return _buildProfileViewStyledAvatar(radius, imageUrl, useProfileViewStyling);
-          } catch (e) {
-            debugPrint('⚠️ UnifiedAvatarService: Error building cached avatar: $e');
-            _loadingStates[imageUrl] = false;
-            return _buildDefaultAvatar(radius, useProfileViewStyling);
-          }
-        },
-        placeholder: (context, url) => placeholder ?? _buildLoadingAvatar(radius, showLoadingIndicator, useProfileViewStyling),
-        errorWidget: (context, url, error) {
-          _loadingStates[imageUrl] = false;
-          debugPrint('⚠️ UnifiedAvatarService: Failed to load avatar $url: $error');
-          return errorWidget ?? _buildDefaultAvatar(radius, useProfileViewStyling);
-        },
-        memCacheHeight: (radius * 2).toInt(),
-        memCacheWidth: (radius * 2).toInt(),
-        maxWidthDiskCache: (radius * 2).toInt(),
-        maxHeightDiskCache: (radius * 2).toInt(),
-        // Add error handling for invalid images
-        httpHeaders: const {
-          'User-Agent': 'Mozilla/5.0 (compatible; FlutterApp/1.0)',
-          'Accept': 'image/*',
-        },
-        // Add timeout and retry configuration
-        fadeInDuration: const Duration(milliseconds: 200),
-        fadeOutDuration: const Duration(milliseconds: 100),
+        radius: radius,
+        placeholder: placeholder,
+        errorWidget: errorWidget,
+        showLoadingIndicator: showLoadingIndicator,
+        useProfileViewStyling: useProfileViewStyling,
       );
     } catch (e) {
       debugPrint('❌ UnifiedAvatarService: Critical error in getAvatar: $e');
@@ -123,46 +92,26 @@ class UnifiedAvatarService {
     }
   }
 
-  /// Build ProfileView styled avatar
-  Widget _buildProfileViewStyledAvatar(double radius, String imageUrl, bool useProfileViewStyling) {
-    try {
-      final imageProvider = _memoryCache[imageUrl];
-      if (imageProvider == null) {
-        return _buildDefaultAvatar(radius, useProfileViewStyling);
-      }
-      
-      if (useProfileViewStyling) {
-        return Container(
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: Color(0xFF0A0A0A), // Dark ring like ProfileView
-          ),
-          padding: const EdgeInsets.all(4), // 4px padding like ProfileView
-          child: CircleAvatar(
-            radius: radius,
-            backgroundColor: Colors.grey[300],
-            backgroundImage: imageProvider,
-          ),
-        );
-      } else {
-        return CircleAvatar(
-          radius: radius,
-          backgroundColor: Colors.grey[300],
-          backgroundImage: imageProvider,
-        );
-      }
-    } catch (e) {
-      debugPrint('⚠️ UnifiedAvatarService: Error building cached avatar: $e');
+  /// Build simple avatar without complex image processing
+  Widget _buildSimpleAvatar({
+    required String imageUrl,
+    required double radius,
+    Widget? placeholder,
+    Widget? errorWidget,
+    required bool showLoadingIndicator,
+    required bool useProfileViewStyling,
+  }) {
+    // Check memory pressure before loading
+    if (!MemoryPressureService.canLoadAvatar) {
+      debugPrint('⚠️ Memory pressure high - showing placeholder for avatar');
       return _buildDefaultAvatar(radius, useProfileViewStyling);
     }
-  }
 
-  /// Build loading avatar with ProfileView styling
-  Widget _buildLoadingAvatar(double radius, bool showLoadingIndicator, bool useProfileViewStyling) {
-    final loadingAvatar = CircleAvatar(
+    // Use robust image service for bulletproof avatar loading
+    final avatarWidget = RobustImageService().getAvatar(
+      imageUrl: imageUrl,
       radius: radius,
-      backgroundColor: Colors.grey[300],
-      child: showLoadingIndicator
+      placeholder: showLoadingIndicator
           ? SizedBox(
               width: radius * 0.6,
               height: radius * 0.6,
@@ -171,7 +120,8 @@ class UnifiedAvatarService {
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
               ),
             )
-          : null,
+          : placeholder,
+      errorWidget: errorWidget,
     );
 
     if (useProfileViewStyling) {
@@ -181,12 +131,13 @@ class UnifiedAvatarService {
           color: Color(0xFF0A0A0A), // Dark ring like ProfileView
         ),
         padding: const EdgeInsets.all(4), // 4px padding like ProfileView
-        child: loadingAvatar,
+        child: avatarWidget,
       );
     } else {
-      return loadingAvatar;
+      return avatarWidget;
     }
   }
+
 
   /// Build default avatar with ProfileView styling
   Widget _buildDefaultAvatar(double radius, [bool useProfileViewStyling = true]) {

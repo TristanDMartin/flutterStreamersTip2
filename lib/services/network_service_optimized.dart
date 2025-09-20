@@ -288,21 +288,30 @@ class NetworkServiceOptimized {
     if (uncachedIds.isEmpty) return cachedUsers;
 
     try {
-      // Batch fetch uncached users
-      const batchSize = 10;
+      // Batch fetch uncached users with optimized batch size
+      const batchSize = 5; // Reduced from 10 to 5 for better performance
       final fetchedUsers = <app_user.User>[];
 
-      for (int i = 0; i < uncachedIds.length; i += batchSize) {
-        final batch = uncachedIds.sublist(i, (i + batchSize).clamp(0, uncachedIds.length));
-        final query = await _firestore
-            .collection('users')
-            .where(FieldPath.documentId, whereIn: batch)
-            .get();
+      // Limit to prevent excessive queries
+      final limitedIds = uncachedIds.take(25).toList(); // Limit to 25 users max
 
-        for (final doc in query.docs) {
-          final user = _mapUser(doc.id, doc.data());
-          _userCache[doc.id] = user; // Cache the user
-          fetchedUsers.add(user);
+      for (int i = 0; i < limitedIds.length; i += batchSize) {
+        final batch = limitedIds.sublist(i, (i + batchSize).clamp(0, limitedIds.length));
+        
+        try {
+          final query = await _firestore
+              .collection('users')
+              .where(FieldPath.documentId, whereIn: batch)
+              .get();
+
+          for (final doc in query.docs) {
+            final user = _mapUser(doc.id, doc.data());
+            _userCache[doc.id] = user; // Cache the user
+            fetchedUsers.add(user);
+          }
+        } catch (e) {
+          // Skip failed batches to prevent total failure
+          continue;
         }
       }
 

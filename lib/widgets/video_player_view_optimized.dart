@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/home_video.dart';
 import '../providers/home_provider.dart';
@@ -77,8 +78,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     // Track performance
     PerformanceService().trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
     
-    // Use performance service to dispose controller safely
+    // Remove error listener and dispose controller safely
     if (_videoPlayerController != null) {
+      _videoPlayerController!.removeListener(_videoErrorListener);
+      // Use performance service to dispose controller safely
       VideoPerformanceService().disposeController(widget.video.videoURL);
       _videoPlayerController = null;
     }
@@ -136,22 +139,56 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     PerformanceService().startVideoLoad(widget.video.id);
     
     try {
+        // Validate video URL first
+        if (widget.video.videoURL.isEmpty) {
+          throw Exception('Video URL is empty');
+        }
+        
+        final videoUri = Uri.tryParse(widget.video.videoURL);
+        if (videoUri == null || !videoUri.hasAbsolutePath) {
+          throw Exception('Invalid video URL: ${widget.video.videoURL}');
+        }
+        
+        // Test network connectivity before attempting to load
+        try {
+          final client = HttpClient();
+          client.connectionTimeout = const Duration(seconds: 5);
+          final request = await client.getUrl(videoUri);
+          final response = await request.close();
+          client.close();
+          
+          if (response.statusCode != 200) {
+            throw Exception('Video server returned status: ${response.statusCode}');
+          }
+        } catch (e) {
+          throw Exception('Network connectivity test failed: $e');
+        }
+      
       // Try warm controller first (TikTok style)
       _videoPlayerController = VideoPerformanceService().getReady(widget.video.videoURL);
       
       if (_videoPlayerController == null) {
         // Create new controller if not prewarmed
         _videoPlayerController = VideoPlayerController.networkUrl(
-          Uri.parse(widget.video.videoURL),
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true,
-          allowBackgroundPlayback: false,
-        ),
+          videoUri,
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: true,
+            allowBackgroundPlayback: false,
+          ),
         );
         
-        if (!_videoPlayerController!.value.isInitialized) {
-          await _videoPlayerController!.initialize();
-        }
+        // Add error listener before initialization
+        _videoPlayerController!.addListener(_videoErrorListener);
+        
+            if (!_videoPlayerController!.value.isInitialized) {
+              await _videoPlayerController!.initialize().timeout(
+                const Duration(seconds: 30), // Increased timeout from 10 to 30 seconds
+                onTimeout: () {
+                  throw Exception('Video initialization timeout - server may be slow');
+                },
+              );
+            }
+        
         await _videoPlayerController!.setLooping(true);
         await _videoPlayerController!.setVolume(0); // Start muted for autoplay compliance
       }
@@ -177,12 +214,62 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       log('❌ Error initializing video: $e');
       PerformanceService().completeVideoLoad(widget.video.id, success: false);
       
+      // Handle video error gracefully without crashing
+      _handleVideoError(e);
+      
       if (mounted) {
         setState(() {
           _isInitialized = false;
           _isPlaying = false;
         });
       }
+    }
+  }
+
+  void _videoErrorListener() {
+    if (_videoPlayerController?.value.hasError == true) {
+      final error = _videoPlayerController?.value.errorDescription ?? 'Unknown video error';
+      log('❌ Video player error: $error');
+      _handleVideoError(Exception(error));
+    }
+  }
+
+  void _handleVideoError(dynamic error) {
+    // Log error but don't crash the app
+    debugPrint('🎥 Video Error (Handled): $error');
+    
+    // Show user-friendly error message
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Video playback error: ${_getUserFriendlyErrorMessage(error)}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: () {
+              // Retry video initialization
+              _initializeVideo();
+            },
+          ),
+        ),
+      );
+    }
+  }
+
+  String _getUserFriendlyErrorMessage(dynamic error) {
+    final errorString = error.toString().toLowerCase();
+    if (errorString.contains('timeout')) {
+      return 'Video took too long to load';
+    } else if (errorString.contains('network') || errorString.contains('connection')) {
+      return 'Network connection issue';
+    } else if (errorString.contains('format') || errorString.contains('codec')) {
+      return 'Video format not supported';
+    } else if (errorString.contains('permission')) {
+      return 'Permission denied';
+    } else {
+      return 'Unable to play video';
     }
   }
 
@@ -209,8 +296,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       // Increment view count (only once per video)
       if (!_hasIncrementedView) {
         _hasIncrementedView = true;
-        // TODO: Implement view increment logic
-        // Incrementing view for video: ${widget.video.id}
+        _incrementViewCount();
       }
     }
   }
@@ -226,6 +312,53 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   void _handleFavoriteChanged() {
     // Optional callback when favorite state changes
     setState(() {});
+  }
+
+  Future<void> _incrementViewCount() async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final videoRef = firestore.collection('videos').doc(widget.video.id);
+      
+      await firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(videoRef);
+        
+        if (snapshot.exists) {
+          final currentViews = snapshot.data()?['views'] ?? 0;
+          transaction.update(videoRef, {
+            'views': currentViews + 1,
+            'lastViewedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+      
+      // Also update analytics collection
+      final analyticsRef = firestore.collection('video_analytics').doc(widget.video.id);
+      await firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(analyticsRef);
+        
+        if (snapshot.exists) {
+          final currentViews = snapshot.data()?['views'] ?? 0;
+          transaction.update(analyticsRef, {
+            'views': currentViews + 1,
+            'lastViewedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          transaction.set(analyticsRef, {
+            'views': 1,
+            'likes': widget.video.likes,
+            'shares': 0,
+            'comments': widget.video.comments,
+            'watchTime': 0.0,
+            'engagementRate': 0.0,
+            'lastViewedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+      
+      debugPrint("Incremented view count for video: ${widget.video.id}");
+    } catch (error) {
+      debugPrint("Error incrementing view count: $error");
+    }
   }
 
   void _handleLike() {
@@ -447,17 +580,23 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   Widget _buildPosterPlaceholder() {
     // Use thumbnail if available, otherwise show gradient
     if (widget.video.thumbnailURL != null && widget.video.thumbnailURL!.isNotEmpty) {
-      return Positioned.fill(
-        child: CachedNetworkImage(
-          imageUrl: widget.video.thumbnailURL!,
-          fit: BoxFit.cover,
-          memCacheHeight: 200, // Reduced memory usage
-          memCacheWidth: 200,
-          maxWidthDiskCache: 400,
-          maxHeightDiskCache: 400,
-          placeholder: (context, url) => _buildLoadingPlaceholder(),
-          errorWidget: (context, url, error) => _buildLoadingPlaceholder(),
-        ),
+      return Image.network(
+        widget.video.thumbnailURL!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildLoadingPlaceholder();
+        },
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('⚠️ VideoPlayer: Failed to load thumbnail: $error');
+          return _buildLoadingPlaceholder();
+        },
+        // Optimize memory usage
+        cacheWidth: 400,
+        cacheHeight: 400,
+        filterQuality: FilterQuality.medium,
       );
     } else {
       return _buildLoadingPlaceholder();
@@ -715,14 +854,14 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           children: [
             Icon(
               icon,
-              color: isActive ? const Color(0xFF9248D2) : Colors.white.withOpacity(0.85),
+              color: isActive ? const Color(0xFF9248D2) : Colors.white.withValues(alpha: 0.85),
               size: 24,
             ),
             const SizedBox(height: 4),
             Text(
               count,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.85),
+                color: Colors.white.withValues(alpha: 0.85),
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
               ),

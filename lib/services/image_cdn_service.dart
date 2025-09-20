@@ -15,7 +15,7 @@ class ImageCDNService {
 
   // CDN configuration
   static const String _cdnBaseUrl = 'https://cdn.streamerstip.com';
-  static const String _fallbackBaseUrl = 'https://picsum.photos';
+  static const String _fallbackBaseUrl = 'https://via.placeholder.com'; // More reliable than picsum.photos
   
   // Image quality settings
   static const int _defaultQuality = 80;
@@ -72,7 +72,7 @@ class ImageCDNService {
   /// Get avatar image URL
   String getAvatarUrl(String? originalUrl, {int size = 100}) {
     if (originalUrl == null || originalUrl.isEmpty) {
-      return '$_fallbackBaseUrl/$size/$size?random=${DateTime.now().millisecondsSinceEpoch}';
+      return '$_fallbackBaseUrl/$size/$size/cccccc/000000?text=Avatar'; // More reliable placeholder
     }
     
     return getOptimizedImageUrl(
@@ -86,7 +86,7 @@ class ImageCDNService {
   /// Get thumbnail image URL
   String getThumbnailUrl(String? originalUrl, {int width = 300, int height = 200}) {
     if (originalUrl == null || originalUrl.isEmpty) {
-      return '$_fallbackBaseUrl/$width/$height?random=${DateTime.now().millisecondsSinceEpoch}';
+      return '$_fallbackBaseUrl/$width/$height/cccccc/000000?text=Thumbnail'; // More reliable placeholder
     }
     
     return getOptimizedImageUrl(

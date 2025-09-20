@@ -49,16 +49,27 @@ class AdvancedNetworkService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
 
-  /// Initialize the service
+  /// Initialize the service with optimized loading
   Future<void> initialize() async {
     try {
       _isLoading = true;
       notifyListeners();
 
+      // Load only critical data first (connections)
       await _loadConnections();
-      await _loadUsers();
-      await _calculateStats();
-      await _loadAnalytics();
+      
+      // Load users and stats in background (non-blocking)
+      _loadUsers().catchError((e) {
+        debugPrint('⚠️ Failed to load users (non-critical): $e');
+      });
+      
+      _calculateStats().catchError((e) {
+        debugPrint('⚠️ Failed to calculate stats (non-critical): $e');
+      });
+      
+      _loadAnalytics().catchError((e) {
+        debugPrint('⚠️ Failed to load analytics (non-critical): $e');
+      });
 
       _lastError = null;
     } catch (e) {

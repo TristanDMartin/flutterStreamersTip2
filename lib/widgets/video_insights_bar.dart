@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/video.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
@@ -22,6 +23,8 @@ class VideoInsightsBar extends StatefulWidget {
 
 class _VideoInsightsBarState extends State<VideoInsightsBar> {
   VideoAnalytics? analytics;
+  StreamSubscription? _analyticsSubscription;
+  final VideoAnalyticsService _analyticsService = VideoAnalyticsService();
 
   bool get isVideoOwner => widget.currentUserId == widget.video.creator.id;
 
@@ -30,12 +33,34 @@ class _VideoInsightsBarState extends State<VideoInsightsBar> {
   @override
   void initState() {
     super.initState();
+    if (isVideoOwner) {
+      _startListeningToAnalytics();
+    }
   }
 
   @override
   void dispose() {
-    // Stop listening when view disappears
+    _stopListeningToAnalytics();
     super.dispose();
+  }
+
+  void _startListeningToAnalytics() {
+    _analyticsSubscription = _analyticsService.startListeningToAnalytics(
+      widget.video.id,
+      onAnalyticsUpdate: (updatedAnalytics) {
+        if (mounted) {
+          setState(() {
+            analytics = updatedAnalytics;
+          });
+        }
+      },
+    );
+  }
+
+  void _stopListeningToAnalytics() {
+    _analyticsSubscription?.cancel();
+    _analyticsSubscription = null;
+    _analyticsService.stopListeningToAnalytics(widget.video.id);
   }
 
   @override
@@ -115,27 +140,75 @@ class _VideoInsightsBarState extends State<VideoInsightsBar> {
 class VideoAnalyticsService {
   final Map<String, VideoAnalytics> _videoAnalytics = {};
   final Map<String, StreamSubscription> _listeners = {};
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   VideoAnalytics? getVideoAnalytics(String videoId) {
     return _videoAnalytics[videoId];
   }
 
-  void startListeningToAnalytics(String videoId) {
-    // TODO: Implement real-time analytics listening
-    // This would typically involve Firebase Firestore listeners
-    // print("Started listening to analytics for video: $videoId");
+  StreamSubscription startListeningToAnalytics(
+    String videoId, {
+    required Function(VideoAnalytics) onAnalyticsUpdate,
+  }) {
+    debugPrint("Started listening to analytics for video: $videoId");
+    
+    return _firestore
+        .collection('video_analytics')
+        .doc(videoId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (snapshot.exists && snapshot.data() != null) {
+          final analytics = VideoAnalytics.fromMap(snapshot.data()!);
+          _videoAnalytics[videoId] = analytics;
+          onAnalyticsUpdate(analytics);
+        }
+      },
+      onError: (error) {
+        debugPrint("Error listening to analytics for video $videoId: $error");
+      },
+    );
   }
 
   void stopListeningToAnalytics(String videoId) {
     final listener = _listeners[videoId];
     listener?.cancel();
     _listeners.remove(videoId);
-    // print("Stopped listening to analytics for video: $videoId");
+    debugPrint("Stopped listening to analytics for video: $videoId");
   }
 
-  void trackVideoView({required String videoId, String? userId}) {
-    // TODO: Implement video view tracking
-    // print("Tracked video view: $videoId by user: $userId");
+  Future<void> trackVideoView({required String videoId, String? userId}) async {
+    try {
+      debugPrint("Tracked video view: $videoId by user: $userId");
+      
+      final analyticsRef = _firestore.collection('video_analytics').doc(videoId);
+      
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(analyticsRef);
+        
+        if (snapshot.exists) {
+          final currentViews = snapshot.data()?['views'] ?? 0;
+          transaction.update(analyticsRef, {
+            'views': currentViews + 1,
+            'lastViewedAt': FieldValue.serverTimestamp(),
+            if (userId != null) 'viewedBy': FieldValue.arrayUnion([userId]),
+          });
+        } else {
+          transaction.set(analyticsRef, {
+            'views': 1,
+            'likes': 0,
+            'shares': 0,
+            'comments': 0,
+            'watchTime': 0.0,
+            'engagementRate': 0.0,
+            'lastViewedAt': FieldValue.serverTimestamp(),
+            if (userId != null) 'viewedBy': [userId],
+          });
+        }
+      });
+    } catch (error) {
+      debugPrint("Error tracking video view: $error");
+    }
   }
 }
 
@@ -208,7 +281,7 @@ class VideoInsightsBarPreview extends StatelessWidget {
           VideoInsightsBar(
             video: sampleVideo,
             currentUserId: "current-user-id", // Same as video.userId
-            onInsightsTap: () => print("Insights tapped"),
+            onInsightsTap: () => debugPrint("Insights tapped"),
           ),
           
           const SizedBox(height: 20),
@@ -217,7 +290,7 @@ class VideoInsightsBarPreview extends StatelessWidget {
           VideoInsightsBar(
             video: sampleVideo,
             currentUserId: "different-user-id", // Different from video.userId
-            onInsightsTap: () => print("Insights tapped"),
+            onInsightsTap: () => debugPrint("Insights tapped"),
           ),
         ],
       ),

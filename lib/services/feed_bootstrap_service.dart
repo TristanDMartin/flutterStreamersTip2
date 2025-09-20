@@ -19,16 +19,20 @@ class FeedBootstrapService {
   final VideoPrefetchService _prefetchService = VideoPrefetchService();
   final NetworkPolicyService _networkPolicy = NetworkPolicyService();
 
-  /// Bootstrap the feed for instant play
+  /// Bootstrap the feed for instant play (OPTIMIZED)
   /// Returns cached data immediately, then fetches fresh data
   Future<BootstrapResult> bootstrap() async {
     final startTime = DateTime.now();
-    log('🚀 Starting feed bootstrap...');
+    log('🚀 Starting optimized feed bootstrap...');
 
     try {
-      // Initialize services
+      // Initialize only critical services
       await _cacheService.initialize();
-      await _networkPolicy.initialize();
+      
+      // Initialize network policy in background (non-blocking)
+      _networkPolicy.initialize().catchError((e) {
+        log('⚠️ Network policy init failed (non-critical): $e');
+      });
 
       // Try to load cached feed first (warm start)
       final cachedFeed = await _loadCachedFeed();
@@ -36,8 +40,10 @@ class FeedBootstrapService {
       if (cachedFeed != null && cachedFeed.items.isNotEmpty) {
         log('✅ Warm start: Found ${cachedFeed.items.length} cached items');
         
-        // Prime the first video for instant play
-        await _primeWarmStartCandidate(cachedFeed.items.first);
+        // Prime the first video in background (non-blocking)
+        _primeWarmStartCandidate(cachedFeed.items.first).catchError((e) {
+          log('⚠️ Failed to prime warm start candidate: $e');
+        });
         
         // Return cached data immediately
         final result = BootstrapResult(

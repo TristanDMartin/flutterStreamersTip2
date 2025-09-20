@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 
 class VideoInsightsModalView extends StatefulWidget {
   final Map<String, dynamic> video;
@@ -14,6 +16,9 @@ class VideoInsightsModalView extends StatefulWidget {
 
 class _VideoInsightsModalViewState extends State<VideoInsightsModalView> {
   Map<String, dynamic>? _analytics;
+  bool _isLoading = true;
+  StreamSubscription? _analyticsSubscription;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -21,21 +26,89 @@ class _VideoInsightsModalViewState extends State<VideoInsightsModalView> {
     _loadAnalytics();
   }
 
-  void _loadAnalytics() {
-    // TODO: Implement analytics loading
-    // This would fetch real-time analytics for the video
-    setState(() {
-      _analytics = {
-        'views': widget.video['views'] ?? 0,
-        'likes': widget.video['likes'] ?? 0,
-        'comments': widget.video['comments'] ?? 0,
-        'engagementRate': 0.0,
-        'averageWatchTime': 0.0,
-        'audienceReach': 0,
-        'retentionRate': 0.0,
-        'shares': 0,
-      };
-    });
+  @override
+  void dispose() {
+    _analyticsSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadAnalytics() async {
+    try {
+      final videoId = widget.video['id'] as String?;
+      if (videoId == null) {
+        _setDefaultAnalytics();
+        return;
+      }
+
+      // Start listening to real-time analytics updates
+      _analyticsSubscription = _firestore
+          .collection('video_analytics')
+          .doc(videoId)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          if (mounted) {
+            if (snapshot.exists && snapshot.data() != null) {
+              final data = snapshot.data()!;
+              setState(() {
+                _analytics = {
+                  'views': data['views'] ?? widget.video['views'] ?? 0,
+                  'likes': data['likes'] ?? widget.video['likes'] ?? 0,
+                  'comments': data['comments'] ?? widget.video['comments'] ?? 0,
+                  'shares': data['shares'] ?? 0,
+                  'engagementRate': _calculateEngagementRate(data),
+                  'averageWatchTime': data['averageWatchTime'] ?? 0.0,
+                  'audienceReach': data['audienceReach'] ?? 0,
+                  'retentionRate': data['retentionRate'] ?? 0.0,
+                };
+                _isLoading = false;
+              });
+            } else {
+              _setDefaultAnalytics();
+            }
+          }
+        },
+        onError: (error) {
+          debugPrint('Error loading analytics: $error');
+          if (mounted) {
+            _setDefaultAnalytics();
+          }
+        },
+      );
+    } catch (error) {
+      debugPrint('Error initializing analytics: $error');
+      _setDefaultAnalytics();
+    }
+  }
+
+  void _setDefaultAnalytics() {
+    if (mounted) {
+      setState(() {
+        _analytics = {
+          'views': widget.video['views'] ?? 0,
+          'likes': widget.video['likes'] ?? 0,
+          'comments': widget.video['comments'] ?? 0,
+          'engagementRate': 0.0,
+          'averageWatchTime': 0.0,
+          'audienceReach': 0,
+          'retentionRate': 0.0,
+          'shares': 0,
+        };
+        _isLoading = false;
+      });
+    }
+  }
+
+  double _calculateEngagementRate(Map<String, dynamic> data) {
+    final views = data['views'] ?? 0;
+    if (views == 0) return 0.0;
+    
+    final likes = data['likes'] ?? 0;
+    final comments = data['comments'] ?? 0;
+    final shares = data['shares'] ?? 0;
+    
+    final totalEngagement = likes + comments + shares;
+    return totalEngagement / views;
   }
 
   @override
@@ -58,55 +131,59 @@ class _VideoInsightsModalViewState extends State<VideoInsightsModalView> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.only(top: 20),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : SingleChildScrollView(
               child: Column(
                 children: [
-                  const Text(
-                    'Video Insights',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.only(top: 20),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Video Insights',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 8),
+                        
+                        Text(
+                          'Performance metrics for your video',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 24),
                   
-                  Text(
-                    'Performance metrics for your video',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
+                  // Overview Stats
+                  _buildOverviewStats(),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Detailed Metrics
+                  _buildDetailedMetrics(),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Growth Chart Placeholder
+                  _buildGrowthChart(),
+                  
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
-            
-            const SizedBox(height: 24),
-            
-            // Overview Stats
-            _buildOverviewStats(),
-            
-            const SizedBox(height: 24),
-            
-            // Detailed Metrics
-            _buildDetailedMetrics(),
-            
-            const SizedBox(height: 24),
-            
-            // Growth Chart Placeholder
-            _buildGrowthChart(),
-            
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
     );
   }
 

@@ -94,19 +94,26 @@ class _NetworkViewState extends State<NetworkView> {
     );
   }
 
-  /// Initialize real-time relationship listeners for instant updates
+  /// Initialize real-time relationship listeners for instant updates (OPTIMIZED)
   void _initializeRelationshipListeners() {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     if (currentUserId == null) return;
 
-    // Listen to relationships where current user is involved
+    // Use a more efficient listener with debouncing to prevent excessive refreshes
+    Timer? _debounceTimer;
     _relationshipsSubscription = FirebaseFirestore.instance
         .collection('relationships')
         .where('followerId', isEqualTo: currentUserId)
         .snapshots()
         .listen((snapshot) {
-      // When relationships change, refresh data instantly
-      _refreshDataInstantly();
+      // Only refresh if there are actual changes
+      if (snapshot.docChanges.isNotEmpty) {
+        // Debounce to prevent excessive calls
+        _debounceTimer?.cancel();
+        _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+          _refreshDataInstantly();
+        });
+      }
     });
   }
   

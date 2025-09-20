@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'widgets/app_startup_wrapper.dart';
 import 'services/analytics_service.dart';
 import 'services/error_handler_service.dart';
@@ -14,37 +13,41 @@ import 'services/unified_avatar_service.dart' as nav;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize network configuration first (for SSL certificate handling)
+  // OPTIMIZED STARTUP: Initialize only critical services synchronously
   NetworkConfigService.initialize();
   
-  // Initialize Google Services fix
-  await GoogleServicesFix.initialize();
-  
-  // Initialize Unified Avatar Service for instant loading
-  await nav.UnifiedAvatarService().initialize();
-  
-  // Verify logo asset is bundled
-  try {
-    final manifest = await rootBundle.loadString('AssetManifest.json');
-    if (manifest.contains('assets/logo.png')) {
-      print('✅ Logo asset found in bundle');
-    } else {
-      print('❌ Logo asset NOT found in bundle. Manifest contains: ${manifest.substring(0, 200)}...');
-    }
-  } catch (e) {
-    print('❌ Asset verification failed: $e');
-  }
-  
-  // Initialize Firebase
+  // Initialize Firebase first (critical for app)
   await Firebase.initializeApp();
   
-  // Initialize production services
-  await _initializeProductionServices();
-  
-  // Initialize performance optimizations
+  // Initialize performance optimizations immediately
   _initializePerformanceOptimizations();
   
+  // Run app immediately with loading screen
   runApp(const ProviderScope(child: MyApp()));
+  
+  // Initialize non-critical services in background after app starts
+  _initializeBackgroundServices();
+}
+
+/// Initialize non-critical services in background to avoid blocking startup
+void _initializeBackgroundServices() async {
+  try {
+    // Initialize Google Services fix in background
+    await GoogleServicesFix.initialize();
+    
+    // Initialize Unified Avatar Service in background (non-blocking)
+    nav.UnifiedAvatarService().initialize().catchError((e) {
+      debugPrint('⚠️ Avatar service init failed (non-critical): $e');
+    });
+    
+    // Initialize production services in background
+    await _initializeProductionServices();
+    
+    // Skip asset verification to speed up startup
+    debugPrint('✅ Background services initialized');
+  } catch (e) {
+    debugPrint('❌ Background service initialization failed: $e');
+  }
 }
 
 Future<void> _initializeProductionServices() async {
