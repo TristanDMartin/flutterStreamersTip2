@@ -28,6 +28,10 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
   late TabController _tabController;
   int _selectedTabIndex = 0;
 
+  // Theme colors
+  static const _primaryColor = Color(0xFF6137EB);
+  static const _secondaryColor = Color(0xFF1C135D);
+
   @override
   void initState() {
     super.initState();
@@ -50,6 +54,41 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
     super.dispose();
   }
 
+  // Helper method for showing SnackBars
+  void _showSnackBar(String message, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+      ),
+    );
+  }
+
+  // Helper method for bulk actions
+  Future<void> _performBulkAction({
+    required String title,
+    required String message,
+    required Future<void> Function() action,
+    required String successMessage,
+    required Color successColor,
+  }) async {
+    if (_selectedChatIds.isEmpty) return;
+
+    final confirmed = await _showConfirmationDialog(title, message);
+    if (!confirmed) return;
+
+    try {
+      await action();
+      _clearSelection();
+      _toggleSelectionMode();
+      _showSnackBar(successMessage, successColor);
+    } catch (e) {
+      _showSnackBar('Error: $e', Colors.red);
+    }
+  }
+
+  // Selection mode methods
   void _toggleSelectionMode() {
     setState(() {
       _isSelectionMode = !_isSelectionMode;
@@ -81,119 +120,48 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
     });
   }
 
+  // Bulk action methods
   Future<void> _deleteSelectedChats() async {
-    if (_selectedChatIds.isEmpty) return;
-
-    final confirmed = await _showConfirmationDialog(
-      'Delete Chats',
-      'Are you sure you want to delete ${_selectedChatIds.length} chat(s)? This action cannot be undone.',
+    await _performBulkAction(
+      title: 'Delete Chats',
+      message: 'Are you sure you want to delete ${_selectedChatIds.length} chat(s)? This action cannot be undone.',
+      action: () => ChatService.shared.deleteMultipleChats(_selectedChatIds.toList()),
+      successMessage: 'Deleted ${_selectedChatIds.length} chat(s)',
+      successColor: Colors.green,
     );
-
-    if (confirmed) {
-      try {
-        await ChatService.shared.deleteMultipleChats(_selectedChatIds.toList());
-        _clearSelection();
-        _toggleSelectionMode();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Deleted ${_selectedChatIds.length} chat(s)'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error deleting chats: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
   }
 
   Future<void> _muteSelectedChats() async {
-    if (_selectedChatIds.isEmpty) return;
-
     final currentUser = fa.FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    final confirmed = await _showConfirmationDialog(
-      'Mute Chats',
-      'Are you sure you want to mute ${_selectedChatIds.length} chat(s)? You won\'t receive notifications from these chats.',
+    await _performBulkAction(
+      title: 'Mute Chats',
+      message: 'Are you sure you want to mute ${_selectedChatIds.length} chat(s)? You won\'t receive notifications from these chats.',
+      action: () => ChatService.shared.muteMultipleChats(_selectedChatIds.toList(), currentUser.uid),
+      successMessage: 'Muted ${_selectedChatIds.length} chat(s)',
+      successColor: Colors.orange,
     );
-
-    if (confirmed) {
-      try {
-        await ChatService.shared.muteMultipleChats(_selectedChatIds.toList(), currentUser.uid);
-        _clearSelection();
-        _toggleSelectionMode();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Muted ${_selectedChatIds.length} chat(s)'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error muting chats: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
   }
 
   Future<void> _archiveSelectedChats() async {
-    if (_selectedChatIds.isEmpty) return;
-
     final currentUser = fa.FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    final confirmed = await _showConfirmationDialog(
-      'Archive Chats',
-      'Are you sure you want to archive ${_selectedChatIds.length} chat(s)? These chats will be moved to your archived chats.',
+    await _performBulkAction(
+      title: 'Archive Chats',
+      message: 'Are you sure you want to archive ${_selectedChatIds.length} chat(s)? These chats will be moved to your archived chats.',
+      action: () => ChatService.shared.archiveMultipleChats(_selectedChatIds.toList(), currentUser.uid),
+      successMessage: 'Archived ${_selectedChatIds.length} chat(s)',
+      successColor: Colors.blue,
     );
-
-    if (confirmed) {
-      try {
-        await ChatService.shared.archiveMultipleChats(_selectedChatIds.toList(), currentUser.uid);
-        _clearSelection();
-        _toggleSelectionMode();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Archived ${_selectedChatIds.length} chat(s)'),
-              backgroundColor: Colors.blue,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error archiving chats: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
   }
 
   Future<bool> _showConfirmationDialog(String title, String message) async {
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C135D),
+        backgroundColor: _secondaryColor,
         title: Text(
           title,
           style: const TextStyle(color: Colors.white),
@@ -222,6 +190,27 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
     ) ?? false;
   }
 
+  // Helper widget for unread count badges
+  Widget _buildUnreadBadge(int count, Color color) {
+    if (count <= 0) return const SizedBox.shrink();
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        count > 99 ? '99+' : count.toString(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = fa.FirebaseAuth.instance.currentUser;
@@ -238,275 +227,245 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
         ),
         child: Column(
           children: [
-            // Custom top bar that goes to the very top
-            Container(
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 16,
-                left: 16,
-                right: 16,
-                bottom: 16,
-              ),
-              child: Stack(
-                children: [
-                  // Centered title or selection info
-                  Center(
-                    child: _isSelectionMode
-                        ? Text(
-                            '${_selectedChatIds.length} selected',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          )
-                        : const Text(
-                            'Inbox',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                  // Back button or Cancel button positioned on the left
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    child: IconButton(
-                      icon: Icon(
-                        _isSelectionMode ? Icons.close : Icons.arrow_back,
-                        color: Colors.white,
-                      ),
-                      onPressed: _isSelectionMode ? _toggleSelectionMode : () => Navigator.of(context).pop(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
-                  // Selection mode button or bulk actions positioned on the right
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    child: _isSelectionMode
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_selectedChatIds.isNotEmpty) ...[
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: _deleteSelectedChats,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.volume_off, color: Colors.orange),
-                                  onPressed: _muteSelectedChats,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.archive, color: Colors.blue),
-                                  onPressed: _archiveSelectedChats,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                              ],
-                            ],
-                          )
-                        : IconButton(
-                            icon: const Icon(Icons.checklist, color: Colors.white),
-                            onPressed: _toggleSelectionMode,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                  ),
-                ],
-              ),
-            ),
-            // Tab bar
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                indicator: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
-                labelStyle: const TextStyle(fontWeight: FontWeight.w600),
-                tabs: [
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.message, size: 18),
-                        const SizedBox(width: 8),
-                        const Text('Messages'),
-                        const SizedBox(width: 4),
-                        Consumer(
-                          builder: (context, ref, child) {
-                            final unreadCountAsync = ref.watch(unreadMessagesProvider);
-                            return unreadCountAsync.when(
-                              data: (unreadCount) {
-                                if (unreadCount > 0) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      unreadCount > 99 ? '99+' : unreadCount.toString(),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  );
-                                }
-                                return const SizedBox.shrink();
-                              },
-                              loading: () => const SizedBox.shrink(),
-                              error: (_, __) => const SizedBox.shrink(),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.video_library, size: 18),
-                        const SizedBox(width: 8),
-                        const Text('Drafts'),
-                        const SizedBox(width: 4),
-                        Consumer(
-                          builder: (context, ref, child) {
-                            final unreadDrafts = ref.watch(unreadSharedDraftsCountProvider);
-                            if (unreadDrafts > 0) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF9248d2),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  '$unreadDrafts',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _buildTopBar(),
+            _buildTabBar(),
             const SizedBox(height: 16),
-            // Search bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: _selectedTabIndex == 0 ? 'Search messages' : 'Search shared drafts',
-                  hintStyle: const TextStyle(color: Colors.white70),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha:0.1),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  prefixIcon: const Icon(Icons.search, color: Colors.white70),
-                ),
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
+            _buildSearchBar(),
             const SizedBox(height: 16),
             const Divider(color: Colors.white24, height: 1),
-            // Content based on selected tab
-            Expanded(
-              child: currentUser != null
-                  ? TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildChatList(currentUser.uid),
-                        _buildSharedDraftsList(),
-                      ],
-                    )
-                  : const Center(
-                      child: Text(
-                        'Please sign in to view messages',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    ),
-            ),
+            _buildContent(currentUser),
           ],
         ),
       ),
+      floatingActionButton: _buildFloatingActionButton(),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha:0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF9248D2), // purple
-              Color(0xFF7768DF), // lighter purple
-              Color(0xFF1670DE), // blue
-              Color(0xFF3C8BD6), // lighter blue
-              Color(0xFF4897D2), // lightest blue
-            ],
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 16,
+        left: 16,
+        right: 16,
+        bottom: 16,
+      ),
+      child: Stack(
+        children: [
+          Center(
+            child: _isSelectionMode
+                ? Text(
+                    '${_selectedChatIds.length} selected',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : const Text(
+                    'Inbox',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
           ),
-        ),
-        child: IconButton(
-          icon: const Icon(Icons.add, color: Colors.white),
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const NewMessageView(),
-                fullscreenDialog: true,
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: IconButton(
+              icon: Icon(
+                _isSelectionMode ? Icons.close : Icons.arrow_back,
+                color: Colors.white,
               ),
-            );
-          },
+              onPressed: _isSelectionMode ? _toggleSelectionMode : () => Navigator.of(context).pop(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: _isSelectionMode
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_selectedChatIds.isNotEmpty) ...[
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: _deleteSelectedChats,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.volume_off, color: Colors.orange),
+                          onPressed: _muteSelectedChats,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.archive, color: Colors.blue),
+                          onPressed: _archiveSelectedChats,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ],
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.checklist, color: Colors.white),
+                    onPressed: _toggleSelectionMode,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(12),
         ),
+        labelColor: Colors.white,
+        unselectedLabelColor: Colors.white70,
+        labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+        tabs: [
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.message, size: 18),
+                const SizedBox(width: 8),
+                const Text('Messages'),
+                const SizedBox(width: 4),
+                Consumer(
+                  builder: (context, ref, child) {
+                    final unreadCountAsync = ref.watch(unreadMessagesProvider);
+                    return unreadCountAsync.when(
+                      data: (unreadCount) => _buildUnreadBadge(unreadCount, Colors.red),
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.video_library, size: 18),
+                const SizedBox(width: 8),
+                const Text('Drafts'),
+                const SizedBox(width: 4),
+                Consumer(
+                  builder: (context, ref, child) {
+                    final unreadDrafts = ref.watch(unreadSharedDraftsCountProvider);
+                    return _buildUnreadBadge(unreadDrafts, _primaryColor);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value;
+          });
+        },
+        decoration: InputDecoration(
+          hintText: _selectedTabIndex == 0 ? 'Search messages' : 'Search shared drafts',
+          hintStyle: const TextStyle(color: Colors.white70),
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.1),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          prefixIcon: const Icon(Icons.search, color: Colors.white70),
+        ),
+        style: const TextStyle(color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildContent(fa.User? currentUser) {
+    return Expanded(
+      child: currentUser != null
+          ? TabBarView(
+              controller: _tabController,
+              children: [
+                _buildChatList(currentUser.uid),
+                _buildSharedDraftsList(),
+              ],
+            )
+          : const Center(
+              child: Text(
+                'Please sign in to view messages',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildFloatingActionButton() {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+        ),
+      ),
+      child: IconButton(
+        icon: const Icon(Icons.add, color: Colors.white),
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const NewMessageView(),
+              fullscreenDialog: true,
+            ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildChatList(String currentUserId) {
-    // Use fallback query if index is not ready
     final query = _useFallbackQuery
         ? FirebaseFirestore.instance
             .collection('chats')
@@ -528,65 +487,7 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
         }
 
         if (snapshot.hasError) {
-          final error = snapshot.error.toString();
-          final isIndexError = error.contains('index') || error.contains('FAILED_PRECONDITION');
-          
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error, color: Colors.red, size: 48),
-                const SizedBox(height: 16),
-                Text(
-                  isIndexError 
-                    ? 'Setting up message system...\nThis may take a moment.'
-                    : 'Error loading messages',
-                  style: const TextStyle(color: Colors.white70, fontSize: 16),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                if (isIndexError)
-                  const Text(
-                    'The database is being optimized for better performance.',
-                    style: TextStyle(color: Colors.white54, fontSize: 14),
-                    textAlign: TextAlign.center,
-                  )
-                else
-                  Text(
-                    error,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    textAlign: TextAlign.center,
-                  ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    // Try fallback query if index error
-                    if (isIndexError) {
-                      setState(() {
-                        _useFallbackQuery = true;
-                      });
-                    } else {
-                      // Force a rebuild by calling setState
-                      setState(() {});
-                    }
-                  },
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  label: const Text(
-                    'Retry',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha:0.2),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
+          return _buildErrorWidget(snapshot.error.toString());
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -597,43 +498,20 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
             .map((doc) => Chat.fromJson(doc.data() as Map<String, dynamic>).copyWith(id: doc.id))
             .toList();
         
-        // Sort manually if using fallback query
         if (_useFallbackQuery) {
           chats.sort((a, b) => b.lastTimestamp.compareTo(a.lastTimestamp));
         }
 
-        // Filter chats based on search query
         final filteredChats = _searchQuery.isEmpty
             ? chats
             : chats.where((chat) {
-                // For now, we'll filter by chat type or last message
-                // In a real app, you'd want to search by participant names
                 return chat.lastMessage?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false;
               }).toList();
 
         return Column(
           children: [
-            // Select All button when in selection mode
             if (_isSelectionMode && filteredChats.isNotEmpty)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: ElevatedButton.icon(
-                  onPressed: () => _selectAllChats(filteredChats),
-                  icon: const Icon(Icons.select_all, color: Colors.white),
-                  label: const Text(
-                    'Select All',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha:0.1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            // Chat list
+              _buildSelectAllButton(filteredChats),
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
@@ -664,15 +542,94 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
     );
   }
 
+  Widget _buildErrorWidget(String error) {
+    final isIndexError = error.contains('index') || error.contains('FAILED_PRECONDITION');
+    
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error, color: Colors.red, size: 48),
+          const SizedBox(height: 16),
+          Text(
+            isIndexError 
+              ? 'Setting up message system...\nThis may take a moment.'
+              : 'Error loading messages',
+            style: const TextStyle(color: Colors.white70, fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          if (isIndexError)
+            const Text(
+              'The database is being optimized for better performance.',
+              style: TextStyle(color: Colors.white54, fontSize: 14),
+              textAlign: TextAlign.center,
+            )
+          else
+            Text(
+              error,
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () {
+              if (isIndexError) {
+                setState(() {
+                  _useFallbackQuery = true;
+                });
+              } else {
+                setState(() {});
+              }
+            },
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            label: const Text(
+              'Retry',
+              style: TextStyle(color: Colors.white),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectAllButton(List<Chat> chats) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ElevatedButton.icon(
+        onPressed: () => _selectAllChats(chats),
+        icon: const Icon(Icons.select_all, color: Colors.white),
+        label: const Text(
+          'Select All',
+          style: TextStyle(color: Colors.white),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.white.withValues(alpha: 0.1),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openChat(BuildContext context, Chat chat, String currentUserId) {
-    // Navigate to chat view
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ChatView(
           chat: chat,
-          otherUserName: 'User', // We'll need to fetch this from Firestore
+          otherUserName: 'User', // TODO: Fetch from Firestore
           otherUserAvatarURL: null,
-          otherUserIsOnline: false, // We'll need to check this from status
+          otherUserIsOnline: false, // TODO: Check from status
         ),
       ),
     );
@@ -689,7 +646,6 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
               return const _EmptySharedDraftsView();
             }
 
-            // Filter drafts based on search query
             final filteredDrafts = _searchQuery.isEmpty
                 ? sharedDrafts
                 : sharedDrafts.where((draft) {
@@ -740,43 +696,22 @@ class _InboxViewState extends ConsumerState<InboxView> with TickerProviderStateM
   }
 
   void _openSharedDraft(SharedDraft sharedDraft) {
-    // Mark as viewed
     ref.read(sharedDraftNotifierProvider.notifier).markAsViewed(sharedDraft.id);
-    
-    // Navigate to video player or draft preview
-    // This would open the shared draft in a video player
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Opening draft: ${sharedDraft.draftTitle}'),
-        backgroundColor: const Color(0xFF9248d2),
-      ),
-    );
+    _showSnackBar('Opening draft: ${sharedDraft.draftTitle}', _primaryColor);
   }
 
   void _acceptSharedDraft(SharedDraft sharedDraft) {
-    // Mark as viewed
     ref.read(sharedDraftNotifierProvider.notifier).markAsViewed(sharedDraft.id);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Accepted draft: ${sharedDraft.draftTitle}'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    _showSnackBar('Accepted draft: ${sharedDraft.draftTitle}', Colors.green);
   }
 
   void _declineSharedDraft(SharedDraft sharedDraft) {
     ref.read(sharedDraftNotifierProvider.notifier).declineDraft(sharedDraft.id);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Declined draft: ${sharedDraft.draftTitle}'),
-        backgroundColor: Colors.orange,
-      ),
-    );
+    _showSnackBar('Declined draft: ${sharedDraft.draftTitle}', Colors.orange);
   }
 }
 
+// Chat List Item Widget
 class _ChatListItem extends StatelessWidget {
   final Chat chat;
   final String currentUserId;
@@ -815,115 +750,101 @@ class _ChatListItem extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [
                   isSelected 
-                      ? Colors.white.withValues(alpha:0.2)
-                      : Colors.white.withValues(alpha:0.1),
+                      ? Colors.white.withValues(alpha: 0.2)
+                      : Colors.white.withValues(alpha: 0.1),
                   isSelected 
-                      ? Colors.white.withValues(alpha:0.15)
-                      : Colors.white.withValues(alpha:0.05),
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.05),
                 ],
               ),
               border: Border.all(
                 color: isSelected 
-                    ? Colors.white.withValues(alpha:0.3)
-                    : Colors.white.withValues(alpha:0.1),
+                    ? Colors.white.withValues(alpha: 0.3)
+                    : Colors.white.withValues(alpha: 0.1),
                 width: isSelected ? 2 : 1,
               ),
             ),
             child: Row(
               children: [
-                // Selection checkbox or avatar
                 if (isSelectionMode)
-                  Container(
-                    width: 24,
-                    height: 24,
-                    margin: const EdgeInsets.only(right: 12),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 2,
-                      ),
-                      color: isSelected ? Colors.white : Colors.transparent,
-                    ),
-                    child: isSelected
-                        ? const Icon(
-                            Icons.check,
-                            color: Color(0xFF1C135D),
-                            size: 16,
-                          )
-                        : null,
-                  )
+                  _buildSelectionCheckbox()
                 else
                   _buildAvatar(otherUserId),
                 const SizedBox(width: 16),
-                // Chat info
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _getChatTitle(otherUserId),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            _formatTimestamp(chat.lastTimestamp),
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha:0.6),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              chat.lastMessage ?? 'No messages yet',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha:0.7),
-                                fontSize: 14,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          ),
-                          // Unread count badge (placeholder for now)
-                          if (_hasUnreadMessages())
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.red,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                '1', // Placeholder unread count
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
+                  child: _buildChatInfo(otherUserId),
                 ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSelectionCheckbox() {
+    return Container(
+      width: 24,
+      height: 24,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        color: isSelected ? Colors.white : Colors.transparent,
+      ),
+      child: isSelected
+          ? const Icon(
+              Icons.check,
+              color: Color(0xFF1C135D),
+              size: 16,
+            )
+          : null,
+    );
+  }
+
+  Widget _buildChatInfo(String otherUserId) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _getChatTitle(otherUserId),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              _formatTimestamp(chat.lastTimestamp),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                chat.lastMessage ?? 'No messages yet',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -944,7 +865,7 @@ class _ChatListItem extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white.withValues(alpha:0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     width: 2,
                   ),
                 ),
@@ -960,7 +881,6 @@ class _ChatListItem extends StatelessWidget {
                       : _buildDefaultAvatar(displayName),
                 ),
               ),
-              // Dynamic online status indicator
               AvatarOnlineIndicator(
                 userId: userId,
                 avatarSize: 50,
@@ -981,7 +901,7 @@ class _ChatListItem extends StatelessWidget {
 
   Widget _buildDefaultAvatar(String displayName) {
     return Container(
-      color: Colors.grey.withValues(alpha:0.3),
+      color: Colors.grey.withValues(alpha: 0.3),
       child: Center(
         child: Text(
           displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
@@ -999,9 +919,6 @@ class _ChatListItem extends StatelessWidget {
     if (chat.chatType == 'group' && chat.groupName != null) {
       return chat.groupName!;
     }
-    
-    // For direct chats, we'll show the other user's name
-    // This is a simplified version - in a real app you'd cache user data
     return 'User $otherUserId';
   }
 
@@ -1019,13 +936,9 @@ class _ChatListItem extends StatelessWidget {
       return 'now';
     }
   }
-
-  bool _hasUnreadMessages() {
-    // Placeholder logic - in a real app you'd track read status
-    return false;
-  }
 }
 
+// Empty Views
 class _EmptyInboxView extends StatelessWidget {
   const _EmptyInboxView();
 
@@ -1049,7 +962,6 @@ class _EmptyInboxView extends StatelessWidget {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
-        // Sample data button for testing
         ElevatedButton.icon(
           onPressed: () async {
             try {
@@ -1079,7 +991,7 @@ class _EmptyInboxView extends StatelessWidget {
             style: TextStyle(color: Colors.white),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.white.withValues(alpha:0.2),
+            backgroundColor: Colors.white.withValues(alpha: 0.2),
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             shape: RoundedRectangleBorder(

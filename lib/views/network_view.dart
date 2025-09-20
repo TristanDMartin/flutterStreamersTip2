@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
 import '../models/user_model.dart' as user_model;
 import '../models/network_models.dart' as network_models;
 import '../services/clean_relationship_service.dart';
@@ -25,6 +28,7 @@ class _NetworkViewState extends State<NetworkView> {
   String _searchQuery = '';
   List<user_model.User> _searchResults = [];
   bool _isSearching = false;
+  Timer? _searchTimer;
   
   // Sort options
   String _sortBy = 'name';
@@ -35,6 +39,13 @@ class _NetworkViewState extends State<NetworkView> {
   List<user_model.User> _followersUsers = [];
   List<user_model.User> _followingUsers = [];
   bool _isLoadingUsers = false;
+  
+  // Network connectivity
+  bool _hasInternetConnection = true;
+  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  
+  // Real-time relationship listeners
+  StreamSubscription<QuerySnapshot>? _relationshipsSubscription;
 
   @override
   void initState() {
@@ -52,18 +63,112 @@ class _NetworkViewState extends State<NetworkView> {
     // Initialize performance monitoring
     PerformanceMonitoringService().startMonitoring();
     
+    // Initialize network connectivity monitoring
+    _initializeConnectivityMonitoring();
+    
+    // Initialize real-time relationship listeners
+    _initializeRelationshipListeners();
+    
     // Load users from clean relationship service
     _loadUsersFromCleanService();
   }
   
+  /// Initialize network connectivity monitoring
+  void _initializeConnectivityMonitoring() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      (ConnectivityResult result) {
+        final hasConnection = result == ConnectivityResult.mobile || 
+                             result == ConnectivityResult.wifi ||
+                             result == ConnectivityResult.ethernet;
+        
+        if (mounted) {
+          setState(() {
+            _hasInternetConnection = hasConnection;
+          });
+        }
+        
+        if (!hasConnection && mounted) {
+          _showNetworkError();
+        }
+      },
+    );
+  }
+
+  /// Initialize real-time relationship listeners for instant updates
+  void _initializeRelationshipListeners() {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == null) return;
+
+    // Listen to relationships where current user is involved
+    _relationshipsSubscription = FirebaseFirestore.instance
+        .collection('relationships')
+        .where('followerId', isEqualTo: currentUserId)
+        .snapshots()
+        .listen((snapshot) {
+      // When relationships change, refresh data instantly
+      _refreshDataInstantly();
+    });
+  }
+  
+  /// Check network connectivity before API calls
+  Future<bool> _checkNetworkConnectivity() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      final hasConnection = connectivityResult == ConnectivityResult.mobile || 
+                           connectivityResult == ConnectivityResult.wifi ||
+                           connectivityResult == ConnectivityResult.ethernet;
+      
+      if (mounted) {
+        setState(() {
+          _hasInternetConnection = hasConnection;
+        });
+      }
+      
+      return hasConnection;
+    } catch (e) {
+      print('Connectivity check error: $e');
+      return false;
+    }
+  }
+  
+  /// Show network error message
+  void _showNetworkError() {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No internet connection. Please check your network.'),
+          backgroundColor: Colors.orange.withValues(alpha: 0.8),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: () {
+              _loadUsersFromCleanService();
+            },
+          ),
+        ),
+      );
+    }
+  }
+
   /// Load users from clean relationship service
   Future<void> _loadUsersFromCleanService() async {
+    // Check network connectivity first
+    final hasConnection = await _checkNetworkConnectivity();
+    if (!hasConnection) {
+      _showNetworkError();
+      return;
+    }
+    
     setState(() {
       _isLoadingUsers = true;
     });
     
     try {
       final cleanSvc = CleanRelationshipService();
+      
+      // Ensure service is initialized before loading data
+      await cleanSvc.initialize();
       
       // Load all three lists in parallel
       final results = await Future.wait([
@@ -83,6 +188,22 @@ class _NetworkViewState extends State<NetworkView> {
       setState(() {
         _isLoadingUsers = false;
       });
+      
+      // Show user-friendly error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load network data. Please try again.'),
+            backgroundColor: Colors.red.withValues(alpha: 0.8),
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _loadUsersFromCleanService,
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -91,6 +212,9 @@ class _NetworkViewState extends State<NetworkView> {
     PerformanceMonitoringService().stopMonitoring();
     _listController.dispose();
     _searchController.dispose();
+    _searchTimer?.cancel(); // Cancel search timer
+    _connectivitySubscription?.cancel(); // Cancel connectivity subscription
+    _relationshipsSubscription?.cancel(); // Cancel relationship listeners
     super.dispose();
   }
 
@@ -98,34 +222,55 @@ class _NetworkViewState extends State<NetworkView> {
     setState(() {
       _searchQuery = _searchController.text;
     });
-    _performSearch();
+    
+    // Cancel previous search timer
+    _searchTimer?.cancel();
+    
+    // Start new search with debouncing
+    _searchTimer = Timer(const Duration(milliseconds: 300), () {
+      _performSearch();
+    });
   }
 
   Future<void> _performSearch() async {
     if (_searchQuery.isEmpty) {
-      setState(() {
-        _searchResults = [];
-        _isSearching = false;
-      });
+      if (mounted) {
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+      }
       return;
     }
 
-    setState(() {
-      _isSearching = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isSearching = true;
+      });
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
+    try {
+      final allUsers = _getAllUsersForSearch();
+      final results = allUsers.where((user) {
+        return user.username.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+               user.displayName.toLowerCase().contains(_searchQuery.toLowerCase());
+      }).toList();
 
-    final allUsers = _getAllUsersForSearch();
-    final results = allUsers.where((user) {
-      return user.username.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-             user.displayName.toLowerCase().contains(_searchQuery.toLowerCase());
-    }).toList();
-
-    setState(() {
-      _searchResults = results;
-      _isSearching = false;
-    });
+      // Check if widget is still mounted before updating state
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      print('Search error: $e');
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
+    }
   }
 
   List<user_model.User> _getAllUsersForSearch() {
@@ -144,12 +289,17 @@ class _NetworkViewState extends State<NetworkView> {
 
   void _toggleSearch() {
     HapticFeedback.lightImpact();
+    
+    // Cancel any ongoing search
+    _searchTimer?.cancel();
+    
     setState(() {
       _isSearchVisible = !_isSearchVisible;
       if (!_isSearchVisible) {
         _searchController.clear();
         _searchQuery = '';
         _searchResults = [];
+        _isSearching = false;
       }
     });
   }
@@ -229,15 +379,9 @@ class _NetworkViewState extends State<NetworkView> {
   @override
   Widget build(BuildContext context) {
     const bg = LinearGradient(
-      colors: [
-        Color(0xFF9248D2), // Purple
-        Color(0xFF7768DF), // Another purple
-        Color(0xFF1670DE), // Blue
-        Color(0xFF3C8BD6), // Lighter blue
-        Color(0xFF4897D2), // Lightest blue
-      ],
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
+      colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
     );
 
     return Container(
@@ -245,12 +389,50 @@ class _NetworkViewState extends State<NetworkView> {
       child: SafeArea(
         child: Column(
           children: [
-            // Top row with search and sort icons
+            // Top row with network status, search and sort icons
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Network connectivity indicator
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _hasInternetConnection 
+                          ? Colors.green.withValues(alpha: 0.2)
+                          : Colors.red.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _hasInternetConnection 
+                            ? Colors.green.withValues(alpha: 0.4)
+                            : Colors.red.withValues(alpha: 0.4),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _hasInternetConnection ? Icons.wifi : Icons.wifi_off,
+                          color: _hasInternetConnection ? Colors.green : Colors.red,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _hasInternetConnection ? 'Online' : 'Offline',
+                          style: TextStyle(
+                            color: _hasInternetConnection ? Colors.green : Colors.red,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Search and sort icons
+                  Row(
+                    children: [
                   // Sort button
                   GestureDetector(
                     onTap: _showSortOptions,
@@ -291,6 +473,8 @@ class _NetworkViewState extends State<NetworkView> {
                         size: 20,
                       ),
                     ),
+                  ),
+                    ],
                   ),
                 ],
               ),
@@ -365,10 +549,13 @@ class _NetworkViewState extends State<NetworkView> {
   Widget _buildTabButtons() {
     return GestureDetector(
       onHorizontalDragEnd: (details) {
-        if (details.primaryVelocity! > 0) {
-          _previousTab();
-        } else if (details.primaryVelocity! < 0) {
-          _nextTab();
+        final velocity = details.primaryVelocity;
+        if (velocity != null) {
+          if (velocity > 0) {
+            _previousTab();
+          } else if (velocity < 0) {
+            _nextTab();
+          }
         }
       },
       child: SizedBox(
@@ -437,11 +624,8 @@ class _NetworkViewState extends State<NetworkView> {
               ShaderMask(
                 shaderCallback: (bounds) => const LinearGradient(
                   colors: [
-                    Color(0xFF9248D2), // Purple
-                    Color(0xFF7768DF), // Another purple
-                    Color(0xFF1670DE), // Blue
-                    Color(0xFF3C8BD6), // Lighter blue
-                    Color(0xFF4897D2), // Lightest blue
+                    Color(0xFF6137EB),
+                    Color(0xFF1C135D),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -485,8 +669,8 @@ class _NetworkViewState extends State<NetworkView> {
   Widget _buildMainContent() {
     if (_isLoadingUsers) {
       return const Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+        child: const CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
         ),
       );
     }
@@ -499,7 +683,7 @@ class _NetworkViewState extends State<NetworkView> {
 
     return RefreshIndicator(
       onRefresh: _loadUsersFromCleanService,
-      color: const Color(0xFF9248D2),
+      color: Colors.white,
       child: ListView.builder(
         controller: _listController,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -517,7 +701,8 @@ class _NetworkViewState extends State<NetworkView> {
       padding: const EdgeInsets.only(bottom: 16),
       child: StreamerCardView(
         userId: user.id,
-        currentUserId: FirebaseAuth.instance.currentUser?.uid,
+        currentUserId: FirebaseAuth.instance.currentUser?.uid ?? '',
+        onFollow: _handleFollowAction, // Add callback for instant updates
       ),
     );
   }
@@ -592,5 +777,51 @@ class _NetworkViewState extends State<NetworkView> {
           break;
       }
     });
+  }
+
+  /// Handle follow/unfollow actions from StreamerCardView for instant updates
+  void _handleFollowAction(String userId) {
+    // Refresh data instantly after follow/unfollow action
+    _refreshDataInstantly();
+    
+    // Also refresh the CleanRelationshipService state
+    _refreshCleanServiceState();
+  }
+
+  /// Refresh data instantly without showing loading indicator
+  Future<void> _refreshDataInstantly() async {
+    try {
+      final cleanSvc = CleanRelationshipService();
+      
+      // Ensure service is initialized
+      await cleanSvc.initialize();
+      
+      // Load all three lists in parallel
+      final results = await Future.wait([
+        cleanSvc.getUsersForSection('connections'),
+        cleanSvc.getUsersForSection('followers'),
+        cleanSvc.getUsersForSection('following'),
+      ]);
+      
+      if (mounted) {
+        setState(() {
+          _connectionsUsers = results[0];
+          _followersUsers = results[1];
+          _followingUsers = results[2];
+        });
+      }
+    } catch (e) {
+      print('Error refreshing data instantly: $e');
+    }
+  }
+
+  /// Refresh the CleanRelationshipService state to get latest data
+  Future<void> _refreshCleanServiceState() async {
+    try {
+      final cleanSvc = CleanRelationshipService();
+      await cleanSvc.refresh(); // Refresh the service's internal state
+    } catch (e) {
+      print('Error refreshing clean service state: $e');
+    }
   }
 }

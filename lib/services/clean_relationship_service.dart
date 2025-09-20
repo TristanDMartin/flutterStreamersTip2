@@ -191,23 +191,23 @@ class CleanRelationshipService {
   void _updateLocalStateAfterUnfollow(String themId, bool wasMutual) {
     if (_currentState == null) return;
 
-    // Remove from following
-    final newFollowing = List<String>.from(_currentState!.following)..remove(themId);
-    
-    // Check if they still follow me (move to followers if so)
+    final newFollowing = List<String>.from(_currentState!.following);
     final newFollowers = List<String>.from(_currentState!.followers);
     final newConnections = List<String>.from(_currentState!.connections);
     
+    // Always remove from following and connections
+    newFollowing.remove(themId);
+    newConnections.remove(themId);
+    
+    // Check if they still follow me
     if (_currentState!.followers.contains(themId)) {
-      // They still follow me, so they stay in followers
-      // Remove from connections if it was mutual
-      if (wasMutual) {
-        newConnections.remove(themId);
+      // They still follow me, ensure they're in followers
+      if (!newFollowers.contains(themId)) {
+        newFollowers.add(themId);
       }
     } else {
-      // They don't follow me, remove from all sections
+      // They don't follow me, remove from followers too
       newFollowers.remove(themId);
-      newConnections.remove(themId);
     }
 
     _currentState = _currentState!.copyWith(
@@ -221,23 +221,23 @@ class CleanRelationshipService {
   void _updateLocalStateAfterTheyUnfollowed(String themId, bool wasMutual) {
     if (_currentState == null) return;
 
-    // Remove from followers
-    final newFollowers = List<String>.from(_currentState!.followers)..remove(themId);
-    
-    // Check if I still follow them (move to following if so)
     final newFollowing = List<String>.from(_currentState!.following);
+    final newFollowers = List<String>.from(_currentState!.followers);
     final newConnections = List<String>.from(_currentState!.connections);
     
+    // Always remove from followers and connections
+    newFollowers.remove(themId);
+    newConnections.remove(themId);
+    
+    // Check if I still follow them
     if (_currentState!.following.contains(themId)) {
-      // I still follow them, so they stay in following
-      // Remove from connections if it was mutual
-      if (wasMutual) {
-        newConnections.remove(themId);
+      // I still follow them, ensure they're in following
+      if (!newFollowing.contains(themId)) {
+        newFollowing.add(themId);
       }
     } else {
-      // I don't follow them, remove from all sections
+      // I don't follow them, remove from following too
       newFollowing.remove(themId);
-      newConnections.remove(themId);
     }
 
     _currentState = _currentState!.copyWith(
@@ -252,16 +252,23 @@ class CleanRelationshipService {
     if (_currentState == null) return;
 
     final newFollowing = List<String>.from(_currentState!.following);
-    if (!newFollowing.contains(themId)) {
-      newFollowing.add(themId);
-    }
-
-    // Check if they also follow me (mutual connection)
     final newConnections = List<String>.from(_currentState!.connections);
-    if (_currentState!.followers.contains(themId)) {
+    
+    // Check if they also follow me (mutual connection)
+    final isMutual = _currentState!.followers.contains(themId);
+    
+    if (isMutual) {
+      // If mutual, add to connections and remove from following
       if (!newConnections.contains(themId)) {
         newConnections.add(themId);
       }
+      newFollowing.remove(themId); // Remove from following when mutual
+    } else {
+      // If not mutual, add to following
+      if (!newFollowing.contains(themId)) {
+        newFollowing.add(themId);
+      }
+      newConnections.remove(themId); // Remove from connections if not mutual
     }
 
     _currentState = _currentState!.copyWith(
