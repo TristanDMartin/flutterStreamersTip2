@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'widgets/app_startup_wrapper.dart';
 import 'services/analytics_service.dart';
 import 'services/error_handler_service.dart';
@@ -9,21 +8,33 @@ import 'services/memory_optimization_service.dart';
 import 'services/network_config_service.dart';
 import 'services/google_services_fix.dart';
 import 'services/unified_avatar_service.dart' as nav;
+import 'services/ios_memory_service.dart';
+import 'services/firebase_ios_service.dart';
+import 'services/firestore_optimization_service.dart';
+import 'services/firestore_cache_service.dart';
+import 'widgets/ios_minimal_startup.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // OPTIMIZED STARTUP: Initialize only critical services synchronously
   NetworkConfigService.initialize();
+  IOSMemoryService.initialize();
   
-  // Initialize Firebase first (critical for app)
-  await Firebase.initializeApp();
+  // Initialize Firebase with iOS-specific handling
+  await FirebaseIOSService.initialize();
+  
+  // Initialize Firestore optimizations
+  await FirestoreOptimizationService.initialize();
+  
+  // Initialize Firestore cache with auto-index creation
+  await FirestoreCacheService.initialize();
   
   // Initialize performance optimizations immediately
   _initializePerformanceOptimizations();
   
   // Run app immediately with loading screen
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
   
   // Initialize non-critical services in background after app starts
   _initializeBackgroundServices();

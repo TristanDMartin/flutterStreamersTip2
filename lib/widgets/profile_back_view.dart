@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -55,26 +55,26 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     final currentUserId = _profileUpdateService?.currentUser?.uid;
     final isCurrentUser = currentUserId != null && currentUserId == widget.user['id'];
     
-    print("🔍 ProfileBackView: Widget user ID: ${widget.user['id']}");
-    print("🔍 ProfileBackView: ProfileUpdateService user ID: $currentUserId");
-    print("🔍 ProfileBackView: Is current user: $isCurrentUser");
+    debugPrint("🔍 ProfileBackView: Widget user ID: ${widget.user['id']}");
+    debugPrint("🔍 ProfileBackView: ProfileUpdateService user ID: $currentUserId");
+    debugPrint("🔍 ProfileBackView: Is current user: $isCurrentUser");
     
     // If this is the current user, get data from ProfileUpdateService
     if (isCurrentUser && _profileUpdateService?.isDataLoaded == true) {
-      print("🔍 ProfileBackView: Using ProfileUpdateService data");
+      debugPrint("🔍 ProfileBackView: Using ProfileUpdateService data");
       return _profileUpdateService?.userData ?? widget.user;
     }
     
     // For current user, always use the correct Firebase user ID
     if (isCurrentUser) {
-      print("🔍 ProfileBackView: Using correct Firebase user ID: $currentUserId");
+      debugPrint("🔍 ProfileBackView: Using correct Firebase user ID: $currentUserId");
       final correctedUserData = Map<String, dynamic>.from(widget.user);
       correctedUserData['id'] = currentUserId;
       return correctedUserData;
     }
     
     // Otherwise use the widget user data
-    print("🔍 ProfileBackView: Using widget user data");
+    debugPrint("🔍 ProfileBackView: Using widget user data");
     return widget.user;
   }
 
@@ -82,8 +82,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget build(BuildContext context) {
     final String userId = _currentUserData['id'] as String;
     
-    print("🔍 ProfileBackView: Looking for user with ID: $userId");
-    print("🔍 ProfileBackView: Current user data: $_currentUserData");
+    debugPrint("🔍 ProfileBackView: Looking for user with ID: $userId");
+    debugPrint("🔍 ProfileBackView: Current user data: $_currentUserData");
     
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
@@ -91,14 +91,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
           .doc(userId)
           .snapshots(),
       builder: (context, snapshot) {
-        print("🔍 ProfileBackView: StreamBuilder state: ${snapshot.connectionState}");
-        print("🔍 ProfileBackView: Has data: ${snapshot.hasData}");
-        print("🔍 ProfileBackView: Has error: ${snapshot.hasError}");
+        debugPrint("🔍 ProfileBackView: StreamBuilder state: ${snapshot.connectionState}");
+        debugPrint("🔍 ProfileBackView: Has data: ${snapshot.hasData}");
+        debugPrint("🔍 ProfileBackView: Has error: ${snapshot.hasError}");
         if (snapshot.hasData) {
-          print("🔍 ProfileBackView: Document exists: ${snapshot.data!.exists}");
+          debugPrint("🔍 ProfileBackView: Document exists: ${snapshot.data!.exists}");
         }
         if (snapshot.hasError) {
-          print("🔍 ProfileBackView: Error: ${snapshot.error}");
+          debugPrint("🔍 ProfileBackView: Error: ${snapshot.error}");
         }
         
         // Handle loading state
@@ -113,7 +113,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         
         // Handle no data state
         if (!snapshot.hasData || !snapshot.data!.exists) {
-          print("🔍 ProfileBackView: No data or document doesn't exist - showing Profile Not Found");
+          debugPrint("🔍 ProfileBackView: No data or document doesn't exist - showing Profile Not Found");
           return _buildNoDataState();
         }
         
@@ -146,7 +146,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 // Events loaded successfully
               } else {
                 if (kDebugMode) {
-    // print('calendarEvents is not a List, got: ${eventsData.runtimeType}');
+    // debugPrint('calendarEvents is not a List, got: ${eventsData.runtimeType}');
                 }
               }
             }
@@ -171,14 +171,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 // Platforms loaded successfully
               } else {
                 if (kDebugMode) {
-    // print('platforms is not a List, got: ${platformsData.runtimeType}');
+    // debugPrint('platforms is not a List, got: ${platformsData.runtimeType}');
                 }
               }
             }
           }
         } else if (snapshot.hasError) {
           if (kDebugMode) {
-    // print('Error loading data: ${snapshot.error}');
+    // debugPrint('Error loading data: ${snapshot.error}');
           }
         }
         
@@ -738,11 +738,12 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                               lastDate: DateTime(2100),
                             );
                             if (picked != null) {
+                              final currentContext = context;
                               final TimeOfDay? tod = await showTimePicker(
-                                context: context,
+                                context: currentContext,
                                 initialTime: TimeOfDay.fromDateTime(when),
                               );
-                              if (tod != null) {
+                              if (tod != null && currentContext.mounted) {
                                 setModalState(() {
                                   when = DateTime(
                                     picked.year,

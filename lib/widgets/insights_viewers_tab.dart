@@ -400,7 +400,7 @@ class InsightsViewersTab extends StatelessWidget {
               const SizedBox(height: 20),
               ...insights.viewers.ageGroups.map((ageGroup) =>
                 _buildAgeGroupItem(ageGroup),
-              ).toList(),
+              ),
             ],
           ),
         ),
@@ -413,7 +413,7 @@ class InsightsViewersTab extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Container(
+          SizedBox(
             width: 60,
             child: Text(
               ageGroup.range,
@@ -523,7 +523,7 @@ class InsightsViewersTab extends StatelessWidget {
                 final index = entry.key;
                 final location = entry.value;
                 return _buildLocationItem(index + 1, location);
-              }).toList(),
+              }),
             ],
           ),
         ),

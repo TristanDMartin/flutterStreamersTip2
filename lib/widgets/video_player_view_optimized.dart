@@ -770,7 +770,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     const btnSize = 44.0;
     const gap = 16.0;
     const count = 4;
-    final groupHeight = (count * btnSize) + ((count - 1) * gap);
+    const groupHeight = (count * btnSize) + ((count - 1) * gap);
     
     // Calculate position - TikTok style (higher up on screen)
     const rightInset = 12.0;

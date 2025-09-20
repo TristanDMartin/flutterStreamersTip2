@@ -26,7 +26,7 @@ class ProfileUpdateService extends ChangeNotifier {
   /// Initialize the service with current user
   Future<void> initialize() async {
     _currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-    print("🔍 ProfileUpdateService: Initializing with user: ${_currentUser?.uid}");
+    debugPrint("🔍 ProfileUpdateService: Initializing with user: ${_currentUser?.uid}");
     if (_currentUser != null) {
       await _loadUserData();
     }
@@ -37,16 +37,16 @@ class ProfileUpdateService extends ChangeNotifier {
     if (_currentUser == null) return;
 
     try {
-      print("🔍 ProfileUpdateService: Loading user data for UID: ${_currentUser!.uid}");
+      debugPrint("🔍 ProfileUpdateService: Loading user data for UID: ${_currentUser!.uid}");
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(_currentUser!.uid)
           .get();
       
-      print("🔍 ProfileUpdateService: Document exists: ${doc.exists}");
+      debugPrint("🔍 ProfileUpdateService: Document exists: ${doc.exists}");
       if (doc.exists) {
         _userData = doc.data();
-        print("🔍 ProfileUpdateService: Loaded user data: $_userData");
+        debugPrint("🔍 ProfileUpdateService: Loaded user data: $_userData");
         notifyAllListeners();
       }
     } catch (e) {

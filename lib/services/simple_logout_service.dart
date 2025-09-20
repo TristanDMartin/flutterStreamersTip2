@@ -15,24 +15,24 @@ class SimpleLogoutService {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     
     try {
-      print('🔐 SimpleLogout: Starting instant logout...');
-      print('🔐 Context mounted: ${context.mounted}');
-      print('🔐 Stored navigation context before async operations');
+      debugPrint('🔐 SimpleLogout: Starting instant logout...');
+      debugPrint('🔐 Context mounted: ${context.mounted}');
+      debugPrint('🔐 Stored navigation context before async operations');
       
       // Get auth service before any async operations
       final authService = RobustAuthenticationService();
-      print('🔐 Auth service obtained');
+      debugPrint('🔐 Auth service obtained');
       
       // Perform logout (this will update the auth state immediately)
-      print('🔐 Calling authService.signOut()...');
+      debugPrint('🔐 Calling authService.signOut()...');
       await authService.signOut();
-      print('🔐 Auth service signOut completed');
+      debugPrint('🔐 Auth service signOut completed');
       
-      print('✅ SimpleLogout: Logout successful');
+      debugPrint('✅ SimpleLogout: Logout successful');
       
       // INSTANT navigation - bypass all delays, go straight to login
       // Use the stored navigator context instead of checking context.mounted
-      print('🔄 Navigating to login screen using stored navigator...');
+      debugPrint('🔄 Navigating to login screen using stored navigator...');
       
       // Go directly to AuthModalView - no delays, no launch screen, no initialization
       // This is how TikTok/Instagram do it - instant logout to login screen
@@ -43,12 +43,12 @@ class SimpleLogoutService {
         (route) => false,
       );
       
-      print('✅ Instant logout completed - user sees login screen immediately');
+      debugPrint('✅ Instant logout completed - user sees login screen immediately');
       return true;
     } catch (e) {
-      print('❌ SimpleLogout: Error - $e');
-      print('❌ Error type: ${e.runtimeType}');
-      print('❌ Stack trace: ${StackTrace.current}');
+      debugPrint('❌ SimpleLogout: Error - $e');
+      debugPrint('❌ Error type: ${e.runtimeType}');
+      debugPrint('❌ Stack trace: ${StackTrace.current}');
       
       // Show error to user using stored scaffold messenger
       try {
@@ -59,7 +59,7 @@ class SimpleLogoutService {
           ),
         );
       } catch (e) {
-        print('❌ Could not show error snackbar: $e');
+        debugPrint('❌ Could not show error snackbar: $e');
       }
       
       return false;

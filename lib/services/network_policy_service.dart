@@ -25,13 +25,16 @@ class NetworkPolicyService {
 
     try {
       // Get initial connectivity
-      _currentConnectivity = await _connectivity.checkConnectivity();
+      final results = await _connectivity.checkConnectivity();
+      _currentConnectivity = results.isNotEmpty ? results.first : ConnectivityResult.none;
       
       // Load user preferences
       await _loadPreferences();
       
       // Listen to connectivity changes
-      _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
+      _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
+        _onConnectivityChanged(results.isNotEmpty ? results.first : ConnectivityResult.none);
+      });
       
       _isInitialized = true;
       log('📡 Network policy service initialized');

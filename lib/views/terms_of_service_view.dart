@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 class TermsOfServiceView extends StatelessWidget {
   const TermsOfServiceView({super.key});

@@ -176,13 +176,15 @@ class _EditFieldViewState extends ConsumerState<EditFieldView> {
     final remainingTime = await RateLimitingService().getRemainingCooldown();
     final minutes = remainingTime?.inMinutes ?? 0;
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Too many violations. Please wait $minutes minutes before trying again.'),
-        backgroundColor: Colors.orange,
-        duration: const Duration(seconds: 5),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Too many violations. Please wait $minutes minutes before trying again.'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   @override

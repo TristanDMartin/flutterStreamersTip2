@@ -245,7 +245,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
               height: 120,
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
-                print('❌ OnboardingView: Error loading logo: $error');
+                debugPrint('❌ OnboardingView: Error loading logo: $error');
                 return Container(
                   color: Colors.grey[800],
                   child: const Center(
@@ -539,7 +539,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
     final streamerName = _streamerNameController.text.trim();
     if (streamerName.isNotEmpty) {
       // TODO: Save streamer name to preferences/storage
-    // print('Streamer name: $streamerName');
+    // debugPrint('Streamer name: $streamerName');
       setState(() {
         _currentStep = 1; // Move to second step
       });

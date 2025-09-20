@@ -361,7 +361,7 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
     final identifier = _identifierController.text.trim();
     final password = _passwordController.text.trim();
     
-    // print("📧 Continuing with email/username: $identifier");
+    // debugPrint("📧 Continuing with email/username: $identifier");
     
     // Clear previous errors immediately
     setState(() {
@@ -375,22 +375,22 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
       
       if (identifier.contains("@")) {
         // It's an email - use Firebase email auth
-    print("📧 Detected email input, using email authentication");
+    debugPrint("📧 Detected email input, using email authentication");
         result = await authService.debouncedSignInWithEmail(identifier, password);
       } else {
         // It's a username - use username authentication
-    print("👤 Detected username input, using username authentication");
+    debugPrint("👤 Detected username input, using username authentication");
         result = await authService.debouncedSignInWithUsername(identifier, password);
       }
       
       // Only process result if this is still the current request
       if (result.success) {
-    print("✅ Authentication successful (request: ${result.requestId})");
+    debugPrint("✅ Authentication successful (request: ${result.requestId})");
         if (mounted) {
           Navigator.of(context).pop();
         }
       } else {
-    print("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
+    debugPrint("❌ Authentication failed: ${result.error} (request: ${result.requestId})");
         if (mounted) {
           setState(() {
             _errorMessage = _getUserFriendlyErrorMessage(result.error ?? 'Unknown error');
@@ -398,7 +398,7 @@ class _RobustEmailLoginViewState extends ConsumerState<RobustEmailLoginView> {
         }
       }
     } catch (e) {
-    // print("❌ Authentication error: $e");
+    // debugPrint("❌ Authentication error: $e");
       if (mounted) {
         setState(() {
           _errorMessage = _getUserFriendlyErrorMessage(e.toString());

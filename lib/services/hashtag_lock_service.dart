@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class HashtagLockService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -104,7 +105,7 @@ class HashtagLockService {
       
       return true;
     } catch (e) {
-      print('Error granting hashtag permission: $e');
+      debugPrint('Error granting hashtag permission: $e');
       return false;
     }
   }

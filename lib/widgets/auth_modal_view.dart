@@ -169,8 +169,8 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           height: 120,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
-            print('❌ Error loading logo: $error');
-            print('❌ Stack trace: $stackTrace');
+            debugPrint('❌ Error loading logo: $error');
+            debugPrint('❌ Stack trace: $stackTrace');
             // Fallback to gradient icon if logo fails to load
             return ShaderMask(
               shaderCallback: (Rect rect) {

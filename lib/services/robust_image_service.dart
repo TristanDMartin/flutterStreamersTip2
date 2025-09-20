@@ -211,11 +211,11 @@ class RobustImageService {
   /// Get reliable placeholder URL
   String getPlaceholderUrl({bool isAvatar = false, bool isThumbnail = false, int width = 100, int height = 100}) {
     if (isAvatar) {
-      return 'https://via.placeholder.com/${width}x${height}/cccccc/000000?text=Avatar';
+      return 'https://via.placeholder.com/$width x$height/cccccc/000000?text=Avatar';
     } else if (isThumbnail) {
-      return 'https://via.placeholder.com/${width}x${height}/cccccc/000000?text=Video';
+      return 'https://via.placeholder.com/$width x$height/cccccc/000000?text=Video';
     } else {
-      return 'https://via.placeholder.com/${width}x${height}/cccccc/000000?text=Image';
+      return 'https://via.placeholder.com/$width x$height/cccccc/000000?text=Image';
     }
   }
 }

@@ -166,7 +166,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
                     cacheWidth: 240,
                     cacheHeight: 240,
                     errorBuilder: (context, error, stackTrace) {
-                      print('❌ WelcomeView: Error loading logo: $error');
+                      debugPrint('❌ WelcomeView: Error loading logo: $error');
                       return Container(
                         color: Colors.grey[800],
                         child: const Center(
@@ -372,7 +372,7 @@ class _WelcomeViewState extends ConsumerState<WelcomeView> with TickerProviderSt
       
       // The AppStartupWrapper will automatically detect the login state change
       // and navigate to MainTabView, so we don't need to navigate manually here
-    // print("✅ Bypass login completed - AppStartupWrapper will handle navigation");
+    // debugPrint("✅ Bypass login completed - AppStartupWrapper will handle navigation");
       
     } catch (e) {
       // Show error if bypass fails

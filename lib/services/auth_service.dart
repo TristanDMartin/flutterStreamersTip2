@@ -275,15 +275,18 @@ class AuthenticationService extends ChangeNotifier {
       try {
         final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
         
-        if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+        final accessToken = googleAuth.accessToken;
+        final idToken = googleAuth.idToken;
+        
+        if (accessToken == null || idToken == null) {
     // print("❌ Missing Google authentication tokens");
           setLoading(false);
           throw Exception("Failed to get Google authentication tokens");
         }
 
         final credential = firebase_auth.GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
-          idToken: googleAuth.idToken,
+          accessToken: accessToken,
+          idToken: idToken,
         );
 
     // print("🔐 Signing in to Firebase with Google credential");

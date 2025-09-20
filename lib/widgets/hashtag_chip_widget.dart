@@ -57,7 +57,7 @@ class HashtagChipWidget extends StatelessWidget {
             ),
             if (isReserved && showReservedIndicator) ...[
               const SizedBox(width: 4),
-              Icon(
+              const Icon(
                 Icons.lock,
                 size: 12,
                 color: Colors.orange,
@@ -95,7 +95,7 @@ class ReservedHashtagIndicator extends StatelessWidget {
           width: 1,
         ),
       ),
-      child: Row(
+      child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
@@ -103,7 +103,7 @@ class ReservedHashtagIndicator extends StatelessWidget {
             size: 12,
             color: Colors.orange,
           ),
-          const SizedBox(width: 4),
+          SizedBox(width: 4),
           Text(
             'Reserved',
             style: TextStyle(

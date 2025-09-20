@@ -27,7 +27,7 @@ class _VideoEditViewState extends State<VideoEditView>
   // Trim video state
   double _startTrim = 0.0;
   double _endTrim = 1.0;
-  double _videoDuration = 60.0; // Example duration in seconds
+  final double _videoDuration = 60.0; // Example duration in seconds
 
   // Tab options
   final List<String> _tabs = ['Trim', 'Audio', 'Effects', 'Text'];
@@ -53,7 +53,7 @@ class _VideoEditViewState extends State<VideoEditView>
         builder: (context) => VideoPublishingScreen(
           videoFile: widget.videoFile,
           caption: '', // Start with empty caption
-          hashtags: [], // Start with empty hashtags
+          hashtags: const [], // Start with empty hashtags
           onPublish: () {
             // Handle successful publishing
             widget.onNext?.call();
@@ -125,10 +125,10 @@ class _VideoEditViewState extends State<VideoEditView>
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha:0.2),
                   width: 1,
                 ),
               ),
@@ -190,7 +190,7 @@ class _VideoEditViewState extends State<VideoEditView>
         color: Colors.black,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha:0.2),
           width: 1,
         ),
       ),
@@ -221,7 +221,7 @@ class _VideoEditViewState extends State<VideoEditView>
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha:0.2),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -271,17 +271,17 @@ class _VideoEditViewState extends State<VideoEditView>
                       : null,
                   color: isSelected 
                       ? null
-                      : Colors.white.withOpacity(0.1),
+                      : Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isSelected 
                         ? Colors.transparent
-                        : Colors.white.withOpacity(0.2),
+                        : Colors.white.withValues(alpha:0.2),
                     width: 1,
                   ),
                   boxShadow: isSelected ? [
                     BoxShadow(
-                      color: const Color(0xFF9248D2).withOpacity(0.3),
+                      color: const Color(0xFF9248D2).withValues(alpha:0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -291,7 +291,7 @@ class _VideoEditViewState extends State<VideoEditView>
                   tab,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
+                    color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
                     fontSize: 14,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                     letterSpacing: isSelected ? 0.5 : 0.0,
@@ -340,10 +340,10 @@ class _VideoEditViewState extends State<VideoEditView>
           Container(
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha:0.1),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha:0.2),
                 width: 1,
               ),
             ),
@@ -354,7 +354,7 @@ class _VideoEditViewState extends State<VideoEditView>
                   margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                   height: 20,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha:0.2),
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
@@ -420,10 +420,10 @@ class _VideoEditViewState extends State<VideoEditView>
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha:0.1),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha:0.2),
                         width: 1,
                       ),
                     ),
@@ -475,7 +475,7 @@ class _VideoEditViewState extends State<VideoEditView>
           Text(
             'Start: ${(_startTrim * _videoDuration).toStringAsFixed(1)}s | End: ${(_endTrim * _videoDuration).toStringAsFixed(1)}s',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha:0.7),
               fontSize: 12,
             ),
           ),
@@ -580,10 +580,10 @@ class _VideoEditViewState extends State<VideoEditView>
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha:0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha:0.2),
                     width: 1,
                   ),
                 ),

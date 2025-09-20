@@ -115,8 +115,8 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     // Navigate to profile view as full screen
     final authService = ref.read(robustAuthServiceProvider);
     if (authService.currentUser != null) {
-      print("🔍 MainTabView: Creating User object with ID: ${authService.currentUser!.id}");
-      print("🔍 MainTabView: AuthService currentUser: ${authService.currentUser}");
+      debugPrint("🔍 MainTabView: Creating User object with ID: ${authService.currentUser!.id}");
+      debugPrint("🔍 MainTabView: AuthService currentUser: ${authService.currentUser}");
       
       final user = User(
         id: authService.currentUser!.id,
@@ -130,7 +130,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         calendarEvents: authService.currentUser!.calendarEvents,
       );
       
-      print("🔍 MainTabView: Created User object with ID: ${user.id}");
+      debugPrint("🔍 MainTabView: Created User object with ID: ${user.id}");
       
       Navigator.of(context).push(
         MaterialPageRoute(

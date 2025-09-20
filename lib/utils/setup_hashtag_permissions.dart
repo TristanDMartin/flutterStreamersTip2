@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 /// Utility script to set up initial hashtag permissions
 /// Run this once to grant Owner and Founder hashtag permissions to specific users
@@ -35,11 +36,11 @@ class HashtagPermissionSetup {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      print('✅ Hashtag permissions set up successfully!');
-      print('Owner hashtag granted to: $ownerUserId');
-      print('Founder hashtag granted to: $founderUserId');
+      debugPrint('✅ Hashtag permissions set up successfully!');
+      debugPrint('Owner hashtag granted to: $ownerUserId');
+      debugPrint('Founder hashtag granted to: $founderUserId');
     } catch (e) {
-      print('❌ Error setting up hashtag permissions: $e');
+      debugPrint('❌ Error setting up hashtag permissions: $e');
     }
   }
 
@@ -55,9 +56,9 @@ class HashtagPermissionSetup {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       
-      print('✅ Owner permission granted to: $userId');
+      debugPrint('✅ Owner permission granted to: $userId');
     } catch (e) {
-      print('❌ Error granting Owner permission: $e');
+      debugPrint('❌ Error granting Owner permission: $e');
     }
   }
 
@@ -73,9 +74,9 @@ class HashtagPermissionSetup {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       
-      print('✅ Founder permission granted to: $userId');
+      debugPrint('✅ Founder permission granted to: $userId');
     } catch (e) {
-      print('❌ Error granting Founder permission: $e');
+      debugPrint('❌ Error granting Founder permission: $e');
     }
   }
 }

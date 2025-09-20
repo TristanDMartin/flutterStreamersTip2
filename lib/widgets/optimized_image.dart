@@ -54,8 +54,8 @@ class _OptimizedImageState extends State<OptimizedImage> {
         _pendingImages.add(this);
       }
       
-      // ULTRA-AGGRESSIVE delay: 2-5 seconds between images
-      _loadTimer = Timer(Duration(seconds: 2 + (_activeImageCount * 3)), () {
+      // ULTRA-AGGRESSIVE delay: 3-8 seconds between images to prevent buffer issues
+      _loadTimer = Timer(Duration(seconds: 3 + (_activeImageCount * 5)), () {
         if (mounted && _pendingImages.contains(this)) {
           _pendingImages.remove(this);
           _scheduleLoad();

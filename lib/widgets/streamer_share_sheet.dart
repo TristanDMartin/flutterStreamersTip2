@@ -282,7 +282,7 @@ class StreamerShareSheet extends ConsumerWidget {
       onPressed: () => _handleAction(context, label),
       hapticType: HapticFeedbackType.selectionClick,
       showRippleEffect: false,
-      child: Container(
+      child: SizedBox(
         width: buttonWidth,
         height: 90, // Fixed height for all buttons
         child: Column(
@@ -374,11 +374,11 @@ class StreamerShareSheet extends ConsumerWidget {
       
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Link copied to clipboard'),
+          const SnackBar(
+            content: Text('Link copied to clipboard'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+            duration: Duration(seconds: 2),
           ),
         );
       }
@@ -397,12 +397,14 @@ class StreamerShareSheet extends ConsumerWidget {
 
   Future<void> _openInstagramDirect(BuildContext context) async {
     try {
-      final url = 'https://www.instagram.com/direct/inbox/';
+      const url = 'https://www.instagram.com/direct/inbox/';
       if (await canLaunchUrl(Uri.parse(url))) {
         await launchUrl(Uri.parse(url));
       }
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to open Instagram Direct');
+      if (context.mounted) {
+        _showErrorSnackbar(context, 'Failed to open Instagram Direct');
+      }
     }
   }
 
@@ -413,7 +415,9 @@ class StreamerShareSheet extends ConsumerWidget {
         await launchUrl(Uri.parse(url));
       }
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to open SMS');
+      if (context.mounted) {
+        _showErrorSnackbar(context, 'Failed to open SMS');
+      }
     }
   }
 
@@ -424,7 +428,9 @@ class StreamerShareSheet extends ConsumerWidget {
         await launchUrl(Uri.parse(url));
       }
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to open WhatsApp');
+      if (context.mounted) {
+        _showErrorSnackbar(context, 'Failed to open WhatsApp');
+      }
     }
   }
 
@@ -435,7 +441,9 @@ class StreamerShareSheet extends ConsumerWidget {
         await launchUrl(Uri.parse(url));
       }
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to open WhatsApp Status');
+      if (context.mounted) {
+        _showErrorSnackbar(context, 'Failed to open WhatsApp Status');
+      }
     }
   }
 
@@ -446,7 +454,9 @@ class StreamerShareSheet extends ConsumerWidget {
         await launchUrl(Uri.parse(url));
       }
     } catch (e) {
-      _showErrorSnackbar(context, 'Failed to open X/Twitter');
+      if (context.mounted) {
+        _showErrorSnackbar(context, 'Failed to open X/Twitter');
+      }
     }
   }
 

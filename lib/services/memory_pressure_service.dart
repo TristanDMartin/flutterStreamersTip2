@@ -6,9 +6,9 @@ class MemoryPressureService {
   factory MemoryPressureService() => _instance;
   MemoryPressureService._internal();
 
-        // ULTRA-AGGRESSIVE memory management to prevent crashes
-        static const int _maxImageCount = 1; // Only 1 image at a time
-        static const int _maxAvatarCount = 1; // Only 1 avatar at a time
+        // ULTRA-AGGRESSIVE memory management to prevent ImageReader warnings
+        static const int _maxImageCount = 1; // Only 1 image at a time to prevent buffer issues
+        static const int _maxAvatarCount = 2; // Only 2 avatars at a time
   static int _currentImageCount = 0;
   static int _currentAvatarCount = 0;
   static bool _isMemoryPressureHigh = false;

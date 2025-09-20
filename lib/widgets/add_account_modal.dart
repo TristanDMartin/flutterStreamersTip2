@@ -338,7 +338,7 @@ class _AddAccountModalState extends ConsumerState<AddAccountModal> {
         // Save the account to saved accounts
         await _saveAccountToStorage();
         
-        if (context.mounted) {
+        if (mounted) {
           Navigator.of(context).pop();
           _showSuccessMessage('Successfully signed in with Google!');
         }

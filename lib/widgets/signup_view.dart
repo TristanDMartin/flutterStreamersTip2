@@ -178,10 +178,10 @@ class _SignupViewState extends ConsumerState<SignupView> {
                         Container(
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withValues(alpha:0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha:0.2),
                               width: 1,
                             ),
                           ),
@@ -198,19 +198,19 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: [
-                                          Colors.white.withOpacity(0.15),
-                                          Colors.white.withOpacity(0.05),
+                                          Colors.white.withValues(alpha:0.15),
+                                          Colors.white.withValues(alpha:0.05),
                                         ],
                                       ),
                                       border: Border.all(
                                         color: _isDisplayNameFocused 
                                             ? const Color(0xFF6137EB) 
-                                            : Colors.white.withOpacity(0.2),
+                                            : Colors.white.withValues(alpha:0.2),
                                         width: _isDisplayNameFocused ? 2 : 1,
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.1),
+                                          color: Colors.black.withValues(alpha:0.1),
                                           blurRadius: 10,
                                           offset: const Offset(0, 5),
                                         ),
@@ -225,27 +225,27 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         labelStyle: TextStyle(
                                           color: _isDisplayNameFocused 
                                               ? const Color(0xFF6137EB)
-                                              : Colors.white.withOpacity(0.7),
+                                              : Colors.white.withValues(alpha:0.7),
                                           fontSize: _isDisplayNameFocused || _displayNameController.text.isNotEmpty ? 12 : 16,
                                           fontWeight: FontWeight.w500,
-                                          shadows: [
+                                          shadows: const [
                                             Shadow(
                                               color: Colors.black54,
                                               blurRadius: 1,
-                                              offset: const Offset(0, 1),
+                                              offset: Offset(0, 1),
                                             ),
                                           ],
                                         ),
                                         hintText: _isDisplayNameFocused || _displayNameController.text.isNotEmpty ? null : 'Display Name',
                                         hintStyle: TextStyle(
-                                          color: Colors.white.withOpacity(0.8),
+                                          color: Colors.white.withValues(alpha:0.8),
                                           fontSize: 16,
                                           fontWeight: FontWeight.w500,
-                                          shadows: [
+                                          shadows: const [
                                             Shadow(
                                               color: Colors.black54,
                                               blurRadius: 1,
-                                              offset: const Offset(0, 1),
+                                              offset: Offset(0, 1),
                                             ),
                                           ],
                                         ),
@@ -287,7 +287,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                             : Colors.orange[300],
                                         shadows: [
                                           Shadow(
-                                            color: Colors.black.withOpacity(0.3),
+                                            color: Colors.black.withValues(alpha:0.3),
                                             blurRadius: 2,
                                             offset: const Offset(0, 1),
                                           ),
@@ -305,10 +305,10 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w500,
-                                            color: Colors.white.withOpacity(0.8),
+                                            color: Colors.white.withValues(alpha:0.8),
                                             shadows: [
                                               Shadow(
-                                                color: Colors.black.withOpacity(0.3),
+                                                color: Colors.black.withValues(alpha:0.3),
                                                 blurRadius: 2,
                                                 offset: const Offset(0, 1),
                                               ),
@@ -361,19 +361,19 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: [
-                                          Colors.white.withOpacity(0.15),
-                                          Colors.white.withOpacity(0.05),
+                                          Colors.white.withValues(alpha:0.15),
+                                          Colors.white.withValues(alpha:0.05),
                                         ],
                                       ),
                                       border: Border.all(
                                         color: _isEmailFocused 
                                             ? const Color(0xFF6137EB) 
-                                            : Colors.white.withOpacity(0.2),
+                                            : Colors.white.withValues(alpha:0.2),
                                         width: _isEmailFocused ? 2 : 1,
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.1),
+                                          color: Colors.black.withValues(alpha:0.1),
                                           blurRadius: 10,
                                           offset: const Offset(0, 5),
                                         ),
@@ -388,27 +388,27 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         labelStyle: TextStyle(
                                           color: _isEmailFocused 
                                               ? const Color(0xFF6137EB)
-                                              : Colors.white.withOpacity(0.8),
+                                              : Colors.white.withValues(alpha:0.8),
                                           fontSize: _isEmailFocused || _emailController.text.isNotEmpty ? 12 : 16,
                                           fontWeight: FontWeight.w500,
-                                          shadows: [
+                                          shadows: const [
                                             Shadow(
                                               color: Colors.black54,
                                               blurRadius: 1,
-                                              offset: const Offset(0, 1),
+                                              offset: Offset(0, 1),
                                             ),
                                           ],
                                         ),
                                         hintText: _isEmailFocused || _emailController.text.isNotEmpty ? null : 'Email',
                                         hintStyle: TextStyle(
-                                          color: Colors.white.withOpacity(0.8),
+                                          color: Colors.white.withValues(alpha:0.8),
                                           fontSize: 16,
                                           fontWeight: FontWeight.w500,
-                                          shadows: [
+                                          shadows: const [
                                             Shadow(
                                               color: Colors.black54,
                                               blurRadius: 1,
-                                              offset: const Offset(0, 1),
+                                              offset: Offset(0, 1),
                                             ),
                                           ],
                                         ),
@@ -447,7 +447,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         color: Colors.red[300],
                                         shadows: [
                                           Shadow(
-                                            color: Colors.black.withOpacity(0.3),
+                                            color: Colors.black.withValues(alpha:0.3),
                                             blurRadius: 2,
                                             offset: const Offset(0, 1),
                                           ),
@@ -471,19 +471,19 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: [
-                                          Colors.white.withOpacity(0.15),
-                                          Colors.white.withOpacity(0.05),
+                                          Colors.white.withValues(alpha:0.15),
+                                          Colors.white.withValues(alpha:0.05),
                                         ],
                                       ),
                                       border: Border.all(
                                         color: _isPasswordFocused 
                                             ? const Color(0xFF6137EB) 
-                                            : Colors.white.withOpacity(0.2),
+                                            : Colors.white.withValues(alpha:0.2),
                                         width: _isPasswordFocused ? 2 : 1,
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.1),
+                                          color: Colors.black.withValues(alpha:0.1),
                                           blurRadius: 10,
                                           offset: const Offset(0, 5),
                                         ),
@@ -499,27 +499,27 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         labelStyle: TextStyle(
                                           color: _isPasswordFocused 
                                               ? const Color(0xFF6137EB)
-                                              : Colors.white.withOpacity(0.8),
+                                              : Colors.white.withValues(alpha:0.8),
                                           fontSize: _isPasswordFocused || _passwordController.text.isNotEmpty ? 12 : 16,
                                           fontWeight: FontWeight.w500,
-                                          shadows: [
+                                          shadows: const [
                                             Shadow(
                                               color: Colors.black54,
                                               blurRadius: 1,
-                                              offset: const Offset(0, 1),
+                                              offset: Offset(0, 1),
                                             ),
                                           ],
                                         ),
                                         hintText: _isPasswordFocused || _passwordController.text.isNotEmpty ? null : 'Password',
                                         hintStyle: TextStyle(
-                                          color: Colors.white.withOpacity(0.8),
+                                          color: Colors.white.withValues(alpha:0.8),
                                           fontSize: 16,
                                           fontWeight: FontWeight.w500,
-                                          shadows: [
+                                          shadows: const [
                                             Shadow(
                                               color: Colors.black54,
                                               blurRadius: 1,
-                                              offset: const Offset(0, 1),
+                                              offset: Offset(0, 1),
                                             ),
                                           ],
                                         ),
@@ -532,7 +532,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                           child: IconButton(
                                             icon: Icon(
                                               _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                                              color: Colors.white.withOpacity(0.7),
+                                              color: Colors.white.withValues(alpha:0.7),
                                               size: 20,
                                             ),
                                             onPressed: () {
@@ -575,7 +575,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         color: Colors.red[300],
                                         shadows: [
                                           Shadow(
-                                            color: Colors.black.withOpacity(0.3),
+                                            color: Colors.black.withValues(alpha:0.3),
                                             blurRadius: 2,
                                             offset: const Offset(0, 1),
                                           ),
@@ -596,19 +596,19 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                     colors: [
-                                      Colors.white.withOpacity(0.15),
-                                      Colors.white.withOpacity(0.05),
+                                      Colors.white.withValues(alpha:0.15),
+                                      Colors.white.withValues(alpha:0.05),
                                     ],
                                   ),
                                   border: Border.all(
                                     color: _isConfirmPasswordFocused 
                                         ? const Color(0xFF6137EB) 
-                                        : Colors.white.withOpacity(0.2),
+                                        : Colors.white.withValues(alpha:0.2),
                                     width: _isConfirmPasswordFocused ? 2 : 1,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
+                                      color: Colors.black.withValues(alpha:0.1),
                                       blurRadius: 10,
                                       offset: const Offset(0, 5),
                                     ),
@@ -624,27 +624,27 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                     labelStyle: TextStyle(
                                       color: _isConfirmPasswordFocused 
                                           ? const Color(0xFF6137EB)
-                                          : Colors.white.withOpacity(0.8),
+                                          : Colors.white.withValues(alpha:0.8),
                                       fontSize: _isConfirmPasswordFocused || _confirmPasswordController.text.isNotEmpty ? 12 : 16,
                                       fontWeight: FontWeight.w500,
-                                      shadows: [
+                                      shadows: const [
                                         Shadow(
                                           color: Colors.black54,
                                           blurRadius: 1,
-                                          offset: const Offset(0, 1),
+                                          offset: Offset(0, 1),
                                         ),
                                       ],
                                     ),
                                     hintText: _isConfirmPasswordFocused || _confirmPasswordController.text.isNotEmpty ? null : 'Confirm Password',
                                     hintStyle: TextStyle(
-                                      color: Colors.white.withOpacity(0.8),
+                                      color: Colors.white.withValues(alpha:0.8),
                                       fontSize: 16,
                                       fontWeight: FontWeight.w500,
-                                      shadows: [
+                                      shadows: const [
                                         Shadow(
                                           color: Colors.black54,
                                           blurRadius: 1,
-                                          offset: const Offset(0, 1),
+                                          offset: Offset(0, 1),
                                         ),
                                       ],
                                     ),
@@ -657,7 +657,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                       child: IconButton(
                                         icon: Icon(
                                           _isConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                                          color: Colors.white.withOpacity(0.7),
+                                          color: Colors.white.withValues(alpha:0.7),
                                           size: 20,
                                         ),
                                         onPressed: () {
@@ -710,7 +710,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: _isFormValid() 
                                           ? const Color(0xFF6137EB)  // Brand color when enabled
-                                          : const Color(0xFF6137EB).withOpacity(0.3),  // Dimmed when disabled
+                                          : const Color(0xFF6137EB).withValues(alpha:0.3),  // Dimmed when disabled
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(vertical: 18),
                                       shape: RoundedRectangleBorder(
@@ -747,9 +747,10 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                 children: [
                                   TextButton(
                                     onPressed: () async {
+                                      final currentContext = context;
                                       await _clearFirebaseAuthState();
                                       if (mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(currentContext).showSnackBar(
                                           const SnackBar(
                                             content: Text("Cache cleared. Try signing up again."),
                                             backgroundColor: Colors.green,
@@ -760,7 +761,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                     child: Text(
                                       "Clear Cache",
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.7),
+                                        color: Colors.white.withValues(alpha:0.7),
                                         fontSize: 12,
                                         decoration: TextDecoration.underline,
                                       ),
@@ -768,11 +769,12 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                   ),
                                   TextButton(
                                     onPressed: () async {
+                                      final currentContext = context;
                                       final email = _emailController.text.trim();
                                       if (email.isNotEmpty) {
                                         await _forceDeleteAuthAccount(email);
                                         if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          ScaffoldMessenger.of(currentContext).showSnackBar(
                                             const SnackBar(
                                               content: Text("Attempted to delete existing account. Try signing up again."),
                                               backgroundColor: Colors.orange,
@@ -793,7 +795,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                     child: Text(
                                       "Delete Existing Account",
                                       style: TextStyle(
-                                        color: Colors.red.withOpacity(0.8),
+                                        color: Colors.red.withValues(alpha:0.8),
                                         fontSize: 12,
                                         decoration: TextDecoration.underline,
                                       ),
@@ -811,12 +813,12 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                   Text(
                                     "Already have an account?",
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.8),
+                                      color: Colors.white.withValues(alpha:0.8),
                                       fontSize: 16,
                                       fontWeight: FontWeight.w400,
                                       shadows: [
                                         Shadow(
-                                          color: Colors.black.withOpacity(0.3),
+                                          color: Colors.black.withValues(alpha:0.3),
                                           blurRadius: 2,
                                           offset: const Offset(0, 1),
                                         ),
@@ -835,7 +837,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
                                         decoration: TextDecoration.underline,
                                         shadows: [
                                           Shadow(
-                                            color: Colors.black.withOpacity(0.3),
+                                            color: Colors.black.withValues(alpha:0.3),
                                             blurRadius: 2,
                                             offset: const Offset(0, 1),
                                           ),
@@ -1075,7 +1077,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
     
     // Ensure minimum length
     if (username.length < 3) {
-      username = username + 'user';
+      username = '${username}user';
     }
     
     // Limit maximum length
@@ -1131,8 +1133,8 @@ class _SignupViewState extends ConsumerState<SignupView> {
     } catch (e) {
       if (mounted) {
         // Enhanced error logging for debugging
-        print("🔍 Signup Error Details: ${e.toString()}");
-        print("🔍 Error Type: ${e.runtimeType}");
+        debugPrint("🔍 Signup Error Details: ${e.toString()}");
+        debugPrint("🔍 Error Type: ${e.runtimeType}");
         
         setState(() {
           _alertMessage = _getSignupErrorMessage(e.toString());
@@ -1151,16 +1153,16 @@ class _SignupViewState extends ConsumerState<SignupView> {
       // Clear any cached data
       await Future.delayed(const Duration(milliseconds: 500));
       
-      print("🧹 Firebase Auth state cleared");
+      debugPrint("🧹 Firebase Auth state cleared");
     } catch (e) {
-      print("⚠️ Error clearing Firebase Auth state: $e");
+      debugPrint("⚠️ Error clearing Firebase Auth state: $e");
     }
   }
 
   /// Force delete Firebase Auth account (for troubleshooting)
   Future<void> _forceDeleteAuthAccount(String email) async {
     try {
-      print("🗑️ Attempting to force delete Firebase Auth account for: $email");
+      debugPrint("🗑️ Attempting to force delete Firebase Auth account for: $email");
       
       // Try to sign in with a temporary password to get the user
       // This is a workaround for the email-already-in-use issue
@@ -1173,10 +1175,10 @@ class _SignupViewState extends ConsumerState<SignupView> {
         
         if (credential.user != null) {
           await credential.user!.delete();
-          print("✅ Firebase Auth account deleted successfully");
+          debugPrint("✅ Firebase Auth account deleted successfully");
         }
       } catch (e) {
-        print("⚠️ Could not delete Firebase Auth account: $e");
+        debugPrint("⚠️ Could not delete Firebase Auth account: $e");
         // This is expected if the password is wrong
       }
       
@@ -1184,7 +1186,7 @@ class _SignupViewState extends ConsumerState<SignupView> {
       await FirebaseAuth.instance.signOut();
       
     } catch (e) {
-      print("❌ Error in force delete: $e");
+      debugPrint("❌ Error in force delete: $e");
     }
   }
 }

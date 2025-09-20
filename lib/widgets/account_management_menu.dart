@@ -227,12 +227,12 @@ class AccountManagementMenu extends ConsumerWidget {
                           Expanded(
                             child: InstantResponseButton(
                               onPressed: () async {
-                                print('🔐 Logout button tapped!');
-                                print('🔐 Closing dialog...');
+                                debugPrint('🔐 Logout button tapped!');
+                                debugPrint('🔐 Closing dialog...');
                                 Navigator.of(context).pop();
-                                print('🔐 Dialog closed, calling SimpleLogoutService.logout...');
+                                debugPrint('🔐 Dialog closed, calling SimpleLogoutService.logout...');
                                 final result = await SimpleLogoutService.logout(context);
-                                print('🔐 SimpleLogoutService.logout completed with result: $result');
+                                debugPrint('🔐 SimpleLogoutService.logout completed with result: $result');
                               },
                               hapticType: HapticFeedbackType.mediumImpact,
                               child: Container(

@@ -42,7 +42,7 @@ class _NetworkViewState extends State<NetworkView> {
   
   // Network connectivity
   bool _hasInternetConnection = true;
-  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   
   // Real-time relationship listeners
   StreamSubscription<QuerySnapshot>? _relationshipsSubscription;
@@ -76,10 +76,10 @@ class _NetworkViewState extends State<NetworkView> {
   /// Initialize network connectivity monitoring
   void _initializeConnectivityMonitoring() {
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
-      (ConnectivityResult result) {
-        final hasConnection = result == ConnectivityResult.mobile || 
-                             result == ConnectivityResult.wifi ||
-                             result == ConnectivityResult.ethernet;
+      (List<ConnectivityResult> results) {
+        final hasConnection = results.contains(ConnectivityResult.mobile) || 
+                             results.contains(ConnectivityResult.wifi) ||
+                             results.contains(ConnectivityResult.ethernet);
         
         if (mounted) {
           setState(() {
@@ -100,7 +100,7 @@ class _NetworkViewState extends State<NetworkView> {
     if (currentUserId == null) return;
 
     // Use a more efficient listener with debouncing to prevent excessive refreshes
-    Timer? _debounceTimer;
+    Timer? debounceTimer;
     _relationshipsSubscription = FirebaseFirestore.instance
         .collection('relationships')
         .where('followerId', isEqualTo: currentUserId)
@@ -109,8 +109,8 @@ class _NetworkViewState extends State<NetworkView> {
       // Only refresh if there are actual changes
       if (snapshot.docChanges.isNotEmpty) {
         // Debounce to prevent excessive calls
-        _debounceTimer?.cancel();
-        _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+        debounceTimer?.cancel();
+        debounceTimer = Timer(const Duration(milliseconds: 500), () {
           _refreshDataInstantly();
         });
       }
@@ -120,10 +120,10 @@ class _NetworkViewState extends State<NetworkView> {
   /// Check network connectivity before API calls
   Future<bool> _checkNetworkConnectivity() async {
     try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      final hasConnection = connectivityResult == ConnectivityResult.mobile || 
-                           connectivityResult == ConnectivityResult.wifi ||
-                           connectivityResult == ConnectivityResult.ethernet;
+      final connectivityResults = await Connectivity().checkConnectivity();
+      final hasConnection = connectivityResults.contains(ConnectivityResult.mobile) || 
+                           connectivityResults.contains(ConnectivityResult.wifi) ||
+                           connectivityResults.contains(ConnectivityResult.ethernet);
       
       if (mounted) {
         setState(() {
@@ -133,7 +133,7 @@ class _NetworkViewState extends State<NetworkView> {
       
       return hasConnection;
     } catch (e) {
-      print('Connectivity check error: $e');
+      debugPrint('Connectivity check error: $e');
       return false;
     }
   }
@@ -157,7 +157,7 @@ class _NetworkViewState extends State<NetworkView> {
       );
     }
   }
-
+  
   /// Load users from clean relationship service
   Future<void> _loadUsersFromCleanService() async {
     // Check network connectivity first
@@ -191,7 +191,7 @@ class _NetworkViewState extends State<NetworkView> {
         _isLoadingUsers = false;
       });
     } catch (e) {
-      print('Error loading users from clean service: $e');
+      debugPrint('Error loading users from clean service: $e');
       setState(() {
         _isLoadingUsers = false;
       });
@@ -200,7 +200,7 @@ class _NetworkViewState extends State<NetworkView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load network data. Please try again.'),
+            content: const Text('Failed to load network data. Please try again.'),
             backgroundColor: Colors.red.withValues(alpha: 0.8),
             duration: const Duration(seconds: 3),
             action: SnackBarAction(
@@ -235,43 +235,43 @@ class _NetworkViewState extends State<NetworkView> {
     
     // Start new search with debouncing
     _searchTimer = Timer(const Duration(milliseconds: 300), () {
-      _performSearch();
+    _performSearch();
     });
   }
 
   Future<void> _performSearch() async {
     if (_searchQuery.isEmpty) {
       if (mounted) {
-        setState(() {
-          _searchResults = [];
-          _isSearching = false;
-        });
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
       }
       return;
     }
 
     if (mounted) {
-      setState(() {
-        _isSearching = true;
-      });
+    setState(() {
+      _isSearching = true;
+    });
     }
 
     try {
-      final allUsers = _getAllUsersForSearch();
-      final results = allUsers.where((user) {
-        return user.username.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-               user.displayName.toLowerCase().contains(_searchQuery.toLowerCase());
-      }).toList();
+    final allUsers = _getAllUsersForSearch();
+    final results = allUsers.where((user) {
+      return user.username.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+             user.displayName.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
 
       // Check if widget is still mounted before updating state
       if (mounted) {
-        setState(() {
-          _searchResults = results;
-          _isSearching = false;
-        });
+    setState(() {
+      _searchResults = results;
+      _isSearching = false;
+    });
       }
     } catch (e) {
-      print('Search error: $e');
+      debugPrint('Search error: $e');
       if (mounted) {
         setState(() {
           _isSearching = false;
@@ -439,7 +439,7 @@ class _NetworkViewState extends State<NetworkView> {
                   ),
                   // Search and sort icons
                   Row(
-                    children: [
+                children: [
                   // Sort button
                   GestureDetector(
                     onTap: _showSortOptions,
@@ -559,9 +559,9 @@ class _NetworkViewState extends State<NetworkView> {
         final velocity = details.primaryVelocity;
         if (velocity != null) {
           if (velocity > 0) {
-            _previousTab();
+          _previousTab();
           } else if (velocity < 0) {
-            _nextTab();
+          _nextTab();
           }
         }
       },
@@ -676,7 +676,7 @@ class _NetworkViewState extends State<NetworkView> {
   Widget _buildMainContent() {
     if (_isLoadingUsers) {
       return const Center(
-        child: const CircularProgressIndicator(
+        child: CircularProgressIndicator(
           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
         ),
       );
@@ -818,7 +818,7 @@ class _NetworkViewState extends State<NetworkView> {
         });
       }
     } catch (e) {
-      print('Error refreshing data instantly: $e');
+      debugPrint('Error refreshing data instantly: $e');
     }
   }
 
@@ -828,7 +828,7 @@ class _NetworkViewState extends State<NetworkView> {
       final cleanSvc = CleanRelationshipService();
       await cleanSvc.refresh(); // Refresh the service's internal state
     } catch (e) {
-      print('Error refreshing clean service state: $e');
+      debugPrint('Error refreshing clean service state: $e');
     }
   }
 }

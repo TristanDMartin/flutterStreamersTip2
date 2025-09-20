@@ -11,7 +11,11 @@
     "Ashley",
     "Fyl",
     "Johnson",
-    "Favorited"
+    "Favorited",
+    "precaching",
+    "prefs",
+    "followee",
+    "unfollowing"
   ],
   "ignoreWords": [
     "streamerstip"

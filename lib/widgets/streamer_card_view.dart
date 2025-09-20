@@ -697,9 +697,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildLoadingState() {
-    return Scaffold(
+    return const Scaffold(
       backgroundColor: Colors.black,
-      body: const Center(
+      body: Center(
         child: CircularProgressIndicator(
           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
         ),
@@ -720,9 +720,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               size: 64,
             ),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Error Loading Profile',
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -805,7 +805,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                           ),
                         ),
                         Text(
-                          '@${username}',
+                          '@$username',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha:0.7),
                             fontSize: 14,
@@ -832,7 +832,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Chat with ${displayName}',
+                        'Chat with $displayName',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha:0.7),
                           fontSize: 18,
@@ -1298,9 +1298,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                     size: 64,
                   ),
                   const SizedBox(height: 16),
-                  Text(
+                  const Text(
                     'Video Player',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -1316,7 +1316,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'User: ${displayName}',
+                    'User: $displayName',
             style: const TextStyle(
                       color: Colors.white70,
               fontSize: 16,
@@ -1858,7 +1858,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                                 child: Text(
                                   '+${events.length - 5} more…',
                   style: const TextStyle(
-                    color: Color(0xFF80FFFFFF),
+                    color: Color(0x80FFFFFF),
                                     fontSize: 12,
                                   ),
                                 ),

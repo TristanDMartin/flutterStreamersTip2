@@ -236,8 +236,8 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                             imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
                             radius: 30,
                           ),
-                          SizedBox(width: 16),
-                          Expanded(
+                          const SizedBox(width: 16),
+                          const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -267,7 +267,7 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                               ],
                             ),
                           ),
-                          Icon(
+                          const Icon(
                             Icons.arrow_forward_ios,
                             color: Colors.white,
                             size: 16,

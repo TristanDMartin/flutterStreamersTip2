@@ -22,7 +22,7 @@ class ErrorHandlingService {
 
   // Connectivity monitoring
   final Connectivity _connectivity = Connectivity();
-  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _isOnline = true;
   final StreamController<bool> _connectivityController = StreamController<bool>.broadcast();
 
@@ -49,11 +49,11 @@ class ErrorHandlingService {
   /// Start monitoring network connectivity
   void _startConnectivityMonitoring() {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-      (ConnectivityResult result) {
+      (List<ConnectivityResult> results) {
         final wasOnline = _isOnline;
-        _isOnline = result == ConnectivityResult.mobile || 
-          result == ConnectivityResult.wifi ||
-          result == ConnectivityResult.ethernet;
+        _isOnline = results.contains(ConnectivityResult.mobile) || 
+          results.contains(ConnectivityResult.wifi) ||
+          results.contains(ConnectivityResult.ethernet);
         
         if (wasOnline != _isOnline) {
           _connectivityController.add(_isOnline);

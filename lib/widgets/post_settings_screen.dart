@@ -721,7 +721,9 @@ class _PostSettingsScreenState extends ConsumerState<PostSettingsScreen> {
       });
       
       // Navigate back to home or show success
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     });
   }
 }

@@ -1087,40 +1087,46 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           });
         }
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Video trimmed successfully! ${(_trimStart * _controller.value.duration.inSeconds).toStringAsFixed(1)}s - ${(_trimEnd * _controller.value.duration.inSeconds).toStringAsFixed(1)}s',
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Video trimmed successfully! ${(_trimStart * _controller.value.duration.inSeconds).toStringAsFixed(1)}s - ${(_trimEnd * _controller.value.duration.inSeconds).toStringAsFixed(1)}s',
+              ),
+              backgroundColor: const Color(0xFF9248D2),
+              duration: const Duration(seconds: 3),
             ),
-            backgroundColor: const Color(0xFF9248D2),
-            duration: const Duration(seconds: 3),
-          ),
-        );
+          );
+        }
       } else {
         setState(() {
           _isProcessing = false;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to trim video: ${result.error}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to trim video: ${result.error}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
     } catch (e) {
       setState(() {
         _isProcessing = false;
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error trimming video: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error trimming video: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -1177,38 +1183,44 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           });
         }
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${filter.displayName} filter applied successfully!'),
-            backgroundColor: const Color(0xFF9248D2),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${filter.displayName} filter applied successfully!'),
+              backgroundColor: const Color(0xFF9248D2),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       } else {
         setState(() {
           _isProcessing = false;
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to apply filter: ${result.error}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to apply filter: ${result.error}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
     } catch (e) {
       setState(() {
         _isProcessing = false;
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error applying filter: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error applying filter: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 

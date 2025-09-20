@@ -462,7 +462,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
       // Update last used time for this account
       await _updateAccountLastUsed(account['id']);
 
-      if (context.mounted) {
+      if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
         Navigator.of(context).pop(); // Close switch account modal
         
@@ -521,9 +521,9 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
           'Sign in as ${account['displayName']}',
           style: const TextStyle(color: Colors.white),
         ),
-        content: Text(
+        content: const Text(
           'To switch to this account, please sign in with the appropriate method (Google, Email, etc.)',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
@@ -643,7 +643,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
         // Reload accounts
         await _loadAvailableAccounts();
         
-        if (context.mounted) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('${account['displayName']} removed from saved accounts'),
@@ -653,7 +653,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
           );
         }
       } catch (e) {
-        if (context.mounted) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to remove account: ${e.toString()}'),

@@ -1,0 +1,48 @@
+// SuppressWarnings.xcconfig
+// Configuration file to suppress third-party package warnings
+
+// Suppress all deprecation warnings
+GCC_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = NO
+GCC_WARN_DEPRECATED_FUNCTIONS = NO
+
+// Suppress unused variable warnings
+GCC_WARN_UNUSED_VARIABLE = NO
+GCC_WARN_UNUSED_VALUE = NO
+
+// Suppress uninitialized variable warnings
+GCC_WARN_UNINITIALIZED_AUTOS = NO
+
+// Suppress function declaration warnings
+GCC_WARN_STRICT_PROTOTYPES = NO
+
+// Suppress implicit conversion warnings
+GCC_WARN_IMPLICIT_INT_CONVERSION = NO
+
+// Suppress protocol conformance warnings
+GCC_WARN_PROTOCOL = NO
+
+// Suppress parameter type warnings
+GCC_WARN_INCOMPATIBLE_POINTER_TYPES = NO
+
+// Suppress unused parameter warnings
+GCC_WARN_UNUSED_PARAMETER = NO
+
+// Suppress property attribute warnings
+GCC_WARN_OBJC_PROPERTY_NO_ATTRIBUTE = NO
+
+// Suppress deprecated method implementation warnings
+GCC_WARN_DEPRECATED_IMPLEMENTATIONS = NO
+
+// Additional warning suppressions
+CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = NO
+CLANG_WARN_DEPRECATED_FUNCTIONS = NO
+CLANG_WARN_UNUSED_VARIABLE = NO
+CLANG_WARN_UNUSED_VALUE = NO
+CLANG_WARN_UNINITIALIZED_AUTOS = NO
+CLANG_WARN_STRICT_PROTOTYPES = NO
+CLANG_WARN_IMPLICIT_INT_CONVERSION = NO
+CLANG_WARN_PROTOCOL = NO
+CLANG_WARN_INCOMPATIBLE_POINTER_TYPES = NO
+CLANG_WARN_UNUSED_PARAMETER = NO
+CLANG_WARN_OBJC_PROPERTY_NO_ATTRIBUTE = NO
+CLANG_WARN_DEPRECATED_IMPLEMENTATIONS = NO

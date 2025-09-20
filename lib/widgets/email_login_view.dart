@@ -140,17 +140,17 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Colors.white.withOpacity(0.15),
-                            Colors.white.withOpacity(0.05),
+                            Colors.white.withValues(alpha:0.15),
+                            Colors.white.withValues(alpha:0.05),
                           ],
                         ),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha:0.2),
                           width: 1,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha:0.1),
                             blurRadius: 10,
                             offset: const Offset(0, 5),
                           ),
@@ -163,8 +163,8 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                         decoration: InputDecoration(
                           hintText: 'Email or username',
                           helperText: 'Enter your email address or username',
-                          helperStyle: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
-                          hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                          helperStyle: TextStyle(color: Colors.white.withValues(alpha:0.7), fontSize: 12),
+                          hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.7)),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.all(16),
                           prefixIcon: const Icon(Icons.person, color: Colors.white70),
@@ -199,17 +199,17 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Colors.white.withOpacity(0.15),
-                            Colors.white.withOpacity(0.05),
+                            Colors.white.withValues(alpha:0.15),
+                            Colors.white.withValues(alpha:0.05),
                           ],
                         ),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha:0.2),
                           width: 1,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha:0.1),
                             blurRadius: 10,
                             offset: const Offset(0, 5),
                           ),
@@ -226,7 +226,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                             color: _getPasswordHelperColor(),
                             fontSize: 12,
                           ),
-                          hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+                          hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.7)),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.all(16),
                           prefixIcon: const Icon(Icons.lock, color: Colors.white70),
@@ -261,9 +261,9 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
+                          color: Colors.red.withValues(alpha:0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                          border: Border.all(color: Colors.red.withValues(alpha:0.3)),
                         ),
                         child: Text(
                           _errorMessage!,
@@ -285,7 +285,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _canContinue() && !isLoading 
                               ? const Color(0xFF6137EB) 
-                              : Colors.grey.withOpacity(0.3),
+                              : Colors.grey.withValues(alpha:0.3),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
@@ -318,16 +318,16 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
+                        const Text(
                           "Don't have an account? ",
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white70,
                             fontWeight: FontWeight.w500,
                             shadows: [
                               Shadow(
                                 color: Colors.black54,
                                 blurRadius: 1,
-                                offset: const Offset(0, 1),
+                                offset: Offset(0, 1),
                               ),
                             ],
                           ),
@@ -432,7 +432,7 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
 
   Color _getPasswordHelperColor() {
     final password = _passwordController.text;
-    if (password.isEmpty) return Colors.white.withOpacity(0.7);
+    if (password.isEmpty) return Colors.white.withValues(alpha:0.7);
     
     if (_isValidPassword(password)) {
       return Colors.green[300]!;

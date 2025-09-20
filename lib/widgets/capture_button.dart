@@ -147,8 +147,8 @@ class _CaptureButtonState extends State<CaptureButton>
                       painter: _RingPainter(
                         progress: _ctrl.value,
                         ringWidth: widget.ringWidth,
-                        ringColor: Colors.red.withOpacity(0.9), // Red ring when recording
-                        bgRingColor: Colors.red.withOpacity(0.15), // Red background ring
+                        ringColor: Colors.red.withValues(alpha:0.9), // Red ring when recording
+                        bgRingColor: Colors.red.withValues(alpha:0.15), // Red background ring
                       ),
                     ),
                   
@@ -156,9 +156,9 @@ class _CaptureButtonState extends State<CaptureButton>
                   Container(
                     width: size - (widget.ringWidth * 2),
                     height: size - (widget.ringWidth * 2),
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: const LinearGradient(
+                      gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
@@ -166,7 +166,7 @@ class _CaptureButtonState extends State<CaptureButton>
                           Color(0xFF1670DE), // brand blue
                         ],
                       ),
-                      boxShadow: const [
+                      boxShadow: [
                         BoxShadow(
                           color: Colors.black38,
                           blurRadius: 24,
@@ -234,7 +234,7 @@ class _RingPainter extends CustomPainter {
 
     // Draw progress arc (starts at top, clockwise)
     if (progress > 0) {
-      final startAngle = -90 * (3.14159265 / 180); // Start at top
+      const startAngle = -90 * (3.14159265 / 180); // Start at top
       final sweepAngle = 2 * 3.14159265 * progress; // Clockwise progress
       
       canvas.drawArc(

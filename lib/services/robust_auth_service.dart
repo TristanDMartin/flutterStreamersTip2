@@ -577,7 +577,7 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Sign up with email and password
   Future<void> signUpWithEmail(String email, String password, String displayName, String username) async {
-    print("📝 Signing up with email: $email");
+    debugPrint("📝 Signing up with email: $email");
     
     try {
       // Validate username first
@@ -596,7 +596,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       );
       
       if (userCredential.user != null) {
-        print("✅ User created successfully");
+        debugPrint("✅ User created successfully");
         
         // Update display name
         await userCredential.user!.updateDisplayName(displayName);
@@ -613,13 +613,13 @@ class RobustAuthenticationService extends ChangeNotifier {
         _isLoggedIn = true;
         notifyListeners();
         
-        print("✅ Sign up completed successfully");
+        debugPrint("✅ Sign up completed successfully");
       } else {
         throw Exception('No user returned from Firebase');
       }
     } catch (e) {
-      print("❌ Sign up error: $e");
-      print("❌ Error type: ${e.runtimeType}");
+      debugPrint("❌ Sign up error: $e");
+      debugPrint("❌ Error type: ${e.runtimeType}");
       rethrow;
     }
   }
@@ -635,13 +635,13 @@ class RobustAuthenticationService extends ChangeNotifier {
           .get();
       
       if (userQuery.docs.isNotEmpty) {
-        print("⚠️ User with email $email still exists in Firestore");
+        debugPrint("⚠️ User with email $email still exists in Firestore");
         // Optionally delete the Firestore document if it exists
         await userQuery.docs.first.reference.delete();
-        print("🧹 Deleted existing Firestore document for $email");
+        debugPrint("🧹 Deleted existing Firestore document for $email");
       }
     } catch (e) {
-      print("⚠️ Error checking existing user: $e");
+      debugPrint("⚠️ Error checking existing user: $e");
       // Continue with signup even if check fails
     }
   }

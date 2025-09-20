@@ -198,7 +198,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             url: platform['url'] ?? '',
           );
         }
-        return Platform(
+        return const Platform(
           id: '',
           type: PlatformType.other,
           username: '',
@@ -528,7 +528,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         Text(
           '@${_currentStreamerCard.username}',
           style: const TextStyle(
-            color: Color(0xFFB3FFFFFF), // Pre-computed opacity
+            color: Color(0xB3FFFFFF), // Pre-computed opacity
             fontSize: 16,
           ),
         ),
@@ -538,7 +538,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             _currentStreamerCard.bio,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFFCCFFFFFF), // Pre-computed opacity
+              color: Color(0xCCFFFFFF), // Pre-computed opacity
               fontSize: 14,
             ),
           ),
@@ -577,7 +577,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         Text(
           label,
           style: const TextStyle(
-            color: Color(0xFFB3FFFFFF), // Pre-computed opacity
+            color: Color(0xB3FFFFFF), // Pre-computed opacity
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -1633,13 +1633,13 @@ class _EmptyStateWidget extends StatelessWidget {
           Icon(
             icon,
             size: 80,
-            color: const Color(0xFF80FFFFFF), // Pre-computed opacity
+            color: const Color(0x80FFFFFF), // Pre-computed opacity
           ),
           const SizedBox(height: 24),
           Text(
             message,
             style: const TextStyle(
-              color: Color(0xFFB3FFFFFF), // Pre-computed opacity
+              color: Color(0xB3FFFFFF), // Pre-computed opacity
               fontSize: 16,
               fontWeight: FontWeight.w500,
             ),

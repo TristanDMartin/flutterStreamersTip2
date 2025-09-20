@@ -36,7 +36,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
   @override
   void initState() {
     super.initState();
-    print('🔍 InsightsView initState called for videoId: ${widget.videoId}');
+    debugPrint('🔍 InsightsView initState called for videoId: ${widget.videoId}');
     _tabController = TabController(length: 3, vsync: this);
     _loadInsightsData();
   }
@@ -74,7 +74,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
           _isLoading = false;
         });
       }
-      print('Error loading insights: $e');
+      debugPrint('Error loading insights: $e');
     }
   }
 
@@ -228,11 +228,12 @@ class _InsightsViewState extends ConsumerState<InsightsView>
             _isLoading = false;
           });
         }
-        print('Real-time insights error: $error');
+        debugPrint('Real-time insights error: $error');
       },
     );
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,

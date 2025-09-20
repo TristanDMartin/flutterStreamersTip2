@@ -1,0 +1,12 @@
+// Simulator.xcconfig
+// Configuration file to disable code signing for iOS Simulator builds
+
+// Disable code signing for simulator builds
+CODE_SIGN_IDENTITY = ""
+CODE_SIGNING_REQUIRED = NO
+CODE_SIGNING_ALLOWED = NO
+
+// Override for simulator SDK
+"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = ""
+"CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = NO
+"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO

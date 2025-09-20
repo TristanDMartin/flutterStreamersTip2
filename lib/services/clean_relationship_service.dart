@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../models/follow_edge.dart';
 import '../models/user_model.dart' as user_model;
 
@@ -62,7 +63,7 @@ class CleanRelationshipService {
         connections: connections,
       );
     } catch (e) {
-      print('Error loading relationship state: $e');
+      debugPrint('Error loading relationship state: $e');
       _currentState = RelationshipState.empty(_currentUserId!);
     }
   }
@@ -104,9 +105,9 @@ class CleanRelationshipService {
         _updateLocalStateAfterUnfollow(themId, wasMutual);
       });
 
-      print('✅ Successfully unfollowed user: $themId');
+      debugPrint('✅ Successfully unfollowed user: $themId');
     } catch (e) {
-      print('❌ Error unfollowing user: $e');
+      debugPrint('❌ Error unfollowing user: $e');
       // Rollback local state on error
       await _loadRelationshipState();
     }
@@ -149,9 +150,9 @@ class CleanRelationshipService {
         _updateLocalStateAfterTheyUnfollowed(themId, wasMutual);
       });
 
-      print('✅ Handled they unfollowed me: $themId');
+      debugPrint('✅ Handled they unfollowed me: $themId');
     } catch (e) {
-      print('❌ Error handling they unfollowed me: $e');
+      debugPrint('❌ Error handling they unfollowed me: $e');
       // Rollback local state on error
       await _loadRelationshipState();
     }
@@ -179,9 +180,9 @@ class CleanRelationshipService {
         _updateLocalStateAfterFollow(themId);
       });
 
-      print('✅ Successfully followed user: $themId');
+      debugPrint('✅ Successfully followed user: $themId');
     } catch (e) {
-      print('❌ Error following user: $e');
+      debugPrint('❌ Error following user: $e');
       // Rollback local state on error
       await _loadRelationshipState();
     }
@@ -306,7 +307,7 @@ class CleanRelationshipService {
 
       return users.docs.map((doc) => user_model.User.fromMap(doc.data())).toList();
     } catch (e) {
-      print('Error fetching users for $section: $e');
+      debugPrint('Error fetching users for $section: $e');
       return [];
     }
   }

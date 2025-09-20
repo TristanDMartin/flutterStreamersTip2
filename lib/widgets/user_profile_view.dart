@@ -141,11 +141,11 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> with TickerPr
   }
 
   Widget _buildVideoContent() {
-    return Center(
+    return const Center(
       child: Text(
         'No videos yet.',
         style: TextStyle(
-          color: const Color(0xBFFFFFFF), // 75% white
+          color: Color(0xBFFFFFFF), // 75% white
           fontSize: 20,
           fontWeight: FontWeight.w600,
         ),
@@ -406,11 +406,11 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> with TickerPr
 
 
   Widget _buildTaggedContent() {
-    return Center(
+    return const Center(
       child: Text(
         'No videos yet.',
         style: TextStyle(
-          color: const Color(0xBFFFFFFF), // 75% white
+          color: Color(0xBFFFFFFF), // 75% white
           fontSize: 20,
           fontWeight: FontWeight.w600,
         ),

@@ -16,9 +16,9 @@ class LogoTest extends StatelessWidget {
               style: TextStyle(color: Colors.white, fontSize: 24),
             ),
             const SizedBox(height: 10),
-            Text(
+            const Text(
               'Asset path: assets/logo.png',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
             const SizedBox(height: 20),
             // Logo with dark background for visibility

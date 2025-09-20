@@ -15,7 +15,7 @@ class RetentionChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 120,
       child: CustomPaint(
         painter: RetentionChartPainter(retentionRate),
@@ -119,7 +119,7 @@ class TrafficSourcesChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 200,
       child: CustomPaint(
         painter: TrafficSourcesChartPainter(sources),
@@ -192,7 +192,7 @@ class ViewerTypesChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 180,
       child: CustomPaint(
         painter: ViewerTypesChartPainter(newViewers, returningViewers),
@@ -268,7 +268,7 @@ class GenderBreakdownChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 180,
       child: CustomPaint(
         painter: GenderBreakdownChartPainter(breakdown),
@@ -351,7 +351,7 @@ class AgeGroupsChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 120,
       child: CustomPaint(
         painter: AgeGroupsChartPainter(ageGroups),
@@ -410,7 +410,7 @@ class EngagementTrendsChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 200,
       child: CustomPaint(
         painter: EngagementTrendsChartPainter(trends),
@@ -507,7 +507,7 @@ class EngagementBreakdownChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 180,
       child: CustomPaint(
         painter: EngagementBreakdownChartPainter(likes, shares, comments, favorites),

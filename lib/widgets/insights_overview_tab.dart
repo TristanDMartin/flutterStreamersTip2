@@ -311,7 +311,7 @@ class InsightsOverviewTab extends StatelessWidget {
               const SizedBox(height: 16),
               ...insights.overview.trafficSources.map((source) =>
                 _buildTrafficSourceItem(source),
-              ).toList(),
+              ),
             ],
           ),
         ),
@@ -410,7 +410,7 @@ class InsightsOverviewTab extends StatelessWidget {
                 final index = entry.key;
                 final query = entry.value;
                 return _buildSearchQueryItem(index + 1, query);
-              }).toList(),
+              }),
             ],
           ),
         ),
