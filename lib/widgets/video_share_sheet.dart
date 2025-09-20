@@ -24,13 +24,14 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
 
   // Mock data - replace with real data
   final List<String> _friends = [
-    "nikoleglenn", "BuzZz", "Reggie", "Ashley Fyl Johnson", "drina.", "Camil"
+    "nikoleglenn", "BuzZz", "Reggie", "Ashley Fyl Johnson", "drina", "Camil"
   ];
 
   @override
   void initState() {
     super.initState();
-    // TODO: Determine if this is the user's own video
+    // Determine if this is the user's own video
+    // For now, assume it's the user's own video
     _isOwnVideo = true;
   }
 
@@ -386,9 +387,9 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
   }
 
   void _shareViaSystem() {
-    // final videoLink = "https://streamerstip.com/video/${widget.video.id}";
-    // TODO: Implement system share sheet
-    // print("📤 Sharing via system: $videoLink");
+    final videoLink = "https://streamerstip.com/video/${widget.video.id}";
+    // TODO: Implement native system share sheet using share_plus package
+    print("📤 Sharing via system: $videoLink");
     widget.onDismiss?.call();
   }
 

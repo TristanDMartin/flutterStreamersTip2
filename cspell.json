@@ -1,0 +1,31 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "streamerstip",
+    "nikoleglenn",
+    "drina",
+    "Camil",
+    "BuzZz",
+    "Reggie",
+    "Ashley",
+    "Fyl",
+    "Johnson"
+  ],
+  "ignoreWords": [
+    "streamerstip"
+  ],
+  "ignorePaths": [
+    "build/**",
+    ".dart_tool/**",
+    "android/**",
+    "ios/**",
+    "macos/**",
+    "linux/**",
+    "windows/**",
+    "web/**"
+  ],
+  "import": [
+    "@cspell/dart-dict/cspell-ext.json"
+  ]
+}
