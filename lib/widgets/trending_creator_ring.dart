@@ -114,7 +114,7 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Gradient ring
+                  // Gradient ring (matches ProfileView styling)
                   Container(
                     width: size,
                     height: size,
@@ -122,12 +122,10 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
                       shape: BoxShape.circle,
                       gradient: SweepGradient(
                         colors: [
-                          Color(0xFF9248D2), // Purple
-                          Color(0xFF7768DF), // Another purple
-                          Color(0xFF1670DE), // Blue
-                          Color(0xFF3C8BD6), // Lighter blue
-                          Color(0xFF4897D2), // Lightest blue
-                          Color(0xFF9248D2), // Back to purple for smooth transition
+                          Color(0xFFFF6CAB), // Pink
+                          Color(0xFF8E54E9), // Purple
+                          Color(0xFF3D99F7), // Blue
+                          Color(0xFFFF6CAB), // Pink (back to start for smooth transition)
                         ],
                       ),
                     ),
@@ -158,7 +156,7 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
                               },
                             )
                           : null,
-                      color: const Color(0x14FFFFFF),
+                      color: Colors.black.withValues(alpha: 0.2), // Matches ProfileView styling
                     ),
                     child: widget.imageUrl == null
                         ? const Icon(

@@ -189,50 +189,6 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
       ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          // Auth Status Indicator
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: ref.watch(robustAuthServiceProvider).isLoggedIn 
-                  ? Colors.green 
-                  : Colors.red,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              ref.watch(robustAuthServiceProvider).isLoggedIn 
-                  ? 'LOGGED IN' 
-                  : 'NOT LOGGED IN',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // User Info
-          if (ref.watch(robustAuthServiceProvider).currentUser != null)
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '@${ref.watch(robustAuthServiceProvider).currentUser!.username}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          const SizedBox(height: 8),
-        ],
-      ),
     );
   }
 }

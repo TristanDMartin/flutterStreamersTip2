@@ -125,13 +125,38 @@ class UnifiedAvatarService {
     );
 
     if (useProfileViewStyling) {
-      return Container(
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          color: Color(0xFF0A0A0A), // Dark ring like ProfileView
-        ),
-        padding: const EdgeInsets.all(4), // 4px padding like ProfileView
-        child: avatarWidget,
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: radius * 2 + 8, // Add padding for gradient ring
+            height: radius * 2 + 8,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: SweepGradient(
+                colors: [
+                  Color(0xFFFF6CAB),
+                  Color(0xFF8E54E9),
+                  Color(0xFF3D99F7),
+                  Color(0xFFFF6CAB),
+                ],
+              ),
+            ),
+            child: Center(
+              child: Container(
+                width: radius * 2,
+                height: radius * 2,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: 0.2),
+                ),
+                child: ClipOval(
+                  child: avatarWidget,
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     } else {
       return avatarWidget;
@@ -152,13 +177,38 @@ class UnifiedAvatarService {
     );
 
     if (useProfileViewStyling) {
-      return Container(
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          color: Color(0xFF0A0A0A), // Dark ring like ProfileView
-        ),
-        padding: const EdgeInsets.all(4), // 4px padding like ProfileView
-        child: defaultAvatar,
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: radius * 2 + 8, // Add padding for gradient ring
+            height: radius * 2 + 8,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: SweepGradient(
+                colors: [
+                  Color(0xFFFF6CAB),
+                  Color(0xFF8E54E9),
+                  Color(0xFF3D99F7),
+                  Color(0xFFFF6CAB),
+                ],
+              ),
+            ),
+            child: Center(
+              child: Container(
+                width: radius * 2,
+                height: radius * 2,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withValues(alpha: 0.2),
+                ),
+                child: ClipOval(
+                  child: defaultAvatar,
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     } else {
       return defaultAvatar;

@@ -28,11 +28,21 @@ class CategoryCard extends StatelessWidget {
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF1A1A1A), // Dark circular background
+                color: isSelected 
+                    ? const Color(0xFF6633CC).withValues(alpha: 0.2) // Selected background
+                    : const Color(0xFF1A1A1A), // Dark circular background
+                border: isSelected 
+                    ? Border.all(
+                        color: const Color(0xFF6633CC),
+                        width: 2,
+                      )
+                    : null,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha:0.3),
-                    blurRadius: 8,
+                    color: isSelected 
+                        ? const Color(0xFF6633CC).withValues(alpha: 0.3)
+                        : Colors.black.withValues(alpha: 0.3),
+                    blurRadius: isSelected ? 12 : 8,
                     offset: const Offset(0, 4),
                   ),
                 ],
@@ -49,10 +59,12 @@ class CategoryCard extends StatelessWidget {
             // Category Name
             Text(
               category.name,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.white,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected 
+                    ? const Color(0xFF6633CC) 
+                    : Colors.white,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

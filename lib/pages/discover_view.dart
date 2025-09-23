@@ -4,6 +4,7 @@ import '../widgets/optimized_image.dart';
 import '../widgets/optimized_avatar_image.dart';
 import '../widgets/ios_optimized_image.dart';
 import '../services/image_preload_service.dart';
+import '../services/unified_avatar_service.dart';
 
 class DiscoverView extends StatefulWidget {
   const DiscoverView({super.key});
@@ -56,47 +57,38 @@ class _DiscoverViewState extends State<DiscoverView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
+      extendBody: true,
       extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          'Discover',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
+      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+            colors: [
+              Color(0xFF6633CC), // Purple (matches ProfileView)
+              Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
+            ],
           ),
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Custom App Bar
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(
-                        Icons.arrow_back_ios,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                    const Text(
-                      'Discover',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Content
-              Expanded(
-                child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
           const Text(
             'Trending Topics',
             style: TextStyle(
@@ -126,10 +118,6 @@ class _DiscoverViewState extends State<DiscoverView> {
           const SizedBox(height: 20),
           _buildLazyLoadedContent(),
         ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -194,12 +182,13 @@ class _DiscoverViewState extends State<DiscoverView> {
       ),
       child: Row(
         children: [
-          OptimizedAvatarImage(
+          UnifiedAvatarService().getAvatar(
             imageUrl: avatarUrl,
-            size: 30,
+            radius: 15,
+            useProfileViewStyling: true,
             placeholder: Container(
-              width: 60,
-              height: 60,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 color: Colors.grey[800],
                 shape: BoxShape.circle,
@@ -207,12 +196,12 @@ class _DiscoverViewState extends State<DiscoverView> {
               child: const Icon(
                 Icons.person,
                 color: Colors.white,
-                size: 28,
+                size: 16,
               ),
             ),
             errorWidget: Container(
-              width: 60,
-              height: 60,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 color: Colors.grey[800],
                 shape: BoxShape.circle,
@@ -220,7 +209,7 @@ class _DiscoverViewState extends State<DiscoverView> {
               child: const Icon(
                 Icons.error_outline,
                 color: Colors.white,
-                size: 28,
+                size: 16,
               ),
             ),
           ),

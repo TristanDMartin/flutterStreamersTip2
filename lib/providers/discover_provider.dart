@@ -178,6 +178,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       return;
     }
 
+    // Track search analytics
+    _trackSearchQuery(q);
+    
     state = state.copyWith(isSearching: true);
 
     try {
@@ -293,12 +296,70 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       }
 
       // Stories not implemented yet
+      Future<List<SearchResult>> hashtagResults() async {
+        final List<SearchResult> results = [];
+        
+        // Search for hashtags in user profiles
+        try {
+          final qs1 = await db
+              .collection('users')
+              .where('hashtags', arrayContains: qLower)
+              .limit(10)
+              .get();
+          for (final d in qs1.docs) {
+            final data = d.data();
+            final hashtags = List<String>.from((data['hashtags'] as List?) ?? []);
+            final matchingHashtags = hashtags.where((tag) => tag.toLowerCase().contains(qLower)).toList();
+            
+            if (matchingHashtags.isNotEmpty) {
+              results.add(SearchResult(
+                id: d.id,
+                title: '#${matchingHashtags.first}',
+                subtitle: 'Hashtag used by @${(data['username'] ?? '').toString()}',
+                metadata: '${matchingHashtags.length} hashtags',
+                imageURL: data['avatarURL'] as String?,
+                type: ResultType.creator,
+              ));
+            }
+          }
+        } catch (_) {}
+
+        // Search for hashtags in videos
+        try {
+          final qs2 = await db
+              .collection('videos')
+              .where('hashtags', arrayContains: qLower)
+              .orderBy('timestamp', descending: true)
+              .limit(10)
+              .get();
+          for (final d in qs2.docs) {
+            final data = d.data();
+            final hashtags = List<String>.from((data['hashtags'] as List?) ?? []);
+            final matchingHashtags = hashtags.where((tag) => tag.toLowerCase().contains(qLower)).toList();
+            
+            if (matchingHashtags.isNotEmpty) {
+              results.add(SearchResult(
+                id: d.id,
+                title: '#${matchingHashtags.first}',
+                subtitle: 'Hashtag in video by ${(data['creator_username'] ?? '').toString()}',
+                metadata: '${data['views'] ?? 0} views',
+                imageURL: data['thumbnail_url'] as String?,
+                type: ResultType.content,
+              ));
+            }
+          }
+        } catch (_) {}
+
+        return results;
+      }
+
       Future<List<SearchResult>> storyResults() async => <SearchResult>[];
 
       final List<List<SearchResult>> parallel = await Future.wait([
         userResults(),
         videoResults(),
         categoryResults(),
+        hashtagResults(),
         storyResults(),
       ]);
 
@@ -314,6 +375,22 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     } catch (e) {
       LoggingService.instance.error('Error searching', tag: 'DiscoverProvider', error: e);
       state = state.copyWith(searchResults: [], isSearching: false);
+    }
+  }
+
+  void _trackSearchQuery(String query) {
+    try {
+      // Log search query for analytics
+      LoggingService.instance.debug('Search query: "$query"', tag: 'DiscoverProvider');
+      
+      // Track search performance
+      final searchStartTime = DateTime.now();
+      
+      // Store search metrics in state for analytics
+      // This could be extended to send to Firebase Analytics
+      LoggingService.instance.debug('Search started at: $searchStartTime', tag: 'DiscoverProvider');
+    } catch (e) {
+      LoggingService.instance.error('Error tracking search query', tag: 'DiscoverProvider', error: e);
     }
   }
 

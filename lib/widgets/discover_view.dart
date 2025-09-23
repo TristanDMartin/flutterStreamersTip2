@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/discover_provider.dart';
 import '../models/trending_creator.dart';
@@ -7,9 +8,11 @@ import 'category_card.dart';
 import 'recommended_content_card.dart';
 import 'search_screen.dart';
 import 'activity_view.dart';
+import 'streamer_card_view.dart';
 import '../providers/activity_provider.dart';
 import '../services/logging_service.dart';
 import '../services/error_handler_service.dart';
+import '../services/robust_auth_service.dart';
 
 class DiscoverView extends ConsumerStatefulWidget {
   const DiscoverView({super.key});
@@ -42,17 +45,96 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   void _onCategorySelected(String? categoryId) {
-    setState(() {
-      _selectedCategory = categoryId;
-    });
+    try {
+      // Add haptic feedback
+      HapticFeedback.lightImpact();
+      
+      setState(() {
+        _selectedCategory = categoryId;
+        _currentCategoryPage = 0; // Reset pagination
+      });
+      
+      // Show visual feedback and fetch content
+      if (categoryId != null) {
+        final discoverState = ref.read(discoverProvider);
+        final category = discoverState.categories.firstWhere(
+          (cat) => cat.id == categoryId,
+          orElse: () => discoverState.categories.first,
+        );
+        
+        // Fetch category-specific content
+        _fetchCategoryContent(categoryId);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Loading ${category.name} content...',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: const Color(0xFF6633CC),
+            duration: const Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+        
+        LoggingService.instance.debug('Category selected: ${category.name}', tag: 'DiscoverView');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Showing all content',
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: const Color(0xFF1A1A4D),
+            duration: const Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error selecting category', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
+    }
+  }
+
+  void _fetchCategoryContent(String categoryId) {
+    try {
+      LoggingService.instance.debug('Fetching content for category: $categoryId', tag: 'DiscoverView');
+      
+      // Simulate API call delay
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          setState(() {
+            // Content is fetched in _getCategoryVideos method
+            // This is where you would normally trigger a provider update
+          });
+        }
+      });
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error fetching category content', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+    }
   }
 
   void _navigateToCreatorProfile(BuildContext context, TrendingCreator creator) {
     try {
       LoggingService.instance.debug('Navigating to creator profile: ${creator.username}', tag: 'DiscoverView');
-      // TODO: Implement navigation to StreamerCardView
-      // For now, show a placeholder dialog
-      _showCreatorInfoDialog(context, creator);
+      
+      // Navigate to StreamerCardView
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => StreamerCardView(
+            userId: creator.id,
+            currentUserId: ref.read(robustAuthServiceProvider).currentUser?.id,
+            onDismiss: () => Navigator.of(context).pop(),
+          ),
+        ),
+      );
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error navigating to creator profile', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
       ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
@@ -271,11 +353,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF9248D2),
-              Color(0xFF7768DF),
-              Color(0xFF1670DE),
-              Color(0xFF3C8BD6),
-              Color(0xFF4897D2),
+              Color(0xFF6633CC), // Purple (matches ProfileView)
+              Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
             ],
           ),
         ),
@@ -286,7 +365,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               backgroundColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
-                icon: const Icon(Icons.chevron_left, color: Colors.white),
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               ),
               title: const Text(
@@ -294,9 +373,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
+              centerTitle: true,
               actions: [
                 _buildNotificationButton(context, ref),
               ],
@@ -330,7 +410,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         Icon(Icons.search, color: Colors.white.withValues(alpha: 0.6)),
                         const SizedBox(width: 10),
                         Text(
-                          'Search creators, categories…',
+                          'Search creators, videos, hashtags…',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.65),
                             fontSize: 16,
@@ -338,6 +418,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                           ),
                         ),
                         const Spacer(),
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          color: Colors.white.withValues(alpha: 0.4),
+                          size: 16,
+                        ),
                       ],
                     ),
                   ),
@@ -371,11 +456,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF9248D2),
-              Color(0xFF7768DF),
-              Color(0xFF1670DE),
-              Color(0xFF3C8BD6),
-              Color(0xFF4897D2),
+              Color(0xFF6633CC), // Purple (matches ProfileView)
+              Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
             ],
           ),
         ),
@@ -432,18 +514,24 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         children: [
           const SizedBox(height: 24),
           
-          // Trending Creators Section
+          // Trending Creators Section (always show)
           _buildTrendingCreatorsSection(discoverState, discoverViewModel),
           
           const SizedBox(height: 24),
           
-          // Categories Section
+          // Categories Section (always show)
           _buildCategoriesSection(discoverState, discoverViewModel),
           
           const SizedBox(height: 24),
           
-          // Recommended Content Section
-          _buildRecommendedContentSection(discoverState, discoverViewModel),
+          // Content based on category selection
+          if (_selectedCategory == null) ...[
+            // Default view - show resources
+            _buildRecommendedContentSection(discoverState, discoverViewModel),
+          ] else ...[
+            // Category selected - show 3-column video grid
+            _buildCategoryVideoGrid(discoverState, discoverViewModel),
+          ],
         ],
       ),
     );
@@ -653,6 +741,372 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryVideoGrid(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
+    if (_selectedCategory == null) return const SizedBox.shrink();
+    
+    // Get the selected category
+    final selectedCategory = discoverState.categories.firstWhere(
+      (cat) => cat.id == _selectedCategory,
+      orElse: () => discoverState.categories.first,
+    );
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Category header with clear button
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${selectedCategory.name} Videos',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _selectedCategory = null;
+                  });
+                },
+                child: const Text(
+                  'Clear Filter',
+                  style: TextStyle(
+                    color: Color(0xFF6633CC),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // 3-column video grid
+          _buildVideoGrid(selectedCategory.id, discoverState),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVideoGrid(String categoryId, DiscoverState discoverState) {
+    // Simulate fetching category-specific content
+    final categoryVideos = _getCategoryVideos(categoryId);
+    
+    if (categoryVideos.isEmpty) {
+      return _buildEmptyCategoryState(categoryId);
+    }
+    
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 9 / 16, // 9:16 aspect ratio for portrait videos
+      ),
+      itemCount: categoryVideos.length,
+      itemBuilder: (context, index) {
+        return _buildVideoGridItem(categoryVideos[index], categoryId);
+      },
+    );
+  }
+
+  List<Map<String, dynamic>> _getCategoryVideos(String categoryId) {
+    // This would normally fetch from your data source
+    // For now, return sample data based on category
+    switch (categoryId) {
+      case 'gaming':
+        return [
+          {
+            'id': '1',
+            'title': 'Epic Gaming Moments',
+            'creator': 'GamerPro',
+            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Gaming+1',
+            'views': '1.2K',
+            'duration': '5:30',
+            'color': 0xFFFF6CAB,
+          },
+          {
+            'id': '2',
+            'title': 'New Game Review',
+            'creator': 'GameReviewer',
+            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Gaming+2',
+            'views': '856',
+            'duration': '8:15',
+            'color': 0xFF8E54E9,
+          },
+          {
+            'id': '3',
+            'title': 'Pro Gaming Tips',
+            'creator': 'ProGamer',
+            'thumbnail': 'https://via.placeholder.com/300x533/3D99F7/FFFFFF?text=Gaming+3',
+            'views': '2.1K',
+            'duration': '3:45',
+            'color': 0xFF3D99F7,
+          },
+          {
+            'id': '4',
+            'title': 'Gameplay Highlights',
+            'creator': 'GameHighlights',
+            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Gaming+4',
+            'views': '743',
+            'duration': '6:20',
+            'color': 0xFFFF6CAB,
+          },
+          {
+            'id': '5',
+            'title': 'Speedrun Attempt',
+            'creator': 'SpeedRunner',
+            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Gaming+5',
+            'views': '1.5K',
+            'duration': '12:30',
+            'color': 0xFF8E54E9,
+          },
+          {
+            'id': '6',
+            'title': 'Gaming Setup Tour',
+            'creator': 'SetupGamer',
+            'thumbnail': 'https://via.placeholder.com/300x533/3D99F7/FFFFFF?text=Gaming+6',
+            'views': '934',
+            'duration': '7:15',
+            'color': 0xFF3D99F7,
+          },
+        ];
+      case 'music':
+        return [
+          {
+            'id': '1',
+            'title': 'Live Performance',
+            'creator': 'MusicArtist',
+            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Music+1',
+            'views': '2.1K',
+            'duration': '12:45',
+            'color': 0xFFFF6CAB,
+          },
+          {
+            'id': '2',
+            'title': 'Acoustic Cover',
+            'creator': 'AcousticSinger',
+            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Music+2',
+            'views': '1.8K',
+            'duration': '4:20',
+            'color': 0xFF8E54E9,
+          },
+          {
+            'id': '3',
+            'title': 'Studio Session',
+            'creator': 'StudioMusician',
+            'thumbnail': 'https://via.placeholder.com/300x533/3D99F7/FFFFFF?text=Music+3',
+            'views': '1.2K',
+            'duration': '8:30',
+            'color': 0xFF3D99F7,
+          },
+          {
+            'id': '4',
+            'title': 'Music Tutorial',
+            'creator': 'MusicTeacher',
+            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Music+4',
+            'views': '956',
+            'duration': '15:20',
+            'color': 0xFFFF6CAB,
+          },
+        ];
+      case 'art':
+        return [
+          {
+            'id': '1',
+            'title': 'Digital Art Tutorial',
+            'creator': 'ArtCreator',
+            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Art+1',
+            'views': '543',
+            'duration': '15:20',
+            'color': 0xFFFF6CAB,
+          },
+          {
+            'id': '2',
+            'title': 'Speed Painting',
+            'creator': 'SpeedPainter',
+            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Art+2',
+            'views': '1.1K',
+            'duration': '6:45',
+            'color': 0xFF8E54E9,
+          },
+          {
+            'id': '3',
+            'title': 'Art Process',
+            'creator': 'ProcessArtist',
+            'thumbnail': 'https://via.placeholder.com/300x533/3D99F7/FFFFFF?text=Art+3',
+            'views': '789',
+            'duration': '9:30',
+            'color': 0xFF3D99F7,
+          },
+          {
+            'id': '4',
+            'title': 'Sketch Challenge',
+            'creator': 'SketchArtist',
+            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Art+4',
+            'views': '432',
+            'duration': '5:15',
+            'color': 0xFFFF6CAB,
+          },
+          {
+            'id': '5',
+            'title': 'Art Supplies Review',
+            'creator': 'ArtReviewer',
+            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Art+5',
+            'views': '678',
+            'duration': '11:20',
+            'color': 0xFF8E54E9,
+          },
+        ];
+      default:
+        return [];
+    }
+  }
+
+  Widget _buildVideoGridItem(Map<String, dynamic> video, String categoryId) {
+    return GestureDetector(
+      onTap: () {
+        // TODO: Navigate to video player
+        LoggingService.instance.debug('Tapped video: ${video['title']}', tag: 'DiscoverView');
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Color(video['color'] ?? 0xFF6633CC),
+        ),
+        child: Stack(
+          children: [
+            // Thumbnail
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                video['thumbnail'],
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: double.infinity,
+                    height: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(video['color'] ?? 0xFF6633CC),
+                          Color(video['color'] ?? 0xFF6633CC).withValues(alpha: 0.8),
+                        ],
+                      ),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.play_circle_outline,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            
+            // Play icon overlay
+            const Center(
+              child: Icon(
+                Icons.play_circle_outline,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+            
+            // View count overlay (bottom-left)
+            Positioned(
+              bottom: 8,
+              left: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.play_arrow,
+                      color: Colors.white,
+                      size: 12,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      video['views'],
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyCategoryState(String categoryId) {
+    return Container(
+      height: 300,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+          width: 1,
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.video_library_outlined,
+              color: Colors.white.withValues(alpha: 0.5),
+              size: 64,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No videos found for this category',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Check back later for new content!',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

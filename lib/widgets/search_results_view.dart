@@ -5,6 +5,9 @@ import '../providers/discover_provider.dart';
 import '../models/user.dart';
 import '../models/video_clip.dart';
 import 'optimized_image.dart';
+import 'streamer_card_view.dart';
+import 'discover_view.dart';
+import '../services/robust_auth_service.dart';
 
 class SearchResultsView extends ConsumerStatefulWidget {
   final String searchText;
@@ -82,13 +85,28 @@ class _SearchResultsViewState extends ConsumerState<SearchResultsView> {
           child: SearchResultRow(
             result: result,
             onProfileTap: (user) {
-              // TODO: Navigate to StreamerCardView
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => StreamerCardView(
+                    userId: user.id,
+                    currentUserId: ref.read(robustAuthServiceProvider).currentUser?.id,
+                    onDismiss: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              );
             },
             onVideoTap: (clip) {
-              // TODO: Navigate to CategoryVideoViewer
+              // Navigate to video player or category view
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => DiscoverView(), // This will show the category content
+                ),
+              );
             },
             onCategoryTap: (categoryId) {
-              // TODO: Navigate to CategoryVideoViewer with category
+              // Navigate back to DiscoverView with category selected
+              Navigator.of(context).pop(); // Go back to DiscoverView
+              // The category selection will be handled by the DiscoverView
             },
           ),
         );
