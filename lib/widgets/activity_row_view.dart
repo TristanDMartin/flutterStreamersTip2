@@ -5,6 +5,7 @@ import '../models/activity_notification.dart';
 import '../models/user.dart';
 import '../widgets/optimized_image.dart';
 import '../services/auth_service.dart';
+// import '../services/relationship_service.dart'; // Temporarily commented out
 
 class ActivityRowView extends ConsumerStatefulWidget {
   final ActivityNotification notification;
@@ -55,10 +56,10 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     final auth = ref.watch(authServiceProvider);
     final currentUserId = auth.currentUser?.id;
     
-    // For now, we'll use mock data until we implement the full relationship system
-    // TODO: Connect to actual relationship service
-    const isFollowing = false; // Will be implemented with relationship service
-    const isMutualFollow = false; // Will be implemented with relationship service
+    // TODO: Implement relationship service
+    // For now, use mock data
+    const isFollowing = false;
+    const isMutualFollow = false;
 
     return FadeTransition(
       opacity: _fadeController,
@@ -91,20 +92,27 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: _isPressed 
-                      ? Colors.white.withValues(alpha:0.15)
-                      : Colors.white.withValues(alpha:0.1),
+                      ? Colors.white.withValues(alpha:0.25)
+                      : Colors.white.withValues(alpha:0.2),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: _isPressed
-                        ? Colors.white.withValues(alpha:0.3)
-                        : Colors.white.withValues(alpha:0.2),
-                    width: 1,
+                        ? Colors.white.withValues(alpha:0.5)
+                        : Colors.white.withValues(alpha:0.4),
+                    width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha:0.1),
+                      color: Colors.black.withValues(alpha:0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                      spreadRadius: 2,
+                    ),
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha:0.1),
                       blurRadius: 8,
-                      offset: const Offset(0, 4),
+                      offset: const Offset(0, -2),
+                      spreadRadius: 1,
                     ),
                   ],
                 ),
@@ -450,7 +458,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     }
   }
 
-  void _handleFollowAction(bool isFollowing, bool isMutualFollow) {
+  void _handleFollowAction(bool isFollowing, bool isMutualFollow) async {
     try {
       // TODO: Implement actual follow/unfollow logic with relationship service
       // For now, show a snackbar indicating the action

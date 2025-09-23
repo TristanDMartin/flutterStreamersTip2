@@ -1,24 +1,39 @@
 import '../models/home_video.dart';
 import '../models/user.dart';
+import 'real_user_data_service.dart';
+import 'logging_service.dart';
 
 class VideoService {
+  final RealUserDataService _userDataService = RealUserDataService();
+
   Future<VideoFetchResult> fetchForYouVideos({
     required int pageSize,
     String? lastDocument,
   }) async {
-    // Placeholder - would fetch videos from Firestore
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
-    
-    // Return sample videos for testing
-    final allVideos = createSampleVideos();
-    final startIndex = lastDocument != null ? int.tryParse(lastDocument) ?? 0 : 0;
-    final endIndex = startIndex + pageSize;
-    final videos = allVideos.skip(startIndex).take(pageSize).toList();
-    
-    return VideoFetchResult(
-      videos: videos,
-      lastDocument: endIndex < allVideos.length ? endIndex.toString() : null,
-    );
+    try {
+      LoggingService.instance.debug('🎬 Fetching for you videos', tag: 'VideoService');
+      
+      // Use real data service instead of mock data
+      final videos = await _userDataService.getForYouVideos(
+        limit: pageSize,
+        lastDocumentId: lastDocument,
+      );
+      
+      LoggingService.instance.debug('✅ Loaded ${videos.length} for you videos', tag: 'VideoService');
+      
+      return VideoFetchResult(
+        videos: videos,
+        lastDocument: videos.isNotEmpty ? videos.last.id : null,
+      );
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error fetching for you videos', tag: 'VideoService', error: e, stackTrace: stackTrace);
+      
+      // Fallback to empty result
+      return VideoFetchResult(
+        videos: [],
+        lastDocument: null,
+      );
+    }
   }
 
   Future<VideoFetchResult> fetchFollowingVideos({
@@ -26,23 +41,30 @@ class VideoService {
     required int pageSize,
     String? lastDocument,
   }) async {
-    // Placeholder - would fetch following videos from Firestore
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
-    
-    // Filter videos to only show those from followed users
-    final allVideos = createSampleVideos();
-    final followingVideos = allVideos.where((video) => 
-      followingIds.contains(video.creator.id)
-    ).toList();
-    
-    final startIndex = lastDocument != null ? int.tryParse(lastDocument) ?? 0 : 0;
-    final endIndex = startIndex + pageSize;
-    final videos = followingVideos.skip(startIndex).take(pageSize).toList();
-    
-    return VideoFetchResult(
-      videos: videos,
-      lastDocument: endIndex < followingVideos.length ? endIndex.toString() : null,
-    );
+    try {
+      LoggingService.instance.debug('👥 Fetching following videos for ${followingIds.length} users', tag: 'VideoService');
+      
+      // Use real data service instead of mock data
+      final videos = await _userDataService.getFollowingVideos(
+        followingIds,
+        limit: pageSize,
+      );
+      
+      LoggingService.instance.debug('✅ Loaded ${videos.length} following videos', tag: 'VideoService');
+      
+      return VideoFetchResult(
+        videos: videos,
+        lastDocument: videos.isNotEmpty ? videos.last.id : null,
+      );
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error fetching following videos', tag: 'VideoService', error: e, stackTrace: stackTrace);
+      
+      // Fallback to empty result
+      return VideoFetchResult(
+        videos: [],
+        lastDocument: null,
+      );
+    }
   }
 
   Future<bool> toggleLike(String videoId) async {

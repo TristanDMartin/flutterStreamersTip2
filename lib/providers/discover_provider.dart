@@ -8,6 +8,7 @@ import '../models/home_video.dart';
 import '../models/video_clip.dart';
 import '../models/user.dart';
 import '../services/logging_service.dart';
+import '../services/real_user_data_service.dart';
 
 part 'discover_provider.freezed.dart';
 
@@ -41,12 +42,14 @@ class SearchResult with _$SearchResult {
 enum ResultType { creator, category, content }
 
 class DiscoverNotifier extends StateNotifier<DiscoverState> {
+  final RealUserDataService _userDataService = RealUserDataService();
+  
   DiscoverNotifier() : super(const DiscoverState()) {
     _loadInitialData();
   }
 
   void _loadInitialData() {
-    // Load sample data
+    // Load sample data as fallback
     state = state.copyWith(
       trendingCreators: TrendingCreator.samples,
       categories: Category.samples,
@@ -134,31 +137,13 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
   Future<void> loadTrendingCreators() async {
     if (state.isLoadingTrendingCreators) return;
     state = state.copyWith(isLoadingTrendingCreators: true);
+    
     try {
-      LoggingService.instance.debug('Loading trending creators from Firestore', tag: 'DiscoverProvider');
-      final FirebaseFirestore db = FirebaseFirestore.instance;
-      Query<Map<String, dynamic>> q = db
-          .collection('users')
-          .orderBy('followersCount', descending: true)
-          .limit(10);
-
-      // Prefer visible users
-      try {
-        q = q.where('onlineStatus', isNotEqualTo: 'invisible');
-      } catch (_) {}
-
-      final snap = await q.get();
-      final trending = snap.docs.map((d) {
-        final data = d.data();
-        return TrendingCreator(
-          id: d.id,
-          username: (data['username'] ?? 'user').toString(),
-          avatarURL: data['avatarURL'] as String?,
-          followers: (data['followersCount'] ?? 0) as int,
-          isOnline: ((data['onlineStatus'] ?? 'invisible').toString() == 'online'),
-        );
-      }).toList();
-
+      LoggingService.instance.debug('Loading trending creators from real data service', tag: 'DiscoverProvider');
+      
+      // Use real user data service
+      final trending = await _userDataService.getTrendingCreators(limit: 10);
+      
       state = state.copyWith(trendingCreators: trending, isLoadingTrendingCreators: false);
       LoggingService.instance.info('Successfully loaded ${trending.length} trending creators', tag: 'DiscoverProvider');
     } catch (e, stackTrace) {

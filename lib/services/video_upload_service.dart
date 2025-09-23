@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'video_moderation_service.dart';
 import 'enhanced_error_handling_service.dart';
+import 'video_processing_service.dart';
+import 'logging_service.dart';
 
 class VideoUploadResult {
   final bool success;
@@ -298,11 +300,17 @@ class VideoUploadService {
   /// Generate and upload thumbnail
   Future<String?> _generateAndUploadThumbnail(File videoFile, String videoId, String userId) async {
     try {
-      // This would use a video processing library to generate thumbnail
-      // For now, return a placeholder
-      return 'https://via.placeholder.com/300x400/9248D2/FFFFFF?text=Thumbnail';
+      // Use the new video processing service for thumbnail generation
+      final processingService = VideoProcessingService();
+      final result = await processingService.processVideo(
+        inputFile: videoFile,
+        videoId: videoId,
+        userId: userId,
+      );
+      
+      return result.thumbnailUrl;
     } catch (e) {
-    // print('Error generating thumbnail: $e');
+      LoggingService.instance.error('Error generating thumbnail', tag: 'VideoUploadService', error: e);
       return null;
     }
   }

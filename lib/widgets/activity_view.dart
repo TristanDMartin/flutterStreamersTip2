@@ -26,9 +26,8 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Likes', 'Follows', 'Comments', 'Tags', 'Mentions'];
   
-  // Performance optimization (commented out as not currently used)
-  // static const int _pageSize = 20;
-  // int _currentPage = 0;
+  static const int _pageSize = 20;
+  int _currentPage = 0;
   bool _isLoadingMore = false;
   final ScrollController _scrollController = ScrollController();
 
@@ -63,7 +62,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     
     // Clear any pending operations
     _isLoadingMore = false;
-    // _currentPage = 0;
+    _currentPage = 0;
     
     super.dispose();
   }
@@ -116,8 +115,8 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Color(0xFF9248D2),
-              Color(0xFF1670DE),
+              Color(0xFF6137EB), // Purple (matches ProfileView)
+              Color(0xFF1C135D), // Dark purple (matches ProfileView)
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -149,11 +148,22 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   }
 
   Widget _buildLoadingScaffold() {
-    return const Scaffold(
-      backgroundColor: Color(0xFF9248D2),
-      body: Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF6137EB), // Purple (matches ProfileView)
+              Color(0xFF1C135D), // Dark purple (matches ProfileView)
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
         ),
       ),
     );
@@ -161,34 +171,45 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   Widget _buildSignInRequiredScaffold() {
     return Scaffold(
-      backgroundColor: const Color(0xFF9248D2),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.notifications_outlined,
-              size: 64,
-              color: Colors.white.withValues(alpha:0.7),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Sign in to view your activity',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha:0.9),
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF6137EB), // Purple (matches ProfileView)
+              Color(0xFF1C135D), // Dark purple (matches ProfileView)
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.notifications_outlined,
+                size: 64,
+                color: Colors.white70,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Stay updated with all your notifications',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha:0.7),
-                fontSize: 14,
+              SizedBox(height: 16),
+              Text(
+                'Sign in to view your activity',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
+              SizedBox(height: 8),
+              Text(
+                'Stay updated with all your notifications',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -199,6 +220,15 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
         children: [
+          // Back button (matches ProfileView style)
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
           // Title with animation
           Expanded(
             child: Column(
@@ -319,36 +349,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   ),
                 ),
               const SizedBox(width: 8),
-              // Refresh button
+              // Refresh button (no background)
               GestureDetector(
                 onTap: _handleRefresh,
                 child: Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF9248D2), // Primary purple
-                        Color(0xFF7768DF), // Secondary purple
-                        Color(0xFF1670DE), // Blue
-                        Color(0xFF3C8BD6), // Lighter blue
-                        Color(0xFF4897D2), // Lightest blue
-                      ],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha:0.2),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF9248D2).withValues(alpha:0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
                   child: AnimatedBuilder(
                     animation: _refreshController,
                     builder: (context, child) {
@@ -486,12 +491,26 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha:0.1),
+            color: Colors.white.withValues(alpha:0.3),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withValues(alpha:0.2),
-              width: 1,
+              color: Colors.white.withValues(alpha:0.5),
+              width: 1.5,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha:0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+                spreadRadius: 2,
+              ),
+              BoxShadow(
+                color: Colors.white.withValues(alpha:0.1),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
+                spreadRadius: 1,
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -499,8 +518,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withValues(alpha:0.4),
                   shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha:0.6),
+                    width: 1,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -512,8 +535,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       height: 16,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha:0.2),
+                        color: Colors.white.withValues(alpha:0.4),
                         borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha:0.6),
+                          width: 0.5,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -521,8 +548,12 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       height: 12,
                       width: 200,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha:0.2),
+                        color: Colors.white.withValues(alpha:0.4),
                         borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha:0.6),
+                          width: 0.5,
+                        ),
                       ),
                     ),
                   ],
@@ -838,10 +869,16 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     });
     
     try {
-      // TODO: Implement actual pagination with Firestore
-      // For now, just simulate loading
-      await Future.delayed(const Duration(milliseconds: 1000));
-      // _currentPage++;
+      final notifier = ref.read(activityProvider.notifier);
+      final auth = ref.read(authServiceProvider);
+      final userId = auth.currentUser?.id;
+      
+      if (userId != null) {
+        _currentPage++;
+        // TODO: Implement loadMoreNotifications method in ActivityNotifier
+        // For now, just simulate loading
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
     } catch (e) {
       debugPrint('Error loading more notifications: $e');
     } finally {

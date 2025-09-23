@@ -13,6 +13,7 @@ import '../providers/activity_provider.dart';
 import '../services/logging_service.dart';
 import '../services/error_handler_service.dart';
 import '../services/robust_auth_service.dart';
+import 'optimized_image.dart';
 
 class DiscoverView extends ConsumerStatefulWidget {
   const DiscoverView({super.key});
@@ -24,6 +25,22 @@ class DiscoverView extends ConsumerStatefulWidget {
 class _DiscoverViewState extends ConsumerState<DiscoverView> {
   String? _selectedCategory;
   int _currentCategoryPage = 0;
+  
+  // Video grid pagination
+  static const int _videosPerPage = 12;
+  int _currentVideoPage = 0;
+  bool _isLoadingMoreVideos = false;
+  final Map<String, List<Map<String, dynamic>>> _cachedVideos = {};
+  
+  // Common gradient used throughout the view
+  static const LinearGradient _backgroundGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF6633CC), // Purple (matches ProfileView)
+      Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
+    ],
+  );
 
   @override
   void initState() {
@@ -32,6 +49,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadInitialData();
     });
+  }
+
+  @override
+  void dispose() {
+    // Clear cached videos to free memory
+    _cachedVideos.clear();
+    super.dispose();
   }
 
   void _loadInitialData() {
@@ -52,6 +76,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       setState(() {
         _selectedCategory = categoryId;
         _currentCategoryPage = 0; // Reset pagination
+        _currentVideoPage = 0; // Reset video pagination
+        _isLoadingMoreVideos = false; // Reset loading state
       });
       
       // Show visual feedback and fetch content
@@ -62,8 +88,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           orElse: () => discoverState.categories.first,
         );
         
-        // Fetch category-specific content
-        _fetchCategoryContent(categoryId);
+        // Category content is loaded dynamically in _getCategoryVideos
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -103,23 +128,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }
   }
 
-  void _fetchCategoryContent(String categoryId) {
-    try {
-      LoggingService.instance.debug('Fetching content for category: $categoryId', tag: 'DiscoverView');
-      
-      // Simulate API call delay
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          setState(() {
-            // Content is fetched in _getCategoryVideos method
-            // This is where you would normally trigger a provider update
-          });
-        }
-      });
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error fetching category content', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
-    }
-  }
 
   void _navigateToCreatorProfile(BuildContext context, TrendingCreator creator) {
     try {
@@ -141,110 +149,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }
   }
 
-  void _showCreatorQuickActions(BuildContext context, TrendingCreator creator) {
-    try {
-      LoggingService.instance.debug('Showing quick actions for creator: ${creator.username}', tag: 'DiscoverView');
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (context) => Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.person_add, color: Colors.white),
-                title: const Text('Follow', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _followCreator(creator);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.share, color: Colors.white),
-                title: const Text('Share', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _shareCreator(creator);
-                },
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      );
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error showing quick actions', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
-      ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
-    }
-  }
-
-  void _showCreatorInfoDialog(BuildContext context, TrendingCreator creator) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(
-          creator.username,
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Followers: ${_formatFollowerCount(creator.followers)}',
-              style: const TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Status: ${creator.isOnline ? "Online" : "Offline"}',
-              style: TextStyle(
-                color: creator.isOnline ? Colors.green : Colors.grey,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _followCreator(TrendingCreator creator) {
-    LoggingService.instance.info('Following creator: ${creator.username}', tag: 'DiscoverView');
-    // TODO: Implement actual follow functionality
-  }
-
-  void _shareCreator(TrendingCreator creator) {
-    LoggingService.instance.info('Sharing creator: ${creator.username}', tag: 'DiscoverView');
-    // TODO: Implement actual share functionality
-  }
-
-  String _formatFollowerCount(int count) {
-    if (count >= 1000000) {
-      return "${(count / 1000000).toStringAsFixed(1)}M";
-    } else if (count >= 1000) {
-      return "${(count / 1000).toStringAsFixed(1)}K";
-    } else {
-      return count.toString();
-    }
-  }
 
 
   void _navigateToActivity(BuildContext context) {
@@ -265,18 +169,71 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }
   }
 
-  int _getTotalNotificationCount(Map<String, List<dynamic>> grouped) {
-    int count = 0;
-    for (final notifications in grouped.values) {
-      count += notifications.length;
-    }
-    return count;
+  void _showVideoDetails(Map<String, dynamic> video) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(
+          video['title'],
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Creator: ${video['creator']}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Views: ${video['views']} • Duration: ${video['duration']}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _buildNotificationButton(BuildContext context, WidgetRef ref) {
-    final activityState = ref.watch(activityProvider);
-    final notificationCount = _getTotalNotificationCount(activityState.grouped);
+  Future<void> _loadMoreVideos() async {
+    if (_isLoadingMoreVideos || _selectedCategory == null) return;
     
+    setState(() {
+      _isLoadingMoreVideos = true;
+    });
+    
+    try {
+      // Simulate API call delay
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      setState(() {
+        _currentVideoPage++;
+        _isLoadingMoreVideos = false;
+      });
+    } catch (e) {
+      LoggingService.instance.error('Error loading more videos', tag: 'DiscoverView', error: e);
+      setState(() {
+        _isLoadingMoreVideos = false;
+      });
+    }
+  }
+
+  bool _hasMoreVideos(String categoryId) {
+    if (!_cachedVideos.containsKey(categoryId)) return false;
+    final allVideos = _cachedVideos[categoryId]!;
+    final currentCount = (_currentVideoPage + 1) * _videosPerPage;
+    return currentCount < allVideos.length;
+  }
+
+
+  Widget _buildNotificationButton(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       onTap: () {
         LoggingService.instance.debug('GestureDetector onTap triggered', tag: 'DiscoverView');
@@ -285,55 +242,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       child: Container(
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.all(8),
-        child: Stack(
-          children: [
-            const Icon(
-              Icons.notifications_outlined,
-              color: Colors.white,
-              size: 24,
-            ),
-            if (notificationCount > 0)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: TweenAnimationBuilder<double>(
-                  duration: const Duration(milliseconds: 1000),
-                  tween: Tween(begin: 0.8, end: 1.0),
-                  builder: (context, value, child) {
-                    return Transform.scale(
-                      scale: value,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE91E63),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFE91E63).withValues(alpha: 0.3),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          notificationCount > 99 ? '99+' : '$notificationCount',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
+        child: const Icon(
+          Icons.notifications_outlined,
+          color: Colors.white,
+          size: 24,
         ),
       ),
     );
@@ -349,14 +261,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       backgroundColor: Colors.transparent,
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF6633CC), // Purple (matches ProfileView)
-              Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-            ],
-          ),
+          gradient: _backgroundGradient,
         ),
         child: CustomScrollView(
           slivers: [
@@ -430,8 +335,136 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               ),
             ),
 
-            // Content
-            _buildRegularContent(discoverState, discoverViewModel),
+            // Trending Creators Section
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SectionHeader(
+                      title: 'Trending Creators',
+                      action: () => discoverViewModel.loadTrendingCreators(),
+                    ),
+                    
+                    if (discoverState.isLoadingTrendingCreators)
+                      _buildLoadingState()
+                    else if (discoverState.trendingCreators.isEmpty)
+                      _buildEmptyTrendingCreatorsState()
+                    else
+                      _buildTrendingCreatorsList(discoverState.trendingCreators),
+                  ],
+                ),
+              ),
+            ),
+
+            // Categories Section
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SectionHeader(title: 'Categories', action: null),
+                    
+                    SizedBox(
+                      height: 420,
+                      child: PageView.builder(
+                        onPageChanged: (page) {
+                          setState(() {
+                            _currentCategoryPage = page;
+                          });
+                        },
+                        itemCount: (discoverState.categories.length / 6).ceil(),
+                        itemBuilder: (context, pageIndex) {
+                          final startIndex = pageIndex * 6;
+                          final endIndex = (startIndex + 6).clamp(0, discoverState.categories.length);
+                          final pageCategories = discoverState.categories.sublist(startIndex, endIndex);
+                          
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 100),
+                            child: GridView.builder(
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 24,
+                              ),
+                              itemCount: pageCategories.length,
+                              itemBuilder: (context, index) {
+                                final category = pageCategories[index];
+                                return CategoryCard(
+                                  key: ValueKey(category.id),
+                                  category: category,
+                                  isSelected: _selectedCategory == category.id,
+                                  onTap: () => _onCategorySelected(
+                                    _selectedCategory == category.id ? null : category.id,
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    
+                    // Page indicator
+                    Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(
+                          (discoverState.categories.length / 6).ceil(),
+                          (index) => Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: index == _currentCategoryPage
+                                  ? const Color(0xFF40DCD1)
+                                  : const Color(0xFF6B5AE0).withValues(alpha: 0.4),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Content based on category selection
+            if (_selectedCategory == null) ...[
+              // Default view - show resources
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SectionHeader(title: 'Resources', action: null),
+                      
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: discoverState.recommendedContent.length,
+                        itemBuilder: (context, index) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: RecommendedContentCard(
+                              content: discoverState.recommendedContent[index],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else ...[
+              // Category selected - show 3-column video grid with pagination
+              _buildCategoryVideoGridSliver(discoverState, discoverViewModel),
+            ],
 
             // Bottom padding for tab bar
             const SliverToBoxAdapter(
@@ -452,14 +485,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       backgroundColor: Colors.transparent,
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF6633CC), // Purple (matches ProfileView)
-              Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-            ],
-          ),
+          gradient: _backgroundGradient,
         ),
         child: Center(
           child: Column(
@@ -508,56 +534,61 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
 
-  Widget _buildRegularContent(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
+  Widget _buildCategoryVideoGridSliver(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
+    if (_selectedCategory == null) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    
+    // Get the selected category
+    final selectedCategory = discoverState.categories.firstWhere(
+      (cat) => cat.id == _selectedCategory,
+      orElse: () => discoverState.categories.first,
+    );
+    
     return SliverToBoxAdapter(
-      child: Column(
-        children: [
-          const SizedBox(height: 24),
-          
-          // Trending Creators Section (always show)
-          _buildTrendingCreatorsSection(discoverState, discoverViewModel),
-          
-          const SizedBox(height: 24),
-          
-          // Categories Section (always show)
-          _buildCategoriesSection(discoverState, discoverViewModel),
-          
-          const SizedBox(height: 24),
-          
-          // Content based on category selection
-          if (_selectedCategory == null) ...[
-            // Default view - show resources
-            _buildRecommendedContentSection(discoverState, discoverViewModel),
-          ] else ...[
-            // Category selected - show 3-column video grid
-            _buildCategoryVideoGrid(discoverState, discoverViewModel),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Category header with clear button
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${selectedCategory.name} Videos',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedCategory = null;
+                    });
+                  },
+                  child: const Text(
+                    'Clear Filter',
+                    style: TextStyle(
+                      color: Color(0xFF6633CC),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // 3-column video grid with pagination
+            _buildVideoGridWithPagination(selectedCategory.id, discoverState),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildTrendingCreatorsSection(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SectionHeader(
-            title: 'Trending Creators',
-            action: () => discoverViewModel.loadTrendingCreators(),
-          ),
-          
-          if (discoverState.isLoadingTrendingCreators)
-            _buildLoadingState()
-          else if (discoverState.trendingCreators.isEmpty)
-            _buildEmptyTrendingCreatorsState()
-          else
-            _buildTrendingCreatorsList(discoverState.trendingCreators),
-        ],
-      ),
-    );
-  }
 
   Widget _buildLoadingState() {
     return const SizedBox(
@@ -642,7 +673,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     _navigateToCreatorProfile(context, creator);
                   },
                   onLongPress: () {
-                    _showCreatorQuickActions(context, creator);
+                    // TODO: Implement quick actions
+                    LoggingService.instance.debug('Long press on creator: ${creator.username}', tag: 'DiscoverView');
                   },
                 ),
                 
@@ -671,158 +703,81 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
-  Widget _buildCategoriesSection(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionHeader(title: 'Categories', action: null),
-          
-          SizedBox(
-            height: 420, // Significantly increased height to ensure all text is visible
-            child: PageView.builder(
-              onPageChanged: (page) {
-                setState(() {
-                  _currentCategoryPage = page;
-                });
-              },
-              itemCount: (discoverState.categories.length / 6).ceil(),
-              itemBuilder: (context, pageIndex) {
-                final startIndex = pageIndex * 6;
-                final endIndex = (startIndex + 6).clamp(0, discoverState.categories.length);
-                final pageCategories = discoverState.categories.sublist(startIndex, endIndex);
-                
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 100), // Much larger bottom padding to ensure text visibility
-                  child: GridView.builder(
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 24, // Even more spacing between rows
-                    ),
-                    itemCount: pageCategories.length,
-                    itemBuilder: (context, index) {
-                      final category = pageCategories[index];
-                      return CategoryCard(
-                        key: ValueKey(category.id), // Add key for better performance
-                        category: category,
-                        isSelected: _selectedCategory == category.id,
-                        onTap: () => _onCategorySelected(
-                          _selectedCategory == category.id ? null : category.id,
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
-          ),
-          
-          // Page indicator
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(
-                (discoverState.categories.length / 6).ceil(),
-                (index) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: index == _currentCategoryPage
-                        ? const Color(0xFF40DCD1) // Teal for active page
-                        : const Color(0xFF6B5AE0).withValues(alpha: 0.4), // Purple for inactive
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildCategoryVideoGrid(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
-    if (_selectedCategory == null) return const SizedBox.shrink();
-    
-    // Get the selected category
-    final selectedCategory = discoverState.categories.firstWhere(
-      (cat) => cat.id == _selectedCategory,
-      orElse: () => discoverState.categories.first,
-    );
-    
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Category header with clear button
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${selectedCategory.name} Videos',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _selectedCategory = null;
-                  });
-                },
-                child: const Text(
-                  'Clear Filter',
-                  style: TextStyle(
-                    color: Color(0xFF6633CC),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // 3-column video grid
-          _buildVideoGrid(selectedCategory.id, discoverState),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVideoGrid(String categoryId, DiscoverState discoverState) {
-    // Simulate fetching category-specific content
+  Widget _buildVideoGridWithPagination(String categoryId, DiscoverState discoverState) {
+    // Get current page of videos
     final categoryVideos = _getCategoryVideos(categoryId);
     
     if (categoryVideos.isEmpty) {
       return _buildEmptyCategoryState(categoryId);
     }
     
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
-        childAspectRatio: 9 / 16, // 9:16 aspect ratio for portrait videos
-      ),
-      itemCount: categoryVideos.length,
-      itemBuilder: (context, index) {
-        return _buildVideoGridItem(categoryVideos[index], categoryId);
-      },
+    return Column(
+      children: [
+        // Video grid
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 2,
+            mainAxisSpacing: 2,
+            childAspectRatio: 9 / 16, // 9:16 aspect ratio for portrait videos
+          ),
+          itemCount: categoryVideos.length,
+          itemBuilder: (context, index) {
+            return _buildVideoGridItem(categoryVideos[index], categoryId);
+          },
+        ),
+        
+        // Load more button or loading indicator
+        if (_hasMoreVideos(categoryId)) ...[
+          const SizedBox(height: 16),
+          if (_isLoadingMoreVideos)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            )
+          else
+            Center(
+              child: TextButton(
+                onPressed: _loadMoreVideos,
+                child: const Text(
+                  'Load More Videos',
+                  style: TextStyle(
+                    color: Color(0xFF6633CC),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ],
     );
   }
 
   List<Map<String, dynamic>> _getCategoryVideos(String categoryId) {
+    // Check if we have cached videos for this category
+    if (_cachedVideos.containsKey(categoryId)) {
+      final cachedVideos = _cachedVideos[categoryId]!;
+      final endIndex = ((_currentVideoPage + 1) * _videosPerPage).clamp(0, cachedVideos.length);
+      return cachedVideos.sublist(0, endIndex);
+    }
+    
+    // Generate and cache all videos for this category
+    final allVideos = _generateCategoryVideos(categoryId);
+    _cachedVideos[categoryId] = allVideos;
+    
+    // Return first page
+    final endIndex = _videosPerPage.clamp(0, allVideos.length);
+    return allVideos.sublist(0, endIndex);
+  }
+
+  List<Map<String, dynamic>> _generateCategoryVideos(String categoryId) {
     // This would normally fetch from your data source
     // For now, return sample data based on category
     switch (categoryId) {
@@ -978,8 +933,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   Widget _buildVideoGridItem(Map<String, dynamic> video, String categoryId) {
     return GestureDetector(
       onTap: () {
-        // TODO: Navigate to video player
         LoggingService.instance.debug('Tapped video: ${video['title']}', tag: 'DiscoverView');
+        // Navigate to video player or show video details
+        _showVideoDetails(video);
       },
       child: Container(
         decoration: BoxDecoration(
@@ -991,34 +947,52 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Thumbnail
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                video['thumbnail'],
+              child: OptimizedImage(
+                imageUrl: video['thumbnail'],
                 width: double.infinity,
                 height: double.infinity,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(video['color'] ?? 0xFF6633CC),
-                          Color(video['color'] ?? 0xFF6633CC).withValues(alpha: 0.8),
-                        ],
-                      ),
+                placeholder: Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(video['color'] ?? 0xFF6633CC),
+                        Color(video['color'] ?? 0xFF6633CC).withValues(alpha: 0.8),
+                      ],
                     ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.play_circle_outline,
-                        color: Colors.white,
-                        size: 32,
-                      ),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
                     ),
-                  );
-                },
+                  ),
+                ),
+                errorWidget: Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(video['color'] ?? 0xFF6633CC),
+                        Color(video['color'] ?? 0xFF6633CC).withValues(alpha: 0.8),
+                      ],
+                    ),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.play_circle_outline,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                ),
               ),
             ),
             
@@ -1111,37 +1085,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
-  Widget _buildRecommendedContentSection(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
-    return _buildRegularRecommendedContent(discoverState);
-  }
-
-
-
-  Widget _buildRegularRecommendedContent(DiscoverState discoverState) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionHeader(title: 'Resources', action: null),
-          
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: discoverState.recommendedContent.length,
-            itemBuilder: (context, index) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: RecommendedContentCard(
-                  content: discoverState.recommendedContent[index],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // Section Header Widget
