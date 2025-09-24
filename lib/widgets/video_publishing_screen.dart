@@ -11,6 +11,8 @@ import '../services/upload_status_manager.dart';
 import '../services/optimistic_video_service.dart';
 import '../services/hashtag_lock_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../widgets/schedule_post_widget.dart';
+import '../models/scheduled_post.dart';
 
 class VideoPublishingScreen extends StatefulWidget {
   final File videoFile;
@@ -152,6 +154,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
   double _uploadProgress = 0.0;
   bool _isModerating = false;
   final Set<String> _selectedPlatforms = <String>{};
+  PostSchedule? _schedule;
   final VideoUploadService _uploadService = VideoUploadService();
   final VideoModerationService _moderationService = VideoModerationService();
   final EnhancedErrorHandlingService _errorHandler = EnhancedErrorHandlingService();
@@ -238,6 +241,11 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                   
                   // Cross-Platform Sharing
                   _buildSharingSection(),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Schedule Post
+                  _buildSchedulePostSection(),
                   
                   const SizedBox(height: 100), // Space for bottom button
                 ],
@@ -664,6 +672,44 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
     );
   }
 
+  Widget _buildSchedulePostSection() {
+    // Convert selected platforms to PlatformKey enum
+    final List<PlatformKey> selectedPlatformKeys = _selectedPlatforms.map((platform) {
+      switch (platform) {
+        case 'Instagram':
+          return PlatformKey.instagram;
+        case 'TikTok':
+          return PlatformKey.tiktok;
+        case 'YouTube':
+          return PlatformKey.youtube;
+        default:
+          return PlatformKey.instagram; // Default fallback
+      }
+    }).toList();
+
+    // Create media from video file
+    final List<PostMedia> media = [
+      PostMedia(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        type: MediaType.video,
+        src: widget.videoFile.path,
+        aspectRatio: 9.0 / 16.0, // Default aspect ratio for vertical videos
+        durationMs: 30000, // Default 30 seconds, should be calculated from actual video
+      ),
+    ];
+
+    return SchedulePostWidget(
+      selectedPlatforms: selectedPlatformKeys,
+      caption: _caption,
+      media: media,
+      onScheduleChanged: (schedule) {
+        setState(() {
+          _schedule = schedule;
+        });
+      },
+    );
+  }
+
   Widget _buildBottomActions() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -768,9 +814,9 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : const Text(
-                              'Publish',
-                              style: TextStyle(
+                          : Text(
+                              _schedule != null ? 'Schedule' : 'Publish',
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,

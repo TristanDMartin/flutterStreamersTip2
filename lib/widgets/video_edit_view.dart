@@ -5,6 +5,10 @@ import 'dart:async';
 import 'video_publishing_screen.dart';
 import 'video_editor_player.dart';
 import 'video_timeline.dart';
+import 'text_overlay_editor.dart';
+import 'visual_effects_editor.dart';
+import 'audio_editor.dart';
+import 'advanced_video_editor.dart';
 import '../services/video_processing_service.dart';
 import '../services/logging_service.dart';
 
@@ -52,7 +56,7 @@ class _VideoEditViewState extends State<VideoEditView>
   final String _videoId = DateTime.now().millisecondsSinceEpoch.toString();
 
   // Tab options
-  final List<String> _tabs = ['Trim', 'Audio', 'Effects', 'Text'];
+  final List<String> _tabs = ['Trim', 'Audio', 'Effects', 'Text', 'Advanced'];
 
   @override
   void initState() {
@@ -166,7 +170,7 @@ class _VideoEditViewState extends State<VideoEditView>
                       _isDragging = isDragging;
                     });
                   },
-                ),
+              ),
               
               // Editing Tabs
               _buildEditingTabs(),
@@ -174,7 +178,9 @@ class _VideoEditViewState extends State<VideoEditView>
               // Content Area
               Expanded(
                 flex: 2,
+                child: SingleChildScrollView(
                 child: _buildContentArea(),
+                ),
               ),
               
               // Bottom Action Buttons
@@ -374,6 +380,8 @@ class _VideoEditViewState extends State<VideoEditView>
         return _buildEffectsContent();
       case 3:
         return _buildTextContent();
+      case 4:
+        return _buildAdvancedContent();
       default:
         return _buildTrimContent();
     }
@@ -386,15 +394,15 @@ class _VideoEditViewState extends State<VideoEditView>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: [
-              const Text(
-                'Trim Video',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+        children: [
+          const Text(
+            'Trim Video',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
               const Spacer(),
               // Undo/Redo buttons
               if (_historyIndex > 0)
@@ -434,9 +442,9 @@ class _VideoEditViewState extends State<VideoEditView>
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 14,
+                  ),
                 ),
-              ),
-            ],
+              ],
           ),
           
           const SizedBox(height: 16),
@@ -491,14 +499,14 @@ class _VideoEditViewState extends State<VideoEditView>
                             ),
                           )
                         : const Text(
-                            'Apply Trim',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                      'Apply Trim',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -506,20 +514,20 @@ class _VideoEditViewState extends State<VideoEditView>
           ),
           
           if (_isProcessing) ...[
-            const SizedBox(height: 16),
+          const SizedBox(height: 16),
             LinearProgressIndicator(
               value: _processingProgress,
               backgroundColor: Colors.white.withValues(alpha: 0.2),
               valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
             ),
             const SizedBox(height: 8),
-            Text(
+          Text(
               _processingStatus ?? 'Processing...',
-              style: TextStyle(
+            style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 12,
-              ),
+              fontSize: 12,
             ),
+          ),
           ],
         ],
       ),
@@ -532,7 +540,9 @@ class _VideoEditViewState extends State<VideoEditView>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Row(
+            children: [
+              const Text(
             'Audio Settings',
             style: TextStyle(
               color: Colors.white,
@@ -540,94 +550,148 @@ class _VideoEditViewState extends State<VideoEditView>
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 16),
-          
-          // Volume Control
-          Row(
-            children: [
-              const Icon(Icons.volume_up, color: Colors.white, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Slider(
-                  value: _editState?.audioEffects.volume ?? 1.0,
-                  min: 0.0,
-                  max: 2.0,
-                  activeColor: const Color(0xFF9248D2),
-                  inactiveColor: Colors.white.withValues(alpha: 0.3),
-                  onChanged: (value) {
-                    setState(() {
-                      _editState = _editState?.copyWith(
-                        audioEffects: AudioEffects(
-                          volume: value,
-                          isMuted: _editState?.audioEffects.isMuted ?? false,
-                        ),
-                      );
-                      _hasUnsavedChanges = true;
-                    });
-                  },
+              const Spacer(),
+              GestureDetector(
+                onTap: _openAudioEditor,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Text(
+                    'Advanced',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
-              ),
-              Text(
-                '${((_editState?.audioEffects.volume ?? 1.0) * 100).round()}%',
-                style: const TextStyle(color: Colors.white, fontSize: 14),
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          
+          // Quick Audio Controls
+          _buildQuickAudioControls(),
           
           const SizedBox(height: 16),
           
-          // Mute Toggle
-          Row(
-            children: [
-              const Icon(Icons.volume_off, color: Colors.white, size: 20),
-              const SizedBox(width: 12),
-              const Text(
-                'Mute Audio',
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-              const Spacer(),
-              Switch(
-                value: _editState?.audioEffects.isMuted ?? false,
+          // Audio Tracks Preview
+          _buildAudioTracksPreview(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickAudioControls() {
+    return Column(
+      children: [
+        // Volume Control
+        Row(
+          children: [
+            const Icon(Icons.volume_up, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Slider(
+                value: _editState?.audioEffects.volume ?? 1.0,
+                min: 0.0,
+                max: 2.0,
                 activeColor: const Color(0xFF9248D2),
+                inactiveColor: Colors.white.withValues(alpha: 0.3),
                 onChanged: (value) {
                   setState(() {
                     _editState = _editState?.copyWith(
                       audioEffects: AudioEffects(
-                        volume: _editState?.audioEffects.volume ?? 1.0,
-                        isMuted: value,
+                        volume: value,
+                        isMuted: _editState?.audioEffects.isMuted ?? false,
+                        fadeIn: _editState?.audioEffects.fadeIn ?? 0.0,
+                        fadeOut: _editState?.audioEffects.fadeOut ?? 0.0,
+                        audioTrack: _editState?.audioEffects.audioTrack,
                       ),
                     );
                     _hasUnsavedChanges = true;
                   });
                 },
               ),
-            ],
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Apply Audio Effects Button
-          GestureDetector(
-            onTap: _applyAudioEffects,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Apply Audio Effects',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
             ),
+          Text(
+              '${((_editState?.audioEffects.volume ?? 1.0) * 100).round()}%',
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ],
+        ),
+        
+        const SizedBox(height: 12),
+        
+        // Mute Toggle
+        Row(
+          children: [
+            const Icon(Icons.volume_off, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            const Text(
+              'Mute Audio',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+            const Spacer(),
+            Switch(
+              value: _editState?.audioEffects.isMuted ?? false,
+              activeColor: const Color(0xFF9248D2),
+              onChanged: (value) {
+                setState(() {
+                  _editState = _editState?.copyWith(
+                    audioEffects: AudioEffects(
+                      volume: _editState?.audioEffects.volume ?? 1.0,
+                      isMuted: value,
+                      fadeIn: _editState?.audioEffects.fadeIn ?? 0.0,
+                      fadeOut: _editState?.audioEffects.fadeOut ?? 0.0,
+                      audioTrack: _editState?.audioEffects.audioTrack,
+                    ),
+                  );
+                  _hasUnsavedChanges = true;
+                });
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAudioTracksPreview() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Audio Tracks',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Original Audio',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          if (_editState?.audioEffects.audioTrack != null)
+            Text(
+              _editState!.audioEffects.audioTrack!,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
       ),
@@ -635,21 +699,14 @@ class _VideoEditViewState extends State<VideoEditView>
   }
 
   Widget _buildEffectsContent() {
-    final effects = [
-      {'name': 'None', 'icon': Icons.remove},
-      {'name': 'Vintage', 'icon': Icons.filter_vintage},
-      {'name': 'Black & White', 'icon': Icons.filter_b_and_w},
-      {'name': 'Sepia', 'icon': Icons.filter_tilt_shift},
-      {'name': 'Brightness', 'icon': Icons.brightness_6},
-      {'name': 'Contrast', 'icon': Icons.contrast},
-    ];
-
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Row(
+            children: [
+              const Text(
             'Visual Effects',
             style: TextStyle(
               color: Colors.white,
@@ -657,87 +714,157 @@ class _VideoEditViewState extends State<VideoEditView>
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 16),
-          
-          // Effects Grid
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.2,
-            ),
-            itemCount: effects.length,
-            itemBuilder: (context, index) {
-              final effect = effects[index];
-              final isSelected = _editState?.visualEffects.any((e) => e.type == effect['name']) ?? false;
-              
-              return GestureDetector(
-                onTap: () => _selectEffect(effect['name'] as String),
+              const Spacer(),
+              GestureDetector(
+                onTap: _openVisualEffectsEditor,
                 child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isSelected 
-                        ? const Color(0xFF9248D2).withValues(alpha: 0.3)
-                        : Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isSelected 
-                          ? const Color(0xFF9248D2)
-                          : Colors.white.withValues(alpha: 0.2),
-                      width: 1,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Text(
+                    'Advanced',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        effect['icon'] as IconData,
-                        color: isSelected ? const Color(0xFF9248D2) : Colors.white,
-                        size: 24,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        effect['name'] as String,
-                        style: TextStyle(
-                          color: isSelected ? const Color(0xFF9248D2) : Colors.white,
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
-              );
-            },
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Apply Effects Button
-          GestureDetector(
-            onTap: _applyVisualEffects,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
-                ),
-                borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
-                'Apply Effects',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+            ],
+          ),
+          const SizedBox(height: 8),
+          
+          // Quick Effects Grid
+          _buildQuickEffectsGrid(),
+          
+          const SizedBox(height: 8),
+          
+          // Applied Effects Preview
+          _buildAppliedEffectsPreview(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickEffectsGrid() {
+    final effects = [
+      {'name': 'None', 'icon': Icons.remove},
+      {'name': 'Vintage', 'icon': Icons.filter_vintage},
+      {'name': 'B&W', 'icon': Icons.filter_b_and_w},
+      {'name': 'Sepia', 'icon': Icons.filter_tilt_shift},
+      {'name': 'Bright', 'icon': Icons.brightness_6},
+      {'name': 'Contrast', 'icon': Icons.contrast},
+    ];
+
+    return SizedBox(
+      height: 100, // Reduced height
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 6,
+          mainAxisSpacing: 6,
+          childAspectRatio: 1.1, // Slightly taller
+        ),
+        itemCount: effects.length,
+        itemBuilder: (context, index) {
+          final effect = effects[index];
+          final isSelected = _editState?.visualEffects.any((e) => e.type == effect['name']) ?? false;
+          
+          return GestureDetector(
+            onTap: () => _selectEffect(effect['name'] as String),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isSelected 
+                    ? const Color(0xFF9248D2).withValues(alpha: 0.3)
+                    : Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isSelected 
+                      ? const Color(0xFF9248D2)
+                      : Colors.white.withValues(alpha: 0.2),
+                  width: 1,
                 ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    effect['icon'] as IconData,
+                    color: isSelected ? const Color(0xFF9248D2) : Colors.white,
+                    size: 18,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    effect['name'] as String,
+                    style: TextStyle(
+                      color: isSelected ? const Color(0xFF9248D2) : Colors.white,
+                      fontSize: 9,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildAppliedEffectsPreview() {
+    if (_editState?.visualEffects.isEmpty ?? true) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
           ),
+        ),
+        child: const Text(
+          'No effects applied',
+          style: TextStyle(color: Colors.white70, fontSize: 10),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Applied Effects',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 2),
+          ..._editState!.visualEffects.map((effect) => Text(
+            '• ${effect.type}',
+            style: const TextStyle(color: Colors.white70, fontSize: 9),
+          )),
         ],
       ),
     );
@@ -749,8 +876,175 @@ class _VideoEditViewState extends State<VideoEditView>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              const Text(
+                'Text Overlays',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _openTextOverlayEditor,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Text(
+                    'Advanced',
+            style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Quick Add Text
+          _buildQuickTextInput(),
+          
+          const SizedBox(height: 16),
+          
+          // Text Overlays Preview
+          _buildTextOverlaysPreview(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickTextInput() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Quick Add Text',
+          style: TextStyle(
+            color: Colors.white,
+              fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Enter text to overlay...',
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF9248D2)),
+            ),
+          ),
+          onChanged: (value) {
+            setState(() {
+              _hasUnsavedChanges = true;
+            });
+          },
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: _addTextOverlay,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+              ),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'Add Text Overlay',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            ),
+          ),
+        ],
+    );
+  }
+
+  Widget _buildTextOverlaysPreview() {
+    if (_editState?.textOverlays.isEmpty ?? true) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
+          ),
+        ),
+        child: const Text(
+          'No text overlays added',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           const Text(
-            'Add Text',
+            'Text Overlays',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ..._editState!.textOverlays.map((overlay) => Text(
+            '• "${overlay.text}" (${overlay.fontSize.round()}px)',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdvancedContent() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Advanced Video Features',
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -759,80 +1053,95 @@ class _VideoEditViewState extends State<VideoEditView>
           ),
           const SizedBox(height: 16),
           
-          // Text Input
-          TextField(
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Enter text to overlay...',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF9248D2)),
-              ),
+          // Advanced features grid
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.5,
             ),
-            onChanged: (value) {
-              setState(() {
-                _hasUnsavedChanges = true;
-              });
+            itemCount: _advancedFeatures.length,
+            itemBuilder: (context, index) {
+              final feature = _advancedFeatures[index];
+              return GestureDetector(
+                onTap: feature['onTap'] as VoidCallback,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        feature['icon'] as IconData,
+                        color: const Color(0xFF9248D2),
+                        size: 32,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        feature['title'] as String,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        feature['description'] as String,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
             },
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Text Style Options
-          Row(
-            children: [
-              Expanded(
-                child: _buildStyleOption('Size', Icons.text_fields, () {}),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStyleOption('Color', Icons.palette, () {}),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildStyleOption('Position', Icons.open_with, () {}),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Add Text Button
-          GestureDetector(
-            onTap: _addTextOverlay,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Add Text Overlay',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
           ),
         ],
       ),
     );
   }
+
+  List<Map<String, dynamic>> get _advancedFeatures => [
+    {
+      'title': 'Speed Control',
+      'description': 'Slow motion & fast forward',
+      'icon': Icons.speed,
+      'onTap': _openAdvancedVideoEditor,
+    },
+    {
+      'title': 'Rotation',
+      'description': 'Rotate & flip video',
+      'icon': Icons.rotate_right,
+      'onTap': _openAdvancedVideoEditor,
+    },
+    {
+      'title': 'Crop & Resize',
+      'description': 'Crop to different ratios',
+      'icon': Icons.crop,
+      'onTap': _openAdvancedVideoEditor,
+    },
+    {
+      'title': 'Quality',
+      'description': 'Adjust video quality',
+      'icon': Icons.high_quality,
+      'onTap': _openAdvancedVideoEditor,
+    },
+  ];
 
   Widget _buildStyleOption(String label, IconData icon, VoidCallback onTap) {
     return GestureDetector(
@@ -1178,6 +1487,78 @@ class _VideoEditViewState extends State<VideoEditView>
       _editState = _editState?.copyWith(textOverlays: textOverlays);
       _hasUnsavedChanges = true;
     });
+  }
+
+  void _openTextOverlayEditor() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TextOverlayEditor(
+          textOverlays: _editState?.textOverlays ?? [],
+          videoDuration: _videoDuration,
+          onTextOverlaysChanged: (overlays) {
+            setState(() {
+              _editState = _editState?.copyWith(textOverlays: overlays);
+              _hasUnsavedChanges = true;
+            });
+          },
+          onClose: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+  }
+
+  void _openVisualEffectsEditor() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => VisualEffectsEditor(
+          visualEffects: _editState?.visualEffects ?? [],
+          videoDuration: _videoDuration,
+          onEffectsChanged: (effects) {
+            setState(() {
+              _editState = _editState?.copyWith(visualEffects: effects);
+              _hasUnsavedChanges = true;
+            });
+          },
+          onClose: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+  }
+
+  void _openAudioEditor() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AudioEditor(
+          audioEffects: _editState?.audioEffects ?? AudioEffects(),
+          videoDuration: _videoDuration,
+          onAudioEffectsChanged: (effects) {
+            setState(() {
+              _editState = _editState?.copyWith(audioEffects: effects);
+              _hasUnsavedChanges = true;
+            });
+          },
+          onClose: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+  }
+
+  void _openAdvancedVideoEditor() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AdvancedVideoEditor(
+          videoFile: widget.videoFile,
+          videoDuration: _videoDuration,
+          onSettingsChanged: (settings) {
+            // Handle advanced video settings
+            setState(() {
+              _hasUnsavedChanges = true;
+            });
+          },
+          onClose: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
   }
 
   Future<void> _saveDraft() async {

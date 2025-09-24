@@ -4,6 +4,7 @@ import 'settings_view.dart';
 import '../pages/bookmark_view.dart';
 import '../widgets/account_management_menu.dart';
 import '../widgets/insights_view.dart';
+import 'manage_posts_view.dart';
 
 class MenuView extends StatelessWidget {
   const MenuView({super.key});
@@ -181,7 +182,7 @@ class MenuView extends StatelessWidget {
           icon: Icons.schedule,
           title: 'Scheduled',
           subtitle: 'Manage posts',
-          onTap: () => _navigateToPage(context, 'Scheduled Content'),
+          onTap: () => _navigateToManagePosts(context),
         ),
         _buildMenuCard(
           context,
@@ -301,6 +302,14 @@ class MenuView extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const SettingsView(),
+      ),
+    );
+  }
+
+  void _navigateToManagePosts(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const ManagePostsView(),
       ),
     );
   }
