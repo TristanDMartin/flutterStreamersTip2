@@ -72,9 +72,10 @@ class RealUserDataService {
         return TrendingCreator(
           id: doc.id,
           username: data['username'] ?? 'Unknown',
+          displayName: data['displayName'],
           avatarURL: data['avatarURL'],
-          followers: data['followerCount'] ?? 0,
-          isOnline: (data['onlineStatus'] ?? 'offline') == 'online',
+          followerCount: data['followerCount'] ?? 0,
+          isActive: (data['onlineStatus'] ?? 'offline') == 'online',
         );
       }).toList();
 

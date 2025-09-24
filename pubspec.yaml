@@ -44,6 +44,7 @@ dependencies:
   hooks_riverpod: ^2.4.9
   equatable: ^2.0.5
   flutter_svg: ^2.0.9
+  url_launcher: ^6.2.5
   
   # Video Processing
   path_provider: ^2.1.1
@@ -56,7 +57,6 @@ dependencies:
   # Contacts & Invites
   # contacts_service: ^0.6.3  # Has namespace issues, using custom implementation
   crypto: ^3.0.3
-  url_launcher: ^6.2.5
   
   # HTTP & Networking
   http: ^1.1.2
@@ -66,6 +66,7 @@ dependencies:
   shared_preferences: ^2.2.2
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  sqflite: ^2.3.0
   
   # Other
   intl: ^0.20.2

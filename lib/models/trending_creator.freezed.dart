@@ -18,9 +18,10 @@ final _privateConstructorUsedError = UnsupportedError(
 mixin _$TrendingCreator {
   String get id => throw _privateConstructorUsedError;
   String get username => throw _privateConstructorUsedError;
+  String? get displayName => throw _privateConstructorUsedError;
   String? get avatarURL => throw _privateConstructorUsedError;
-  int get followers => throw _privateConstructorUsedError;
-  bool get isOnline => throw _privateConstructorUsedError;
+  int get followerCount => throw _privateConstructorUsedError;
+  bool get isActive => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $TrendingCreatorCopyWith<TrendingCreator> get copyWith =>
@@ -36,9 +37,10 @@ abstract class $TrendingCreatorCopyWith<$Res> {
   $Res call(
       {String id,
       String username,
+      String? displayName,
       String? avatarURL,
-      int followers,
-      bool isOnline});
+      int followerCount,
+      bool isActive});
 }
 
 /// @nodoc
@@ -56,9 +58,10 @@ class _$TrendingCreatorCopyWithImpl<$Res, $Val extends TrendingCreator>
   $Res call({
     Object? id = null,
     Object? username = null,
+    Object? displayName = freezed,
     Object? avatarURL = freezed,
-    Object? followers = null,
-    Object? isOnline = null,
+    Object? followerCount = null,
+    Object? isActive = null,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -69,17 +72,21 @@ class _$TrendingCreatorCopyWithImpl<$Res, $Val extends TrendingCreator>
           ? _value.username
           : username // ignore: cast_nullable_to_non_nullable
               as String,
+      displayName: freezed == displayName
+          ? _value.displayName
+          : displayName // ignore: cast_nullable_to_non_nullable
+              as String?,
       avatarURL: freezed == avatarURL
           ? _value.avatarURL
           : avatarURL // ignore: cast_nullable_to_non_nullable
               as String?,
-      followers: null == followers
-          ? _value.followers
-          : followers // ignore: cast_nullable_to_non_nullable
+      followerCount: null == followerCount
+          ? _value.followerCount
+          : followerCount // ignore: cast_nullable_to_non_nullable
               as int,
-      isOnline: null == isOnline
-          ? _value.isOnline
-          : isOnline // ignore: cast_nullable_to_non_nullable
+      isActive: null == isActive
+          ? _value.isActive
+          : isActive // ignore: cast_nullable_to_non_nullable
               as bool,
     ) as $Val);
   }
@@ -96,9 +103,10 @@ abstract class _$$TrendingCreatorImplCopyWith<$Res>
   $Res call(
       {String id,
       String username,
+      String? displayName,
       String? avatarURL,
-      int followers,
-      bool isOnline});
+      int followerCount,
+      bool isActive});
 }
 
 /// @nodoc
@@ -114,9 +122,10 @@ class __$$TrendingCreatorImplCopyWithImpl<$Res>
   $Res call({
     Object? id = null,
     Object? username = null,
+    Object? displayName = freezed,
     Object? avatarURL = freezed,
-    Object? followers = null,
-    Object? isOnline = null,
+    Object? followerCount = null,
+    Object? isActive = null,
   }) {
     return _then(_$TrendingCreatorImpl(
       id: null == id
@@ -127,17 +136,21 @@ class __$$TrendingCreatorImplCopyWithImpl<$Res>
           ? _value.username
           : username // ignore: cast_nullable_to_non_nullable
               as String,
+      displayName: freezed == displayName
+          ? _value.displayName
+          : displayName // ignore: cast_nullable_to_non_nullable
+              as String?,
       avatarURL: freezed == avatarURL
           ? _value.avatarURL
           : avatarURL // ignore: cast_nullable_to_non_nullable
               as String?,
-      followers: null == followers
-          ? _value.followers
-          : followers // ignore: cast_nullable_to_non_nullable
+      followerCount: null == followerCount
+          ? _value.followerCount
+          : followerCount // ignore: cast_nullable_to_non_nullable
               as int,
-      isOnline: null == isOnline
-          ? _value.isOnline
-          : isOnline // ignore: cast_nullable_to_non_nullable
+      isActive: null == isActive
+          ? _value.isActive
+          : isActive // ignore: cast_nullable_to_non_nullable
               as bool,
     ));
   }
@@ -149,26 +162,29 @@ class _$TrendingCreatorImpl implements _TrendingCreator {
   const _$TrendingCreatorImpl(
       {required this.id,
       required this.username,
+      this.displayName,
       this.avatarURL,
-      this.followers = 0,
-      this.isOnline = false});
+      this.followerCount = 0,
+      this.isActive = false});
 
   @override
   final String id;
   @override
   final String username;
   @override
+  final String? displayName;
+  @override
   final String? avatarURL;
   @override
   @JsonKey()
-  final int followers;
+  final int followerCount;
   @override
   @JsonKey()
-  final bool isOnline;
+  final bool isActive;
 
   @override
   String toString() {
-    return 'TrendingCreator(id: $id, username: $username, avatarURL: $avatarURL, followers: $followers, isOnline: $isOnline)';
+    return 'TrendingCreator(id: $id, username: $username, displayName: $displayName, avatarURL: $avatarURL, followerCount: $followerCount, isActive: $isActive)';
   }
 
   @override
@@ -179,17 +195,19 @@ class _$TrendingCreatorImpl implements _TrendingCreator {
             (identical(other.id, id) || other.id == id) &&
             (identical(other.username, username) ||
                 other.username == username) &&
+            (identical(other.displayName, displayName) ||
+                other.displayName == displayName) &&
             (identical(other.avatarURL, avatarURL) ||
                 other.avatarURL == avatarURL) &&
-            (identical(other.followers, followers) ||
-                other.followers == followers) &&
-            (identical(other.isOnline, isOnline) ||
-                other.isOnline == isOnline));
+            (identical(other.followerCount, followerCount) ||
+                other.followerCount == followerCount) &&
+            (identical(other.isActive, isActive) ||
+                other.isActive == isActive));
   }
 
   @override
-  int get hashCode =>
-      Object.hash(runtimeType, id, username, avatarURL, followers, isOnline);
+  int get hashCode => Object.hash(runtimeType, id, username, displayName,
+      avatarURL, followerCount, isActive);
 
   @JsonKey(ignore: true)
   @override
@@ -203,20 +221,23 @@ abstract class _TrendingCreator implements TrendingCreator {
   const factory _TrendingCreator(
       {required final String id,
       required final String username,
+      final String? displayName,
       final String? avatarURL,
-      final int followers,
-      final bool isOnline}) = _$TrendingCreatorImpl;
+      final int followerCount,
+      final bool isActive}) = _$TrendingCreatorImpl;
 
   @override
   String get id;
   @override
   String get username;
   @override
+  String? get displayName;
+  @override
   String? get avatarURL;
   @override
-  int get followers;
+  int get followerCount;
   @override
-  bool get isOnline;
+  bool get isActive;
   @override
   @JsonKey(ignore: true)
   _$$TrendingCreatorImplCopyWith<_$TrendingCreatorImpl> get copyWith =>

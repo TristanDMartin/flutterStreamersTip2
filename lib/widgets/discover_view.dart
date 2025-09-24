@@ -12,8 +12,12 @@ import 'streamer_card_view.dart';
 import '../services/logging_service.dart';
 import '../services/error_handler_service.dart';
 import '../services/robust_auth_service.dart';
+import '../services/caching_service.dart';
+import '../services/offline_storage_service.dart';
+import '../services/accessibility_service.dart';
 import 'optimized_image.dart';
 import 'instant_response_button.dart';
+import 'lazy_loading_list.dart';
 
 class DiscoverView extends ConsumerStatefulWidget {
   const DiscoverView({super.key});
@@ -32,6 +36,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   bool _isLoadingMoreVideos = false;
   final Map<String, List<Map<String, dynamic>>> _cachedVideos = {};
   
+  // Services
+  final CachingService _cachingService = CachingService();
+  final OfflineStorageService _offlineStorage = OfflineStorageService();
+  final AccessibilityService _accessibilityService = AccessibilityService();
+  
   // Common gradient used throughout the view
   static const LinearGradient _backgroundGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -45,8 +54,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   @override
   void initState() {
     super.initState();
-    // Load initial data
+    // Initialize accessibility service
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _accessibilityService.initialize(context);
       _loadInitialData();
     });
   }
@@ -66,6 +76,151 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       LoggingService.instance.error('Error loading initial data', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
       ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
     }
+  }
+
+  // Lazy loading methods
+  Future<List<TrendingCreator>> _loadTrendingCreators(int page, int limit) async {
+    try {
+      // Check cache first
+      final cacheKey = 'trending_creators_${page}_$limit';
+      final cachedData = _cachingService.getMemoryCache<List<TrendingCreator>>(cacheKey);
+      if (cachedData != null) {
+        return cachedData;
+      }
+
+      // Load from offline storage if available
+      final offlineCreators = await _offlineStorage.getTrendingCreators();
+      if (offlineCreators.isNotEmpty) {
+        final startIndex = page * limit;
+        final endIndex = (startIndex + limit).clamp(0, offlineCreators.length);
+        final pageData = offlineCreators.sublist(startIndex, endIndex);
+        
+        // Cache the result
+        _cachingService.setMemoryCache(cacheKey, pageData);
+        return pageData;
+      }
+
+      // Fallback to provider
+      final discoverState = ref.read(discoverProvider);
+      final startIndex = page * limit;
+      final endIndex = (startIndex + limit).clamp(0, discoverState.trendingCreators.length);
+      final pageData = discoverState.trendingCreators.sublist(startIndex, endIndex);
+      
+      // Cache the result
+      _cachingService.setMemoryCache(cacheKey, pageData);
+      return pageData;
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Failed to load trending creators',
+        tag: 'DiscoverView',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return [];
+    }
+  }
+
+  Widget _buildTrendingCreatorCard(BuildContext context, TrendingCreator creator, int index) {
+    return _accessibilityService.createAccessibleListItem(
+      semanticLabel: 'Trending creator ${creator.displayName ?? creator.username}',
+      semanticHint: 'Tap to view profile',
+      onTap: () => _onCreatorTapped(creator),
+      hapticFeedbackType: AccessibilityHapticFeedbackType.light,
+      child: _buildTrendingCreatorItem(creator),
+    );
+  }
+
+  void _onCreatorTapped(TrendingCreator creator) {
+    // TODO: Navigate to creator profile
+    LoggingService.instance.debug('Creator tapped: ${creator.username}', tag: 'DiscoverView');
+  }
+
+  Widget _buildTrendingCreatorItem(TrendingCreator creator) {
+    return Container(
+      margin: const EdgeInsets.only(right: 12),
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 30,
+            backgroundImage: creator.avatarURL != null 
+              ? NetworkImage(creator.avatarURL!) 
+              : null,
+            child: creator.avatarURL == null 
+              ? Text(creator.username[0].toUpperCase())
+              : null,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            creator.displayName ?? creator.username,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            '${(creator.followerCount / 1000).toStringAsFixed(0)}K followers',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildErrorState(BuildContext context, String error) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: _accessibilityService.getAccessibleIconSize(48),
+            color: Colors.red,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Failed to load creators',
+            style: _accessibilityService.getAccessibleTextStyle(
+              baseStyle: Theme.of(context).textTheme.headlineSmall!,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            error,
+            style: _accessibilityService.getAccessibleTextStyle(
+              baseStyle: Theme.of(context).textTheme.bodyMedium!,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Get responsive spacing based on screen size
+  /// On very small screens, clamp to min 12dp gaps
+  /// On tall screens, scale up to 24-32dp for a more breathable look
+  double _getResponsiveSpacing(BuildContext context, double minSpacing, double maxSpacing) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    // Very small screens - clamp to minimum
+    if (screenHeight < 600 || screenWidth < 360) {
+      return 12.0;
+    }
+    
+    // Calculate responsive spacing based on screen height
+    final normalizedHeight = (screenHeight - 600) / (800 - 600); // Normalize between 600-800 height
+    final spacing = minSpacing + (normalizedHeight * (maxSpacing - minSpacing));
+    
+    return spacing.clamp(12.0, 32.0); // Clamp between 12-32dp
   }
 
   void _onCategorySelected(String? categoryId) {
@@ -254,9 +409,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   @override
   Widget build(BuildContext context) {
-    try {
-      final discoverViewModel = ref.watch(discoverProvider.notifier);
-      final discoverState = ref.watch(discoverProvider);
+    final discoverViewModel = ref.watch(discoverProvider.notifier);
+    final discoverState = ref.watch(discoverProvider);
 
       return Scaffold(
       backgroundColor: Colors.transparent,
@@ -337,7 +491,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               ),
             ),
 
-            // Trending Creators Section
+            // Trending Creators Section with Lazy Loading
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -349,12 +503,17 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                       action: () => discoverViewModel.loadTrendingCreators(),
                     ),
                     
-                    if (discoverState.isLoadingTrendingCreators)
-                      _buildLoadingState()
-                    else if (discoverState.trendingCreators.isEmpty)
-                      _buildEmptyTrendingCreatorsState()
-                    else
-                      _buildTrendingCreatorsList(discoverState.trendingCreators),
+                    SizedBox(
+                      height: 200,
+                      child: LazyLoadingList<TrendingCreator>(
+                        loadData: _loadTrendingCreators,
+                        itemBuilder: _buildTrendingCreatorCard,
+                        itemsPerPage: 10,
+                        emptyBuilder: (context) => _buildEmptyTrendingCreatorsState(),
+                        loadingBuilder: (context) => _buildLoadingState(),
+                        errorBuilder: _buildErrorState,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -369,6 +528,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                   children: [
                     const SectionHeader(title: 'Categories', action: null),
                     
+                    // Categories PageView with proper spacing
                     SizedBox(
                       height: 420,
                       child: PageView.builder(
@@ -384,7 +544,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                           final pageCategories = discoverState.categories.sublist(startIndex, endIndex);
                           
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 100),
+                            // Add bottom padding to prevent overlap with dots
+                            padding: EdgeInsets.only(
+                              bottom: _getResponsiveSpacing(context, 12, 12) + 12, // Dots height + spacing
+                            ),
                             child: GridView.builder(
                               physics: const NeverScrollableScrollPhysics(),
                               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -395,12 +558,22 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                               itemCount: pageCategories.length,
                               itemBuilder: (context, index) {
                                 final category = pageCategories[index];
-                                return CategoryCard(
-                                  key: ValueKey(category.id),
-                                  category: category,
-                                  isSelected: _selectedCategory == category.id,
-                                  onTap: () => _onCategorySelected(
+                                return _accessibilityService.createAccessibleButton(
+                                  semanticLabel: 'Category ${category.name}',
+                                  semanticHint: _selectedCategory == category.id 
+                                    ? 'Currently selected category. Tap to deselect.'
+                                    : 'Tap to select this category',
+                                  onPressed: () => _onCategorySelected(
                                     _selectedCategory == category.id ? null : category.id,
+                                  ),
+                                  hapticFeedbackType: AccessibilityHapticFeedbackType.light,
+                                  child: CategoryCard(
+                                    key: ValueKey(category.id),
+                                    category: category,
+                                    isSelected: _selectedCategory == category.id,
+                                    onTap: () => _onCategorySelected(
+                                      _selectedCategory == category.id ? null : category.id,
+                                    ),
                                   ),
                                 );
                               },
@@ -410,21 +583,31 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                       ),
                     ),
                     
-                    // Page indicator
+                    // Responsive spacing between categories and dots (16-24dp as specified)
+                    SizedBox(
+                      height: _getResponsiveSpacing(context, 16, 24), // Normal spacing
+                    ),
+                    
+                    // Page indicator with proper safe area handling
                     Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: List.generate(
-                          (discoverState.categories.length / 6).ceil(),
-                          (index) => Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: index == _currentCategoryPage
-                                  ? const Color(0xFF40DCD1)
-                                  : const Color(0xFF6B5AE0).withValues(alpha: 0.4),
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          bottom: MediaQuery.of(context).padding.bottom + _getResponsiveSpacing(context, 16, 24),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: List.generate(
+                            (discoverState.categories.length / 6).ceil(),
+                            (index) => Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: index == _currentCategoryPage
+                                    ? const Color(0xFF40DCD1)
+                                    : const Color(0xFF6B5AE0).withValues(alpha: 0.4),
+                              ),
                             ),
                           ),
                         ),
@@ -476,65 +659,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         ),
       ),
     );
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error building DiscoverView', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
-      return _buildErrorState(context, e);
-    }
   }
 
-  Widget _buildErrorState(BuildContext context, Object error) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: _backgroundGradient,
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Colors.white,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Something went wrong',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Please try again later',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 24),
-              InstantElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _loadInitialData();
-                  });
-                },
-                hapticType: HapticFeedbackType.mediumImpact,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
 
   Widget _buildCategoryVideoGridSliver(DiscoverState discoverState, DiscoverNotifier discoverViewModel) {

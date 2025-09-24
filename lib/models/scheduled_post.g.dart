@@ -26,16 +26,14 @@ _$ScheduledPostImpl _$$ScheduledPostImplFromJson(Map<String, dynamic> json) =>
               ?.map((e) => PlatformConfig.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
-      schedule: PostSchedule.fromJson(json['schedule'] as Map<String, dynamic>),
+      schedule: json['schedule'] == null
+          ? null
+          : PostSchedule.fromJson(json['schedule'] as Map<String, dynamic>),
       analyticsHints:
           json['analyticsHints'] as Map<String, dynamic>? ?? const {},
       idempotencyKey: json['idempotencyKey'] as String?,
-      createdAtUtc: json['createdAtUtc'] == null
-          ? null
-          : DateTime.parse(json['createdAtUtc'] as String),
-      updatedAtUtc: json['updatedAtUtc'] == null
-          ? null
-          : DateTime.parse(json['updatedAtUtc'] as String),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
 
 Map<String, dynamic> _$$ScheduledPostImplToJson(_$ScheduledPostImpl instance) =>
@@ -51,8 +49,8 @@ Map<String, dynamic> _$$ScheduledPostImplToJson(_$ScheduledPostImpl instance) =>
       'schedule': instance.schedule,
       'analyticsHints': instance.analyticsHints,
       'idempotencyKey': instance.idempotencyKey,
-      'createdAtUtc': instance.createdAtUtc?.toIso8601String(),
-      'updatedAtUtc': instance.updatedAtUtc?.toIso8601String(),
+      'createdAt': instance.createdAt.toIso8601String(),
+      'updatedAt': instance.updatedAt.toIso8601String(),
     };
 
 const _$PostStatusEnumMap = {

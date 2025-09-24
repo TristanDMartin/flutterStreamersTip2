@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 import '../models/scheduled_post.dart';
 
 class ScheduledPostService {
+  // Mock implementation for development - replace with real API when ready
+  static const bool _useMockData = true;
   static const String _baseUrl = 'https://your-api-endpoint.com/api';
   String? _authToken;
 
@@ -25,6 +27,25 @@ class ScheduledPostService {
     required PostSchedule schedule,
     Map<String, dynamic>? analyticsHints,
   }) async {
+    if (_useMockData) {
+      await Future.delayed(const Duration(milliseconds: 800)); // Simulate network delay
+      return ScheduledPost(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        authorId: 'user123',
+        status: PostStatus.scheduled,
+        caption: caption,
+        tags: tags,
+        visibility: visibility,
+        media: media,
+        platforms: platforms,
+        schedule: schedule,
+        analyticsHints: analyticsHints ?? {},
+        idempotencyKey: DateTime.now().millisecondsSinceEpoch.toString(),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+    }
+
     final response = await http.post(
       Uri.parse('$_baseUrl/posts'),
       headers: _headers,
@@ -55,6 +76,12 @@ class ScheduledPostService {
     int? limit,
     int? offset,
   }) async {
+    if (_useMockData) {
+      // Return mock data for development
+      await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
+      return _getMockScheduledPosts(status, platform, searchQuery);
+    }
+
     final queryParams = <String, String>{};
     
     if (status != null) queryParams['status'] = status.name;
@@ -150,6 +177,32 @@ class ScheduledPostService {
 
   // Publish a post immediately
   Future<ScheduledPost> publishNow(String postId) async {
+    if (_useMockData) {
+      await Future.delayed(const Duration(milliseconds: 1000)); // Simulate publishing delay
+      // Return a mock published post
+      return ScheduledPost(
+        id: postId,
+        authorId: 'user123',
+        status: PostStatus.published,
+        caption: 'Mock published post',
+        tags: ['published'],
+        visibility: PostVisibility.public,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        media: [],
+        platforms: [],
+        schedule: PostSchedule(
+          scheduledAtUtc: DateTime.now(),
+          timezone: 'UTC',
+          perPlatform: {},
+          createdAtUtc: DateTime.now(),
+          updatedAtUtc: DateTime.now(),
+        ),
+        analyticsHints: {},
+        idempotencyKey: postId,
+      );
+    }
+
     final response = await http.post(
       Uri.parse('$_baseUrl/posts/$postId/publishNow'),
       headers: _headers,
@@ -164,6 +217,32 @@ class ScheduledPostService {
 
   // Cancel a scheduled post
   Future<ScheduledPost> cancelPost(String postId) async {
+    if (_useMockData) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      // Return a mock canceled post
+      return ScheduledPost(
+        id: postId,
+        authorId: 'user123',
+        status: PostStatus.canceled,
+        caption: 'Mock canceled post',
+        tags: ['canceled'],
+        visibility: PostVisibility.public,
+        media: [],
+        platforms: [],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        schedule: PostSchedule(
+          scheduledAtUtc: DateTime.now(),
+          timezone: 'UTC',
+          perPlatform: {},
+          createdAtUtc: DateTime.now(),
+          updatedAtUtc: DateTime.now(),
+        ),
+        analyticsHints: {},
+        idempotencyKey: postId,
+      );
+    }
+
     final response = await http.post(
       Uri.parse('$_baseUrl/posts/$postId/cancel'),
       headers: _headers,
@@ -178,6 +257,32 @@ class ScheduledPostService {
 
   // Retry a failed post
   Future<ScheduledPost> retryPost(String postId) async {
+    if (_useMockData) {
+      await Future.delayed(const Duration(milliseconds: 800));
+      // Return a mock retry post
+      return ScheduledPost(
+        id: postId,
+        authorId: 'user123',
+        status: PostStatus.scheduled,
+        caption: 'Mock retry post',
+        tags: ['retry'],
+        visibility: PostVisibility.public,
+        media: [],
+        platforms: [],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        schedule: PostSchedule(
+          scheduledAtUtc: DateTime.now().add(const Duration(hours: 1)),
+          timezone: 'UTC',
+          perPlatform: {},
+          createdAtUtc: DateTime.now(),
+          updatedAtUtc: DateTime.now(),
+        ),
+        analyticsHints: {},
+        idempotencyKey: postId,
+      );
+    }
+
     final response = await http.post(
       Uri.parse('$_baseUrl/posts/$postId/retry'),
       headers: _headers,
@@ -301,5 +406,154 @@ class ScheduledPostService {
     } else {
       throw Exception('Failed to fetch publishing history: ${response.body}');
     }
+  }
+
+  // Mock data for development
+  List<ScheduledPost> _getMockScheduledPosts(PostStatus? status, PlatformKey? platform, String? searchQuery) {
+    final mockPosts = [
+      ScheduledPost(
+        id: '1',
+        authorId: 'user123',
+        status: PostStatus.scheduled,
+        caption: 'Excited to share my latest video! 🎥✨',
+        tags: ['video', 'content', 'creator'],
+        visibility: PostVisibility.public,
+        createdAt: DateTime.now().subtract(const Duration(days: 1)),
+        updatedAt: DateTime.now().subtract(const Duration(hours: 2)),
+        media: [
+          PostMedia(
+            id: 'media1',
+            type: MediaType.video,
+            src: 'https://example.com/video1.mp4',
+            aspectRatio: 9.0 / 16.0,
+            durationMs: 30000,
+            variants: [],
+          ),
+        ],
+        platforms: [
+          PlatformConfig(
+            key: PlatformKey.youtube.name,
+            enabled: true,
+            status: PlatformStatus.pending,
+            payload: {'title': 'My Amazing Video'},
+          ),
+          PlatformConfig(
+            key: PlatformKey.tiktok.name,
+            enabled: true,
+            status: PlatformStatus.pending,
+            payload: {'description': 'Check this out!'},
+          ),
+        ],
+        schedule: PostSchedule(
+          scheduledAtUtc: DateTime.now().add(const Duration(hours: 2)),
+          timezone: 'America/New_York',
+          perPlatform: {},
+          createdAtUtc: DateTime.now().subtract(const Duration(hours: 1)),
+          updatedAtUtc: DateTime.now().subtract(const Duration(minutes: 30)),
+        ),
+        analyticsHints: {'bestTime': 'evening'},
+        idempotencyKey: 'key1',
+      ),
+      ScheduledPost(
+        id: '2',
+        authorId: 'user123',
+        status: PostStatus.publishing,
+        caption: 'Behind the scenes content coming up! 📸',
+        tags: ['behindthescenes', 'exclusive'],
+        visibility: PostVisibility.public,
+        createdAt: DateTime.now().subtract(const Duration(hours: 6)),
+        updatedAt: DateTime.now().subtract(const Duration(minutes: 30)),
+        media: [
+          PostMedia(
+            id: 'media2',
+            type: MediaType.image,
+            src: 'https://example.com/image1.jpg',
+            aspectRatio: 1.0,
+            durationMs: null,
+            variants: [],
+          ),
+        ],
+        platforms: [
+          PlatformConfig(
+            key: PlatformKey.instagram.name,
+            enabled: true,
+            status: PlatformStatus.publishing,
+            payload: {'caption': 'Behind the scenes!'},
+          ),
+        ],
+        schedule: PostSchedule(
+          scheduledAtUtc: DateTime.now().subtract(const Duration(minutes: 5)),
+          timezone: 'America/New_York',
+          perPlatform: {},
+          createdAtUtc: DateTime.now().subtract(const Duration(hours: 2)),
+          updatedAtUtc: DateTime.now().subtract(const Duration(minutes: 5)),
+        ),
+        analyticsHints: {},
+        idempotencyKey: 'key2',
+      ),
+      ScheduledPost(
+        id: '3',
+        authorId: 'user123',
+        status: PostStatus.published,
+        caption: 'Just published my latest tutorial! Check it out 👀',
+        tags: ['tutorial', 'education', 'tech'],
+        visibility: PostVisibility.public,
+        createdAt: DateTime.now().subtract(const Duration(days: 2)),
+        updatedAt: DateTime.now().subtract(const Duration(hours: 1)),
+        media: [
+          PostMedia(
+            id: 'media3',
+            type: MediaType.video,
+            src: 'https://example.com/video2.mp4',
+            aspectRatio: 16.0 / 9.0,
+            durationMs: 120000,
+            variants: [],
+          ),
+        ],
+        platforms: [
+          PlatformConfig(
+            key: PlatformKey.youtube.name,
+            enabled: true,
+            status: PlatformStatus.published,
+            payload: {'url': 'https://youtube.com/watch?v=abc123'},
+          ),
+          PlatformConfig(
+            key: PlatformKey.x.name,
+            enabled: true,
+            status: PlatformStatus.published,
+            payload: {'url': 'https://x.com/status/123456'},
+          ),
+        ],
+        schedule: PostSchedule(
+          scheduledAtUtc: DateTime.now().subtract(const Duration(hours: 1)),
+          timezone: 'America/New_York',
+          perPlatform: {},
+          createdAtUtc: DateTime.now().subtract(const Duration(days: 1)),
+          updatedAtUtc: DateTime.now().subtract(const Duration(hours: 1)),
+        ),
+        analyticsHints: {},
+        idempotencyKey: 'key3',
+      ),
+    ];
+
+    // Apply filters
+    var filteredPosts = mockPosts;
+    
+    if (status != null) {
+      filteredPosts = filteredPosts.where((post) => post.status == status).toList();
+    }
+    
+    if (platform != null) {
+      filteredPosts = filteredPosts.where((post) => 
+        post.platforms.any((p) => p.key == platform)).toList();
+    }
+    
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      filteredPosts = filteredPosts.where((post) => 
+        post.caption.toLowerCase().contains(searchQuery.toLowerCase()) ||
+        post.tags.any((tag) => tag.toLowerCase().contains(searchQuery.toLowerCase()))).toList();
+    }
+
+    return filteredPosts;
   }
 }

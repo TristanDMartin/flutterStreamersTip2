@@ -28,11 +28,11 @@ mixin _$ScheduledPost {
   PostVisibility get visibility => throw _privateConstructorUsedError;
   List<PostMedia> get media => throw _privateConstructorUsedError;
   List<PlatformConfig> get platforms => throw _privateConstructorUsedError;
-  PostSchedule get schedule => throw _privateConstructorUsedError;
+  PostSchedule? get schedule => throw _privateConstructorUsedError;
   Map<String, dynamic> get analyticsHints => throw _privateConstructorUsedError;
   String? get idempotencyKey => throw _privateConstructorUsedError;
-  DateTime? get createdAtUtc => throw _privateConstructorUsedError;
-  DateTime? get updatedAtUtc => throw _privateConstructorUsedError;
+  DateTime get createdAt => throw _privateConstructorUsedError;
+  DateTime get updatedAt => throw _privateConstructorUsedError;
 
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
   @JsonKey(ignore: true)
@@ -55,13 +55,13 @@ abstract class $ScheduledPostCopyWith<$Res> {
       PostVisibility visibility,
       List<PostMedia> media,
       List<PlatformConfig> platforms,
-      PostSchedule schedule,
+      PostSchedule? schedule,
       Map<String, dynamic> analyticsHints,
       String? idempotencyKey,
-      DateTime? createdAtUtc,
-      DateTime? updatedAtUtc});
+      DateTime createdAt,
+      DateTime updatedAt});
 
-  $PostScheduleCopyWith<$Res> get schedule;
+  $PostScheduleCopyWith<$Res>? get schedule;
 }
 
 /// @nodoc
@@ -85,11 +85,11 @@ class _$ScheduledPostCopyWithImpl<$Res, $Val extends ScheduledPost>
     Object? visibility = null,
     Object? media = null,
     Object? platforms = null,
-    Object? schedule = null,
+    Object? schedule = freezed,
     Object? analyticsHints = null,
     Object? idempotencyKey = freezed,
-    Object? createdAtUtc = freezed,
-    Object? updatedAtUtc = freezed,
+    Object? createdAt = null,
+    Object? updatedAt = null,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -124,10 +124,10 @@ class _$ScheduledPostCopyWithImpl<$Res, $Val extends ScheduledPost>
           ? _value.platforms
           : platforms // ignore: cast_nullable_to_non_nullable
               as List<PlatformConfig>,
-      schedule: null == schedule
+      schedule: freezed == schedule
           ? _value.schedule
           : schedule // ignore: cast_nullable_to_non_nullable
-              as PostSchedule,
+              as PostSchedule?,
       analyticsHints: null == analyticsHints
           ? _value.analyticsHints
           : analyticsHints // ignore: cast_nullable_to_non_nullable
@@ -136,21 +136,25 @@ class _$ScheduledPostCopyWithImpl<$Res, $Val extends ScheduledPost>
           ? _value.idempotencyKey
           : idempotencyKey // ignore: cast_nullable_to_non_nullable
               as String?,
-      createdAtUtc: freezed == createdAtUtc
-          ? _value.createdAtUtc
-          : createdAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      updatedAtUtc: freezed == updatedAtUtc
-          ? _value.updatedAtUtc
-          : updatedAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
+      createdAt: null == createdAt
+          ? _value.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      updatedAt: null == updatedAt
+          ? _value.updatedAt
+          : updatedAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
     ) as $Val);
   }
 
   @override
   @pragma('vm:prefer-inline')
-  $PostScheduleCopyWith<$Res> get schedule {
-    return $PostScheduleCopyWith<$Res>(_value.schedule, (value) {
+  $PostScheduleCopyWith<$Res>? get schedule {
+    if (_value.schedule == null) {
+      return null;
+    }
+
+    return $PostScheduleCopyWith<$Res>(_value.schedule!, (value) {
       return _then(_value.copyWith(schedule: value) as $Val);
     });
   }
@@ -173,14 +177,14 @@ abstract class _$$ScheduledPostImplCopyWith<$Res>
       PostVisibility visibility,
       List<PostMedia> media,
       List<PlatformConfig> platforms,
-      PostSchedule schedule,
+      PostSchedule? schedule,
       Map<String, dynamic> analyticsHints,
       String? idempotencyKey,
-      DateTime? createdAtUtc,
-      DateTime? updatedAtUtc});
+      DateTime createdAt,
+      DateTime updatedAt});
 
   @override
-  $PostScheduleCopyWith<$Res> get schedule;
+  $PostScheduleCopyWith<$Res>? get schedule;
 }
 
 /// @nodoc
@@ -202,11 +206,11 @@ class __$$ScheduledPostImplCopyWithImpl<$Res>
     Object? visibility = null,
     Object? media = null,
     Object? platforms = null,
-    Object? schedule = null,
+    Object? schedule = freezed,
     Object? analyticsHints = null,
     Object? idempotencyKey = freezed,
-    Object? createdAtUtc = freezed,
-    Object? updatedAtUtc = freezed,
+    Object? createdAt = null,
+    Object? updatedAt = null,
   }) {
     return _then(_$ScheduledPostImpl(
       id: null == id
@@ -241,10 +245,10 @@ class __$$ScheduledPostImplCopyWithImpl<$Res>
           ? _value._platforms
           : platforms // ignore: cast_nullable_to_non_nullable
               as List<PlatformConfig>,
-      schedule: null == schedule
+      schedule: freezed == schedule
           ? _value.schedule
           : schedule // ignore: cast_nullable_to_non_nullable
-              as PostSchedule,
+              as PostSchedule?,
       analyticsHints: null == analyticsHints
           ? _value._analyticsHints
           : analyticsHints // ignore: cast_nullable_to_non_nullable
@@ -253,14 +257,14 @@ class __$$ScheduledPostImplCopyWithImpl<$Res>
           ? _value.idempotencyKey
           : idempotencyKey // ignore: cast_nullable_to_non_nullable
               as String?,
-      createdAtUtc: freezed == createdAtUtc
-          ? _value.createdAtUtc
-          : createdAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      updatedAtUtc: freezed == updatedAtUtc
-          ? _value.updatedAtUtc
-          : updatedAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
+      createdAt: null == createdAt
+          ? _value.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      updatedAt: null == updatedAt
+          ? _value.updatedAt
+          : updatedAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
     ));
   }
 }
@@ -277,11 +281,11 @@ class _$ScheduledPostImpl implements _ScheduledPost {
       this.visibility = PostVisibility.public,
       final List<PostMedia> media = const [],
       final List<PlatformConfig> platforms = const [],
-      required this.schedule,
+      this.schedule,
       final Map<String, dynamic> analyticsHints = const {},
       this.idempotencyKey,
-      this.createdAtUtc,
-      this.updatedAtUtc})
+      required this.createdAt,
+      required this.updatedAt})
       : _tags = tags,
         _media = media,
         _platforms = platforms,
@@ -329,7 +333,7 @@ class _$ScheduledPostImpl implements _ScheduledPost {
   }
 
   @override
-  final PostSchedule schedule;
+  final PostSchedule? schedule;
   final Map<String, dynamic> _analyticsHints;
   @override
   @JsonKey()
@@ -342,13 +346,13 @@ class _$ScheduledPostImpl implements _ScheduledPost {
   @override
   final String? idempotencyKey;
   @override
-  final DateTime? createdAtUtc;
+  final DateTime createdAt;
   @override
-  final DateTime? updatedAtUtc;
+  final DateTime updatedAt;
 
   @override
   String toString() {
-    return 'ScheduledPost(id: $id, authorId: $authorId, status: $status, caption: $caption, tags: $tags, visibility: $visibility, media: $media, platforms: $platforms, schedule: $schedule, analyticsHints: $analyticsHints, idempotencyKey: $idempotencyKey, createdAtUtc: $createdAtUtc, updatedAtUtc: $updatedAtUtc)';
+    return 'ScheduledPost(id: $id, authorId: $authorId, status: $status, caption: $caption, tags: $tags, visibility: $visibility, media: $media, platforms: $platforms, schedule: $schedule, analyticsHints: $analyticsHints, idempotencyKey: $idempotencyKey, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 
   @override
@@ -373,10 +377,10 @@ class _$ScheduledPostImpl implements _ScheduledPost {
                 .equals(other._analyticsHints, _analyticsHints) &&
             (identical(other.idempotencyKey, idempotencyKey) ||
                 other.idempotencyKey == idempotencyKey) &&
-            (identical(other.createdAtUtc, createdAtUtc) ||
-                other.createdAtUtc == createdAtUtc) &&
-            (identical(other.updatedAtUtc, updatedAtUtc) ||
-                other.updatedAtUtc == updatedAtUtc));
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt) &&
+            (identical(other.updatedAt, updatedAt) ||
+                other.updatedAt == updatedAt));
   }
 
   @JsonKey(ignore: true)
@@ -394,8 +398,8 @@ class _$ScheduledPostImpl implements _ScheduledPost {
       schedule,
       const DeepCollectionEquality().hash(_analyticsHints),
       idempotencyKey,
-      createdAtUtc,
-      updatedAtUtc);
+      createdAt,
+      updatedAt);
 
   @JsonKey(ignore: true)
   @override
@@ -421,11 +425,11 @@ abstract class _ScheduledPost implements ScheduledPost {
       final PostVisibility visibility,
       final List<PostMedia> media,
       final List<PlatformConfig> platforms,
-      required final PostSchedule schedule,
+      final PostSchedule? schedule,
       final Map<String, dynamic> analyticsHints,
       final String? idempotencyKey,
-      final DateTime? createdAtUtc,
-      final DateTime? updatedAtUtc}) = _$ScheduledPostImpl;
+      required final DateTime createdAt,
+      required final DateTime updatedAt}) = _$ScheduledPostImpl;
 
   factory _ScheduledPost.fromJson(Map<String, dynamic> json) =
       _$ScheduledPostImpl.fromJson;
@@ -447,15 +451,15 @@ abstract class _ScheduledPost implements ScheduledPost {
   @override
   List<PlatformConfig> get platforms;
   @override
-  PostSchedule get schedule;
+  PostSchedule? get schedule;
   @override
   Map<String, dynamic> get analyticsHints;
   @override
   String? get idempotencyKey;
   @override
-  DateTime? get createdAtUtc;
+  DateTime get createdAt;
   @override
-  DateTime? get updatedAtUtc;
+  DateTime get updatedAt;
   @override
   @JsonKey(ignore: true)
   _$$ScheduledPostImplCopyWith<_$ScheduledPostImpl> get copyWith =>

@@ -9,16 +9,17 @@ class TrendingCreator with _$TrendingCreator {
   const factory TrendingCreator({
     required String id,
     required String username,
+    String? displayName,
     String? avatarURL,
-    @Default(0) int followers,
-    @Default(false) bool isOnline,
+    @Default(0) int followerCount,
+    @Default(false) bool isActive,
   }) = _TrendingCreator;
 
   static const List<TrendingCreator> samples = [
-    TrendingCreator(id: "1", username: "GamingPro", avatarURL: null, followers: 150000, isOnline: true),
-    TrendingCreator(id: "2", username: "ArtStreamer", avatarURL: null, followers: 75000, isOnline: false),
-    TrendingCreator(id: "3", username: "MusicLive", avatarURL: null, followers: 200000, isOnline: true),
-    TrendingCreator(id: "4", username: "TechReview", avatarURL: null, followers: 120000, isOnline: true),
+    TrendingCreator(id: "1", username: "GamingPro", displayName: "Gaming Pro", avatarURL: null, followerCount: 150000, isActive: true),
+    TrendingCreator(id: "2", username: "ArtStreamer", displayName: "Art Streamer", avatarURL: null, followerCount: 75000, isActive: false),
+    TrendingCreator(id: "3", username: "MusicLive", displayName: "Music Live", avatarURL: null, followerCount: 200000, isActive: true),
+    TrendingCreator(id: "4", username: "TechReview", displayName: "Tech Review", avatarURL: null, followerCount: 120000, isActive: true),
   ];
 }
 
@@ -28,15 +29,15 @@ extension TrendingCreatorExtension on TrendingCreator {
     return StreamerCard(
       id: id,
       username: username,
-      displayName: username,
-      bio: "Trending creator with ${_formatFollowerCount(followers)} followers",
+      displayName: displayName ?? username,
+      bio: "Trending creator with ${_formatFollowerCount(followerCount)} followers",
       avatarURL: avatarURL,
       coverImageURL: null,
       platforms: [],
       hashtags: ["trending", "creator"],
       socialLinks: [],
       isConnected: false,
-      onlineStatus: isOnline ? 'online' : 'invisible',
+      onlineStatus: isActive ? 'online' : 'invisible',
     );
   }
 
@@ -45,14 +46,14 @@ extension TrendingCreatorExtension on TrendingCreator {
     return User(
       id: id,
       username: username,
-      displayName: username,
-      bio: "Trending creator with ${_formatFollowerCount(followers)} followers",
+      displayName: displayName ?? username,
+      bio: "Trending creator with ${_formatFollowerCount(followerCount)} followers",
       avatarURL: avatarURL,
-      onlineStatus: isOnline ? 'online' : 'invisible',
+      onlineStatus: isActive ? 'online' : 'invisible',
       hashtags: [],
       aiSelf: "",
       postCount: 0,
-      followerCount: followers,
+      followerCount: followerCount,
       followingCount: 0,
     );
   }

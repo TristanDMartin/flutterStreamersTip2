@@ -14,11 +14,11 @@ class ScheduledPost with _$ScheduledPost {
     @Default(PostVisibility.public) PostVisibility visibility,
     @Default([]) List<PostMedia> media,
     @Default([]) List<PlatformConfig> platforms,
-    required PostSchedule schedule,
+    PostSchedule? schedule,
     @Default({}) Map<String, dynamic> analyticsHints,
     String? idempotencyKey,
-    DateTime? createdAtUtc,
-    DateTime? updatedAtUtc,
+    required DateTime createdAt,
+    required DateTime updatedAt,
   }) = _ScheduledPost;
 
   factory ScheduledPost.fromJson(Map<String, dynamic> json) =>
