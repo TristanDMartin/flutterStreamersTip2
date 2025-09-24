@@ -19,8 +19,15 @@ class ImagePickerWidget extends StatefulWidget {
 
 class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   final ImagePicker _picker = ImagePicker();
+  bool _isPicking = false;
 
   Future<void> _pickImageFromGallery() async {
+    if (_isPicking) return; // Prevent multiple simultaneous picks
+    
+    setState(() {
+      _isPicking = true;
+    });
+    
     try {
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -35,12 +42,24 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         widget.onCancel?.call();
       }
     } catch (e) {
-    // print('❌ Error picking image: $e');
+      debugPrint('❌ Error picking image: $e');
       widget.onCancel?.call();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPicking = false;
+        });
+      }
     }
   }
 
   Future<void> _pickImageFromCamera() async {
+    if (_isPicking) return; // Prevent multiple simultaneous picks
+    
+    setState(() {
+      _isPicking = true;
+    });
+    
     try {
       // Get available cameras
       final cameras = await availableCameras();
@@ -70,8 +89,14 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         widget.onCancel?.call();
       }
     } catch (e) {
-    // print('❌ Error opening camera: $e');
+      debugPrint('❌ Error opening camera: $e');
       widget.onCancel?.call();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPicking = false;
+        });
+      }
     }
   }
 
@@ -231,6 +256,7 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
   CameraController? _controller;
   bool _isInitialized = false;
   bool _isCapturing = false;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -376,7 +402,7 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
                         final navigator = Navigator.of(context);
                         navigator.pop(); // Close camera screen
                         // Open gallery instead
-                        final XFile? image = await ImagePicker().pickImage(
+                        final XFile? image = await _picker.pickImage(
                           source: ImageSource.gallery,
                           maxWidth: 1024,
                           maxHeight: 1024,

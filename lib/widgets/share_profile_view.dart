@@ -145,7 +145,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
           IconButton(
             onPressed: widget.dismiss,
             icon: const Icon(
-              Icons.chevron_left,
+              Icons.arrow_back,
               color: Colors.white,
               size: 24,
             ),

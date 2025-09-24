@@ -169,6 +169,12 @@ class _InstantPlayHomeViewState extends ConsumerState<InstantPlayHomeView> {
 
   /// Build video player
   Widget _buildVideoPlayer() {
+    if (_currentController == null || !_currentController!.value.isInitialized) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+    
     return Center(
       child: AspectRatio(
         aspectRatio: _currentController!.value.aspectRatio,

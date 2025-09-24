@@ -374,7 +374,7 @@ class _QRScannerViewState extends State<QRScannerView> with TickerProviderStateM
           children: [
             IconButton(
               onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.chevron_left, color: Colors.white, size: 24),
+              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
               style: IconButton.styleFrom(
                 padding: const EdgeInsets.all(8),
               ),

@@ -392,9 +392,10 @@ class _VideoShareSheetState extends State<VideoShareSheet> {
       final videoLink = "https://streamerstip.com/video/${widget.video.id}";
       final shareText = "Check out this awesome video on StreamersTip!\n$videoLink";
       
-      await Share.share(
-        shareText,
-        subject: 'StreamersTip Video: ${widget.video.caption.isNotEmpty ? widget.video.caption : "Untitled"}',
+      await SharePlus.instance.share(
+        ShareParams(
+          text: shareText,
+        ),
       );
       
       // Log the share action (replace with proper logging framework)

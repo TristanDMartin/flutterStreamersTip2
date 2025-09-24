@@ -28,9 +28,10 @@ class ShareServiceOptimized {
       final shareUrl = _generateShareUrl(video.id);
 
       // Share using system share sheet
-      await Share.share(
-        '$shareText\n\n$shareUrl',
-        subject: 'StreamersTip Video',
+      await SharePlus.instance.share(
+        ShareParams(
+          text: '$shareText\n\n$shareUrl',
+        ),
       );
     } catch (e) {
     // print('Error sharing video: $e');
@@ -137,7 +138,11 @@ class ShareServiceOptimized {
       await launchUrl(uri);
     } else {
       // Fallback to system share
-      await Share.share(message);
+      await SharePlus.instance.share(
+        ShareParams(
+          text: message,
+        ),
+      );
     }
   }
 

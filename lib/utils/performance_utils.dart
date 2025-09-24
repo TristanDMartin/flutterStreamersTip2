@@ -32,7 +32,7 @@ class PerformanceUtils {
     
     // Reset button state after short delay
     if (buttonId != null) {
-      Timer(const Duration(milliseconds: 100), () {
+      Timer(const Duration(milliseconds: 50), () {
         _buttonStates[buttonId] = false;
       });
     }
@@ -42,7 +42,7 @@ class PerformanceUtils {
   static void debounce(
     String key,
     VoidCallback callback, {
-    Duration delay = const Duration(milliseconds: 300),
+    Duration delay = const Duration(milliseconds: 100),
   }) {
     _debounceTimers[key]?.cancel();
     _debounceTimers[key] = Timer(delay, callback);

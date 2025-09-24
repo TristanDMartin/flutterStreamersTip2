@@ -30,8 +30,8 @@ class RobustInstantResponseButton extends StatefulWidget {
     this.padding,
     this.height,
     this.width,
-    this.debounceDelay = const Duration(milliseconds: 300),
-    this.minimumSpinnerTime = const Duration(milliseconds: 400),
+    this.debounceDelay = const Duration(milliseconds: 50),
+    this.minimumSpinnerTime = const Duration(milliseconds: 100),
     this.enabled = true,
     this.loadingText,
     this.icon,
@@ -113,7 +113,7 @@ class _RobustInstantResponseButtonState extends State<RobustInstantResponseButto
         widget.onPressed!();
         
         // Clear request state after a short delay
-        Timer(const Duration(milliseconds: 100), () {
+        Timer(const Duration(milliseconds: 50), () {
           if (mounted && _currentRequestId == requestId) {
             _currentRequestId = null;
             _isRequestInFlight = false;
@@ -261,8 +261,8 @@ class RobustAuthButton extends StatelessWidget {
       icon: icon,
       backgroundColor: const Color(0xFF955CFF), // Fallback color
       textColor: Colors.white,
-      debounceDelay: const Duration(milliseconds: 400),
-      minimumSpinnerTime: const Duration(milliseconds: 500),
+      debounceDelay: const Duration(milliseconds: 50),
+      minimumSpinnerTime: const Duration(milliseconds: 100),
       borderRadius: 24, // Match ProfileView pill shape
       gradient: const LinearGradient(
         colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileView gradient
@@ -303,8 +303,8 @@ class RobustDestructiveButton extends StatelessWidget {
       icon: icon,
       backgroundColor: Colors.red[600],
       textColor: Colors.white,
-      debounceDelay: const Duration(milliseconds: 500),
-      minimumSpinnerTime: const Duration(milliseconds: 600),
+      debounceDelay: const Duration(milliseconds: 50),
+      minimumSpinnerTime: const Duration(milliseconds: 100),
     );
   }
 }

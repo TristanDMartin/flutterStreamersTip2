@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/custom_bottom_nav.dart';
-import '../widgets/camera_view.dart';
+import '../widgets/camera_view_optimized.dart';
 import '../views/network_view.dart';
 import '../widgets/inbox_view_optimized.dart';
 import 'home_view.dart';
@@ -96,7 +96,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     // Navigate directly to camera view
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => const CameraView(),
+          builder: (context) => const CameraViewOptimized(),
       ),
     );
   }

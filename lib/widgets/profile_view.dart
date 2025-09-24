@@ -3,8 +3,8 @@ import '../models/user.dart';
 import 'user_profile_view.dart';
 import 'profile_back_view.dart';
 import 'custom_bottom_nav.dart';
-import 'camera_view.dart';
-import 'inbox_view.dart';
+import 'camera_view_optimized.dart';
+import 'inbox_view_optimized.dart';
 
 class ProfileView extends StatefulWidget {
   final User user;
@@ -128,14 +128,14 @@ class _ProfileViewState extends State<ProfileView> with TickerProviderStateMixin
       // Create - navigate directly to camera view
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => const CameraView(),
+          builder: (context) => const CameraViewOptimized(),
         ),
       );
     } else if (index == 3) {
       // Inbox - navigate to inbox view
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => const InboxView(),
+          builder: (context) => const InboxViewOptimized(),
           fullscreenDialog: true,
         ),
       );

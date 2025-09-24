@@ -908,7 +908,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           GestureDetector(
             onTap: widget.onDismiss,
             child: const Icon(
-              Icons.chevron_left,
+              Icons.arrow_back,
               color: Colors.white,
               size: 24,
             ),

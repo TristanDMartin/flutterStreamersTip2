@@ -280,7 +280,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                 ),
               ),
               child: const Icon(
-                Icons.chevron_left,
+                Icons.arrow_back,
                 color: Colors.white,
                 size: 24,
               ),

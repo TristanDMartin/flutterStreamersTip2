@@ -74,11 +74,11 @@ class _PostDetailViewState extends ConsumerState<PostDetailView> {
           children: [
             IconButton(
               onPressed: widget.onDismiss,
-              icon: const Icon(
-                Icons.chevron_left,
-                color: Colors.white,
-                size: 24,
-              ),
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Colors.white,
+              size: 24,
+            ),
             ),
             
             const Expanded(

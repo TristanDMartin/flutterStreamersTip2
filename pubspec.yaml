@@ -53,6 +53,11 @@ dependencies:
   # Push Notifications
   flutter_local_notifications: ^17.2.2
   
+  # Contacts & Invites
+  # contacts_service: ^0.6.3  # Has namespace issues, using custom implementation
+  crypto: ^3.0.3
+  url_launcher: ^6.2.5
+  
   # HTTP & Networking
   http: ^1.1.2
   dio: ^5.4.0
@@ -67,9 +72,7 @@ dependencies:
   uuid: ^4.2.1
   qr_flutter: ^4.1.0
   geolocator: ^14.0.2
-  url_launcher: ^6.2.2
   share_plus: ^12.0.0
-  crypto: ^3.0.3
   connectivity_plus: ^7.0.0
   mobile_scanner: ^7.0.1
   giphy_picker: ^3.0.2

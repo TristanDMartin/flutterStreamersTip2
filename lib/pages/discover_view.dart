@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../widgets/optimized_image.dart';
-import '../widgets/optimized_avatar_image.dart';
 import '../widgets/ios_optimized_image.dart';
 import '../services/image_preload_service.dart';
 import '../services/unified_avatar_service.dart';

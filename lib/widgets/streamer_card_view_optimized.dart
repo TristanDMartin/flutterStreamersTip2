@@ -432,7 +432,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
               widget.onDismiss?.call();
             },
             child: const Icon(
-              Icons.chevron_left,
+              Icons.arrow_back,
               color: Colors.white,
               size: 24,
             ),

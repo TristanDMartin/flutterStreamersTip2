@@ -13,8 +13,6 @@ import 'services/firebase_ios_service.dart';
 import 'services/firestore_optimization_service.dart';
 import 'services/firestore_cache_service.dart';
 import 'services/push_notification_service.dart';
-import 'services/realtime_chat_service.dart';
-import 'services/real_user_data_service.dart';
 import 'widgets/ios_minimal_startup.dart';
 
 void main() async {

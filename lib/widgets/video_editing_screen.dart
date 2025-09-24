@@ -148,7 +148,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           InstantIconButton(
             onPressed: widget.onCancel,
             icon: const Icon(
-              Icons.arrow_back_ios,
+              Icons.arrow_back,
               color: Colors.white,
               size: 24,
             ),

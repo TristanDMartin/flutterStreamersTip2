@@ -21,7 +21,7 @@ class InstantResponseButton extends StatefulWidget {
     this.enabled = true,
     this.hapticType = HapticFeedbackType.lightImpact,
     this.scaleOnPress = 0.95,
-    this.animationDuration = const Duration(milliseconds: 50),
+    this.animationDuration = const Duration(milliseconds: 25),
     this.showRippleEffect = true,
   });
 

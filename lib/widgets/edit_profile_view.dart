@@ -526,7 +526,7 @@ class _EditProfileViewState extends State<EditProfileView> {
           IconButton(
             onPressed: widget.onBack ?? () => Navigator.pop(context),
             icon: const Icon(
-              Icons.chevron_left,
+              Icons.arrow_back,
               color: Colors.white,
               size: 24,
             ),

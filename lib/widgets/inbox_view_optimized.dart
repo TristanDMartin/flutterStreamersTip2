@@ -22,11 +22,17 @@ class InboxViewOptimized extends ConsumerStatefulWidget {
 class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     with TickerProviderStateMixin {
   late TabController _tabController;
-  late AnimationController _fabAnimationController;
-  late Animation<double> _fabScaleAnimation;
   final InboxServiceOptimized _inboxService = InboxServiceOptimized();
   final OfflineInboxService _offlineService = OfflineInboxService();
   final TextEditingController _searchController = TextEditingController();
+
+  // Constants
+  static const Color _primaryColor = Color(0xFF9248D2);
+  static const Color _secondaryColor = Color(0xFF7768DF);
+  static const Color _accentColor = Color(0xFF1670DE);
+  static const Color _successColor = Color(0xFF4CAF50);
+  static const Color _backgroundDark = Color(0xFF6137EB);
+  static const Color _backgroundMedium = Color(0xFF1C135D);
 
   // Data
   List<app_chat.Chat> _chats = [];
@@ -48,21 +54,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     
-    // Initialize FAB animation
-    _fabAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-    _fabScaleAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _fabAnimationController,
-      curve: Curves.elasticOut,
-    ));
-    
     _initializeRealTimeUpdates();
-    _fabAnimationController.forward();
     
     // Mark all messages as read when InboxView is opened
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -75,7 +67,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   @override
   void dispose() {
     _tabController.dispose();
-    _fabAnimationController.dispose();
     _searchController.dispose();
     _inboxService.stopRealTimeListeners();
     super.dispose();
@@ -278,9 +269,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF1A1A2E),
-              Color(0xFF16213E),
-              Color(0xFF0F3460),
+              _backgroundDark,
+              _backgroundMedium,
             ],
           ),
         ),
@@ -301,8 +291,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: _buildFloatingActionButton(),
     );
   }
 
@@ -313,20 +301,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         children: [
           Row(
             children: [
-              // Back button with subtle design
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: IconButton(
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context).pop();
-                  },
-                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
-                  padding: const EdgeInsets.all(12),
-                ),
+              // Back button - clean design
+              IconButton(
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.of(context).pop();
+                },
+                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+                padding: const EdgeInsets.all(8),
               ),
               const SizedBox(width: 16),
               // Title with better typography
@@ -354,58 +336,39 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                   ],
                 ),
               ),
-              // Selection mode button with better design
-              Container(
-                decoration: BoxDecoration(
-                  color: _isSelectionMode 
-                      ? const Color(0xFF9248D2).withValues(alpha: 0.2)
-                      : Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: _isSelectionMode 
-                      ? Border.all(color: const Color(0xFF9248D2), width: 1)
-                      : null,
+              // Selection mode button - clean design
+              IconButton(
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  _toggleSelectionMode();
+                },
+                icon: Icon(
+                  _isSelectionMode ? Icons.close : Icons.checklist_rtl,
+                  color: _isSelectionMode ? _primaryColor : Colors.white,
+                  size: 20,
                 ),
-                child: IconButton(
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    _toggleSelectionMode();
-                  },
-                  icon: Icon(
-                    _isSelectionMode ? Icons.close : Icons.checklist_rtl,
-                    color: _isSelectionMode ? const Color(0xFF9248D2) : Colors.white,
-                    size: 20,
-                  ),
-                  padding: const EdgeInsets.all(12),
-                ),
+                padding: const EdgeInsets.all(8),
               ),
             ],
           ),
           if (_isSelectionMode) ...[
             const SizedBox(height: 16),
-            Container(
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF9248D2).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-                  width: 1,
-                ),
-              ),
               child: Column(
                 children: [
                   Row(
                     children: [
                       const Icon(
                         Icons.check_circle,
-                        color: Color(0xFF9248D2),
+                        color: _primaryColor,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         '${_selectedItems.length} selected',
                         style: const TextStyle(
-                          color: Color(0xFF9248D2),
+                          color: _primaryColor,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -421,7 +384,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           child: const Text(
                             'Clear',
                             style: TextStyle(
-                              color: Color(0xFF9248D2),
+                              color: _primaryColor,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -474,7 +437,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                                 style: TextStyle(fontSize: 12),
                               ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF4CAF50),
+                                backgroundColor: _successColor,
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
@@ -585,7 +548,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         controller: _tabController,
         indicator: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
+            colors: [_primaryColor, _secondaryColor],
           ),
           borderRadius: BorderRadius.circular(20),
         ),
@@ -630,7 +593,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Widget _buildTabContent() {
     return RefreshIndicator(
       onRefresh: _refreshData,
-      color: const Color(0xFF9248D2),
+      color: _primaryColor,
       backgroundColor: Colors.white.withValues(alpha: 0.1),
       child: TabBarView(
         controller: _tabController,
@@ -706,12 +669,12 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       decoration: BoxDecoration(
         color: isSelected 
-            ? const Color(0xFF9248D2).withValues(alpha: 0.15)
+            ? _primaryColor.withValues(alpha: 0.15)
             : Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isSelected 
-              ? const Color(0xFF9248D2).withValues(alpha: 0.5)
+              ? _primaryColor.withValues(alpha: 0.5)
               : Colors.white.withValues(alpha: 0.08),
           width: isSelected ? 2 : 1,
         ),
@@ -743,11 +706,11 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         gradient: userProfile?.avatarURL != null 
                             ? null
                             : const LinearGradient(
-                                colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
+                                colors: [_primaryColor, _secondaryColor],
                               ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF9248D2).withValues(alpha: 0.3),
+                            color: _primaryColor.withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -794,7 +757,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           width: 16,
                           height: 16,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF4CAF50),
+                            color: _successColor,
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: Colors.white,
@@ -812,7 +775,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           width: 20,
                           height: 20,
                           decoration: const BoxDecoration(
-                            color: Color(0xFF9248D2),
+                            color: _primaryColor,
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -830,7 +793,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: const BoxDecoration(
-                            color: Color(0xFF9248D2),
+                            color: _primaryColor,
                             shape: BoxShape.circle,
                           ),
                           constraints: const BoxConstraints(
@@ -927,12 +890,12 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       decoration: BoxDecoration(
         color: isSelected 
-            ? const Color(0xFF9248D2).withValues(alpha: 0.15)
+            ? _primaryColor.withValues(alpha: 0.15)
             : Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isSelected 
-              ? const Color(0xFF9248D2).withValues(alpha: 0.5)
+              ? _primaryColor.withValues(alpha: 0.5)
               : Colors.white.withValues(alpha: 0.08),
           width: isSelected ? 2 : 1,
         ),
@@ -962,11 +925,11 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF1670DE), Color(0xFF3C8BD6)],
+                          colors: [_accentColor, _secondaryColor],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF1670DE).withValues(alpha: 0.3),
+                            color: _accentColor.withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -988,7 +951,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           width: 20,
                           height: 20,
                           decoration: const BoxDecoration(
-                            color: Color(0xFF9248D2),
+                            color: _primaryColor,
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -1006,7 +969,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           width: 16,
                           height: 16,
                           decoration: const BoxDecoration(
-                            color: Color(0xFF9248D2),
+                            color: _primaryColor,
                             shape: BoxShape.circle,
                           ),
                           child: const Center(
@@ -1046,7 +1009,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: isUnread 
-                                  ? const Color(0xFF9248D2).withValues(alpha: 0.2)
+                                  ? _primaryColor.withValues(alpha: 0.2)
                                   : Colors.white.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -1054,7 +1017,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               isUnread ? 'New' : 'Viewed',
                               style: TextStyle(
                                 color: isUnread 
-                                    ? const Color(0xFF9248D2)
+                                    ? _primaryColor
                                     : Colors.white.withValues(alpha: 0.6),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
@@ -1170,12 +1133,12 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             Container(
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
+                  colors: [_primaryColor, _secondaryColor],
                 ),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF9248D2).withValues(alpha: 0.4),
+                    color: _primaryColor.withValues(alpha: 0.4),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
@@ -1244,7 +1207,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                   ),
                   child: CircularProgressIndicator(
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      const Color(0xFF9248D2).withValues(alpha: 0.8),
+                      _primaryColor.withValues(alpha: 0.8),
                     ),
                     strokeWidth: 3,
                   ),
@@ -1320,7 +1283,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             ElevatedButton(
               onPressed: _loadData,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF9248D2),
+                backgroundColor: _primaryColor,
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1341,43 +1304,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     );
   }
 
-  Widget _buildFloatingActionButton() {
-    return AnimatedBuilder(
-      animation: _fabScaleAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _fabScaleAnimation.value,
-          child: Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF9248D2),
-                  Color(0xFF7768DF),
-                  Color(0xFF1670DE),
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF9248D2).withValues(alpha: 0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.add, color: Colors.white, size: 28),
-              onPressed: _createNewMessage,
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   void _toggleSelectionMode() {
     setState(() {
@@ -1434,31 +1360,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         _isSelectionMode = false;
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_selectedItems.length} items deleted'),
-            backgroundColor: const Color(0xFF9248D2),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
+      _showSnackBar('${_selectedItems.length} items deleted', _primaryColor);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Error deleting items'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
+      _showSnackBar('Error deleting items', Colors.red);
     }
   }
 
@@ -1478,31 +1382,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         _isSelectionMode = false;
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_selectedItems.length} chats marked as read'),
-            backgroundColor: const Color(0xFF9248D2),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
+      _showSnackBar('${_selectedItems.length} chats marked as read', _primaryColor);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Error marking as read'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
+      _showSnackBar('Error marking as read', Colors.red);
     }
   }
 
@@ -1510,7 +1392,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E),
+        backgroundColor: _backgroundMedium,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
@@ -1548,18 +1430,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   void _createNewMessage() {
     HapticFeedback.lightImpact();
     Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const NewMessageView(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(0.0, 1.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOut;
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          var offsetAnimation = animation.drive(tween);
-          return SlideTransition(position: offsetAnimation, child: child);
-        },
-        fullscreenDialog: true,
-      ),
+      _createSlideTransition(page: const NewMessageView()),
     );
   }
 
@@ -1568,19 +1439,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     
     if (mounted) {
       final result = await Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const DraftCreationView(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(0.0, 1.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOut;
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          var offsetAnimation = animation.drive(tween);
-          return SlideTransition(position: offsetAnimation, child: child);
-        },
-        fullscreenDialog: true,
-      ),
-    );
+        _createSlideTransition(page: const DraftCreationView()),
+      );
 
       // Refresh data if draft was created
       if (result == true) {
@@ -1617,23 +1477,17 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     
     if (mounted) {
       Navigator.of(context).push(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => ChatViewOptimized(
-          chat: chat,
-          otherUserId: otherUserId,
-          otherUserName: userProfile?.displayName ?? userProfile?.username ?? 'User',
-          otherUserAvatarURL: userProfile?.avatarURL,
+        _createSlideTransition(
+          page: ChatViewOptimized(
+            chat: chat,
+            otherUserId: otherUserId,
+            otherUserName: userProfile?.displayName ?? userProfile?.username ?? 'User',
+            otherUserAvatarURL: userProfile?.avatarURL,
+          ),
+          begin: const Offset(1.0, 0.0),
+          fullscreenDialog: false,
         ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(1.0, 0.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOut;
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          var offsetAnimation = animation.drive(tween);
-          return SlideTransition(position: offsetAnimation, child: child);
-        },
-      ),
-    );
+      );
     }
   }
 
@@ -1646,21 +1500,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     // Navigate to draft creation view for editing
     if (mounted) {
       final result = await Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => DraftCreationView(
-          existingDraft: draft,
+        _createSlideTransition(
+          page: DraftCreationView(existingDraft: draft),
         ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(0.0, 1.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOut;
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          var offsetAnimation = animation.drive(tween);
-          return SlideTransition(position: offsetAnimation, child: child);
-        },
-        fullscreenDialog: true,
-      ),
-    );
+      );
 
       // Refresh data if draft was modified
       if (result == true) {
@@ -1685,8 +1528,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     return Container(
       width: 16,
       height: 16,
-      decoration: const BoxDecoration(
-        color: Color(0xFF4CAF50),
+      decoration: BoxDecoration(
+        color: _successColor,
         shape: BoxShape.circle,
       ),
       child: const Icon(
@@ -1710,5 +1553,39 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     } else {
       return 'now';
     }
+  }
+
+  // Helper method for creating slide transitions
+  PageRouteBuilder _createSlideTransition({
+    required Widget page,
+    Offset begin = const Offset(0.0, 1.0),
+    bool fullscreenDialog = true,
+  }) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const end = Offset.zero;
+        const curve = Curves.easeInOut;
+        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var offsetAnimation = animation.drive(tween);
+        return SlideTransition(position: offsetAnimation, child: child);
+      },
+      fullscreenDialog: fullscreenDialog,
+    );
+  }
+
+  // Helper method for showing SnackBars
+  void _showSnackBar(String message, Color backgroundColor) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
   }
 }

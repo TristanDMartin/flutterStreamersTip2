@@ -13,6 +13,7 @@ import '../providers/home_provider.dart' as hp;
 import '../providers/favorites_provider.dart';
 import '../providers/following_provider.dart';
 import '../services/error_handling_service.dart';
+import '../widgets/instant_response_button.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/video_performance_service.dart';
@@ -566,11 +567,12 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                             title: const Text('Message User'),
                             content: Text('Messaging functionality will be implemented here for user: $userId'),
                             actions: [
-                              TextButton(
+                              InstantTextButton(
                                 onPressed: () => Navigator.of(context).pop(),
+                                hapticType: HapticFeedbackType.lightImpact,
                                 child: const Text('Close'),
                               ),
-                              TextButton(
+                              InstantTextButton(
                                 onPressed: () {
                                   Navigator.of(context).pop();
                                   // Navigate to chat/messaging screen
@@ -621,9 +623,10 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                           final shareUrl = 'https://streamerstip.com/user/${currentStreamer.username}';
                           
                           // Use system share sheet
-                          await Share.share(
-                            '$shareText\n\n$shareUrl',
-                            subject: 'StreamersTip User Profile',
+                          await SharePlus.instance.share(
+                            ShareParams(
+                              text: '$shareText\n\n$shareUrl',
+                            ),
                           );
                           
                           if (mounted) {

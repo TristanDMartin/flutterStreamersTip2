@@ -376,7 +376,7 @@ class _OnboardingViewState extends State<OnboardingView> with TickerProviderStat
             }
           },
           icon: const Icon(
-            Icons.arrow_back_ios,
+            Icons.arrow_back,
             color: Colors.white,
             size: 24,
           ),

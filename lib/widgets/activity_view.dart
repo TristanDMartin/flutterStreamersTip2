@@ -10,6 +10,7 @@ import '../models/user.dart';
 import '../views/streamer_card_page.dart';
 import 'discover_view.dart';
 import '../widgets/post_detail_view.dart';
+import 'instant_response_button.dart';
 
 class ActivityView extends ConsumerStatefulWidget {
   const ActivityView({super.key});
@@ -26,10 +27,35 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Likes', 'Follows', 'Comments', 'Tags', 'Mentions'];
   
-  static const int _pageSize = 20;
-  int _currentPage = 0;
   bool _isLoadingMore = false;
   final ScrollController _scrollController = ScrollController();
+
+  // Common gradient used throughout the view
+  static const LinearGradient _backgroundGradient = LinearGradient(
+    colors: [
+      Color(0xFF6137EB), // Purple (matches ProfileView)
+      Color(0xFF1C135D), // Dark purple (matches ProfileView)
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Common button gradient used throughout the view
+  static const LinearGradient _buttonGradient = LinearGradient(
+    colors: [
+      Color(0xFF9248D2), // Primary purple
+      Color(0xFF7768DF), // Secondary purple
+      Color(0xFF1670DE), // Blue
+      Color(0xFF3C8BD6), // Lighter blue
+      Color(0xFF4897D2), // Lightest blue
+    ],
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+  );
+
+  // Common navigation transition
+  static const Duration _transitionDuration = Duration(milliseconds: 300);
+  static const Curve _transitionCurve = Curves.easeOutCubic;
 
   @override
   void initState() {
@@ -62,7 +88,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     
     // Clear any pending operations
     _isLoadingMore = false;
-    _currentPage = 0;
     
     super.dispose();
   }
@@ -113,14 +138,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       backgroundColor: Colors.transparent,
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color(0xFF6137EB), // Purple (matches ProfileView)
-              Color(0xFF1C135D), // Dark purple (matches ProfileView)
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: _backgroundGradient,
         ),
         child: SafeArea(
           child: Column(
@@ -151,14 +169,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color(0xFF6137EB), // Purple (matches ProfileView)
-              Color(0xFF1C135D), // Dark purple (matches ProfileView)
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: _backgroundGradient,
         ),
         child: const Center(
           child: CircularProgressIndicator(
@@ -173,14 +184,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color(0xFF6137EB), // Purple (matches ProfileView)
-              Color(0xFF1C135D), // Dark purple (matches ProfileView)
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: _backgroundGradient,
         ),
         child: const Center(
           child: Column(
@@ -221,8 +225,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       child: Row(
         children: [
           // Back button (matches ProfileView style)
-          IconButton(
+          InstantIconButton(
             onPressed: () => Navigator.of(context).pop(),
+            hapticType: HapticFeedbackType.lightImpact,
             icon: const Icon(
               Icons.arrow_back,
               color: Colors.white,
@@ -317,17 +322,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF9248D2), // Primary purple
-                          Color(0xFF7768DF), // Secondary purple
-                          Color(0xFF1670DE), // Blue
-                          Color(0xFF3C8BD6), // Lighter blue
-                          Color(0xFF4897D2), // Lightest blue
-                        ],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
+                      gradient: _buttonGradient,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: Colors.white.withValues(alpha:0.2),
@@ -448,14 +443,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha:0.2),
-          width: 1,
-        ),
-      ),
+      decoration: _buildContainerDecoration(),
       child: Row(
         children: [
           const SizedBox(
@@ -869,16 +857,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     });
     
     try {
-      final notifier = ref.read(activityProvider.notifier);
-      final auth = ref.read(authServiceProvider);
-      final userId = auth.currentUser?.id;
-      
-      if (userId != null) {
-        _currentPage++;
-        // TODO: Implement loadMoreNotifications method in ActivityNotifier
-        // For now, just simulate loading
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
+      // TODO: Implement loadMoreNotifications method in ActivityNotifier
+      // For now, just simulate loading
+      await Future.delayed(const Duration(milliseconds: 500));
     } catch (e) {
       debugPrint('Error loading more notifications: $e');
     } finally {
@@ -894,14 +875,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return Container(
       margin: const EdgeInsets.only(left: 20, top: 16, bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha:0.2),
-          width: 1,
-        ),
-      ),
+      decoration: _buildContainerDecoration(borderRadius: 20),
       child: Text(
         title,
         style: const TextStyle(
@@ -1007,50 +981,64 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       postCount: user.postCount,
     );
     
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => StreamerCardPage(
-          user: userForCard,
-        ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(1.0, 0.0),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            )),
-            child: child,
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 300),
-      ),
+    _navigateWithSlideTransition(
+      StreamerCardPage(user: userForCard),
+      const Offset(1.0, 0.0),
     );
   }
 
   void _handlePostTap(ActivityNotification notification) {
     HapticFeedback.lightImpact();
+    _navigateWithSlideTransition(
+      PostDetailView(notification: notification),
+      const Offset(0.0, 1.0),
+      fullscreenDialog: true,
+    );
+  }
+
+  void _navigateWithSlideTransition(Widget page, Offset beginOffset, {bool fullscreenDialog = false}) {
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => PostDetailView(
-          notification: notification,
-        ),
+        pageBuilder: (context, animation, secondaryAnimation) => page,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0.0, 1.0),
+              begin: beginOffset,
               end: Offset.zero,
             ).animate(CurvedAnimation(
               parent: animation,
-              curve: Curves.easeOutCubic,
+              curve: _transitionCurve,
             )),
             child: child,
           );
         },
-        transitionDuration: const Duration(milliseconds: 300),
-        fullscreenDialog: true,
+        transitionDuration: _transitionDuration,
+        fullscreenDialog: fullscreenDialog,
       ),
+    );
+  }
+
+
+  BoxDecoration _buildContainerDecoration({
+    double alpha = 0.1,
+    double borderRadius = 16,
+    bool hasBorder = true,
+    bool hasShadow = false,
+  }) {
+    return BoxDecoration(
+      color: Colors.white.withValues(alpha: alpha),
+      borderRadius: BorderRadius.circular(borderRadius),
+      border: hasBorder ? Border.all(
+        color: Colors.white.withValues(alpha: 0.2),
+        width: 1,
+      ) : null,
+      boxShadow: hasShadow ? [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.1),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
+      ] : null,
     );
   }
 

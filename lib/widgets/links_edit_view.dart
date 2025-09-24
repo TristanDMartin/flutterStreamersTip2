@@ -87,7 +87,7 @@ class _LinksEditViewState extends State<LinksEditView> {
         elevation: 0,
         leading: IconButton(
           onPressed: widget.onBack ?? () => Navigator.pop(context),
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
         ),
         title: const Text(
           'Edit links',

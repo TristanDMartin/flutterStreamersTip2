@@ -9,11 +9,11 @@ import 'recommended_content_card.dart';
 import 'search_screen.dart';
 import 'activity_view.dart';
 import 'streamer_card_view.dart';
-import '../providers/activity_provider.dart';
 import '../services/logging_service.dart';
 import '../services/error_handler_service.dart';
 import '../services/robust_auth_service.dart';
 import 'optimized_image.dart';
+import 'instant_response_button.dart';
 
 class DiscoverView extends ConsumerStatefulWidget {
   const DiscoverView({super.key});
@@ -73,8 +73,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       // Add haptic feedback
       HapticFeedback.lightImpact();
       
-      setState(() {
-        _selectedCategory = categoryId;
+    setState(() {
+      _selectedCategory = categoryId;
         _currentCategoryPage = 0; // Reset pagination
         _currentVideoPage = 0; // Reset video pagination
         _isLoadingMoreVideos = false; // Reset loading state
@@ -193,8 +193,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           ],
         ),
         actions: [
-          TextButton(
+          InstantTextButton(
             onPressed: () => Navigator.pop(context),
+            hapticType: HapticFeedbackType.lightImpact,
             child: const Text('Close', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -243,9 +244,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.all(8),
         child: const Icon(
-          Icons.notifications_outlined,
-          color: Colors.white,
-          size: 24,
+              Icons.notifications_outlined,
+              color: Colors.white,
+              size: 24,
         ),
       ),
     );
@@ -269,9 +270,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             SliverAppBar(
               backgroundColor: Colors.transparent,
               elevation: 0,
-              leading: IconButton(
+              leading: InstantIconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
+                hapticType: HapticFeedbackType.lightImpact,
               ),
               title: const Text(
                 'Discover',
@@ -514,12 +516,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 ),
               ),
               const SizedBox(height: 24),
-              ElevatedButton(
+              InstantElevatedButton(
                 onPressed: () {
                   setState(() {
                     _loadInitialData();
                   });
                 },
+                hapticType: HapticFeedbackType.mediumImpact,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white.withValues(alpha: 0.2),
                   foregroundColor: Colors.white,
@@ -546,9 +549,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             // Category header with clear button
             Row(
               children: [
@@ -562,12 +565,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     ),
                   ),
                 ),
-                TextButton(
+                InstantTextButton(
                   onPressed: () {
                     setState(() {
                       _selectedCategory = null;
                     });
                   },
+                  hapticType: HapticFeedbackType.lightImpact,
                   child: const Text(
                     'Clear Filter',
                     style: TextStyle(
@@ -717,15 +721,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         // Video grid
         GridView.builder(
           shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
             crossAxisSpacing: 2,
             mainAxisSpacing: 2,
             childAspectRatio: 9 / 16, // 9:16 aspect ratio for portrait videos
-          ),
+                    ),
           itemCount: categoryVideos.length,
-          itemBuilder: (context, index) {
+                    itemBuilder: (context, index) {
             return _buildVideoGridItem(categoryVideos[index], categoryId);
           },
         ),
@@ -744,8 +748,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             )
           else
             Center(
-              child: TextButton(
+              child: InstantTextButton(
                 onPressed: _loadMoreVideos,
+                hapticType: HapticFeedbackType.mediumImpact,
                 child: const Text(
                   'Load More Videos',
                   style: TextStyle(
@@ -1015,8 +1020,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                   color: Colors.black.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(
                       Icons.play_arrow,
@@ -1033,10 +1038,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                       ),
                     ),
                   ],
-                ),
               ),
             ),
-          ],
+          ),
+        ],
         ),
       ),
     );
@@ -1054,9 +1059,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         ),
       ),
       child: Center(
-        child: Column(
+      child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+        children: [
             Icon(
               Icons.video_library_outlined,
               color: Colors.white.withValues(alpha: 0.5),
@@ -1121,15 +1126,14 @@ class SectionHeader extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.3),
                 shape: BoxShape.circle,
               ),
-              child: IconButton(
+              child: InstantIconButton(
                 onPressed: action,
+                hapticType: HapticFeedbackType.lightImpact,
                 icon: const Icon(
                   Icons.refresh,
                   color: Colors.white,
                   size: 16,
                 ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
               ),
             ),
         ],

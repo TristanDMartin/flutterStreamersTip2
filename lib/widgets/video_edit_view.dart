@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:async';
 import 'video_publishing_screen.dart';
+import 'video_editor_player.dart';
+import 'video_timeline.dart';
+import '../services/video_processing_service.dart';
+import '../services/logging_service.dart';
 
 class VideoEditView extends StatefulWidget {
   final File videoFile;
@@ -23,11 +28,28 @@ class _VideoEditViewState extends State<VideoEditView>
     with TickerProviderStateMixin {
   int _selectedTabIndex = 0;
   late AnimationController _tabAnimationController;
+  late AnimationController _progressController;
 
-  // Trim video state
-  double _startTrim = 0.0;
-  double _endTrim = 1.0;
-  final double _videoDuration = 60.0; // Example duration in seconds
+  // Video state
+  Duration _videoDuration = Duration.zero;
+  Duration _currentPosition = Duration.zero;
+  Duration _startTime = Duration.zero;
+  Duration _endTime = Duration.zero;
+  bool _isPlaying = false;
+  bool _isDragging = false;
+  bool _isProcessing = false;
+  double _processingProgress = 0.0;
+  String? _processingStatus;
+
+  // Edit state
+  VideoEditState? _editState;
+  final List<VideoEditAction> _editHistory = [];
+  int _historyIndex = -1;
+  bool _hasUnsavedChanges = false;
+
+  // Services
+  final VideoProcessingService _videoService = VideoProcessingService();
+  final String _videoId = DateTime.now().millisecondsSinceEpoch.toString();
 
   // Tab options
   final List<String> _tabs = ['Trim', 'Audio', 'Effects', 'Text'];
@@ -39,12 +61,41 @@ class _VideoEditViewState extends State<VideoEditView>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
+    _progressController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _initializeVideo();
   }
 
   @override
   void dispose() {
     _tabAnimationController.dispose();
+    _progressController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      _videoDuration = await _videoService.getVideoDuration(widget.videoFile);
+      _endTime = _videoDuration;
+      
+      _editState = VideoEditState(
+        videoId: _videoId,
+        originalFile: widget.videoFile,
+        startTime: _startTime,
+        endTime: _endTime,
+        audioEffects: AudioEffects(),
+        visualEffects: [],
+        textOverlays: [],
+      );
+      
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      LoggingService.instance.error('Error initializing video', tag: 'VideoEditView', error: e);
+    }
   }
 
   void _navigateToPublishing() {
@@ -92,6 +143,31 @@ class _VideoEditViewState extends State<VideoEditView>
                 child: _buildVideoPlayer(),
               ),
               
+              // Timeline
+              if (_videoDuration > Duration.zero)
+                VideoTimeline(
+                  duration: _videoDuration,
+                  position: _currentPosition,
+                  startTime: _startTime,
+                  endTime: _endTime,
+                  onTrimChanged: (startTime, endTime) {
+                    setState(() {
+                      _startTime = startTime;
+                      _endTime = endTime;
+                      _hasUnsavedChanges = true;
+                    });
+                  },
+                  onSeekTo: (position) {
+                    // Seek functionality handled by VideoEditorPlayer
+                  },
+                  isDragging: _isDragging,
+                  onDraggingChanged: (isDragging) {
+                    setState(() {
+                      _isDragging = isDragging;
+                    });
+                  },
+                ),
+              
               // Editing Tabs
               _buildEditingTabs(),
               
@@ -133,7 +209,7 @@ class _VideoEditViewState extends State<VideoEditView>
                 ),
               ),
               child: const Icon(
-                Icons.chevron_left,
+                Icons.arrow_back,
                 color: Colors.white,
                 size: 24,
               ),
@@ -186,53 +262,36 @@ class _VideoEditViewState extends State<VideoEditView>
   Widget _buildVideoPlayer() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha:0.2),
-          width: 1,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Video placeholder (replace with actual video player)
-            Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: Colors.black,
-              child: const Icon(
-                Icons.play_circle_filled,
-                color: Colors.white,
-                size: 60,
-              ),
-            ),
-            
-            // Play button overlay
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                // TODO: Implement play/pause functionality
-              },
-              child: Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: 30,
-                ),
-              ),
-            ),
-          ],
-        ),
+      child: VideoEditorPlayer(
+        videoFile: widget.videoFile,
+        startTime: _startTime,
+        endTime: _endTime,
+        isPlaying: _isPlaying,
+        onPositionChanged: (position) {
+          setState(() {
+            _currentPosition = position;
+          });
+        },
+        onPlayPauseChanged: (isPlaying) {
+          setState(() {
+            _isPlaying = isPlaying;
+          });
+        },
+        onTrimChanged: (startTime, endTime) {
+          setState(() {
+            _startTime = startTime;
+            _endTime = endTime;
+            _hasUnsavedChanges = true;
+          });
+          _addEditAction(VideoEditAction(
+            type: 'trim',
+            data: {
+              'startTime': startTime.inMilliseconds,
+              'endTime': endTime.inMilliseconds,
+            },
+            timestamp: DateTime.now(),
+          ));
+        },
       ),
     );
   }
@@ -326,81 +385,58 @@ class _VideoEditViewState extends State<VideoEditView>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Trim Video',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              const Text(
+                'Trim Video',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              // Undo/Redo buttons
+              if (_historyIndex > 0)
+                IconButton(
+                  onPressed: _undo,
+                  icon: const Icon(Icons.undo, color: Colors.white),
+                ),
+              if (_historyIndex < _editHistory.length - 1)
+                IconButton(
+                  onPressed: _redo,
+                  icon: const Icon(Icons.redo, color: Colors.white),
+                ),
+            ],
           ),
           const SizedBox(height: 16),
           
-          // Timeline Slider
-          Container(
-            height: 60,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha:0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withValues(alpha:0.2),
-                width: 1,
+          // Time Display
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Start: ${_formatDuration(_startTime)}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
+                ),
               ),
-            ),
-            child: Stack(
-              children: [
-                // Background track
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha:0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+              Text(
+                'Duration: ${_formatDuration(_endTime - _startTime)}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
                 ),
-                
-                // Trim handles
-                Positioned(
-                  left: 20 + (_startTrim * (MediaQuery.of(context).size.width - 80)),
-                  top: 20,
-                  child: GestureDetector(
-                    onPanUpdate: (details) {
-                      setState(() {
-                        _startTrim = ((details.localPosition.dx + 20) / (MediaQuery.of(context).size.width - 80)).clamp(0.0, _endTrim - 0.1);
-                      });
-                    },
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF9248D2),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
+              ),
+              Text(
+                'End: ${_formatDuration(_endTime)}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
                 ),
-                
-                Positioned(
-                  left: 20 + (_endTrim * (MediaQuery.of(context).size.width - 80)),
-                  top: 20,
-                  child: GestureDetector(
-                    onPanUpdate: (details) {
-                      setState(() {
-                        _endTrim = ((details.localPosition.dx + 20) / (MediaQuery.of(context).size.width - 80)).clamp(_startTrim + 0.1, 1.0);
-                      });
-                    },
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF9248D2),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
           
           const SizedBox(height: 16),
@@ -410,20 +446,14 @@ class _VideoEditViewState extends State<VideoEditView>
             children: [
               Expanded(
                 child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    setState(() {
-                      _startTrim = 0.0;
-                      _endTrim = 1.0;
-                    });
-                  },
+                  onTap: _resetTrim,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha:0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha:0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         width: 1,
                       ),
                     ),
@@ -442,10 +472,7 @@ class _VideoEditViewState extends State<VideoEditView>
               const SizedBox(width: 12),
               Expanded(
                 child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    // TODO: Implement apply trim functionality
-                  },
+                  onTap: _applyTrim,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
@@ -454,31 +481,46 @@ class _VideoEditViewState extends State<VideoEditView>
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
-                      'Apply Trim',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: _isProcessing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Text(
+                            'Apply Trim',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
               ),
             ],
           ),
           
-          const SizedBox(height: 16),
-          
-          // Time Display
-          Text(
-            'Start: ${(_startTrim * _videoDuration).toStringAsFixed(1)}s | End: ${(_endTrim * _videoDuration).toStringAsFixed(1)}s',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha:0.7),
-              fontSize: 12,
+          if (_isProcessing) ...[
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: _processingProgress,
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
             ),
-          ),
+            const SizedBox(height: 8),
+            Text(
+              _processingStatus ?? 'Processing...',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 12,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -487,10 +529,10 @@ class _VideoEditViewState extends State<VideoEditView>
   Widget _buildAudioContent() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Audio Settings',
             style: TextStyle(
               color: Colors.white,
@@ -498,12 +540,93 @@ class _VideoEditViewState extends State<VideoEditView>
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 16),
-          Text(
-            'Audio editing features coming soon!',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
+          const SizedBox(height: 16),
+          
+          // Volume Control
+          Row(
+            children: [
+              const Icon(Icons.volume_up, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Slider(
+                  value: _editState?.audioEffects.volume ?? 1.0,
+                  min: 0.0,
+                  max: 2.0,
+                  activeColor: const Color(0xFF9248D2),
+                  inactiveColor: Colors.white.withValues(alpha: 0.3),
+                  onChanged: (value) {
+                    setState(() {
+                      _editState = _editState?.copyWith(
+                        audioEffects: AudioEffects(
+                          volume: value,
+                          isMuted: _editState?.audioEffects.isMuted ?? false,
+                        ),
+                      );
+                      _hasUnsavedChanges = true;
+                    });
+                  },
+                ),
+              ),
+              Text(
+                '${((_editState?.audioEffects.volume ?? 1.0) * 100).round()}%',
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Mute Toggle
+          Row(
+            children: [
+              const Icon(Icons.volume_off, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              const Text(
+                'Mute Audio',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              const Spacer(),
+              Switch(
+                value: _editState?.audioEffects.isMuted ?? false,
+                activeColor: const Color(0xFF9248D2),
+                onChanged: (value) {
+                  setState(() {
+                    _editState = _editState?.copyWith(
+                      audioEffects: AudioEffects(
+                        volume: _editState?.audioEffects.volume ?? 1.0,
+                        isMuted: value,
+                      ),
+                    );
+                    _hasUnsavedChanges = true;
+                  });
+                },
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Apply Audio Effects Button
+          GestureDetector(
+            onTap: _applyAudioEffects,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Apply Audio Effects',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -512,12 +635,21 @@ class _VideoEditViewState extends State<VideoEditView>
   }
 
   Widget _buildEffectsContent() {
+    final effects = [
+      {'name': 'None', 'icon': Icons.remove},
+      {'name': 'Vintage', 'icon': Icons.filter_vintage},
+      {'name': 'Black & White', 'icon': Icons.filter_b_and_w},
+      {'name': 'Sepia', 'icon': Icons.filter_tilt_shift},
+      {'name': 'Brightness', 'icon': Icons.brightness_6},
+      {'name': 'Contrast', 'icon': Icons.contrast},
+    ];
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Visual Effects',
             style: TextStyle(
               color: Colors.white,
@@ -525,12 +657,85 @@ class _VideoEditViewState extends State<VideoEditView>
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 16),
-          Text(
-            'Effects editing features coming soon!',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
+          const SizedBox(height: 16),
+          
+          // Effects Grid
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.2,
+            ),
+            itemCount: effects.length,
+            itemBuilder: (context, index) {
+              final effect = effects[index];
+              final isSelected = _editState?.visualEffects.any((e) => e.type == effect['name']) ?? false;
+              
+              return GestureDetector(
+                onTap: () => _selectEffect(effect['name'] as String),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected 
+                        ? const Color(0xFF9248D2).withValues(alpha: 0.3)
+                        : Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isSelected 
+                          ? const Color(0xFF9248D2)
+                          : Colors.white.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        effect['icon'] as IconData,
+                        color: isSelected ? const Color(0xFF9248D2) : Colors.white,
+                        size: 24,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        effect['name'] as String,
+                        style: TextStyle(
+                          color: isSelected ? const Color(0xFF9248D2) : Colors.white,
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Apply Effects Button
+          GestureDetector(
+            onTap: _applyVisualEffects,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Apply Effects',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -541,10 +746,10 @@ class _VideoEditViewState extends State<VideoEditView>
   Widget _buildTextContent() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Add Text',
             style: TextStyle(
               color: Colors.white,
@@ -552,15 +757,106 @@ class _VideoEditViewState extends State<VideoEditView>
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 16),
-          Text(
-            'Text editing features coming soon!',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
+          const SizedBox(height: 16),
+          
+          // Text Input
+          TextField(
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Enter text to overlay...',
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF9248D2)),
+              ),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _hasUnsavedChanges = true;
+              });
+            },
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Text Style Options
+          Row(
+            children: [
+              Expanded(
+                child: _buildStyleOption('Size', Icons.text_fields, () {}),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildStyleOption('Color', Icons.palette, () {}),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildStyleOption('Position', Icons.open_with, () {}),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Add Text Button
+          GestureDetector(
+            onTap: _addTextOverlay,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Add Text Overlay',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStyleOption(String label, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -573,17 +869,14 @@ class _VideoEditViewState extends State<VideoEditView>
           // Cancel Button
           Expanded(
             child: GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                widget.onCancel?.call();
-              },
+              onTap: _showDiscardDialog,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha:0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     width: 1,
                   ),
                 ),
@@ -600,7 +893,37 @@ class _VideoEditViewState extends State<VideoEditView>
             ),
           ),
           
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
+          
+          // Save Draft Button
+          if (_hasUnsavedChanges)
+            Expanded(
+              child: GestureDetector(
+                onTap: _saveDraft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: const Text(
+                    'Save Draft',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          
+          if (_hasUnsavedChanges) const SizedBox(width: 12),
           
           // Next Button
           Expanded(
@@ -632,5 +955,274 @@ class _VideoEditViewState extends State<VideoEditView>
         ],
       ),
     );
+  }
+
+  // Helper methods
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
+  void _addEditAction(VideoEditAction action) {
+    // Remove any actions after current index (for redo functionality)
+    if (_historyIndex < _editHistory.length - 1) {
+      _editHistory.removeRange(_historyIndex + 1, _editHistory.length);
+    }
+    
+    _editHistory.add(action);
+    _historyIndex = _editHistory.length - 1;
+    
+    // Limit history size
+    if (_editHistory.length > 50) {
+      _editHistory.removeAt(0);
+      _historyIndex--;
+    }
+  }
+
+  void _undo() {
+    if (_historyIndex > 0) {
+      _historyIndex--;
+      _applyHistoryState();
+    }
+  }
+
+  void _redo() {
+    if (_historyIndex < _editHistory.length - 1) {
+      _historyIndex++;
+      _applyHistoryState();
+    }
+  }
+
+  void _applyHistoryState() {
+    // Apply the state at current history index
+    // This is a simplified implementation
+    setState(() {
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _resetTrim() {
+    setState(() {
+      _startTime = Duration.zero;
+      _endTime = _videoDuration;
+      _hasUnsavedChanges = true;
+    });
+    
+    _addEditAction(VideoEditAction(
+      type: 'reset_trim',
+      data: {},
+      timestamp: DateTime.now(),
+    ));
+  }
+
+  Future<void> _applyTrim() async {
+    if (_isProcessing) return;
+    
+    setState(() {
+      _isProcessing = true;
+      _processingProgress = 0.0;
+      _processingStatus = 'Trimming video...';
+    });
+
+    try {
+      final trimmedFile = await _videoService.trimVideo(
+        inputFile: widget.videoFile,
+        startTime: _startTime,
+        endTime: _endTime,
+        videoId: _videoId,
+        onProgress: (progress) {
+          setState(() {
+            _processingProgress = progress;
+          });
+        },
+      );
+
+      setState(() {
+        _processingStatus = 'Trim applied successfully!';
+        _hasUnsavedChanges = false;
+      });
+
+      // Update edit state
+      _editState = _editState?.copyWith(
+        startTime: _startTime,
+        endTime: _endTime,
+      );
+
+      LoggingService.instance.debug('Video trimmed successfully', tag: 'VideoEditView');
+    } catch (e) {
+      LoggingService.instance.error('Error applying trim', tag: 'VideoEditView', error: e);
+      setState(() {
+        _processingStatus = 'Error: ${e.toString()}';
+      });
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  Future<void> _applyAudioEffects() async {
+    if (_isProcessing || _editState == null) return;
+    
+    setState(() {
+      _isProcessing = true;
+      _processingProgress = 0.0;
+      _processingStatus = 'Applying audio effects...';
+    });
+
+    try {
+      final processedFile = await _videoService.applyAudioEffects(
+        inputFile: widget.videoFile,
+        effects: _editState!.audioEffects,
+        videoId: _videoId,
+        onProgress: (progress) {
+          setState(() {
+            _processingProgress = progress;
+          });
+        },
+      );
+
+      setState(() {
+        _processingStatus = 'Audio effects applied!';
+        _hasUnsavedChanges = false;
+      });
+
+      LoggingService.instance.debug('Audio effects applied successfully', tag: 'VideoEditView');
+    } catch (e) {
+      LoggingService.instance.error('Error applying audio effects', tag: 'VideoEditView', error: e);
+      setState(() {
+        _processingStatus = 'Error: ${e.toString()}';
+      });
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  void _selectEffect(String effectName) {
+    setState(() {
+      if (effectName == 'None') {
+        _editState = _editState?.copyWith(visualEffects: []);
+      } else {
+        final effects = List<VisualEffect>.from(_editState?.visualEffects ?? []);
+        effects.removeWhere((e) => e.type == effectName);
+        effects.add(VisualEffect(
+          type: effectName,
+          parameters: {},
+          startTime: Duration.zero,
+          endTime: _videoDuration,
+        ));
+        _editState = _editState?.copyWith(visualEffects: effects);
+      }
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  Future<void> _applyVisualEffects() async {
+    if (_isProcessing || _editState == null) return;
+    
+    setState(() {
+      _isProcessing = true;
+      _processingProgress = 0.0;
+      _processingStatus = 'Applying visual effects...';
+    });
+
+    try {
+      final processedFile = await _videoService.applyVisualEffects(
+        inputFile: widget.videoFile,
+        effects: _editState!.visualEffects,
+        videoId: _videoId,
+        onProgress: (progress) {
+          setState(() {
+            _processingProgress = progress;
+          });
+        },
+      );
+
+      setState(() {
+        _processingStatus = 'Visual effects applied!';
+        _hasUnsavedChanges = false;
+      });
+
+      LoggingService.instance.debug('Visual effects applied successfully', tag: 'VideoEditView');
+    } catch (e) {
+      LoggingService.instance.error('Error applying visual effects', tag: 'VideoEditView', error: e);
+      setState(() {
+        _processingStatus = 'Error: ${e.toString()}';
+      });
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  void _addTextOverlay() {
+    // This would open a text overlay editor
+    // For now, just add a placeholder
+    setState(() {
+      final textOverlays = List<TextOverlay>.from(_editState?.textOverlays ?? []);
+      textOverlays.add(TextOverlay(
+        text: 'Sample Text',
+        x: 0.5,
+        y: 0.5,
+        fontFamily: 'Arial',
+        fontSize: 24,
+        color: '#FFFFFF',
+        startTime: Duration.zero,
+        endTime: _videoDuration,
+      ));
+      _editState = _editState?.copyWith(textOverlays: textOverlays);
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  Future<void> _saveDraft() async {
+    if (_editState != null) {
+      _videoService.saveEditState(_videoId, _editState!);
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
+      LoggingService.instance.debug('Draft saved', tag: 'VideoEditView');
+    }
+  }
+
+  Future<void> _showDiscardDialog() async {
+    if (!_hasUnsavedChanges) {
+      widget.onCancel?.call();
+      return;
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C135D),
+        title: const Text(
+          'Discard Changes?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'You have unsaved changes. Are you sure you want to discard them?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep Editing', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      widget.onCancel?.call();
+    }
   }
 }
