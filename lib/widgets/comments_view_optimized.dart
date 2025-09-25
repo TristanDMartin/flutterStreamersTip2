@@ -224,7 +224,14 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
       decoration: const BoxDecoration(
-        color: Colors.black,
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF6633CC), // Purple (matches ProfileView)
+            Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
@@ -369,14 +376,10 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
             child: Container(
               width: 40,
               height: 40,
-              decoration: BoxDecoration(
-                color: Colors.grey[800],
-                borderRadius: BorderRadius.circular(20),
-              ),
               child: Center(
                 child: Text(
                   emoji,
-                  style: const TextStyle(fontSize: 20),
+                  style: const TextStyle(fontSize: 24), // Increased size for better visibility
                 ),
               ),
             ),
@@ -394,10 +397,17 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
         16,
         MediaQuery.of(context).padding.bottom + 8,
       ),
-      decoration: BoxDecoration(
-        color: Colors.black,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF6633CC), // Purple (matches ProfileView)
+            Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
         border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha:0.1), width: 1),
+          top: BorderSide(color: Colors.white24, width: 1),
         ),
       ),
       child: Row(
@@ -424,8 +434,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.grey[900],
+                color: Colors.white.withValues(alpha:0.1), // Semi-transparent white
                 borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha:0.2), width: 1),
               ),
               child: TextField(
                 controller: _textController,
@@ -455,6 +466,30 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
               ),
             ),
           ),
+          
+          const SizedBox(width: 8),
+          
+          // Send button
+          GestureDetector(
+            onTap: _addComment,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.send,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -464,17 +499,29 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         final TextEditingController replyController = TextEditingController();
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 16,
-            right: 16,
-            top: 16,
+        return Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFF6633CC), // Purple (matches ProfileView)
+                Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          child: Column(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              left: 16,
+              right: 16,
+              top: 16,
+            ),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -543,6 +590,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
               const SizedBox(height: 8),
             ],
           ),
+          ),
         );
       },
     );
@@ -551,11 +599,23 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   void _showDeleteSheet(Comment c) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+        return Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFF6633CC), // Purple (matches ProfileView)
+                Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -596,6 +656,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
                 ],
               ),
             ],
+          ),
           ),
         );
       },

@@ -299,40 +299,42 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      floatingActionButton: widget.isCurrentUser ? FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const SetupHashtagPermissionsWidget(),
-            ),
-          );
-        },
-        backgroundColor: Colors.orange,
-        child: const Icon(Icons.admin_panel_settings, color: Colors.white),
-      ) : null,
-      body: AnimatedBuilder(
-        animation: _flipAnimation,
-        builder: (context, child) {
-          final isShowingFront = _flipAnimation.value < 0.5;
-          return Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateY(_flipAnimation.value * 3.14159),
-            child: isShowingFront
-                ? _buildFrontView()
-                : Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()..rotateY(3.14159),
-                    child: _buildBackView(),
-                  ),
-          );
-        },
+    return SafeArea( // FIXED: Add SafeArea to prevent status bar overlap
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        extendBody: true,
+        extendBodyBehindAppBar: false, // FIXED: Don't extend behind status bar
+        floatingActionButton: widget.isCurrentUser ? FloatingActionButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SetupHashtagPermissionsWidget(),
+              ),
+            );
+          },
+          backgroundColor: Colors.orange,
+          child: const Icon(Icons.admin_panel_settings, color: Colors.white),
+        ) : null,
+        body: AnimatedBuilder(
+          animation: _flipAnimation,
+          builder: (context, child) {
+            final isShowingFront = _flipAnimation.value < 0.5;
+            return Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(_flipAnimation.value * 3.14159),
+              child: isShowingFront
+                  ? _buildFrontView()
+                  : Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()..rotateY(3.14159),
+                      child: _buildBackView(),
+                    ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -351,6 +353,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       ),
       child: Scaffold(
         backgroundColor: Colors.transparent,
+        extendBodyBehindAppBar: false, // FIXED: Don't extend behind status bar
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,

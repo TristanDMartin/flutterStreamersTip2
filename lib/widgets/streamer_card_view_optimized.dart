@@ -62,7 +62,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
-  
+
+  static const LinearGradient _followBackGradient = LinearGradient(
+    colors: [Color(0xFF1670DE), Color(0xFF3C8BD6)],
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+  );
+
   static const LinearGradient _shareGradient = LinearGradient(
     colors: [Color(0xFF9248D2), Color(0xFF3C8BD6)],
     begin: Alignment.centerLeft,
@@ -1338,19 +1344,20 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   String _getFollowButtonText() {
-    if (_isFollowing) {
-      return _isConnected ? "Connected" : "Following";
-    } else {
-      return "Follow";
-    }
+    // NetworkView-style follow button logic
+    if (_isConnected) return 'Connected';
+    if (_isFollowing) return 'Following';
+    if (_isFollowedByStreamer) return 'Follow back';
+    return 'Follow';
   }
 
   LinearGradient _getFollowButtonGradient() {
-    if (_isFollowing) {
-      return _isConnected ? _connectedGradient : _followingGradient;
-    } else {
-      return _followingGradient;
-    }
+    // All follow button states use the same ProfileView edit button gradient
+    return const LinearGradient(
+      colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+    );
   }
 
   void _handleFollowButtonTap() {

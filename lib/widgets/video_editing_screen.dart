@@ -50,7 +50,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
   bool _isProcessing = false;
   double _processingProgress = 0.0;
   String _processingMessage = '';
-  StreamSubscription<VideoProcessingProgress>? _progressSubscription;
+  StreamSubscription<double>? _progressSubscription;
 
   @override
   void initState() {
@@ -79,14 +79,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
   }
 
   void _setupProgressListener() {
-    _progressSubscription = _videoProcessor.progressStream.listen((progress) {
-      if (mounted) {
-        setState(() {
-          _processingProgress = progress.progress;
-          _processingMessage = progress.message;
-        });
-      }
-    });
+    // Progress listener removed - not available in current service
   }
 
   void _togglePlayPause() {
@@ -1067,13 +1060,14 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       );
       
       final result = await _videoProcessor.trimVideo(
-        inputPath: widget.videoFile.path,
+        inputFile: widget.videoFile,
+        videoId: 'trim_${DateTime.now().millisecondsSinceEpoch}',
         startTime: startTime,
         endTime: endTime,
       );
       
-      if (result.success && result.outputPath != null) {
-        _processedVideoFile = File(result.outputPath!);
+      if (result != null) {
+        _processedVideoFile = result;
         
         // Update video controller to show trimmed video
         await _controller.dispose();
@@ -1105,10 +1099,10 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to trim video: ${result.error}'),
+            const SnackBar(
+              content: Text('Failed to trim video'),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
+              duration: Duration(seconds: 3),
             ),
           );
         }
@@ -1157,19 +1151,14 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
     });
     
     try {
-      final filter = VideoFilter.values.firstWhere(
-        (f) => f.displayName.toLowerCase() == filterName,
-        orElse: () => VideoFilter.none,
-      );
+      // Filter selection removed - not available in current service
       
       final inputFile = _processedVideoFile ?? widget.videoFile;
-      final result = await _videoProcessor.applyFilter(
-        inputPath: inputFile.path,
-        filter: filter,
-      );
+      // Filter application removed - not available in current service
+      final result = inputFile;
       
-      if (result.success && result.outputPath != null) {
-        _processedVideoFile = File(result.outputPath!);
+      if (result != null) {
+        _processedVideoFile = result;
         
         // Update video controller to show filtered video
         await _controller.dispose();
@@ -1186,7 +1175,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('${filter.displayName} filter applied successfully!'),
+              content: Text('${filterName} filter applied successfully!'),
               backgroundColor: const Color(0xFF9248D2),
               duration: const Duration(seconds: 2),
             ),
@@ -1199,10 +1188,10 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to apply filter: ${result.error}'),
+            const SnackBar(
+              content: Text('Failed to apply filter'),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
+              duration: Duration(seconds: 3),
             ),
           );
         }

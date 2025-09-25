@@ -226,44 +226,5 @@ class _OptimizedButtonState extends State<OptimizedButton>
   }
 }
 
-/// Optimized image widget with caching
-class OptimizedImage extends StatelessWidget {
-  final String imageUrl;
-  final double? width;
-  final double? height;
-  final BoxFit fit;
-  final Widget? placeholder;
-  final Widget? errorWidget;
-
-  const OptimizedImage({
-    super.key,
-    required this.imageUrl,
-    this.width,
-    this.height,
-    this.fit = BoxFit.cover,
-    this.placeholder,
-    this.errorWidget,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Image.network(
-      imageUrl,
-      width: width,
-      height: height,
-      fit: fit,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return placeholder ?? const Center(
-          child: CircularProgressIndicator(strokeWidth: 2),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return errorWidget ?? const Icon(Icons.error);
-      },
-      cacheWidth: width?.toInt(),
-      cacheHeight: height?.toInt(),
-      filterQuality: FilterQuality.medium,
-    );
-  }
-}
+// REMOVED: Duplicate OptimizedImage class - use the one in lib/widgets/optimized_image.dart instead
+// This was causing ImageReader_JNI buffer overflow issues

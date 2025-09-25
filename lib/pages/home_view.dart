@@ -474,7 +474,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                         currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
                         onDismiss: _dismissStreamerCard,
                       onFollow: (userId) async {
-                        // Handle follow action
+                        // Handle follow action with NetworkView-style logic
                         HapticFeedback.lightImpact();
                         if (kDebugMode) {
                           print('HomeView: Follow action triggered for user: $userId');
@@ -487,8 +487,10 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                           // Get the following provider
                           final followingNotifier = ref.read(followingProvider.notifier);
                           
-                          // Check if already following
+                          // Check follow states (NetworkView logic)
                           final isCurrentlyFollowing = followingNotifier.isFollowing(userId);
+                          final isFollowedBy = followingNotifier.isFollowedBy(userId);
+                          final isMutualFollow = isCurrentlyFollowing && isFollowedBy;
                           
                           if (isCurrentlyFollowing) {
                             // Unfollow the user
@@ -496,8 +498,8 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                             if (success) {
                               if (mounted) {
                                 scaffoldMessenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Unfollowed user'),
+                                  SnackBar(
+                                    content: Text(isMutualFollow ? 'Disconnected from user' : 'Unfollowed user'),
                                     backgroundColor: Colors.orange,
                                     duration: Duration(seconds: 2),
                                   ),
@@ -515,14 +517,19 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                               }
                             }
                           } else {
-                            // Follow the user
+                            // Follow the user (or follow back)
                             final success = await followingNotifier.followUser(userId);
                             if (success) {
                               if (mounted) {
+                                final followMessage = isFollowedBy 
+                                    ? 'Connected with user!' 
+                                    : 'Following user';
+                                final backgroundColor = Colors.green;
+                                
                                 scaffoldMessenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Following user'),
-                                    backgroundColor: Colors.green,
+                                  SnackBar(
+                                    content: Text(followMessage),
+                                    backgroundColor: backgroundColor,
                                     duration: Duration(seconds: 2),
                                   ),
                                 );
@@ -544,11 +551,20 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                             print('HomeView: Error in follow action: $e');
                           }
                           if (mounted) {
+                            String errorMessage = 'Error following user';
+                            if (e.toString().contains('permission-denied')) {
+                              errorMessage = 'Permission denied. Please check your authentication.';
+                            } else if (e.toString().contains('network')) {
+                              errorMessage = 'Network error. Please check your connection.';
+                            } else if (e.toString().contains('not-found')) {
+                              errorMessage = 'User not found.';
+                            }
+                            
                             scaffoldMessenger.showSnackBar(
                               SnackBar(
-                                content: Text('Error: ${e.toString()}'),
+                                content: Text(errorMessage),
                                 backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 2),
+                                duration: const Duration(seconds: 3),
                               ),
                             );
                           }

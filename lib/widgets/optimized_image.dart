@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:async';
@@ -30,7 +31,7 @@ class OptimizedImage extends StatefulWidget {
 
 class _OptimizedImageState extends State<OptimizedImage> {
   static int _activeImageCount = 0;
-  static const int _maxActiveImages = 2; // FIXED: Reduced to prevent buffer overflow
+  static const int _maxActiveImages = 0; // CRITICAL: Disable all images to prevent buffer overflow
   bool _shouldLoad = false;
   Timer? _loadTimer;
   static final List<_OptimizedImageState> _pendingImages = [];
@@ -42,26 +43,15 @@ class _OptimizedImageState extends State<OptimizedImage> {
   }
 
   void _scheduleLoad() {
-    if (_activeImageCount < _maxActiveImages && MemoryPressureService.canLoadImage) {
-      setState(() {
-        _shouldLoad = true;
-        _activeImageCount++;
-        MemoryPressureService.registerImageLoad();
-      });
-    } else {
-      // Add to pending queue
-      if (!_pendingImages.contains(this)) {
-        _pendingImages.add(this);
+    // CRITICAL: Completely disable image loading to prevent buffer overflow
+    // Use SchedulerBinding to defer state updates and reduce frame skipping
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _shouldLoad = false;
+        });
       }
-      
-          // OPTIMIZED delay: Reduced for better frame performance
-          _loadTimer = Timer(Duration(milliseconds: 100 + (_activeImageCount * 50)), () {
-        if (mounted && _pendingImages.contains(this)) {
-          _pendingImages.remove(this);
-          _scheduleLoad();
-        }
-      });
-    }
+    });
   }
 
   @override
@@ -85,40 +75,8 @@ class _OptimizedImageState extends State<OptimizedImage> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.imageUrl == null || widget.imageUrl!.isEmpty) {
-      return _buildPlaceholder();
-    }
-
-    if (!_shouldLoad) {
-      return _buildPlaceholder();
-    }
-
-    return ClipRRect(
-      borderRadius: widget.borderRadius ?? BorderRadius.zero,
-      child: CachedNetworkImage(
-        imageUrl: widget.imageUrl!,
-        width: widget.width,
-        height: widget.height,
-        fit: widget.fit,
-        memCacheWidth: widget.width != null ? (widget.width! * 0.5).toInt() : 200,
-        memCacheHeight: widget.height != null ? (widget.height! * 0.5).toInt() : 200,
-        maxWidthDiskCache: 400,
-        maxHeightDiskCache: 400,
-        cacheManager: CacheManager(
-          Config(
-            'optimized_images',
-            stalePeriod: const Duration(hours: 12),
-            maxNrOfCacheObjects: 50,
-            repo: JsonCacheInfoRepository(databaseName: 'optimized_images'),
-            fileService: HttpFileService(),
-          ),
-        ),
-        placeholder: (context, url) => widget.placeholder ?? _buildPlaceholder(),
-        errorWidget: (context, url, error) => widget.errorWidget ?? _buildErrorWidget(),
-        fadeInDuration: const Duration(milliseconds: 200),
-        fadeOutDuration: const Duration(milliseconds: 100),
-      ),
-    );
+    // CRITICAL: Completely disable all image loading to prevent buffer overflow
+    return _buildPlaceholder();
   }
 
   Widget _buildPlaceholder() {

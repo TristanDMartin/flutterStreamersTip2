@@ -883,41 +883,42 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildFrontView() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF6137EB), // Purple
-            Color(0xFF1C135D), // Dark purple
+    return Container( // FIXED: Remove SafeArea to allow manual control
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF6137EB), // Purple
+              Color(0xFF1C135D), // Dark purple
+            ],
+          ),
+        ),
+        child: Column(
+          children: [
+            _buildTopBar(),
+            const SizedBox(height: 8), // Add spacing after top bar
+            _buildProfileSection(),
+            _buildStatisticsRow(),
+            _buildActionButtons(),
+            const SizedBox(height: 24), // Spacing between buttons and tabs
+            _buildContentTabs(),
+            _buildContentArea(),
           ],
         ),
-      ),
-      child: Column(
-        children: [
-          _buildTopBar(),
-          _buildProfileSection(),
-          _buildStatisticsRow(),
-          _buildActionButtons(),
-          const SizedBox(height: 24), // Spacing between buttons and tabs
-          _buildContentTabs(),
-          _buildContentArea(),
-        ],
-      ),
-    );
+      );
   }
 
   Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        16, 
-        16, 
-        16, 
-        16
-      ),
+      return Padding(
+        padding: EdgeInsets.fromLTRB(
+          16, 
+          MediaQuery.of(context).padding.top + 50, // VERY LARGE ADJUSTMENT: 50px down from status bar
+          16, 
+          16
+        ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1062,11 +1063,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          gradient: onPressed != null ? const LinearGradient(
-            colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ) : null,
+          gradient: onPressed != null ? _getFollowButtonGradient() : null,
           color: onPressed == null ? Colors.grey.withValues(alpha:0.3) : null,
           borderRadius: BorderRadius.circular(24),
           border: onPressed == null ? Border.all(color: Colors.grey.withValues(alpha:0.5)) : null,
@@ -1094,11 +1091,22 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-  // MARK: - Button State Helpers
+  // MARK: - Button State Helpers (NetworkView Logic)
   String _getFollowButtonText() {
+    // NetworkView-style follow button logic
     if (_isConnected) return 'Connected';
     if (_isFollowing) return 'Following';
+    if (_isFollowedByStreamer) return 'Follow back';
     return 'Follow';
+  }
+
+  LinearGradient _getFollowButtonGradient() {
+    // All follow button states use the same ProfileView edit button gradient
+    return const LinearGradient(
+      colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+    );
   }
 
   VoidCallback? _getFollowButtonAction() {
@@ -1670,7 +1678,12 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         children: [
           // Main content
           SafeArea(
-              child: CustomScrollView(
+              top: false, // Disable automatic top safe area
+              child: Padding(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 50, // VERY LARGE ADJUSTMENT: 50px down from status bar
+                ),
+                child: CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(child: _buildHeader()),
                   const SliverToBoxAdapter(child: SizedBox(height: 12)),
@@ -1689,6 +1702,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 ],
               ),
+                ),
             ),
         ],
       ),

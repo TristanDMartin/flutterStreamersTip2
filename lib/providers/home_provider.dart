@@ -1,6 +1,7 @@
 // cspell:ignore Favorited
 import 'dart:async';
 import 'dart:developer';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_video.dart';
@@ -200,8 +201,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
       if (state.forYouVideos.isEmpty && currentForYouVideos.isNotEmpty) {
         log('⚠️ Fresh fetch returned 0 videos - this may indicate a data loading issue');
         log('🔍 Possible causes: Firestore permissions, network issues, or empty database');
-        // FRAME OPTIMIZATION: Batch state updates to prevent frame drops
-        await Future.microtask(() {
+        // FRAME OPTIMIZATION: Use SchedulerBinding to defer state updates
+        SchedulerBinding.instance.addPostFrameCallback((_) {
           state = state.copyWith(forYouVideos: currentForYouVideos);
         });
       } else if (state.forYouVideos.isNotEmpty) {
@@ -229,10 +230,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
           // If following fetch returned 0 videos, log the issue and keep sample videos
           if (state.followingVideos.isEmpty && currentFollowingVideos.isNotEmpty) {
             log('⚠️ Following fetch returned 0 videos - user may not be following anyone yet');
-            // FRAME OPTIMIZATION: Batch state updates to prevent frame drops
-            await Future.microtask(() {
-              state = state.copyWith(followingVideos: currentFollowingVideos);
-            });
+          // FRAME OPTIMIZATION: Use SchedulerBinding to defer state updates
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            state = state.copyWith(followingVideos: currentFollowingVideos);
+          });
           } else if (state.followingVideos.isNotEmpty) {
             log('✅ Fresh Following videos loaded: ${state.followingVideos.length} videos');
           }
@@ -262,8 +263,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('💡 App will continue with sample videos - check Firebase configuration and network connectivity');
       
         // Ensure we still have sample videos if everything fails
-        // FRAME OPTIMIZATION: Batch fallback state updates
-        await Future.microtask(() {
+        // FRAME OPTIMIZATION: Use SchedulerBinding to defer fallback state updates
+        SchedulerBinding.instance.addPostFrameCallback((_) {
           if (state.forYouVideos.isEmpty) {
             state = state.copyWith(forYouVideos: _createSampleVideos());
           }

@@ -39,7 +39,7 @@ class _PostComposerIntegrationState extends State<PostComposerIntegration> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onTap: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'Post Composer',

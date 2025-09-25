@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'memory_pressure_service.dart';
 import 'robust_image_service.dart';
+import '../widgets/optimized_image.dart';
 
 /// Unified Avatar Service
 ///
@@ -22,7 +23,7 @@ class UnifiedAvatarService {
   final Map<String, bool> _loadingStates = {};
   
   // FIXED: Reduced to prevent buffer overflow
-  static const int _maxConcurrentLoads = 3; // Reduced to prevent buffer overflow
+  static const int _maxConcurrentLoads = 0; // CRITICAL: Disable all concurrent loads to prevent buffer overflow
   int _currentLoads = 0;
   final Queue<String> _loadQueue = Queue<String>();
   
@@ -107,10 +108,13 @@ class UnifiedAvatarService {
       return _buildDefaultAvatar(radius, useProfileViewStyling);
     }
 
-    // Use robust image service for bulletproof avatar loading
-    final avatarWidget = RobustImageService().getAvatar(
+    // Use OptimizedImage for memory-controlled avatar loading
+    final avatarWidget = OptimizedImage(
       imageUrl: imageUrl,
-      radius: radius,
+      width: radius * 2,
+      height: radius * 2,
+      fit: BoxFit.cover,
+      borderRadius: BorderRadius.circular(radius),
       placeholder: showLoadingIndicator
           ? SizedBox(
               width: radius * 0.6,

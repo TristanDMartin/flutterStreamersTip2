@@ -6,9 +6,9 @@ class MemoryPressureService {
   factory MemoryPressureService() => _instance;
   MemoryPressureService._internal();
 
-  // FIXED: Reduced to prevent buffer overflow
-  static const int _maxImageCount = 3; // Reduced to prevent buffer overflow
-  static const int _maxAvatarCount = 5; // Reduced to prevent buffer overflow
+  // CRITICAL: Disable all images to prevent buffer overflow
+  static const int _maxImageCount = 0; // CRITICAL: Disable all images to prevent buffer overflow
+  static const int _maxAvatarCount = 0; // CRITICAL: Disable all avatars to prevent buffer overflow
   static int _currentImageCount = 0;
   static int _currentAvatarCount = 0;
   static bool _isMemoryPressureHigh = false;
