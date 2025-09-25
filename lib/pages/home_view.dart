@@ -468,10 +468,11 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                 // StreamerCard full-screen modal
                 if (_showStreamerCard && _currentStreamerCard != null)
                   Positioned.fill(
-                    child: StreamerCardView(
-                      userId: _currentStreamerCard!.id,
-                      currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
-                      onDismiss: _dismissStreamerCard,
+                    child: SafeArea(
+                      child: StreamerCardView(
+                        userId: _currentStreamerCard!.id,
+                        currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
+                        onDismiss: _dismissStreamerCard,
                       onFollow: (userId) async {
                         // Handle follow action
                         HapticFeedback.lightImpact();
@@ -654,6 +655,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                         }
                       },
                     ),
+                  ),
                   ),
               ],
             ),

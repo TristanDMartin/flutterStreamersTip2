@@ -18,21 +18,12 @@ import 'widgets/ios_minimal_startup.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // OPTIMIZED STARTUP: Initialize only critical services synchronously
+  // MINIMAL STARTUP: Initialize only essential services synchronously
   NetworkConfigService.initialize();
   IOSMemoryService.initialize();
   
-  // Initialize Firebase with iOS-specific handling
+  // Initialize Firebase immediately (required for app functionality)
   await FirebaseIOSService.initialize();
-  
-  // Initialize Firestore optimizations
-  await FirestoreOptimizationService.initialize();
-  
-  // Initialize Firestore cache with auto-index creation
-  await FirestoreCacheService.initialize();
-  
-  // Initialize push notifications
-  await PushNotificationService().initialize();
   
   // Initialize performance optimizations immediately
   _initializePerformanceOptimizations();
@@ -40,13 +31,18 @@ void main() async {
   // Run app immediately with loading screen
   runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
   
-  // Initialize non-critical services in background after app starts
+  // Initialize remaining services in background after app starts
   _initializeBackgroundServices();
 }
 
-/// Initialize non-critical services in background to avoid blocking startup
+/// Initialize remaining services in background to avoid blocking startup
 void _initializeBackgroundServices() async {
   try {
+    // Initialize Firestore services (non-blocking)
+    await FirestoreOptimizationService.initialize();
+    await FirestoreCacheService.initialize();
+    await PushNotificationService().initialize();
+    
     // Initialize Google Services fix in background
     await GoogleServicesFix.initialize();
     
@@ -58,8 +54,7 @@ void _initializeBackgroundServices() async {
     // Initialize production services in background
     await _initializeProductionServices();
     
-    // Skip asset verification to speed up startup
-    debugPrint('✅ Background services initialized');
+    debugPrint('✅ All background services initialized');
   } catch (e) {
     debugPrint('❌ Background service initialization failed: $e');
   }

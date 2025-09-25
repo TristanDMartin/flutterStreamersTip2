@@ -1,4 +1,5 @@
 // cspell:ignore Favorited
+import 'dart:async';
 import 'dart:developer';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -104,70 +105,176 @@ class HomeViewModel extends StateNotifier<HomeState> {
       
       state = state.copyWith(
         forYouVideos: sampleVideos,
-        followingVideos: sampleVideos.take(5).toList(), // Fewer for following
+        followingVideos: sampleVideos.take(1).toList(), // Only 1 for memory optimization
         isLoading: false,
       );
       
       log('✅ Loaded cached videos for instant display: ${sampleVideos.length} items');
       log('🎯 Current state - forYouVideos: ${state.forYouVideos.length}, followingVideos: ${state.followingVideos.length}, isLoading: ${state.isLoading}');
+      
+      // TIKTOK-STYLE: Start preloading videos immediately for instant playback
+      _preloadVideos();
     } catch (e) {
       log('❌ Error loading cached videos: $e');
     }
   }
 
-  /// Preload avatars for instant display (limited to prevent buffer overflow)
+  /// TIKTOK-STYLE: Preload videos for instant playback
+  Future<void> _preloadVideos() async {
+    try {
+      // Preload first 3 videos for instant playback like TikTok
+      final videosToPreload = state.forYouVideos.take(3).toList();
+      
+      for (final video in videosToPreload) {
+        try {
+          // Preload video controller for instant playback
+          await _videoService.preloadVideo(video.videoURL);
+          log('🎬 Preloaded video: ${video.id}');
+        } catch (e) {
+          log('⚠️ Failed to preload video ${video.id}: $e');
+        }
+      }
+      
+      log('✅ TIKTOK-STYLE: Preloaded ${videosToPreload.length} videos for instant playback');
+    } catch (e) {
+      log('⚠️ Video preloading failed: $e (non-critical)');
+    }
+  }
+
+  /// Preload avatars for instant display (conservative to prevent buffer overflow)
   Future<void> _preloadAvatars() async {
     try {
       final avatarUrls = <String>[];
       
-      // Only preload first 2 videos to prevent buffer overflow
-      for (final video in state.forYouVideos.take(2)) {
-        if (video.creator.avatarURL?.isNotEmpty == true) {
-          avatarUrls.add(video.creator.avatarURL!);
+      // Only preload first video to prevent buffer overflow
+      if (state.forYouVideos.isNotEmpty) {
+        final firstVideo = state.forYouVideos.first;
+        if (firstVideo.creator.avatarURL?.isNotEmpty == true) {
+          avatarUrls.add(firstVideo.creator.avatarURL!);
         }
       }
       
-      for (final video in state.followingVideos.take(2)) {
-        if (video.creator.avatarURL?.isNotEmpty == true) {
-          avatarUrls.add(video.creator.avatarURL!);
+      // Only preload first following video if different from For You
+      if (state.followingVideos.isNotEmpty) {
+        final firstFollowingVideo = state.followingVideos.first;
+        if (firstFollowingVideo.creator.avatarURL?.isNotEmpty == true &&
+            !avatarUrls.contains(firstFollowingVideo.creator.avatarURL!)) {
+          avatarUrls.add(firstFollowingVideo.creator.avatarURL!);
         }
       }
       
-      // Preload avatars for instant display
+      // Preload avatars for instant display with timeout
       if (avatarUrls.isNotEmpty) {
-        await UnifiedAvatarService().preloadAvatars(avatarUrls);
+        await UnifiedAvatarService().preloadAvatars(avatarUrls).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            log('⏰ Avatar preloading timeout - continuing without preloaded avatars');
+          },
+        );
         log('✅ Preloaded ${avatarUrls.length} avatars for instant display');
       }
     } catch (e) {
-      log('⚠️ Failed to preload avatars: $e');
+      log('⚠️ Failed to preload avatars: $e (non-critical)');
     }
   }
 
-  /// Fetch fresh videos in background
+  /// Fetch fresh videos in background with improved error handling
   Future<void> _fetchFreshVideosInBackground() async {
     try {
       log('🔄 Fetching fresh videos...');
       
-      // Fetch fresh data
-      await fetchForYouVideos(reset: true);
+      // Store current sample videos as fallback
+      final currentForYouVideos = state.forYouVideos;
+      final currentFollowingVideos = state.followingVideos;
+      
+      // Try to fetch fresh data with timeout
+      await fetchForYouVideos(reset: true).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          log('⏰ For You videos fetch timeout - keeping sample videos');
+          throw TimeoutException('For You videos fetch timeout', const Duration(seconds: 10));
+        },
+      );
+      
+      // If fresh fetch returned 0 videos, log the issue and keep sample videos
+      if (state.forYouVideos.isEmpty && currentForYouVideos.isNotEmpty) {
+        log('⚠️ Fresh fetch returned 0 videos - this may indicate a data loading issue');
+        log('🔍 Possible causes: Firestore permissions, network issues, or empty database');
+        // FRAME OPTIMIZATION: Batch state updates to prevent frame drops
+        await Future.microtask(() {
+          state = state.copyWith(forYouVideos: currentForYouVideos);
+        });
+      } else if (state.forYouVideos.isNotEmpty) {
+        log('✅ Fresh For You videos loaded: ${state.forYouVideos.length} videos');
+      }
       
       // Get the current user's following IDs to load their network videos
-      final followingIds = await _userService.getFollowingIds();
-      await fetchFollowingVideos(followingIds: followingIds, reset: true);
+      try {
+        final followingIds = await _userService.getFollowingIds().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            log('⏰ Following IDs fetch timeout');
+            return <String>[];
+          },
+        );
+        
+        await fetchFollowingVideos(followingIds: followingIds, reset: true).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            log('⏰ Following videos fetch timeout - keeping sample videos');
+            throw TimeoutException('Following videos fetch timeout', const Duration(seconds: 10));
+          },
+        );
+        
+          // If following fetch returned 0 videos, log the issue and keep sample videos
+          if (state.followingVideos.isEmpty && currentFollowingVideos.isNotEmpty) {
+            log('⚠️ Following fetch returned 0 videos - user may not be following anyone yet');
+            // FRAME OPTIMIZATION: Batch state updates to prevent frame drops
+            await Future.microtask(() {
+              state = state.copyWith(followingVideos: currentFollowingVideos);
+            });
+          } else if (state.followingVideos.isNotEmpty) {
+            log('✅ Fresh Following videos loaded: ${state.followingVideos.length} videos');
+          }
+      } catch (e) {
+        log('⚠️ Following videos fetch failed: $e - keeping sample videos');
+        if (state.followingVideos.isEmpty && currentFollowingVideos.isNotEmpty) {
+          state = state.copyWith(followingVideos: currentFollowingVideos);
+        }
+      }
       
-      // Sync like, favorite, and comment states after loading videos
-      await syncLikeStates();
-      await syncFavoriteStates();
-      await syncCommentCounts();
+      // Sync like, favorite, and comment states after loading videos (non-blocking)
+      try {
+        await Future.wait([
+          syncLikeStates(),
+          syncFavoriteStates(),
+          syncCommentCounts(),
+        ]).timeout(const Duration(seconds: 5));
+        log('✅ Video states synced successfully');
+      } catch (e) {
+        log('⚠️ Video state sync failed: $e (non-critical)');
+      }
       
-      log('✅ Fresh videos loaded: ${state.forYouVideos.length} forYou, ${state.followingVideos.length} following');
+      log('✅ Fresh videos loading completed: ${state.forYouVideos.length} forYou, ${state.followingVideos.length} following');
     } catch (e) {
       log('❌ Error fetching fresh videos: $e');
-      // If fresh videos fail, keep the sample videos but log the error
+      log('💡 This may indicate network issues, Firestore configuration problems, or database connectivity issues');
+      log('💡 App will continue with sample videos - check Firebase configuration and network connectivity');
+      
+        // Ensure we still have sample videos if everything fails
+        // FRAME OPTIMIZATION: Batch fallback state updates
+        await Future.microtask(() {
+          if (state.forYouVideos.isEmpty) {
+            state = state.copyWith(forYouVideos: _createSampleVideos());
+          }
+          if (state.followingVideos.isEmpty) {
+            state = state.copyWith(followingVideos: _createSampleVideos().take(3).toList());
+          }
+        });
     }
   }
 
-  /// Create sample videos for instant display (reduced to 2 for better performance)
+  /// Create sample videos for instant display with TikTok-style fast videos
   List<HomeVideo> _createSampleVideos() {
     return [
       const HomeVideo(
@@ -176,19 +283,19 @@ class HomeViewModel extends StateNotifier<HomeState> {
           id: 'user1',
           username: 'streamer1',
           displayName: 'Streamer One',
-          avatarURL: 'https://i.pravatar.cc/200?img=1',
+          avatarURL: 'https://picsum.photos/200/300?random=1',
         ),
-        videoURL: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        thumbnailURL: 'https://i.pravatar.cc/400?img=1',
+        videoURL: 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+        thumbnailURL: 'https://picsum.photos/seed/video1/300/200',
         likes: 1250,
         comments: 89,
         views: 15420,
-        caption: 'Amazing gaming moment! 🎮',
+        caption: 'Beautiful butterfly in nature! #nature #butterfly',
         isLiked: false,
         isFavorited: false,
         isDraft: false,
         mlScore: 0.95,
-        categoryId: 'gaming',
+        categoryId: 'nature',
       ),
       const HomeVideo(
         id: '2',

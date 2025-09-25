@@ -38,7 +38,7 @@ class StreamerCardView extends ConsumerStatefulWidget {
   ConsumerState<StreamerCardView> createState() => _StreamerCardViewState();
 }
 
-class _StreamerCardViewState extends ConsumerState<StreamerCardView>
+class _StreamerCardViewState extends ConsumerState<StreamerCardView> 
     with TickerProviderStateMixin {
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
@@ -416,6 +416,16 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     super.dispose();
   }
 
+  @override
+  void activate() {
+    super.activate();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+  }
+
   // MARK: - Connection Status
   Future<void> _checkConnectionStatus() async {
     if (widget.currentUserId == null || widget.currentUserId == widget.userId) {
@@ -663,11 +673,17 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return _buildErrorState();
     }
     
-    return Scaffold(
-      backgroundColor: Colors.black,
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      body: Stack(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        extendBody: true,
+        extendBodyBehindAppBar: false, // SAFE AREA FIX: Don't extend behind system UI
+        body: Stack(
         children: [
           // Main StreamerCardView
           AnimatedBuilder(
@@ -692,6 +708,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           // Chat View Overlay (Full Screen Cover)
           if (_showChatView) _buildChatView(),
         ],
+      ),
       ),
     );
   }
@@ -895,9 +912,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Widget _buildTopBar() {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
+      padding: const EdgeInsets.fromLTRB(
         16, 
-        MediaQuery.of(context).padding.top + 16, 
+        16, 
         16, 
         16
       ),

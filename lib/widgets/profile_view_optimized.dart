@@ -29,7 +29,7 @@ class ProfileViewOptimized extends ConsumerStatefulWidget {
   ConsumerState<ProfileViewOptimized> createState() => _ProfileViewOptimizedState();
 }
 
-class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
+class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized> 
     with TickerProviderStateMixin {
   late AnimationController _segmentedController;
   late AnimationController _flipController;
@@ -69,6 +69,16 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _segmentedController.dispose();
     _flipController.dispose();
     super.dispose();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
   }
 
   void _onProfileUpdated() {
@@ -780,4 +790,5 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         return const Color(0xFF9C27B0); // Purple
     }
   }
+
 }

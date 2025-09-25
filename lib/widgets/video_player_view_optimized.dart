@@ -68,6 +68,8 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // TIKTOK-STYLE: Initialize video immediately for instant playback
     _initializeVideo();
   }
 
@@ -149,20 +151,8 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           throw Exception('Invalid video URL: ${widget.video.videoURL}');
         }
         
-        // Test network connectivity before attempting to load
-        try {
-          final client = HttpClient();
-          client.connectionTimeout = const Duration(seconds: 5);
-          final request = await client.getUrl(videoUri);
-          final response = await request.close();
-          client.close();
-          
-          if (response.statusCode != 200) {
-            throw Exception('Video server returned status: ${response.statusCode}');
-          }
-        } catch (e) {
-          throw Exception('Network connectivity test failed: $e');
-        }
+        // FRAME OPTIMIZATION: Use microtask to prevent blocking main thread
+        await Future.microtask(() {});
       
       // Try warm controller first (TikTok style)
       _videoPlayerController = VideoPerformanceService().getReady(widget.video.videoURL);
@@ -182,9 +172,9 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         
             if (!_videoPlayerController!.value.isInitialized) {
               await _videoPlayerController!.initialize().timeout(
-                const Duration(seconds: 30), // Increased timeout from 10 to 30 seconds
+                const Duration(seconds: 8), // Reduced timeout for faster failure detection
                 onTimeout: () {
-                  throw Exception('Video initialization timeout - server may be slow');
+                  throw Exception('Video initialization timeout');
                 },
               );
             }
@@ -199,11 +189,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           _isPlaying = widget.isCurrentVideo;
         });
         
-        // Small delay to ensure smooth transition
-        await Future.delayed(const Duration(milliseconds: 100));
-        
-        if (_isPlaying && mounted) {
+        // TIKTOK-STYLE INSTANT PLAYBACK: Play immediately without any delay
+        if (_isPlaying && mounted && _videoPlayerController != null) {
           _videoPlayerController!.play();
+          log('🎬 INSTANT PLAY: Video started immediately for ${widget.video.id}');
         }
         
         // Complete performance tracking
@@ -561,10 +550,8 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         color: Colors.black,
         child: Stack(
           children: [
-            // Video player with optimized rendering
-            _isInitialized && _videoPlayerController != null
-                ? _buildVideoPlayer()
-                : _buildPosterPlaceholder(),
+            // TIKTOK-STYLE: Always show video player, no placeholder delay
+            _buildVideoPlayer(),
             
             // UI Overlay
             _buildUIOverlay(),
@@ -627,6 +614,31 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     );
   }
 
+  Widget _buildInstantThumbnail() {
+    // TIKTOK-STYLE: Show thumbnail instantly, no loading indicators
+    if (widget.video.thumbnailURL != null && widget.video.thumbnailURL!.isNotEmpty) {
+      return Positioned.fill(
+        child: Image.network(
+          widget.video.thumbnailURL!,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          // No loading builder - show immediately
+          errorBuilder: (context, error, stackTrace) {
+            debugPrint('⚠️ VideoPlayer: Failed to load thumbnail: $error');
+            return _buildGradientPlaceholder();
+          },
+          // Optimize for instant display
+          cacheWidth: 400,
+          cacheHeight: 400,
+          filterQuality: FilterQuality.medium,
+        ),
+      );
+    } else {
+      return _buildGradientPlaceholder();
+    }
+  }
+
   Widget _buildGradientPlaceholder() {
     return Positioned.fill(
       child: Container(
@@ -646,7 +658,11 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   Widget _buildVideoPlayer() {
-    if (_videoPlayerController == null) return _buildGradientPlaceholder();
+    // TIKTOK-STYLE: Show video immediately or use thumbnail as instant fallback
+    if (_videoPlayerController == null || !_isInitialized) {
+      // Show thumbnail immediately while video loads in background
+      return _buildInstantThumbnail();
+    }
     
     return Positioned.fill(
       child: FittedBox(

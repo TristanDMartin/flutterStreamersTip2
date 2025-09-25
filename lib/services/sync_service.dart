@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'offline_storage_service.dart';
 import 'scheduled_post_service.dart';
 import 'logging_service.dart';
+import '../models/scheduled_post.dart';
 
 class SyncService {
   static final SyncService _instance = SyncService._internal();

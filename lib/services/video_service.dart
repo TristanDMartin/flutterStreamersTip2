@@ -2,9 +2,11 @@ import '../models/home_video.dart';
 import '../models/user.dart';
 import 'real_user_data_service.dart';
 import 'logging_service.dart';
+import 'video_performance_service.dart';
 
 class VideoService {
   final RealUserDataService _userDataService = RealUserDataService();
+  final VideoPerformanceService _videoPerformanceService = VideoPerformanceService();
 
   Future<VideoFetchResult> fetchForYouVideos({
     required int pageSize,
@@ -156,6 +158,21 @@ class VideoService {
       followerCount: 15420,
       followingCount: 890,
     );
+  }
+
+  /// TIKTOK-STYLE: Preload video for instant playback
+  Future<void> preloadVideo(String videoURL) async {
+    try {
+      LoggingService.instance.debug('🎬 Preloading video: $videoURL', tag: 'VideoService');
+      
+      // Use VideoPerformanceService to preload the video
+      await _videoPerformanceService.preloadVideo(videoURL);
+      
+      LoggingService.instance.debug('✅ Video preloaded successfully: $videoURL', tag: 'VideoService');
+    } catch (e) {
+      LoggingService.instance.error('Failed to preload video: $videoURL', tag: 'VideoService', error: e);
+      rethrow;
+    }
   }
 }
 

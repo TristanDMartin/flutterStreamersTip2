@@ -26,72 +26,90 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notifSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _procSub;
+  bool _isInitialized = false; // FIXED: Prevent multiple initializations
 
   Future<void> init(String userId) async {
+    // FIXED: Prevent infinite loop by checking if already initialized
+    if (_isInitialized) {
+      debugPrint('⚠️ ActivityNotifier already initialized, skipping...');
+      return;
+    }
+    
     try {
       await _notifSub?.cancel();
       state = state.copyWith(isLoading: true, hasError: false, error: null);
       
-      // IMMEDIATE FALLBACK: Load offline data first, then try Firestore
+      // Load offline data immediately as fallback
       debugPrint('🔄 Loading offline data immediately...');
       _loadOfflineData();
       
-      // Try to load from Firestore in background
-      try {
-        _notifSub = _db
-            .collection('notifications')
-            .doc(userId)
-            .collection('items')
-            .orderBy('timestamp', descending: true)
-            .snapshots()
-            .listen(
-              (snap) {
-                try {
-                  final items = snap.docs.map((d) {
-                    final data = d.data();
-                    return ActivityNotification(
-                      id: d.id,
-                      type: _typeFromString((data['type'] ?? 'like').toString()),
-                      user: const UserConverter().fromJson(
-                        Map<String, dynamic>.from(data['user'] ?? {}),
-                      ),
-                      timestamp: const TimestampConverter().fromJson(data['timestamp']),
-                      postThumbnailUrl: data['postThumbnailUrl'] as String?,
-                      commentText: data['commentText'] as String?,
-                      status: (data['status'] ?? 'pending').toString(),
-                      videoId: data['videoId'] as String?,
-                    );
-                  }).toList();
-
-                  final grouped = <String, List<ActivityNotification>>{};
-                  for (final n in items) {
-                    final key = _groupKey(n.timestamp);
-                    grouped.putIfAbsent(key, () => []).add(n);
-                  }
-                  state = state.copyWith(
-                    grouped: grouped, 
-                    isLoading: false, 
-                    hasError: false,
-                    error: null,
-                  );
-                  debugPrint('✅ Firestore data loaded successfully');
-                } catch (e) {
-                  debugPrint('🚨 Firestore parsing error: $e');
-                  // Keep offline data if Firestore fails
-                }
-              },
-              onError: (error) {
-                debugPrint('🚨 Firestore error: $error');
-                // Keep offline data if Firestore fails
-              },
-            );
-      } catch (e) {
-        debugPrint('🚨 Firestore setup error: $e');
-        // Keep offline data if Firestore setup fails
-      }
+      // Try to load from Firestore in background (non-blocking)
+      _loadFirestoreData(userId);
+      
+      _isInitialized = true; // Mark as initialized
+      
     } catch (e) {
-      debugPrint('🚨 Init error: $e');
-      _loadOfflineData();
+      debugPrint('❌ Error in init: $e');
+      // Only load offline data if we haven't already loaded it
+      if (state.grouped.isEmpty) {
+        _loadOfflineData();
+      }
+      _isInitialized = true; // Mark as initialized even on error
+    }
+  }
+
+  Future<void> _loadFirestoreData(String userId) async {
+    try {
+      _notifSub = _db
+          .collection('notifications')
+          .doc(userId)
+          .collection('items')
+          .orderBy('timestamp', descending: true)
+          .snapshots()
+          .listen(
+            (snap) {
+              try {
+                final items = snap.docs.map((d) {
+                  final data = d.data();
+                  return ActivityNotification(
+                    id: d.id,
+                    type: _typeFromString((data['type'] ?? 'like').toString()),
+                    user: const UserConverter().fromJson(
+                      Map<String, dynamic>.from(data['user'] ?? {}),
+                    ),
+                    timestamp: const TimestampConverter().fromJson(data['timestamp']),
+                    postThumbnailUrl: data['postThumbnailUrl'] as String?,
+                    commentText: data['commentText'] as String?,
+                    status: (data['status'] ?? 'pending').toString(),
+                    videoId: data['videoId'] as String?,
+                  );
+                }).toList();
+
+                final grouped = <String, List<ActivityNotification>>{};
+                for (final n in items) {
+                  final key = _groupKey(n.timestamp);
+                  grouped.putIfAbsent(key, () => []).add(n);
+                }
+                state = state.copyWith(
+                  grouped: grouped, 
+                  isLoading: false, 
+                  hasError: false,
+                  error: null,
+                );
+                debugPrint('✅ Firestore data loaded successfully');
+              } catch (e) {
+                debugPrint('🚨 Firestore parsing error: $e');
+                // Keep offline data if Firestore fails - don't reload offline data
+              }
+            },
+            onError: (error) {
+              debugPrint('🚨 Firestore error: $error');
+              // Keep offline data if Firestore fails - don't reload offline data
+            },
+          );
+    } catch (e) {
+      debugPrint('🚨 Firestore setup error: $e');
+      // Keep offline data if Firestore setup fails - don't reload offline data
     }
   }
 
@@ -204,6 +222,14 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     } catch (e) {
       debugPrint('Failed to start processing listener: $e');
     }
+  }
+
+  /// Reset the provider to allow re-initialization
+  void reset() {
+    _isInitialized = false;
+    _notifSub?.cancel();
+    _procSub?.cancel();
+    state = const ActivityState();
   }
 
   @override

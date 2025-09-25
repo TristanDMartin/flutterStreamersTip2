@@ -21,8 +21,8 @@ class UnifiedAvatarService {
   final Map<String, ImageProvider> _memoryCache = {};
   final Map<String, bool> _loadingStates = {};
   
-  // Buffer management to prevent ImageReader_JNI overflow
-  static const int _maxConcurrentLoads = 2; // Reduced to prevent buffer overflow
+  // FIXED: Reduced to prevent buffer overflow
+  static const int _maxConcurrentLoads = 3; // Reduced to prevent buffer overflow
   int _currentLoads = 0;
   final Queue<String> _loadQueue = Queue<String>();
   

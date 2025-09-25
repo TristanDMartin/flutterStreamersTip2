@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'online_status_indicator.dart';
 
 class TrendingCreatorRing extends ConsumerStatefulWidget {
@@ -22,7 +23,7 @@ class TrendingCreatorRing extends ConsumerStatefulWidget {
   ConsumerState<TrendingCreatorRing> createState() => _TrendingCreatorRingState();
 }
 
-class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
+class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing> 
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -48,6 +49,16 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
   }
 
   void _handleTapDown(TapDownDetails details) {
@@ -189,4 +200,5 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
       ),
     );
   }
+
 }

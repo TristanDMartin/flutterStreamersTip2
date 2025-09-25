@@ -289,11 +289,11 @@ class NetworkServiceOptimized {
 
     try {
       // Batch fetch uncached users with optimized batch size
-      const batchSize = 5; // Reduced from 10 to 5 for better performance
+      const batchSize = 10; // Optimized batch size for better performance
       final fetchedUsers = <app_user.User>[];
 
       // Limit to prevent excessive queries
-      final limitedIds = uncachedIds.take(25).toList(); // Limit to 25 users max
+      final limitedIds = uncachedIds.take(50).toList(); // Limit to 50 users max
 
       for (int i = 0; i < limitedIds.length; i += batchSize) {
         final batch = limitedIds.sublist(i, (i + batchSize).clamp(0, limitedIds.length));

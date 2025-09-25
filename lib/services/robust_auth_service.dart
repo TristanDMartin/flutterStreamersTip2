@@ -65,11 +65,12 @@ class RobustAuthenticationService extends ChangeNotifier {
     
     // Listen to authentication state changes
     _auth.authStateChanges().listen((firebase_auth.User? user) {
-    // print("🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
+      debugPrint("🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
       if (user != null) {
-    // print("👤 User: ${user.email} (${user.uid})");
+        debugPrint("👤 User: ${user.email} (${user.uid})");
         _handleUserSignIn(user);
       } else {
+        debugPrint("👤 User logged out - clearing auth state");
         _currentUser = null;
         _isLoggedIn = false;
         _isCheckingAuth = false;
@@ -673,6 +674,9 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Handle user sign in and load user data from Firestore
   Future<void> _handleUserSignIn(firebase_auth.User firebaseUser) async {
+    debugPrint("🔐 _handleUserSignIn called for user: ${firebaseUser.uid}");
+    debugPrint("👤 User email: ${firebaseUser.email ?? 'nil'}");
+    debugPrint("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
     
     try {
       final userRef = _firestore.collection("users").doc(firebaseUser.uid);
@@ -680,7 +684,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       
       
       if (snapshot.exists) {
-    // print("🔐 User document found in Firestore");
+        debugPrint("🔐 User document found in Firestore");
         final data = snapshot.data()!;
         
         // Decode hashtags - handle both List and String formats
@@ -729,7 +733,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         _isCheckingAuth = false;
         notifyListeners();
         
-    // print("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
+        debugPrint("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
         
         // Set up real-time listener for user data changes
         _setupUserDataListener(firebaseUser.uid);
@@ -738,6 +742,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         await _ensureUserDocumentExists();
         
       } else {
+        debugPrint("🔐 User document NOT found in Firestore - creating new user");
         
         // For existing users who don't have a Firestore document, create one
         final baseUsername = firebaseUser.email?.split('@')[0] ?? 'user';
@@ -764,12 +769,16 @@ class RobustAuthenticationService extends ChangeNotifier {
         _isCheckingAuth = false;
         notifyListeners();
         
+        debugPrint("✅ New user created and signed in successfully - isLoggedIn: $_isLoggedIn");
         
         // Set up real-time listener for the new user
         _setupUserDataListener(firebaseUser.uid);
       }
     } catch (e) {
-    // print("❌ Error in handleUserSignIn: $e");
+      debugPrint("❌ Error in handleUserSignIn: $e");
+      debugPrint("❌ Error type: ${e.runtimeType}");
+      _currentUser = null;
+      _isLoggedIn = false;
       _isCheckingAuth = false;
       notifyListeners();
     }
@@ -961,6 +970,17 @@ class RobustAuthenticationService extends ChangeNotifier {
     // print('✅ Calendar events successfully updated in Firestore');
     } catch (e) {
     // print('❌ Error updating calendar events in Firestore: $e');
+      rethrow;
+    }
+  }
+
+  /// Send password reset email
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      debugPrint("✅ Password reset email sent to: $email");
+    } catch (e) {
+      debugPrint("❌ Password reset error: $e");
       rethrow;
     }
   }

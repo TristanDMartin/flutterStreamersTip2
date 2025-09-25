@@ -25,7 +25,7 @@ class InsightsView extends ConsumerStatefulWidget {
   ConsumerState<InsightsView> createState() => _InsightsViewState();
 }
 
-class _InsightsViewState extends ConsumerState<InsightsView>
+class _InsightsViewState extends ConsumerState<InsightsView> 
     with TickerProviderStateMixin {
   late TabController _tabController;
   late InsightsData _insightsData;
@@ -46,6 +46,16 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     _tabController.dispose();
     _insightsSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
   }
 
   Future<void> _loadInsightsData() async {
@@ -571,4 +581,5 @@ class _InsightsViewState extends ConsumerState<InsightsView>
       ),
     );
   }
+
 }

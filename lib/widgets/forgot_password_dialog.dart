@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/auth_service.dart';
+import '../services/robust_auth_service.dart';
 
 class ForgotPasswordDialog extends ConsumerStatefulWidget {
   const ForgotPasswordDialog({super.key});
@@ -128,7 +128,7 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _sendResetEmail,
+                      onPressed: _isLoading ? null : () => _sendResetEmail(),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF9248D2),
                         foregroundColor: Colors.white,
@@ -230,7 +230,7 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
     });
 
     try {
-      final authService = ref.read(authServiceProvider.notifier);
+      final authService = ref.read(robustAuthServiceProvider.notifier);
       await authService.sendPasswordResetEmail(email);
 
       setState(() {

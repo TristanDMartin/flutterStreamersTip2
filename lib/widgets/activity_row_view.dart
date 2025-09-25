@@ -23,7 +23,7 @@ class ActivityRowView extends ConsumerStatefulWidget {
   ConsumerState<ActivityRowView> createState() => _ActivityRowViewState();
 }
 
-class _ActivityRowViewState extends ConsumerState<ActivityRowView>
+class _ActivityRowViewState extends ConsumerState<ActivityRowView> 
     with TickerProviderStateMixin {
   late AnimationController _scaleController;
   late AnimationController _fadeController;
@@ -48,6 +48,16 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     _scaleController.dispose();
     _fadeController.dispose();
     super.dispose();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
   }
 
   @override
@@ -480,4 +490,5 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       );
     }
   }
+
 }

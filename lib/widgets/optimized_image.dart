@@ -30,7 +30,7 @@ class OptimizedImage extends StatefulWidget {
 
 class _OptimizedImageState extends State<OptimizedImage> {
   static int _activeImageCount = 0;
-  static const int _maxActiveImages = 1; // ULTRA-AGGRESSIVE: Only 1 image at a time
+  static const int _maxActiveImages = 2; // FIXED: Reduced to prevent buffer overflow
   bool _shouldLoad = false;
   Timer? _loadTimer;
   static final List<_OptimizedImageState> _pendingImages = [];
@@ -54,8 +54,8 @@ class _OptimizedImageState extends State<OptimizedImage> {
         _pendingImages.add(this);
       }
       
-      // ULTRA-AGGRESSIVE delay: 3-8 seconds between images to prevent buffer issues
-      _loadTimer = Timer(Duration(seconds: 3 + (_activeImageCount * 5)), () {
+          // OPTIMIZED delay: Reduced for better frame performance
+          _loadTimer = Timer(Duration(milliseconds: 100 + (_activeImageCount * 50)), () {
         if (mounted && _pendingImages.contains(this)) {
           _pendingImages.remove(this);
           _scheduleLoad();

@@ -19,7 +19,7 @@ class InboxViewOptimized extends ConsumerStatefulWidget {
   ConsumerState<InboxViewOptimized> createState() => _InboxViewOptimizedState();
 }
 
-class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
+class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized> 
     with TickerProviderStateMixin {
   late TabController _tabController;
   final InboxServiceOptimized _inboxService = InboxServiceOptimized();
@@ -70,6 +70,16 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     _searchController.dispose();
     _inboxService.stopRealTimeListeners();
     super.dispose();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
   }
 
   void _initializeRealTimeUpdates() async {
@@ -1588,4 +1598,5 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       ),
     );
   }
+
 }
