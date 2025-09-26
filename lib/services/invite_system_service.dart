@@ -5,7 +5,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'logging_service.dart';
-import 'error_handler_service.dart';
 
 class InviteSystemService {
   static final InviteSystemService _instance = InviteSystemService._internal();

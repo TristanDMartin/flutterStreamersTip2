@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'logging_service.dart';
-import 'error_handler_service.dart';
 
 class DeepLinkingService {
   static final DeepLinkingService _instance = DeepLinkingService._internal();
