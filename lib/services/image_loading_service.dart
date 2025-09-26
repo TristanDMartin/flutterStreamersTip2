@@ -29,33 +29,37 @@ class ImageLoadingService {
       return _buildErrorWidget(width, height, fit, borderRadius);
     }
 
-    return CachedNetworkImage(
-      imageUrl: imageUrl,
-      width: width,
-      height: height,
-      fit: fit,
-      memCacheWidth: width?.toInt(),
-      memCacheHeight: height?.toInt(),
-      maxWidthDiskCache: width?.toInt() ?? 800,
-      maxHeightDiskCache: height?.toInt() ?? 800,
-      placeholder: (context, url) => placeholder ?? _buildPlaceholderWidget(width, height, fit, borderRadius),
-      errorWidget: (context, url, error) => errorWidget ?? _buildErrorWidget(width, height, fit, borderRadius),
-      fadeInDuration: const Duration(milliseconds: 300),
-      fadeOutDuration: const Duration(milliseconds: 100),
-      imageBuilder: (context, imageProvider) {
-        return Container(
-          width: width,
-          height: height,
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            image: DecorationImage(
-              image: imageProvider,
-              fit: fit,
-            ),
-          ),
-        );
-      },
-    );
+    // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
+    return _buildErrorWidget(width, height, fit, borderRadius);
+    
+    // DISABLED: Image loading causes buffer overflow
+    // return CachedNetworkImage(
+    //   imageUrl: imageUrl,
+    //   width: width,
+    //   height: height,
+    //   fit: fit,
+    //   memCacheWidth: width?.toInt(),
+    //   memCacheHeight: height?.toInt(),
+    //   maxWidthDiskCache: width?.toInt() ?? 800,
+    //   maxHeightDiskCache: height?.toInt() ?? 800,
+    //   placeholder: (context, url) => placeholder ?? _buildPlaceholderWidget(width, height, fit, borderRadius),
+    //   errorWidget: (context, url, error) => errorWidget ?? _buildErrorWidget(width, height, fit, borderRadius),
+    //   fadeInDuration: const Duration(milliseconds: 300),
+    //   fadeOutDuration: const Duration(milliseconds: 100),
+    //   imageBuilder: (context, imageProvider) {
+    //     return Container(
+    //       width: width,
+    //       height: height,
+    //       decoration: BoxDecoration(
+    //         borderRadius: borderRadius,
+    //         image: DecorationImage(
+    //           image: imageProvider,
+    //           fit: fit,
+    //         ),
+    //       ),
+    //     );
+    //   },
+    // );
   }
 
   /// Load a network image with circular avatar styling
@@ -74,17 +78,21 @@ class ImageLoadingService {
       return _buildCircularErrorWidget(radius);
     }
 
-    return CachedNetworkImage(
-      imageUrl: imageUrl,
-      imageBuilder: (context, imageProvider) => CircleAvatar(
-        radius: radius,
-        backgroundImage: imageProvider,
-      ),
-      placeholder: (context, url) => placeholder ?? _buildCircularPlaceholderWidget(radius),
-      errorWidget: (context, url, error) => errorWidget ?? _buildCircularErrorWidget(radius),
-      memCacheWidth: (radius * 2).toInt(),
-      memCacheHeight: (radius * 2).toInt(),
-    );
+    // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
+    return _buildCircularErrorWidget(radius);
+    
+    // DISABLED: Image loading causes buffer overflow
+    // return CachedNetworkImage(
+    //   imageUrl: imageUrl,
+    //   imageBuilder: (context, imageProvider) => CircleAvatar(
+    //     radius: radius,
+    //     backgroundImage: imageProvider,
+    //   ),
+    //   placeholder: (context, url) => placeholder ?? _buildCircularPlaceholderWidget(radius),
+    //   errorWidget: (context, url, error) => errorWidget ?? _buildCircularErrorWidget(radius),
+    //   memCacheWidth: (radius * 2).toInt(),
+    //   memCacheHeight: (radius * 2).toInt(),
+    // );
   }
 
   /// Load a network image with rounded rectangle styling
@@ -108,23 +116,7 @@ class ImageLoadingService {
     );
   }
 
-  /// Build placeholder widget
-  static Widget _buildPlaceholderWidget(double? width, double? height, BoxFit fit, BorderRadius? borderRadius) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: Colors.grey.withValues(alpha: 0.1),
-        borderRadius: borderRadius,
-      ),
-      child: const Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
-        ),
-      ),
-    );
-  }
+  // Removed unused _buildPlaceholderWidget method
 
   /// Build error widget
   static Widget _buildErrorWidget(double? width, double? height, BoxFit fit, BorderRadius? borderRadius) {
@@ -150,16 +142,7 @@ class ImageLoadingService {
   }
 
   /// Build circular placeholder widget
-  static Widget _buildCircularPlaceholderWidget(double radius) {
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: Colors.grey.withValues(alpha: 0.1),
-      child: const CircularProgressIndicator(
-        strokeWidth: 2,
-        valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
-      ),
-    );
-  }
+  // Removed unused _buildCircularPlaceholderWidget method
 
   /// Build circular error widget
   static Widget _buildCircularErrorWidget(double radius) {

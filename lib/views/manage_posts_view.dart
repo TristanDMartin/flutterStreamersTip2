@@ -46,16 +46,9 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
   // Sorting
   PostSortOption _sortOption = PostSortOption.dateDesc;
   
-  // Advanced filtering
-  DateTimeRange? _dateRange;
-  bool _showAdvancedFilters = false;
-  
   // Real-time updates
   bool _isRealTimeEnabled = true;
   int _refreshInterval = 30; // seconds
-  
-  // Error handling
-  String? _lastError;
   int _retryCount = 0;
   static const int _maxRetries = 3;
 
@@ -87,7 +80,6 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
   Future<void> _loadPosts() async {
     setState(() {
       _isLoading = true;
-      _lastError = null;
     });
 
     try {
@@ -107,7 +99,6 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _lastError = e.toString();
       });
       
       if (_retryCount < _maxRetries) {
@@ -138,7 +129,7 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
         break;
       case PostSortOption.engagement:
         // Mock engagement sorting - in real app, this would use analytics data
-        posts.sort((a, b) => b.analyticsHints?['engagement']?.compareTo(a.analyticsHints?['engagement'] ?? 0) ?? 0);
+        posts.sort((a, b) => b.analyticsHints['engagement']?.compareTo(a.analyticsHints['engagement'] ?? 0) ?? 0);
         break;
     }
     return posts;

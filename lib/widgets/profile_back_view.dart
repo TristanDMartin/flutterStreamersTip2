@@ -188,17 +188,17 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Widget _buildLoadingState() {
-    return SafeArea( // FIXED: Add SafeArea to prevent status bar overlap
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-          ),
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
         ),
+      ),
+      child: SafeArea(
         child: const Scaffold(
           backgroundColor: Colors.transparent,
           body: Center(

@@ -3,15 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/discover_provider.dart';
 import '../models/trending_creator.dart';
-import 'trending_creator_ring.dart';
 import 'category_card.dart';
 import 'recommended_content_card.dart';
 import 'search_screen.dart';
 import 'activity_view.dart';
-import 'streamer_card_view.dart';
 import '../services/logging_service.dart';
 import '../services/error_handler_service.dart';
-import '../services/robust_auth_service.dart';
 import '../services/caching_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/accessibility_service.dart';
@@ -284,25 +281,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
 
-  void _navigateToCreatorProfile(BuildContext context, TrendingCreator creator) {
-    try {
-      LoggingService.instance.debug('Navigating to creator profile: ${creator.username}', tag: 'DiscoverView');
-      
-      // Navigate to StreamerCardView
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => StreamerCardView(
-            userId: creator.id,
-            currentUserId: ref.read(robustAuthServiceProvider).currentUser?.id,
-            onDismiss: () => Navigator.of(context).pop(),
-          ),
-        ),
-      );
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error navigating to creator profile', tag: 'DiscoverView', error: e, stackTrace: stackTrace);
-      ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
-    }
-  }
 
 
 
@@ -777,61 +755,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
-  Widget _buildTrendingCreatorsList(List<TrendingCreator> creators) {
-    return SizedBox(
-      height: 120,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: creators.length,
-        itemBuilder: (context, index) {
-          final creator = creators[index];
-          return Padding(
-            padding: EdgeInsets.only(
-              left: index == 0 ? 0 : 12, // 12px spacing as specified
-              right: index == creators.length - 1 ? 12 : 0,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TrendingCreatorRing(
-                  key: ValueKey(creator.id),
-                  imageUrl: creator.avatarURL,
-                  username: creator.username,
-                  userId: creator.id,
-                  onTap: () {
-                    _navigateToCreatorProfile(context, creator);
-                  },
-                  onLongPress: () {
-                    // TODO: Implement quick actions
-                    LoggingService.instance.debug('Long press on creator: ${creator.username}', tag: 'DiscoverView');
-                  },
-                ),
-                
-                const SizedBox(height: 8), // 12px gap as specified
-                
-                // Username below circle
-                SizedBox(
-                  width: 84, // Match ring width
-                  child: Text(
-                    creator.username,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12, // 12-14pt as specified
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
 
 
   Widget _buildVideoGridWithPagination(String categoryId, DiscoverState discoverState) {

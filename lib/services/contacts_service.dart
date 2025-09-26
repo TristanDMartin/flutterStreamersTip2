@@ -1,13 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/services.dart';
 import 'package:crypto/crypto.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'logging_service.dart';
-import 'error_handler_service.dart';
 
 class ContactsService {
   static final ContactsService _instance = ContactsService._internal();
@@ -53,8 +50,8 @@ class ContactsService {
       for (final contact in contacts) {
         try {
           // Extract phone numbers and emails
-          final phoneNumbers = contact.phones?.where((phone) => phone.isNotEmpty).toList() ?? [];
-          final emails = contact.emails?.where((email) => email.isNotEmpty).toList() ?? [];
+          final phoneNumbers = contact.phones.where((phone) => phone.isNotEmpty).toList();
+          final emails = contact.emails.where((email) => email.isNotEmpty).toList();
 
           // Skip contacts without phone or email
           if (phoneNumbers.isEmpty && emails.isEmpty) continue;

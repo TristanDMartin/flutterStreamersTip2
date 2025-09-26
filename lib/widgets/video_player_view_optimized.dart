@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:developer';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -60,6 +59,8 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   bool _isInitialized = false;
   bool _isPlaying = false;
   bool _hasIncrementedView = false;
+  bool _isBookmarkLoading = false; // Prevent multiple rapid taps
+  bool _showPlayPauseIndicatorOverlay = false; // Show play/pause indicator animation
   
   // Track last tap position for floating hearts
   Offset _lastTapPosition = Offset.zero;
@@ -298,9 +299,49 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     setState(() {});
   }
 
-  void _handleFavoriteChanged() {
-    // Optional callback when favorite state changes
-    setState(() {});
+  Future<void> _handleFavoriteChanged() async {
+    // Production-ready favorite toggle with error handling and analytics
+    if (_isBookmarkLoading) return; // Prevent multiple rapid taps
+    
+    setState(() {
+      _isBookmarkLoading = true;
+    });
+    
+    try {
+      // Call the async favorite update method
+      if (widget.homeViewModel.updateVideoFavoriteState != null) {
+        await widget.homeViewModel.updateVideoFavoriteState!(widget.video.id);
+      }
+      setState(() {});
+      
+      // Track analytics
+      // AnalyticsService.instance.trackEvent('bookmark_toggled', parameters: {
+      //   'video_id': widget.video.id,
+      //   'is_favorited': widget.isBookmarked,
+      //   'creator_id': widget.video.creator.id,
+      // });
+      
+    } catch (e) {
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update bookmark: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      
+      // Log error for debugging
+      log('❌ Error toggling bookmark for video ${widget.video.id}: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBookmarkLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _incrementViewCount() async {
@@ -370,7 +411,9 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   void _handleBookmark() {
-    // Handle bookmark button tap
+    // Handle bookmark button tap with production-ready error handling
+    if (_isBookmarkLoading) return; // Prevent multiple rapid taps
+    
     HapticFeedback.lightImpact();
     _handleFavoriteChanged();
   }
@@ -387,7 +430,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           userId: widget.video.creator.id,
           displayName: widget.video.creator.displayName,
           profileImageUrl: widget.video.creator.avatarURL,
-          onDismiss: () => Navigator.of(context).pop(),
+          onDismiss: () {
+            // Don't call Navigator.pop() here as it's already handled in the X button
+            // This prevents double pop which causes black screen
+          },
         );
       },
     );
@@ -455,7 +501,14 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   }
 
   void _handleTap() {
+    // Add haptic feedback for better user experience
+    HapticFeedback.lightImpact();
+    
+    // Toggle play/pause with animation
     _togglePlayPause();
+    
+    // Show play/pause indicator animation
+    _showPlayPauseIndicator();
   }
 
   void _handleDoubleTap() {
@@ -507,6 +560,26 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     }
   }
   
+  /// Show play/pause indicator animation with TikTok-style effects
+  void _showPlayPauseIndicator() {
+    // 1. Immediate haptic feedback
+    HapticFeedback.lightImpact();
+    
+    // 2. Show indicator with animation
+    setState(() {
+      _showPlayPauseIndicatorOverlay = true;
+    });
+    
+    // 3. Hide indicator after animation
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) {
+        setState(() {
+          _showPlayPauseIndicatorOverlay = false;
+        });
+      }
+    });
+  }
+  
   void _createFloatingHearts() {
     // Use the actual tap position for floating hearts animation
     final tapPosition = _lastTapPosition;
@@ -519,6 +592,41 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         }
       });
     }
+  }
+  
+  /// Build play/pause indicator overlay with TikTok-style animation
+  Widget _buildPlayPauseIndicator() {
+    return Center(
+      child: AnimatedScale(
+        scale: _showPlayPauseIndicatorOverlay ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.elasticOut,
+        child: AnimatedOpacity(
+          opacity: _showPlayPauseIndicatorOverlay ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 150),
+          child: Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.7),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 20,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: Icon(
+              _isPlaying ? Icons.pause : Icons.play_arrow,
+              color: Colors.white,
+              size: 40,
+            ),
+          ),
+        ),
+      ),
+    );
   }
   
   void _showFloatingHeart(Offset position) {
@@ -558,61 +666,16 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
             
             // Action buttons overlay
             _buildActionButtons(),
+            
+            // Play/Pause indicator overlay
+            if (_showPlayPauseIndicatorOverlay) _buildPlayPauseIndicator(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPosterPlaceholder() {
-    // Use thumbnail if available, otherwise show gradient
-    if (widget.video.thumbnailURL != null && widget.video.thumbnailURL!.isNotEmpty) {
-      return Image.network(
-        widget.video.thumbnailURL!,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return _buildLoadingPlaceholder();
-        },
-        errorBuilder: (context, error, stackTrace) {
-          debugPrint('⚠️ VideoPlayer: Failed to load thumbnail: $error');
-          return _buildLoadingPlaceholder();
-        },
-        // Optimize memory usage
-        cacheWidth: 400,
-        cacheHeight: 400,
-        filterQuality: FilterQuality.medium,
-      );
-    } else {
-      return _buildLoadingPlaceholder();
-    }
-  }
 
-  Widget _buildLoadingPlaceholder() {
-    return Positioned.fill(
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1A1A1A),
-              Color(0xFF2D2D2D),
-              Color(0xFF1A1A1A),
-            ],
-          ),
-        ),
-        child: const Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-            strokeWidth: 2,
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildInstantThumbnail() {
     // TIKTOK-STYLE: Show thumbnail instantly, no loading indicators
@@ -819,12 +882,17 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           ),
           const SizedBox(height: 16),
           
-          // Bookmark button
+          // Bookmark button with loading state
           _buildActionButton(
-            icon: widget.isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-            count: widget.video.isFavorited ? '1' : '0',
-            onTap: _handleBookmark,
+            icon: _isBookmarkLoading 
+                ? Icons.hourglass_empty 
+                : (widget.isBookmarked ? Icons.bookmark : Icons.bookmark_border),
+            count: _isBookmarkLoading 
+                ? '...' 
+                : (widget.video.isFavorited ? '1' : '0'),
+            onTap: _isBookmarkLoading ? null : _handleBookmark,
             isActive: widget.isBookmarked,
+            isLoading: _isBookmarkLoading,
           ),
           const SizedBox(height: 16),
           
@@ -852,27 +920,39 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   Widget _buildActionButton({
     required IconData icon,
     required String count,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     bool isActive = false,
+    bool isLoading = false,
   }) {
     const btnSize = 44.0;
     return SizedBox(
       width: btnSize,
       height: btnSize,
       child: InkWell(
-        onTap: () {
+        onTap: onTap != null ? () {
           HapticFeedback.lightImpact();
           onTap();
-        },
+        } : null,
         borderRadius: BorderRadius.circular(btnSize / 2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: isActive ? const Color(0xFF9248D2) : Colors.white.withValues(alpha: 0.85),
-              size: 24,
-            ),
+            isLoading 
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isActive ? const Color(0xFF9248D2) : Colors.white.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  )
+                : Icon(
+                    icon,
+                    color: isActive ? const Color(0xFF9248D2) : Colors.white.withValues(alpha: 0.85),
+                    size: 24,
+                  ),
             const SizedBox(height: 4),
             Text(
               count,

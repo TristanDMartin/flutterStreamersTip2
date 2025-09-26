@@ -1066,46 +1066,30 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
         endTime: endTime,
       );
       
-      if (result != null) {
-        _processedVideoFile = result;
-        
-        // Update video controller to show trimmed video
-        await _controller.dispose();
-        _controller = VideoPlayerController.file(_processedVideoFile!);
-        await _controller.initialize();
-        
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-            _isProcessing = false;
-          });
-        }
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Video trimmed successfully! ${(_trimStart * _controller.value.duration.inSeconds).toStringAsFixed(1)}s - ${(_trimEnd * _controller.value.duration.inSeconds).toStringAsFixed(1)}s',
-              ),
-              backgroundColor: const Color(0xFF9248D2),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      } else {
+      _processedVideoFile = result;
+      
+      // Update video controller to show trimmed video
+      await _controller.dispose();
+      _controller = VideoPlayerController.file(_processedVideoFile!);
+      await _controller.initialize();
+      
+      if (mounted) {
         setState(() {
+          _isInitialized = true;
           _isProcessing = false;
         });
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to trim video'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Video trimmed successfully! ${(_trimStart * _controller.value.duration.inSeconds).toStringAsFixed(1)}s - ${(_trimEnd * _controller.value.duration.inSeconds).toStringAsFixed(1)}s',
             ),
-          );
-        }
+            backgroundColor: const Color(0xFF9248D2),
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
     } catch (e) {
       setState(() {
@@ -1157,44 +1141,28 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       // Filter application removed - not available in current service
       final result = inputFile;
       
-      if (result != null) {
-        _processedVideoFile = result;
-        
-        // Update video controller to show filtered video
-        await _controller.dispose();
-        _controller = VideoPlayerController.file(_processedVideoFile!);
-        await _controller.initialize();
-        
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-            _isProcessing = false;
-          });
-        }
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${filterName} filter applied successfully!'),
-              backgroundColor: const Color(0xFF9248D2),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      } else {
+      _processedVideoFile = result;
+      
+      // Update video controller to show filtered video
+      await _controller.dispose();
+      _controller = VideoPlayerController.file(_processedVideoFile!);
+      await _controller.initialize();
+      
+      if (mounted) {
         setState(() {
+          _isInitialized = true;
           _isProcessing = false;
         });
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to apply filter'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${filterName} filter applied successfully!'),
+            backgroundColor: const Color(0xFF9248D2),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     } catch (e) {
       setState(() {

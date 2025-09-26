@@ -368,7 +368,7 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  _formatDateTime(overrideTime!),
+                  _formatDateTime(overrideTime),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,

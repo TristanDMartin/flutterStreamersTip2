@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/scheduled_post.dart';
-import '../services/scheduled_post_service.dart';
 
 class PlatformReconnectionView extends StatefulWidget {
   final ScheduledPost post;
@@ -16,8 +15,6 @@ class PlatformReconnectionView extends StatefulWidget {
 }
 
 class _PlatformReconnectionViewState extends State<PlatformReconnectionView> {
-  final ScheduledPostService _postService = ScheduledPostService();
-  
   bool _isLoading = false;
   Map<String, bool> _reconnectionStatus = {};
   Map<String, String> _reconnectionErrors = {};

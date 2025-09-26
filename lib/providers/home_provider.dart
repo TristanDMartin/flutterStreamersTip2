@@ -12,6 +12,7 @@ import '../services/favorites_service.dart';
 import '../services/following_feed_service.dart';
 import '../services/comments_service.dart';
 import '../services/unified_avatar_service.dart';
+import '../services/like_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
 
@@ -23,6 +24,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
   final FavoritesService _favoritesService;
   final FollowingFeedService _followingFeedService;
   final CommentsService _commentsService;
+  final LikeService _likeService = LikeService();
   
   HomeViewModel({
     required VideoService videoService,
@@ -36,8 +38,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
        _followingFeedService = followingFeedService ?? FollowingFeedService(),
        _commentsService = commentsService ?? CommentsService(),
        super(const HomeState()) {
-    // Initialize the callback
+    // Initialize the callbacks
     updateVideoLikeState = _updateVideoLikeState;
+    updateVideoFavoriteState = _updateVideoFavoriteState;
   }
 
   // MARK: - Public Properties
@@ -50,6 +53,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
   
   // Callback for updating video like state from child widgets
   void Function(String videoId)? updateVideoLikeState;
+  
+  // Callback for updating video favorite state from child widgets
+  Future<void> Function(String videoId)? updateVideoFavoriteState;
   
   List<HomeVideo> videos(FeedType feed) {
     switch (feed) {
@@ -81,6 +87,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
       
       // Fetch fresh data in background
       await _fetchFreshVideosInBackground();
+      
+      // CRITICAL FIX: Load user's like states for all videos
+      await _loadUserLikeStates();
       
       // Preload avatars for instant display
       _preloadAvatars();
@@ -176,6 +185,73 @@ class HomeViewModel extends StateNotifier<HomeState> {
       }
     } catch (e) {
       log('⚠️ Failed to preload avatars: $e (non-critical)');
+    }
+  }
+
+  /// Load user's like states for all videos
+  Future<void> _loadUserLikeStates() async {
+    try {
+      log('💖 Loading user like states for all videos...');
+      
+      // Load like states for For You videos
+      await _loadLikeStatesForFeed(state.forYouVideos, 'For You');
+      
+      // Load like states for Following videos
+      await _loadLikeStatesForFeed(state.followingVideos, 'Following');
+      
+      log('✅ User like states loaded successfully');
+    } catch (e) {
+      log('⚠️ Failed to load user like states: $e (non-critical)');
+    }
+  }
+
+  /// Load like states for a specific feed
+  Future<void> _loadLikeStatesForFeed(List<HomeVideo> videos, String feedName) async {
+    if (videos.isEmpty) return;
+    
+    try {
+      log('💖 Loading like states for $feedName feed (${videos.length} videos)');
+      
+      final updatedVideos = <HomeVideo>[];
+      
+      // Process videos in batches to avoid overwhelming the system
+      const batchSize = 5;
+      for (int i = 0; i < videos.length; i += batchSize) {
+        final batch = videos.skip(i).take(batchSize).toList();
+        
+        // Load like states for this batch
+        for (final video in batch) {
+          try {
+            final isLiked = await _likeService.isVideoLiked(video.id);
+            final likeCount = await _likeService.getLikeCount(video.id);
+            
+            updatedVideos.add(video.copyWith(
+              isLiked: isLiked,
+              likes: likeCount,
+            ));
+          } catch (e) {
+            // If like state loading fails, use the original video
+            log('⚠️ Failed to load like state for video ${video.id}: $e');
+            updatedVideos.add(video);
+          }
+        }
+        
+        // Small delay between batches to prevent overwhelming the system
+        if (i + batchSize < videos.length) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
+      
+      // Update the state with videos that have like states
+      if (feedName == 'For You') {
+        state = state.copyWith(forYouVideos: updatedVideos);
+      } else if (feedName == 'Following') {
+        state = state.copyWith(followingVideos: updatedVideos);
+      }
+      
+      log('✅ Loaded like states for $feedName feed (${updatedVideos.length} videos)');
+    } catch (e) {
+      log('❌ Error loading like states for $feedName feed: $e');
     }
   }
 
@@ -818,6 +894,65 @@ class HomeViewModel extends StateNotifier<HomeState> {
         likes: video.isLiked ? video.likes - 1 : video.likes + 1,
       );
     });
+  }
+
+  Future<void> _updateVideoFavoriteState(String videoId) async {
+    // Store original state for rollback
+    final originalForYouState = _getVideoFavoriteState(state.forYouVideos, videoId);
+    final originalFollowingState = _getVideoFavoriteState(state.followingVideos, videoId);
+    
+    try {
+      // Optimistic UI update - update immediately for better UX
+      _updateVideoInFeed(state.forYouVideos, videoId, (video) {
+        return video.copyWith(
+          isFavorited: !video.isFavorited,
+        );
+      });
+      
+      _updateVideoInFeed(state.followingVideos, videoId, (video) {
+        return video.copyWith(
+          isFavorited: !video.isFavorited,
+        );
+      });
+      
+      // Update state to trigger UI rebuild
+      state = state.copyWith(
+        forYouVideos: List.from(state.forYouVideos),
+        followingVideos: List.from(state.followingVideos),
+      );
+      
+      // Update the favorites service asynchronously
+      await _favoritesService.toggleFavorite(videoId);
+      
+      log('✅ Successfully toggled favorite for video: $videoId');
+      
+    } catch (e) {
+      // Rollback optimistic update on error
+      _updateVideoInFeed(state.forYouVideos, videoId, (video) {
+        return video.copyWith(isFavorited: originalForYouState);
+      });
+      
+      _updateVideoInFeed(state.followingVideos, videoId, (video) {
+        return video.copyWith(isFavorited: originalFollowingState);
+      });
+      
+      // Update state to trigger UI rebuild
+      state = state.copyWith(
+        forYouVideos: List.from(state.forYouVideos),
+        followingVideos: List.from(state.followingVideos),
+      );
+      
+      log('❌ Error toggling favorite for video $videoId: $e');
+      rethrow; // Re-throw to be handled by the calling widget
+    }
+  }
+  
+  bool _getVideoFavoriteState(List<HomeVideo> videos, String videoId) {
+    final video = videos.firstWhere(
+      (v) => v.id == videoId,
+      orElse: () => throw StateError('Video not found: $videoId'),
+    );
+    return video.isFavorited;
   }
 
 

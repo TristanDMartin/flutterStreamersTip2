@@ -57,17 +57,6 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     end: Alignment.centerRight,
   );
   
-  static const LinearGradient _followingGradient = LinearGradient(
-    colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-  );
-
-  static const LinearGradient _followBackGradient = LinearGradient(
-    colors: [Color(0xFF1670DE), Color(0xFF3C8BD6)],
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-  );
 
   static const LinearGradient _shareGradient = LinearGradient(
     colors: [Color(0xFF9248D2), Color(0xFF3C8BD6)],

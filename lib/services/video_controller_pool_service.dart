@@ -7,8 +7,8 @@ class VideoControllerPoolService {
   factory VideoControllerPoolService() => _instance;
   VideoControllerPoolService._internal();
 
-  // Controller pool configuration
-  static const int _maxControllers = 4; // Current, next, prev, standby
+  // Controller pool configuration - CRITICAL: Reduce to prevent buffer overflow
+  static const int _maxControllers = 1; // Only 1 controller at a time
 
   // Controller pool state
   final Map<String, VideoPlayerController> _controllers = {};

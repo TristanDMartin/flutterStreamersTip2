@@ -3,10 +3,12 @@ import '../models/user.dart';
 import 'real_user_data_service.dart';
 import 'logging_service.dart';
 import 'video_performance_service.dart';
+import 'like_service.dart';
 
 class VideoService {
   final RealUserDataService _userDataService = RealUserDataService();
   final VideoPerformanceService _videoPerformanceService = VideoPerformanceService();
+  final LikeService _likeService = LikeService();
 
   Future<VideoFetchResult> fetchForYouVideos({
     required int pageSize,
@@ -21,11 +23,14 @@ class VideoService {
         lastDocumentId: lastDocument,
       );
       
-      LoggingService.instance.debug('✅ Loaded ${videos.length} for you videos', tag: 'VideoService');
+      // CRITICAL FIX: Load user's like state for each video
+      final videosWithLikeState = await _loadLikeStatesForVideos(videos);
+      
+      LoggingService.instance.debug('✅ Loaded ${videosWithLikeState.length} for you videos with like states', tag: 'VideoService');
       
       return VideoFetchResult(
-        videos: videos,
-        lastDocument: videos.isNotEmpty ? videos.last.id : null,
+        videos: videosWithLikeState,
+        lastDocument: videosWithLikeState.isNotEmpty ? videosWithLikeState.last.id : null,
       );
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error fetching for you videos', tag: 'VideoService', error: e, stackTrace: stackTrace);
@@ -52,11 +57,14 @@ class VideoService {
         limit: pageSize,
       );
       
-      LoggingService.instance.debug('✅ Loaded ${videos.length} following videos', tag: 'VideoService');
+      // CRITICAL FIX: Load user's like state for each video
+      final videosWithLikeState = await _loadLikeStatesForVideos(videos);
+      
+      LoggingService.instance.debug('✅ Loaded ${videosWithLikeState.length} following videos with like states', tag: 'VideoService');
       
       return VideoFetchResult(
-        videos: videos,
-        lastDocument: videos.isNotEmpty ? videos.last.id : null,
+        videos: videosWithLikeState,
+        lastDocument: videosWithLikeState.isNotEmpty ? videosWithLikeState.last.id : null,
       );
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error fetching following videos', tag: 'VideoService', error: e, stackTrace: stackTrace);
@@ -70,9 +78,57 @@ class VideoService {
   }
 
   Future<bool> toggleLike(String videoId) async {
-    // Placeholder - would toggle like status in Firestore
-    await Future.delayed(const Duration(milliseconds: 300)); // Simulate network delay
-    return true;
+    // Use the actual LikeService instead of placeholder
+    try {
+      return await _likeService.toggleLike(videoId);
+    } catch (e) {
+      LoggingService.instance.error('Error toggling like for video $videoId', tag: 'VideoService', error: e);
+      return false;
+    }
+  }
+
+  /// Load like states for a list of videos
+  Future<List<HomeVideo>> _loadLikeStatesForVideos(List<HomeVideo> videos) async {
+    try {
+      LoggingService.instance.debug('💖 Loading like states for ${videos.length} videos', tag: 'VideoService');
+      
+      final videosWithLikeState = <HomeVideo>[];
+      
+      // Process videos in batches to avoid overwhelming the system
+      const batchSize = 10;
+      for (int i = 0; i < videos.length; i += batchSize) {
+        final batch = videos.skip(i).take(batchSize).toList();
+        
+        // Load like states for this batch
+        for (final video in batch) {
+          try {
+            final isLiked = await _likeService.isVideoLiked(video.id);
+            final likeCount = await _likeService.getLikeCount(video.id);
+            
+            videosWithLikeState.add(video.copyWith(
+              isLiked: isLiked,
+              likes: likeCount,
+            ));
+          } catch (e) {
+            // If like state loading fails, use the original video
+            LoggingService.instance.warning('Failed to load like state for video ${video.id}', tag: 'VideoService');
+            videosWithLikeState.add(video);
+          }
+        }
+        
+        // Small delay between batches to prevent overwhelming the system
+        if (i + batchSize < videos.length) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+      }
+      
+      LoggingService.instance.debug('✅ Loaded like states for ${videosWithLikeState.length} videos', tag: 'VideoService');
+      return videosWithLikeState;
+    } catch (e) {
+      LoggingService.instance.error('Error loading like states', tag: 'VideoService', error: e);
+      // Return original videos if like state loading fails
+      return videos;
+    }
   }
 
   // Get video by ID from sample data

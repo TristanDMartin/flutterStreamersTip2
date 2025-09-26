@@ -8,7 +8,6 @@ import 'dart:io';
 import 'dart:async';
 import 'video_recording_preview.dart';
 import 'video_edit_view.dart';
-import 'capture_button.dart';
 
 enum NavigationState {
   none,
@@ -192,15 +191,6 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
     });
   }
 
-  Future<void> _initializePreviewPlayer() async {
-    if (_currentVideoFile != null) {
-      _previewController = VideoPlayerController.file(_currentVideoFile!);
-      await _previewController!.initialize();
-      if (mounted) {
-        setState(() {});
-      }
-    }
-  }
 
   void _switchCamera() {
     if (_cameras == null || _cameras!.length < 2) return;

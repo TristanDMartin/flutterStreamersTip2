@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:async';
 import '../services/ios_memory_service.dart';
 
@@ -85,40 +83,42 @@ class _IOSOptimizedImageState extends State<IOSOptimizedImage> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.imageUrl == null || widget.imageUrl!.isEmpty) {
-      return _buildPlaceholder();
-    }
-
-    if (!_shouldLoad) {
-      return _buildPlaceholder();
-    }
-
-    return ClipRRect(
-      borderRadius: widget.borderRadius ?? BorderRadius.zero,
-      child: CachedNetworkImage(
-        imageUrl: widget.imageUrl!,
-        width: widget.width,
-        height: widget.height,
-        fit: widget.fit,
-        memCacheWidth: widget.width != null ? (widget.width! * 0.8).toInt() : 300,
-        memCacheHeight: widget.height != null ? (widget.height! * 0.8).toInt() : 200,
-        maxWidthDiskCache: 600,
-        maxHeightDiskCache: 600,
-        cacheManager: CacheManager(
-          Config(
-            'ios_optimized_images',
-            stalePeriod: const Duration(hours: 24),
-            maxNrOfCacheObjects: 30,
-            repo: JsonCacheInfoRepository(databaseName: 'ios_optimized_images'),
-            fileService: HttpFileService(),
-          ),
-        ),
-        placeholder: (context, url) => widget.placeholder ?? _buildPlaceholder(),
-        errorWidget: (context, url, error) => widget.errorWidget ?? _buildErrorWidget(),
-        fadeInDuration: const Duration(milliseconds: 300),
-        fadeOutDuration: const Duration(milliseconds: 200),
-      ),
-    );
+    // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
+    return _buildPlaceholder();
+    
+    // DISABLED: Image loading causes buffer overflow
+    // if (widget.imageUrl == null || widget.imageUrl!.isEmpty) {
+    //   return _buildPlaceholder();
+    // }
+    // if (!_shouldLoad) {
+    //   return _buildPlaceholder();
+    // }
+    // return ClipRRect(
+    //   borderRadius: widget.borderRadius ?? BorderRadius.zero,
+    //   child: CachedNetworkImage(
+    //     imageUrl: widget.imageUrl!,
+    //     width: widget.width,
+    //     height: widget.height,
+    //     fit: widget.fit,
+    //     memCacheWidth: widget.width != null ? (widget.width! * 0.8).toInt() : 300,
+    //     memCacheHeight: widget.height != null ? (widget.height! * 0.8).toInt() : 200,
+    //     maxWidthDiskCache: 600,
+    //     maxHeightDiskCache: 600,
+    //     cacheManager: CacheManager(
+    //       Config(
+    //         'ios_optimized_images',
+    //         stalePeriod: const Duration(hours: 24),
+    //         maxNrOfCacheObjects: 30,
+    //         repo: JsonCacheInfoRepository(databaseName: 'ios_optimized_images'),
+    //         fileService: HttpFileService(),
+    //       ),
+    //     ),
+    //     placeholder: (context, url) => widget.placeholder ?? _buildPlaceholder(),
+    //     errorWidget: (context, url, error) => widget.errorWidget ?? _buildErrorWidget(),
+    //     fadeInDuration: const Duration(milliseconds: 300),
+    //     fadeOutDuration: const Duration(milliseconds: 200),
+    //   ),
+    // );
   }
 
   Widget _buildPlaceholder() {
@@ -138,21 +138,5 @@ class _IOSOptimizedImageState extends State<IOSOptimizedImage> {
     );
   }
 
-  Widget _buildErrorWidget() {
-    return Container(
-      width: widget.width,
-      height: widget.height,
-      decoration: BoxDecoration(
-        color: Colors.grey[800],
-        borderRadius: widget.borderRadius ?? BorderRadius.zero,
-      ),
-      child: widget.errorWidget ?? const Center(
-        child: Icon(
-          Icons.error_outline,
-          color: Colors.white70,
-          size: 32,
-        ),
-      ),
-    );
-  }
+  // Removed unused _buildErrorWidget method
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-import '../services/logging_service.dart';
 
 class VideoTimeline extends StatefulWidget {
   final Duration duration;
@@ -31,9 +30,6 @@ class VideoTimeline extends StatefulWidget {
 class _VideoTimelineState extends State<VideoTimeline> {
   late Duration _startTime;
   late Duration _endTime;
-  bool _isDraggingStart = false;
-  bool _isDraggingEnd = false;
-  bool _isDraggingPosition = false;
 
   @override
   void initState() {
@@ -62,19 +58,6 @@ class _VideoTimelineState extends State<VideoTimeline> {
   }
 
   void _onPanStart(DragStartDetails details, String handleType) {
-    setState(() {
-      switch (handleType) {
-        case 'start':
-          _isDraggingStart = true;
-          break;
-        case 'end':
-          _isDraggingEnd = true;
-          break;
-        case 'position':
-          _isDraggingPosition = true;
-          break;
-      }
-    });
     widget.onDraggingChanged?.call(true);
   }
 
@@ -109,11 +92,6 @@ class _VideoTimelineState extends State<VideoTimeline> {
   }
 
   void _onPanEnd(DragEndDetails details, String handleType) {
-    setState(() {
-      _isDraggingStart = false;
-      _isDraggingEnd = false;
-      _isDraggingPosition = false;
-    });
     widget.onDraggingChanged?.call(false);
   }
 

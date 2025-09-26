@@ -4,7 +4,6 @@ import 'package:camera/camera.dart';
 import 'package:video_player/video_player.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:io';
 import 'dart:async';
 import 'video_recording_preview.dart';
@@ -52,17 +51,14 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
   bool _isInitialized = false;
   bool _isFrontCamera = false;
   // _recordingProgress removed - now handled by CaptureButton
-  int _recordingDuration = 0;
   late AnimationController _pulseController;
   late AnimationController _recordButtonController;
   
   // New camera settings - optimized for performance
   VideoQuality _videoQuality = VideoQuality.low; // Start with lowest quality
-  CameraMode _cameraMode = CameraMode.video;
   bool _isStabilizationEnabled = false; // Disabled for performance
   bool _isFlashEnabled = false;
   double _exposure = 0.0;
-  double _focus = 0.5;
   
   // New UI state variables
   // _isFlashOn removed - flash button no longer available
@@ -183,12 +179,6 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
     });
   }
   
-  String _getPerformanceStatus() {
-    if (_averageFPS > 28) return 'Excellent';
-    if (_averageFPS > 26) return 'Good';
-    if (_averageFPS > 24) return 'Fair';
-    return 'Poor';
-  }
   
   // Error recovery methods
   Future<void> _retryCameraInitialization() async {
@@ -471,7 +461,6 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
       await _cameraController!.startVideoRecording();
       setState(() {
         _isRecording = true;
-        _recordingDuration = 0;
         // _recordingProgress removed - now handled by CaptureButton
       });
 
@@ -506,7 +495,6 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
     _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_isRecording && mounted) {
         setState(() {
-          _recordingDuration++;
           // _recordingProgress removed - now handled by CaptureButton
         });
       } else {

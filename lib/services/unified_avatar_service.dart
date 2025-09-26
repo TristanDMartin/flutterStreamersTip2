@@ -6,7 +6,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'memory_pressure_service.dart';
-import 'robust_image_service.dart';
 import '../widgets/optimized_image.dart';
 
 /// Unified Avatar Service

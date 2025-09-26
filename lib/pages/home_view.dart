@@ -87,6 +87,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     // Favorites manager setup complete
   }
 
+
   /// Load videos from VideoService based on current feed tab
   Future<void> _loadVideos() async {
     try {

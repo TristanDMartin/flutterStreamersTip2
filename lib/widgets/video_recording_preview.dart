@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
-import 'video_edit_view.dart';
 
 class VideoRecordingPreview extends StatefulWidget {
   final File videoFile;
@@ -150,7 +149,7 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
 
   Future<void> _handleBack() async {
     final shouldDiscard = await _showDiscardDialog();
-    if (shouldDiscard == true) {
+    if (shouldDiscard == true && mounted) {
       Navigator.of(context).pop();
     }
   }

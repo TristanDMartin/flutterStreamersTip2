@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:async';
+import 'dart:collection';
 import '../services/memory_pressure_service.dart';
 
 class OptimizedImage extends StatefulWidget {
@@ -30,11 +31,11 @@ class OptimizedImage extends StatefulWidget {
 }
 
 class _OptimizedImageState extends State<OptimizedImage> {
-  static int _activeImageCount = 0;
-  static const int _maxActiveImages = 0; // CRITICAL: Disable all images to prevent buffer overflow
   bool _shouldLoad = false;
   Timer? _loadTimer;
-  static final List<_OptimizedImageState> _pendingImages = [];
+  static int _activeImageCount = 0;
+  static const int _maxActiveImages = 1; // CRITICAL: Only 1 image at a time
+  static final Queue<String> _imageQueue = Queue<String>();
 
   @override
   void initState() {
@@ -43,31 +44,44 @@ class _OptimizedImageState extends State<OptimizedImage> {
   }
 
   void _scheduleLoad() {
-    // CRITICAL: Completely disable image loading to prevent buffer overflow
-    // Use SchedulerBinding to defer state updates and reduce frame skipping
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {
-          _shouldLoad = false;
-        });
-      }
-    });
+    // CRITICAL: Ultra-conservative image loading to prevent buffer overflow
+    _loadTimer?.cancel();
+    
+    // Add to queue if not already there
+    if (widget.imageUrl != null && !_imageQueue.contains(widget.imageUrl)) {
+      _imageQueue.add(widget.imageUrl!);
+    }
+    
+    // Only load if we're under the limit and it's our turn
+    if (_activeImageCount < _maxActiveImages && 
+        _imageQueue.isNotEmpty && 
+        _imageQueue.first == widget.imageUrl) {
+      _loadTimer = Timer(const Duration(milliseconds: 5000), () {
+        if (mounted && _activeImageCount < _maxActiveImages) {
+          setState(() {
+            _shouldLoad = true;
+            _activeImageCount++;
+          });
+        }
+      });
+    } else {
+      // Wait longer if queue is full
+      _loadTimer = Timer(const Duration(milliseconds: 10000), () {
+        _scheduleLoad(); // Retry
+      });
+    }
   }
 
   @override
   void dispose() {
     _loadTimer?.cancel();
-    _pendingImages.remove(this);
     if (_shouldLoad) {
       _activeImageCount--;
       MemoryPressureService.registerImageDispose();
       
-      // Process next pending image
-      if (_pendingImages.isNotEmpty) {
-        final nextImage = _pendingImages.removeAt(0);
-        if (nextImage.mounted) {
-          nextImage._scheduleLoad();
-        }
+      // Remove from queue and process next
+      if (_imageQueue.isNotEmpty) {
+        _imageQueue.removeFirst();
       }
     }
     super.dispose();
@@ -75,8 +89,27 @@ class _OptimizedImageState extends State<OptimizedImage> {
 
   @override
   Widget build(BuildContext context) {
-    // CRITICAL: Completely disable all image loading to prevent buffer overflow
+    // CRITICAL: Disable all image loading to prevent buffer overflow
+    // TODO: Re-enable when buffer overflow is fixed
     return _buildPlaceholder();
+    
+    // DISABLED: Image loading causes buffer overflow
+    // if (!_shouldLoad || widget.imageUrl == null || widget.imageUrl!.isEmpty) {
+    //   return _buildPlaceholder();
+    // }
+    
+    // return CachedNetworkImage(
+    //   imageUrl: widget.imageUrl!,
+    //   width: widget.width,
+    //   height: widget.height,
+    //   fit: widget.fit,
+    //   placeholder: (context, url) => _buildPlaceholder(),
+    //   errorWidget: (context, url, error) => _buildPlaceholder(),
+    //   memCacheWidth: widget.width?.toInt(),
+    //   memCacheHeight: widget.height?.toInt(),
+    //   maxWidthDiskCache: 200,
+    //   maxHeightDiskCache: 200,
+    // );
   }
 
   Widget _buildPlaceholder() {
@@ -95,21 +128,6 @@ class _OptimizedImageState extends State<OptimizedImage> {
     );
   }
 
-  Widget _buildErrorWidget() {
-    return Container(
-      width: widget.width,
-      height: widget.height,
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        borderRadius: widget.borderRadius,
-      ),
-      child: widget.errorWidget ?? const Icon(
-        Icons.error_outline,
-        color: Colors.grey,
-        size: 20, // Reduced size
-      ),
-    );
-  }
 }
 
 class OptimizedAvatar extends StatelessWidget {
@@ -152,7 +170,7 @@ class OptimizedAvatar extends StatelessWidget {
                   ),
                 ),
                 placeholder: (context, url) => _buildPlaceholder(),
-                errorWidget: (context, url, error) => _buildErrorWidget(),
+                errorWidget: (context, url, error) => _buildPlaceholder(),
                 fadeInDuration: const Duration(milliseconds: 200),
                 fadeOutDuration: const Duration(milliseconds: 100),
               ),
@@ -169,11 +187,4 @@ class OptimizedAvatar extends StatelessWidget {
     );
   }
 
-  Widget _buildErrorWidget() {
-    return Icon(
-      Icons.error_outline,
-      color: Colors.grey[600],
-      size: radius * 0.8,
-    );
-  }
 }

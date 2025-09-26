@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'dart:math' as math;
-import '../services/video_processing_service.dart';
 
 class AdvancedVideoEditor extends StatefulWidget {
   final File videoFile;

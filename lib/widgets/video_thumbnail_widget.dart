@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
-import '../services/video_thumbnail_service.dart';
 
 class VideoThumbnailWidget extends StatefulWidget {
   final String videoUrl;
@@ -46,31 +45,36 @@ class _VideoThumbnailWidgetState extends State<VideoThumbnailWidget> {
   }
 
   Future<void> _generateThumbnail() async {
+    // CRITICAL: Disable thumbnail generation to prevent buffer overflow
     if (!mounted) return;
 
     setState(() {
-      _isLoading = true;
-      _hasError = false;
+      _isLoading = false;
+      _hasError = true; // Force error state to show placeholder
     });
-
-    try {
-      final thumbnailData = await VideoThumbnailService.generateThumbnail(widget.videoUrl);
-      
-      if (mounted) {
-        setState(() {
-          _thumbnailData = thumbnailData;
-          _isLoading = false;
-          _hasError = thumbnailData == null;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-        });
-      }
-    }
+    
+    // DISABLED: Thumbnail generation causes buffer overflow
+    // setState(() {
+    //   _isLoading = true;
+    //   _hasError = false;
+    // });
+    // try {
+    //   final thumbnailData = await VideoThumbnailService.generateThumbnail(widget.videoUrl);
+    //   if (mounted) {
+    //     setState(() {
+    //       _thumbnailData = thumbnailData;
+    //       _isLoading = false;
+    //       _hasError = thumbnailData == null;
+    //     });
+    //   }
+    // } catch (e) {
+    //   if (mounted) {
+    //     setState(() {
+    //       _isLoading = false;
+    //       _hasError = true;
+    //     });
+    //   }
+    // }
   }
 
   @override

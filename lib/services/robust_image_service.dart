@@ -41,33 +41,37 @@ class RobustImageService {
       return _buildPlaceholder(width, height, isAvatar, isThumbnail);
     }
 
-    return Image.network(
-      imageUrl,
-      width: width,
-      height: height,
-      fit: fit,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return placeholder ?? _buildLoadingPlaceholder(width, height);
-      },
-      errorBuilder: (context, error, stackTrace) {
-        debugPrint('⚠️ RobustImageService: Failed to load image $imageUrl: $error');
-        return errorWidget ?? _buildPlaceholder(width, height, isAvatar, isThumbnail);
-      },
-      // Optimize for memory
-      cacheWidth: (width * 0.8).toInt(),
-      cacheHeight: (height * 0.8).toInt(),
-      filterQuality: FilterQuality.low,
-      // Add timeout and retry logic
-      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-        if (wasSynchronouslyLoaded) return child;
-        return AnimatedOpacity(
-          opacity: frame == null ? 0 : 1,
-          duration: const Duration(milliseconds: 300),
-          child: child,
-        );
-      },
-    );
+    // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
+    return _buildPlaceholder(width, height, isAvatar, isThumbnail);
+    
+    // DISABLED: Image loading causes buffer overflow
+    // return Image.network(
+    //   imageUrl,
+    //   width: width,
+    //   height: height,
+    //   fit: fit,
+    //   loadingBuilder: (context, child, loadingProgress) {
+    //     if (loadingProgress == null) return child;
+    //     return placeholder ?? _buildLoadingPlaceholder(width, height);
+    //   },
+    //   errorBuilder: (context, error, stackTrace) {
+    //     debugPrint('⚠️ RobustImageService: Failed to load image $imageUrl: $error');
+    //     return errorWidget ?? _buildPlaceholder(width, height, isAvatar, isThumbnail);
+    //   },
+    //   // Optimize for memory
+    //   cacheWidth: (width * 0.8).toInt(),
+    //   cacheHeight: (height * 0.8).toInt(),
+    //   filterQuality: FilterQuality.low,
+    //   // Add timeout and retry logic
+    //   frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+    //     if (wasSynchronouslyLoaded) return child;
+    //     return AnimatedOpacity(
+    //       opacity: frame == null ? 0 : 1,
+    //       duration: const Duration(milliseconds: 300),
+    //       child: child,
+    //     );
+    //   },
+    // );
   }
 
   /// Get avatar widget with robust error handling
@@ -157,23 +161,7 @@ class RobustImageService {
   }
 
   /// Build loading placeholder
-  Widget _buildLoadingPlaceholder(double width, double height) {
-    return Container(
-      width: width,
-      height: height,
-      color: Colors.grey[200],
-      child: const Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
-          ),
-        ),
-      ),
-    );
-  }
+  // Removed unused _buildLoadingPlaceholder method
 
   /// Preload images with retry logic
   Future<void> preloadImages(List<String> imageUrls, {int maxRetries = 2}) async {

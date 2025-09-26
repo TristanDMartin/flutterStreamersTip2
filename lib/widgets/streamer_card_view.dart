@@ -2191,7 +2191,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         displayName: _userData?['displayName'] as String?,
         profileImageUrl: _userData?['photoURL'] as String?,
         onDismiss: () {
-          Navigator.of(context).pop();
+          // Don't call Navigator.pop() here as it's already handled in the X button
+          // This prevents double pop which causes black screen
         },
       ),
     );

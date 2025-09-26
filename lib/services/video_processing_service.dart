@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/logging_service.dart';
 
 class VideoProcessingService {
@@ -12,7 +11,6 @@ class VideoProcessingService {
   VideoProcessingService._internal();
 
   final FirebaseStorage _storage = FirebaseStorage.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Video editing state
   final Map<String, VideoEditState> _editStates = {};

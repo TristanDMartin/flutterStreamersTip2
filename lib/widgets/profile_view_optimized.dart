@@ -299,42 +299,40 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea( // FIXED: Add SafeArea to prevent status bar overlap
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        extendBody: true,
-        extendBodyBehindAppBar: false, // FIXED: Don't extend behind status bar
-        floatingActionButton: widget.isCurrentUser ? FloatingActionButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const SetupHashtagPermissionsWidget(),
-              ),
-            );
-          },
-          backgroundColor: Colors.orange,
-          child: const Icon(Icons.admin_panel_settings, color: Colors.white),
-        ) : null,
-        body: AnimatedBuilder(
-          animation: _flipAnimation,
-          builder: (context, child) {
-            final isShowingFront = _flipAnimation.value < 0.5;
-            return Transform(
-              alignment: Alignment.center,
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.001)
-                ..rotateY(_flipAnimation.value * 3.14159),
-              child: isShowingFront
-                  ? _buildFrontView()
-                  : Transform(
-                      alignment: Alignment.center,
-                      transform: Matrix4.identity()..rotateY(3.14159),
-                      child: _buildBackView(),
-                    ),
-            );
-          },
-        ),
+    return Scaffold(
+      backgroundColor: Colors.black,
+      extendBody: true,
+      extendBodyBehindAppBar: true, // FIXED: Extend behind status bar for full gradient
+      floatingActionButton: widget.isCurrentUser ? FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const SetupHashtagPermissionsWidget(),
+            ),
+          );
+        },
+        backgroundColor: Colors.orange,
+        child: const Icon(Icons.admin_panel_settings, color: Colors.white),
+      ) : null,
+      body: AnimatedBuilder(
+        animation: _flipAnimation,
+        builder: (context, child) {
+          final isShowingFront = _flipAnimation.value < 0.5;
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.001)
+              ..rotateY(_flipAnimation.value * 3.14159),
+            child: isShowingFront
+                ? _buildFrontView()
+                : Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()..rotateY(3.14159),
+                    child: _buildBackView(),
+                  ),
+          );
+        },
       ),
     );
   }
@@ -345,6 +343,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       height: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
             Color(0xFF6633CC), // Purple (matches NetworkView)
             Color(0xFF1A1A4D), // Dark blue (matches NetworkView)
@@ -353,7 +353,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       ),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        extendBodyBehindAppBar: false, // FIXED: Don't extend behind status bar
+        extendBodyBehindAppBar: true, // FIXED: Extend behind status bar for full gradient
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -409,15 +409,17 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             ),
           ],
         ),
-        body: SingleChildScrollView(
-          child: Column(
-            children: [
-              const SizedBox(height: 24),
-              _buildProfileHeader(),
-              const SizedBox(height: 24),
-              _buildProfileContent(),
-              const SizedBox(height: 24),
-            ],
+        body: SafeArea( // FIXED: SafeArea around body content only
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                const SizedBox(height: 24),
+                _buildProfileHeader(),
+                const SizedBox(height: 24),
+                _buildProfileContent(),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),

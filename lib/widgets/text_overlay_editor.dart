@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui' as ui;
 import '../services/video_processing_service.dart';
 
 class TextOverlayEditor extends StatefulWidget {
@@ -26,7 +25,6 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
   late List<TextOverlay> _textOverlays;
   TextOverlay? _selectedOverlay;
   bool _isDragging = false;
-  Offset _dragOffset = Offset.zero;
   
   // Text editing controllers
   late TextEditingController _textController;
@@ -326,7 +324,6 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
         onPanStart: (details) {
           setState(() {
             _isDragging = true;
-            _dragOffset = details.localPosition;
           });
         },
         onPanUpdate: (details) {

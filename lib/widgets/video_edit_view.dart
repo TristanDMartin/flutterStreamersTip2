@@ -1143,32 +1143,6 @@ class _VideoEditViewState extends State<VideoEditView>
     },
   ];
 
-  Widget _buildStyleOption(String label, IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: Colors.white, size: 20),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildBottomActions() {
     return Container(
@@ -1336,7 +1310,7 @@ class _VideoEditViewState extends State<VideoEditView>
     });
 
     try {
-      final trimmedFile = await _videoService.trimVideo(
+      await _videoService.trimVideo(
         inputFile: widget.videoFile,
         startTime: _startTime,
         endTime: _endTime,
@@ -1372,44 +1346,6 @@ class _VideoEditViewState extends State<VideoEditView>
     }
   }
 
-  Future<void> _applyAudioEffects() async {
-    if (_isProcessing || _editState == null) return;
-    
-    setState(() {
-      _isProcessing = true;
-      _processingProgress = 0.0;
-      _processingStatus = 'Applying audio effects...';
-    });
-
-    try {
-      final processedFile = await _videoService.applyAudioEffects(
-        inputFile: widget.videoFile,
-        effects: _editState!.audioEffects,
-        videoId: _videoId,
-        onProgress: (progress) {
-          setState(() {
-            _processingProgress = progress;
-          });
-        },
-      );
-
-      setState(() {
-        _processingStatus = 'Audio effects applied!';
-        _hasUnsavedChanges = false;
-      });
-
-      LoggingService.instance.debug('Audio effects applied successfully', tag: 'VideoEditView');
-    } catch (e) {
-      LoggingService.instance.error('Error applying audio effects', tag: 'VideoEditView', error: e);
-      setState(() {
-        _processingStatus = 'Error: ${e.toString()}';
-      });
-    } finally {
-      setState(() {
-        _isProcessing = false;
-      });
-    }
-  }
 
   void _selectEffect(String effectName) {
     setState(() {
@@ -1430,44 +1366,6 @@ class _VideoEditViewState extends State<VideoEditView>
     });
   }
 
-  Future<void> _applyVisualEffects() async {
-    if (_isProcessing || _editState == null) return;
-    
-    setState(() {
-      _isProcessing = true;
-      _processingProgress = 0.0;
-      _processingStatus = 'Applying visual effects...';
-    });
-
-    try {
-      final processedFile = await _videoService.applyVisualEffects(
-        inputFile: widget.videoFile,
-        effects: _editState!.visualEffects,
-        videoId: _videoId,
-        onProgress: (progress) {
-          setState(() {
-            _processingProgress = progress;
-          });
-        },
-      );
-
-      setState(() {
-        _processingStatus = 'Visual effects applied!';
-        _hasUnsavedChanges = false;
-      });
-
-      LoggingService.instance.debug('Visual effects applied successfully', tag: 'VideoEditView');
-    } catch (e) {
-      LoggingService.instance.error('Error applying visual effects', tag: 'VideoEditView', error: e);
-      setState(() {
-        _processingStatus = 'Error: ${e.toString()}';
-      });
-    } finally {
-      setState(() {
-        _isProcessing = false;
-      });
-    }
-  }
 
   void _addTextOverlay() {
     // This would open a text overlay editor

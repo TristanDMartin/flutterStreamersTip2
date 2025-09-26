@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
-import '../services/robust_auth_service.dart';
 import '../services/logging_service.dart';
-import '../services/error_handler_service.dart';
 import '../services/contacts_service.dart';
 import '../services/search_api_service.dart';
-import '../services/invite_system_service.dart';
 import 'optimized_image.dart';
 import 'instant_response_button.dart';
 
@@ -172,7 +169,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
 
     // Filter results based on query
     return mockUsers.where((user) => 
-      user.metadata!['username']!.toLowerCase().contains(query.toLowerCase()) ||
+      user.metadata['username']?.toLowerCase().contains(query.toLowerCase()) == true ||
       user.title.toLowerCase().contains(query.toLowerCase())
     ).toList();
   }
@@ -476,7 +473,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                _buildRelationBadge(UserRelation.values.firstWhere((e) => e.name == result.metadata!['relation'])),
+                _buildRelationBadge(UserRelation.values.firstWhere((e) => e.name == result.metadata['relation'])),
               ],
             ),
           ),
@@ -529,7 +526,7 @@ class _InviteFriendsViewState extends ConsumerState<InviteFriendsView> {
   }
 
   Widget _buildActionButton(SearchResult result) {
-    final relation = UserRelation.values.firstWhere((e) => e.name == result.metadata!['relation']);
+    final relation = UserRelation.values.firstWhere((e) => e.name == result.metadata['relation']);
     switch (relation) {
       case UserRelation.mutual:
       case UserRelation.following:

@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'logging_service.dart';
-import 'error_handler_service.dart';
 
 class SearchApiService {
   static final SearchApiService _instance = SearchApiService._internal();

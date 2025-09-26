@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 /// Service for optimizing video performance like TikTok
 class VideoPerformanceService {
@@ -13,40 +12,36 @@ class VideoPerformanceService {
   final Map<String, bool> _videoPreloaded = {};
   final Map<String, Widget> _thumbnailCache = {};
   
-  // Reduced preload count for better performance
-  static const int _preloadCount = 1; // Reduced from 3 to 1
+  // CRITICAL: Disable preloading to prevent buffer overflow
+  static const int _preloadCount = 0; // Disabled to prevent buffer overflow
   
-  /// Preload video for instant playback
+  /// Preload video for instant playback - DISABLED to prevent buffer overflow
   Future<void> preloadVideo(String videoUrl, {String? thumbnailUrl}) async {
-    if (_videoPreloaded[videoUrl] == true) return;
+    // CRITICAL: Disabled to prevent ImageReader_JNI buffer overflow
+    debugPrint('⚠️ Video preloading disabled to prevent buffer overflow');
+    return;
     
-    try {
-      final controller = VideoPlayerController.networkUrl(
-        Uri.parse(videoUrl),
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true,
-          allowBackgroundPlayback: false,
-        ),
-      );
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.setVolume(0); // Start muted for autoplay compliance
-      
-      // Preload thumbnail
-      if (thumbnailUrl != null) {
-        _preloadThumbnail(thumbnailUrl);
-      }
-      
-      _videoControllers[videoUrl] = controller;
-      _videoPreloaded[videoUrl] = true;
-      
-      // Reduced auto-dispose time for better memory management
-      Timer(const Duration(seconds: 15), () { // Reduced from 30 to 15 seconds
-        disposeVideo(videoUrl);
-      });
-    } catch (e) {
-      debugPrint('Error preloading video: $e');
-    }
+    // DISABLED CODE:
+    // if (_videoPreloaded[videoUrl] == true) return;
+    // try {
+    //   final controller = VideoPlayerController.networkUrl(
+    //     Uri.parse(videoUrl),
+    //     videoPlayerOptions: VideoPlayerOptions(
+    //       mixWithOthers: true,
+    //       allowBackgroundPlayback: false,
+    //     ),
+    //   );
+    //   await controller.initialize();
+    //   await controller.setLooping(true);
+    //   await controller.setVolume(0);
+    //   _videoControllers[videoUrl] = controller;
+    //   _videoPreloaded[videoUrl] = true;
+    //   Timer(const Duration(seconds: 15), () {
+    //     disposeVideo(videoUrl);
+    //   });
+    // } catch (e) {
+    //   debugPrint('Error preloading video: $e');
+    // }
   }
 
   /// Prewarm video controller for instant play (TikTok style)
@@ -73,14 +68,19 @@ class VideoPerformanceService {
   /// Get ready controller (warm start)
   VideoPlayerController? getReady(String url) => _videoControllers[url];
   
-  /// Preload thumbnail image
+  /// Preload thumbnail image - DISABLED to prevent buffer overflow
   Future<void> _preloadThumbnail(String thumbnailUrl) async {
-    try {
-      final imageProvider = CachedNetworkImageProvider(thumbnailUrl);
-      await precacheImage(imageProvider, NavigationService.navigatorKey.currentContext!);
-    } catch (e) {
-      debugPrint('Error preloading thumbnail: $e');
-    }
+    // CRITICAL: Disabled to prevent ImageReader_JNI buffer overflow
+    debugPrint('⚠️ Thumbnail preloading disabled to prevent buffer overflow');
+    return;
+    
+    // DISABLED CODE:
+    // try {
+    //   final imageProvider = CachedNetworkImageProvider(thumbnailUrl);
+    //   await precacheImage(imageProvider, NavigationService.navigatorKey.currentContext!);
+    // } catch (e) {
+    //   debugPrint('Error preloading thumbnail: $e');
+    // }
   }
   
   /// Get preloaded video controller
@@ -175,35 +175,46 @@ class VideoPerformanceService {
     );
   }
   
-  /// Get cached thumbnail widget
+  /// Get cached thumbnail widget - DISABLED to prevent buffer overflow
   Widget getCachedThumbnail({
     required String thumbnailUrl,
     required double width,
     required double height,
     BoxFit fit = BoxFit.cover,
   }) {
-    return CachedNetworkImage(
-      imageUrl: thumbnailUrl,
+    // CRITICAL: Disabled to prevent ImageReader_JNI buffer overflow
+    return Container(
       width: width,
       height: height,
-      fit: fit,
-      placeholder: (context, url) => Container(
-        width: width,
-        height: height,
-        color: Colors.grey[300],
-        child: const Center(
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+      color: Colors.grey[300],
+      child: const Center(
+        child: Icon(Icons.video_library, color: Colors.grey),
       ),
-      errorWidget: (context, url, error) => Container(
-        width: width,
-        height: height,
-        color: Colors.grey[300],
-        child: const Icon(Icons.error),
-      ),
-      memCacheWidth: width.toInt(),
-      memCacheHeight: height.toInt(),
     );
+    
+    // DISABLED CODE:
+    // return CachedNetworkImage(
+    //   imageUrl: thumbnailUrl,
+    //   width: width,
+    //   height: height,
+    //   fit: fit,
+    //   placeholder: (context, url) => Container(
+    //     width: width,
+    //     height: height,
+    //     color: Colors.grey[300],
+    //     child: const Center(
+    //       child: CircularProgressIndicator(strokeWidth: 2),
+    //     ),
+    //   ),
+    //   errorWidget: (context, url, error) => Container(
+    //     width: width,
+    //     height: height,
+    //     color: Colors.grey[300],
+    //     child: const Icon(Icons.error),
+    //   ),
+    //   memCacheWidth: width.toInt(),
+    //   memCacheHeight: height.toInt(),
+    // );
   }
 }
 

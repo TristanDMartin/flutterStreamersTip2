@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/scheduled_post.dart';
-import '../services/scheduled_post_service.dart';
 
 class PostProgressView extends StatefulWidget {
   final ScheduledPost post;
@@ -16,7 +15,6 @@ class PostProgressView extends StatefulWidget {
 }
 
 class _PostProgressViewState extends State<PostProgressView> with TickerProviderStateMixin {
-  final ScheduledPostService _postService = ScheduledPostService();
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
   

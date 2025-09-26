@@ -150,26 +150,22 @@ class ImageCDNService {
     bool isAvatar = false,
     bool isThumbnail = false,
   }) {
-    final optimizedUrl = getOptimizedImageUrl(
-      originalUrl: imageUrl,
-      width: width,
-      height: height,
-      isAvatar: isAvatar,
-      isThumbnail: isThumbnail,
-    );
-
-    return CachedNetworkImage(
-      imageUrl: optimizedUrl,
-      width: width?.toDouble(),
-      height: height?.toDouble(),
-      fit: fit,
-      placeholder: (context, url) => placeholder ?? _buildDefaultPlaceholder(),
-      errorWidget: (context, url, error) => errorWidget ?? _buildDefaultErrorWidget(),
-      memCacheWidth: width,
-      memCacheHeight: height,
-      maxWidthDiskCache: width != null ? width * 2 : null,
-      maxHeightDiskCache: height != null ? height * 2 : null,
-    );
+    // CRITICAL: Disable all image loading to prevent ImageReader_JNI buffer overflow
+    return _buildDefaultErrorWidget();
+    
+    // DISABLED: Image loading causes buffer overflow
+    // return CachedNetworkImage(
+    //   imageUrl: optimizedUrl,
+    //   width: width?.toDouble(),
+    //   height: height?.toDouble(),
+    //   fit: fit,
+    //   placeholder: (context, url) => placeholder ?? _buildDefaultPlaceholder(),
+    //   errorWidget: (context, url, error) => errorWidget ?? _buildDefaultErrorWidget(),
+    //   memCacheWidth: width,
+    //   memCacheHeight: height,
+    //   maxWidthDiskCache: width != null ? width * 2 : null,
+    //   maxHeightDiskCache: height != null ? height * 2 : null,
+    // );
   }
 
   /// Create avatar widget
@@ -211,17 +207,7 @@ class ImageCDNService {
     );
   }
 
-  /// Build default placeholder
-  Widget _buildDefaultPlaceholder() {
-    return Container(
-      color: Colors.grey[300],
-      child: const Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-        ),
-      ),
-    );
-  }
+  // Removed unused _buildDefaultPlaceholder method
 
   /// Build default error widget
   Widget _buildDefaultErrorWidget() {

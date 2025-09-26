@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/scheduled_post.dart';
-import '../services/scheduled_post_service.dart';
 
 class PostAnalyticsView extends StatefulWidget {
   final ScheduledPost post;
@@ -16,7 +15,6 @@ class PostAnalyticsView extends StatefulWidget {
 }
 
 class _PostAnalyticsViewState extends State<PostAnalyticsView> with TickerProviderStateMixin {
-  final ScheduledPostService _postService = ScheduledPostService();
   late TabController _tabController;
   
   bool _isLoading = true;

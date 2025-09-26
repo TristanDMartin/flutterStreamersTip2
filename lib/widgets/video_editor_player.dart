@@ -37,7 +37,6 @@ class _VideoEditorPlayerState extends State<VideoEditorPlayer> {
   Duration _position = Duration.zero;
   Duration _startTime = Duration.zero;
   Duration _endTime = Duration.zero;
-  bool _isDragging = false;
   String? _errorMessage;
 
   @override
