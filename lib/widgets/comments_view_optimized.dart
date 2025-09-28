@@ -9,8 +9,13 @@ import 'optimized_comment_tile.dart';
 
 class CommentsViewOptimized extends ConsumerStatefulWidget {
   final String videoId;
+  final String? videoOwnerId; // Add video owner ID for permission checking
 
-  const CommentsViewOptimized({super.key, required this.videoId});
+  const CommentsViewOptimized({
+    super.key, 
+    required this.videoId,
+    this.videoOwnerId,
+  });
 
   @override
   ConsumerState<CommentsViewOptimized> createState() => _CommentsViewOptimizedState();
@@ -195,11 +200,33 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     }
   }
 
+  /// Check if current user can delete a comment
+  bool _canDeleteComment(Comment comment) {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return false;
+    
+    // Comment author can delete their own comment
+    if (comment.user.id == currentUser.uid) return true;
+    
+    // Video owner can delete any comment on their video
+    if (widget.videoOwnerId != null && widget.videoOwnerId == currentUser.uid) return true;
+    
+    return false;
+  }
+
   Future<void> _deleteComment(String commentId) async {
     try {
+      // Check if user has permission to delete this comment
+      final comment = _comments.firstWhere((c) => c.id == commentId);
+      if (!_canDeleteComment(comment)) {
+        setState(() => _errorMessage = 'You are not authorized to delete this comment');
+        return;
+      }
+
       final success = await CommentsService().deleteComment(
         videoId: widget.videoId,
         commentId: commentId,
+        videoOwnerId: widget.videoOwnerId,
       );
       
       if (success) {
@@ -352,7 +379,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           comment: c,
           videoId: widget.videoId,
           onReply: () => _showReplySheet(c),
-          onDelete: () => _showDeleteSheet(c),
+          onDelete: _canDeleteComment(c) ? () => _showDeleteSheet(c) : null,
         );
       },
     );
@@ -597,6 +624,12 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   }
 
   void _showDeleteSheet(Comment c) {
+    // Only show delete sheet if user can delete the comment
+    if (!_canDeleteComment(c)) {
+      setState(() => _errorMessage = 'You are not authorized to delete this comment');
+      return;
+    }
+
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,

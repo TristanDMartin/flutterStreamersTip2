@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../views/menu_view.dart';
 import '../views/settings_view.dart';
+import '../widgets/tiktok_account_switcher_modal.dart';
 
 // Example route configuration
 final menuRoutes = [
@@ -66,14 +67,14 @@ final menuRoutes = [
     builder: (context, state) => const PlaceholderSettingsPage(title: 'About'),
   ),
   
-  // Account management
+  // Account management - TikTok-style instant switching
   GoRoute(
     path: '/account/switch',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Switch Account'),
+    builder: (context, state) => const TikTokAccountSwitcherModal(),
   ),
   GoRoute(
     path: '/account/add',
-    builder: (context, state) => const PlaceholderSettingsPage(title: 'Add Account'),
+    builder: (context, state) => const TikTokAccountSwitcherModal(),
   ),
   
   // Existing pages (keep your current routes)

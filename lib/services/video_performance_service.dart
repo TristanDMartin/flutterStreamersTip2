@@ -68,20 +68,6 @@ class VideoPerformanceService {
   /// Get ready controller (warm start)
   VideoPlayerController? getReady(String url) => _videoControllers[url];
   
-  /// Preload thumbnail image - DISABLED to prevent buffer overflow
-  Future<void> _preloadThumbnail(String thumbnailUrl) async {
-    // CRITICAL: Disabled to prevent ImageReader_JNI buffer overflow
-    debugPrint('⚠️ Thumbnail preloading disabled to prevent buffer overflow');
-    return;
-    
-    // DISABLED CODE:
-    // try {
-    //   final imageProvider = CachedNetworkImageProvider(thumbnailUrl);
-    //   await precacheImage(imageProvider, NavigationService.navigatorKey.currentContext!);
-    // } catch (e) {
-    //   debugPrint('Error preloading thumbnail: $e');
-    // }
-  }
   
   /// Get preloaded video controller
   VideoPlayerController? getVideoController(String videoUrl) {

@@ -4,6 +4,7 @@ import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../pages/bookmark_view.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'tiktok_account_switcher_modal.dart';
 
 class ProfileMenuSheetView extends ConsumerStatefulWidget {
   final VoidCallback onDismiss;
@@ -20,7 +21,6 @@ class ProfileMenuSheetView extends ConsumerStatefulWidget {
 }
 
 class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
-  bool _showSwitchAccountDropdown = false;
 
   @override
   Widget build(BuildContext context) {
@@ -181,9 +181,9 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
       children: [
         GestureDetector(
           onTap: () {
-            setState(() {
-              _showSwitchAccountDropdown = !_showSwitchAccountDropdown;
-            });
+            // Close the menu and show TikTok account switcher
+            widget.onDismiss();
+            _showTikTokAccountSwitcher();
           },
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 28),
@@ -208,12 +208,12 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
                   ),
                 ),
                 const Spacer(),
-                // Show count of other accounts (placeholder)
+                // TikTok-style account switcher indicator
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
+                      colors: [Color(0xFF6633CC), Color(0xFF1A1A4D)],
                     ),
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
@@ -225,7 +225,7 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
                     ],
                   ),
                   child: const Text(
-                    '0', // Placeholder count
+                    'TikTok Style',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -234,8 +234,8 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(
-                  _showSwitchAccountDropdown ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                const Icon(
+                  Icons.swap_horiz,
                   color: Colors.white,
                   size: 20,
                 ),
@@ -244,74 +244,18 @@ class _ProfileMenuSheetViewState extends ConsumerState<ProfileMenuSheetView> {
           ),
         ),
         
-        // Dropdown Menu
-        if (_showSwitchAccountDropdown) ...[
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha:0.05),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                _buildDropdownItem(
-                  icon: Icons.person_add,
-                  label: 'Log into account',
-                  onTap: () {
-                    setState(() {
-                      _showSwitchAccountDropdown = false;
-                    });
-                    // TODO: Navigate to login view
-                  },
-                ),
-                const Divider(color: Colors.white24, height: 1),
-                _buildDropdownItem(
-                  icon: Icons.person_add,
-                  label: 'Create new account',
-                  onTap: () {
-                    setState(() {
-                      _showSwitchAccountDropdown = false;
-                    });
-                    // TODO: Navigate to signup view
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
+        // TikTok-style account switcher modal will handle everything
       ],
     );
   }
 
-  Widget _buildDropdownItem({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 28),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              color: Colors.white,
-              size: 18,
-            ),
-            const SizedBox(width: 18),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const Spacer(),
-          ],
-        ),
-      ),
+
+  void _showTikTokAccountSwitcher() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => const TikTokAccountSwitcherModal(),
     );
   }
 

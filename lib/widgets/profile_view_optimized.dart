@@ -14,6 +14,7 @@ import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
 import 'setup_hashtag_permissions_widget.dart';
+import 'tiktok_account_switch_button.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -364,6 +365,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
           title: null,
           centerTitle: false,
           actions: [
+            // TikTok-style account switcher
+            const TikTokAccountSwitchIcon(),
             IconButton(
               icon: const Icon(
                 Icons.flip,

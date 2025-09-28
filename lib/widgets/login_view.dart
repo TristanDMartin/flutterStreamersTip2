@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/auth_service.dart';
+import '../services/robust_auth_service.dart';
 import '../views/terms_of_service_view.dart';
 import '../views/privacy_policy_view.dart';
 import 'email_login_view.dart';
@@ -24,7 +24,20 @@ class _LoginViewState extends ConsumerState<LoginView> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Listen to auth state changes to navigate when user signs in
+    ref.listen(robustAuthServiceProvider, (previous, next) {
+      // Check if user is now logged in
+      if (next.isLoggedIn && mounted) {
+        // User is authenticated, dismiss login screen
+        widget.dismiss?.call();
+      }
+    });
     
     // Show EmailLoginView if requested
     if (_showEmailLogin) {
@@ -257,20 +270,36 @@ class _LoginViewState extends ConsumerState<LoginView> {
     
     setState(() {
       _isLoading = true;
+      _showAlert = false; // Clear any previous alerts
     });
     
-    try {
-      final authService = ref.read(authServiceProvider.notifier);
-      await authService.signInWithGoogle();
-      // Success - the auth state listener will handle navigation
+        try {
+          final authService = ref.read(robustAuthServiceProvider);
+          await authService.debouncedSignInWithGoogle();
+      
+      // Don't manually navigate here - let the auth state listener handle it
+      // The auth state listener will trigger when Firebase auth state changes
+      
     } catch (e) {
       if (mounted) {
         setState(() {
-          _alertMessage = e.toString();
+          _alertMessage = _getUserFriendlyErrorMessage(e.toString());
           _showAlert = true;
           _isLoading = false;
         });
       }
+    }
+  }
+
+  String _getUserFriendlyErrorMessage(String error) {
+    if (error.contains('sign_in_canceled') || error.contains('cancelled')) {
+      return 'Sign-in was cancelled';
+    } else if (error.contains('network_error') || error.contains('network')) {
+      return 'Network error. Please check your connection';
+    } else if (error.contains('sign_in_failed')) {
+      return 'Sign-in failed. Please try again';
+    } else {
+      return 'Sign-in failed. Please try again';
     }
   }
 

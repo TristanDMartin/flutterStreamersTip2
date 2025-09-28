@@ -173,15 +173,47 @@ class CommentsService {
     }
   }
 
-  /// Delete a comment
+  /// Delete a comment with permission checking
   Future<bool> deleteComment({
     required String videoId,
     required String commentId,
+    String? videoOwnerId,
   }) async {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return false;
 
+      // Get the comment to check permissions
+      final commentDoc = await _firestore
+          .collection('videos')
+          .doc(videoId)
+          .collection('comments')
+          .doc(commentId)
+          .get();
+
+      if (!commentDoc.exists) return false;
+
+      final commentData = commentDoc.data()!;
+      final commentAuthorId = commentData['user']?['id'];
+
+      // Check if current user can delete this comment
+      bool canDelete = false;
+      
+      // Comment author can delete their own comment
+      if (commentAuthorId == currentUser.uid) {
+        canDelete = true;
+      }
+      
+      // Video owner can delete any comment on their video
+      if (videoOwnerId != null && videoOwnerId == currentUser.uid) {
+        canDelete = true;
+      }
+
+      if (!canDelete) {
+        throw CommentError.unauthorized;
+      }
+
+      // Delete the comment
       await _firestore
           .collection('videos')
           .doc(videoId)
@@ -191,7 +223,10 @@ class CommentsService {
 
       return true;
     } catch (e) {
-    // print('Error deleting comment: $e');
+      if (e is CommentError) {
+        rethrow;
+      }
+      // print('Error deleting comment: $e');
       return false;
     }
   }

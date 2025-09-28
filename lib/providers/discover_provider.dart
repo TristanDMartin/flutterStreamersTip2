@@ -156,10 +156,14 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     }
   }
 
+  void clearSearch() {
+    state = state.copyWith(searchResults: [], isSearching: false);
+  }
+
   Future<void> search(String query) async {
     final String q = query.trim();
     if (q.isEmpty) {
-      state = state.copyWith(searchResults: [], isSearching: false);
+      clearSearch();
       return;
     }
 
@@ -171,6 +175,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     try {
       final FirebaseFirestore db = FirebaseFirestore.instance;
       final String qLower = q.toLowerCase();
+      
+      // Add timeout to prevent hanging queries
+      const timeout = Duration(seconds: 10);
 
       Future<List<SearchResult>> userResults() async {
         final List<SearchResult> results = [];
@@ -181,7 +188,10 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .collection('users')
               .orderBy('username')
               .startAt([q])
-              .endAt(["$q\uf8ff"]).limit(10).get();
+              .endAt(["$q\uf8ff"])
+              .limit(10)
+              .get()
+              .timeout(timeout);
           for (final d in qs1.docs) {
             final data = d.data();
             results.add(SearchResult(
@@ -193,7 +203,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               type: ResultType.creator,
             ));
           }
-        } catch (_) {}
+        } catch (e) {
+          LoggingService.instance.warning('Username search failed', tag: 'DiscoverProvider', error: e);
+        }
 
         // displayName prefix
         try {
@@ -201,7 +213,10 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .collection('users')
               .orderBy('displayName')
               .startAt([q])
-              .endAt(["$q\uf8ff"]).limit(10).get();
+              .endAt(["$q\uf8ff"])
+              .limit(10)
+              .get()
+              .timeout(timeout);
           for (final d in qs2.docs) {
             final data = d.data();
             results.add(SearchResult(
@@ -213,7 +228,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               type: ResultType.creator,
             ));
           }
-        } catch (_) {}
+        } catch (e) {
+          LoggingService.instance.warning('DisplayName search failed', tag: 'DiscoverProvider', error: e);
+        }
 
         return results;
       }
@@ -227,7 +244,8 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .where('tags', arrayContains: qLower)
               .orderBy('timestamp', descending: true)
               .limit(10)
-              .get();
+              .get()
+              .timeout(timeout);
           for (final d in qs1.docs) {
             final data = d.data();
             results.add(SearchResult(
@@ -239,7 +257,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               type: ResultType.content,
             ));
           }
-        } catch (_) {}
+        } catch (e) {
+          LoggingService.instance.warning('Video tags search failed', tag: 'DiscoverProvider', error: e);
+        }
 
         // title prefix
         try {
@@ -247,7 +267,10 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .collection('videos')
               .orderBy('title')
               .startAt([q])
-              .endAt(["$q\uf8ff"]).limit(10).get();
+              .endAt(["$q\uf8ff"])
+              .limit(10)
+              .get()
+              .timeout(timeout);
           for (final d in qs2.docs) {
             final data = d.data();
             results.add(SearchResult(
@@ -259,7 +282,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               type: ResultType.content,
             ));
           }
-        } catch (_) {}
+        } catch (e) {
+          LoggingService.instance.warning('Video title search failed', tag: 'DiscoverProvider', error: e);
+        }
 
         return results;
       }
@@ -340,25 +365,30 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
 
       Future<List<SearchResult>> storyResults() async => <SearchResult>[];
 
-      final List<List<SearchResult>> parallel = await Future.wait([
+      // Execute all search queries in parallel with overall timeout
+      final searchResults = await Future.wait([
         userResults(),
         videoResults(),
         categoryResults(),
         hashtagResults(),
         storyResults(),
-      ]);
+      ]).timeout(timeout);
 
+      // Deduplicate results
       final Map<String, SearchResult> dedup = {};
-      for (final list in parallel) {
+      for (final list in searchResults) {
         for (final r in list) {
           final key = '${r.type}-${r.id}';
           dedup[key] = r;
         }
       }
 
-      state = state.copyWith(searchResults: dedup.values.toList(), isSearching: false);
+      // Limit results to prevent UI overload
+      final limitedResults = dedup.values.take(50).toList();
+      
+      state = state.copyWith(searchResults: limitedResults, isSearching: false);
     } catch (e) {
-      LoggingService.instance.error('Error searching', tag: 'DiscoverProvider', error: e);
+      LoggingService.instance.error('Search failed', tag: 'DiscoverProvider', error: e);
       state = state.copyWith(searchResults: [], isSearching: false);
     }
   }

@@ -116,18 +116,20 @@ class CameraService extends ChangeNotifier {
       // Dispose of existing controller if any
       await _cameraController?.dispose();
       
-      // Initialize camera controller
+      // Initialize camera controller with balanced quality settings
       _cameraController = CameraController(
         _cameras[_selectedCameraIndex],
-        ResolutionPreset.high,
+        ResolutionPreset.medium, // Use medium resolution to prevent buffer overflow
         enableAudio: true,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        imageFormatGroup: ImageFormatGroup.yuv420, // Use YUV420 to prevent buffer issues
       );
       
       await _cameraController!.initialize();
       
-      // Set flash mode
+      // Apply high quality camera settings
       await _cameraController!.setFlashMode(FlashMode.off);
+      await _cameraController!.setFocusMode(FocusMode.auto);
+      await _cameraController!.setExposureMode(ExposureMode.auto);
       
       log("✅ CameraService: Session configuration complete");
       

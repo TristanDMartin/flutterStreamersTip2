@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
 import 'auth_rate_limiting_service.dart';
+import 'tiktok_account_switcher.dart';
 import 'google_services_fix.dart';
 import 'username_lock_service.dart';
 
@@ -32,6 +33,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AuthRateLimitingService _rateLimiter = AuthRateLimitingService();
   final UsernameLockService _usernameLockService = UsernameLockService();
+  final TikTokAccountSwitcher _accountSwitcher = TikTokAccountSwitcher();
   
   User? _currentUser;
   bool _isLoggedIn = false;
@@ -45,7 +47,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   
   // Constants
   static const Duration _debounceDelay = Duration(milliseconds: 400);
-  static const Duration _minimumSpinnerTime = Duration(milliseconds: 500);
+  static const Duration _minimumSpinnerTime = Duration(milliseconds: 2500);
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
@@ -735,6 +737,12 @@ class RobustAuthenticationService extends ChangeNotifier {
         
         debugPrint("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
         
+        // Add account to TikTok account switcher for instant switching
+        await _accountSwitcher.addCurrentAccount();
+        
+        // Trigger comprehensive data refresh for the signed-in user
+        await _accountSwitcher.triggerDataRefreshWithRef(null);
+        
         // Set up real-time listener for user data changes
         _setupUserDataListener(firebaseUser.uid);
         
@@ -770,6 +778,12 @@ class RobustAuthenticationService extends ChangeNotifier {
         notifyListeners();
         
         debugPrint("✅ New user created and signed in successfully - isLoggedIn: $_isLoggedIn");
+        
+        // Add account to TikTok account switcher for instant switching
+        await _accountSwitcher.addCurrentAccount();
+        
+        // Trigger comprehensive data refresh for the signed-in user
+        await _accountSwitcher.triggerDataRefreshWithRef(null);
         
         // Set up real-time listener for the new user
         _setupUserDataListener(firebaseUser.uid);

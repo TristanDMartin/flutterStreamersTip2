@@ -405,7 +405,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return CommentsViewOptimized(videoId: widget.video.id);
+        return CommentsViewOptimized(
+          videoId: widget.video.id,
+          videoOwnerId: widget.video.creator.id,
+        );
       },
     );
   }
@@ -747,14 +750,15 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     final media = MediaQuery.of(context);
     final safeBottom = media.viewPadding.bottom;
     
-    // Constants
-    const navHeight = 72.0;
+    // Constants - TikTok-style spacing
+    const navHeight = 100.0; // Height of bottom navigation
     const railWidth = 64.0;
     const leftInset = 12.0;
     const rightInset = railWidth + 16;
+    const paddingAboveNav = 50.0; // Match right action buttons TikTok-style spacing
     
-    // Position caption block directly above bottom navigation
-    final bottomPosition = safeBottom + navHeight + 35.0;
+    // Position caption block right above bottom navigation
+    final bottomPosition = safeBottom + navHeight + paddingAboveNav;
     
     return Positioned(
       left: leftInset,
@@ -845,19 +849,24 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   Widget _buildActionButtons() {
     final media = MediaQuery.of(context);
     
-    // Button specifications
-    const btnSize = 44.0;
+    // Button specifications - Made slightly larger
+    const btnSize = 52.0; // Increased from 44.0 to 52.0
     const gap = 16.0;
     const count = 4;
     const groupHeight = (count * btnSize) + ((count - 1) * gap);
     
-    // Calculate position - TikTok style (higher up on screen)
+    // Calculate position - TikTok-style spacing above bottom navigation
     const rightInset = 12.0;
-    const targetCenterY = 0.70; // 65% from top of screen
+    const bottomNavHeight = 100.0; // Height of bottom navigation
+    const paddingAboveNav = 112.0; // TikTok-style large padding above bottom nav
     
     final screenHeight = media.size.height;
-    final desiredCenterY = screenHeight * targetCenterY;
-    final top = (desiredCenterY - groupHeight / 2).clamp(0.0, screenHeight - groupHeight);
+    final safeBottom = media.viewPadding.bottom;
+    // Bottom nav starts at: screenHeight - safeBottom - bottomNavHeight
+    // We want buttons above it, so: bottomNavStart - paddingAboveNav - groupHeight
+    final bottomNavStart = screenHeight - safeBottom - bottomNavHeight;
+    final desiredTop = bottomNavStart - paddingAboveNav - groupHeight;
+    final top = desiredTop.clamp(0.0, screenHeight - groupHeight);
     
     return Positioned(
       top: top,
@@ -904,12 +913,12 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           ),
           const SizedBox(height: 16),
           
-          // Creator avatar
+          // Creator avatar - Made slightly smaller
           GestureDetector(
             onTap: widget.onShowProfile,
             child: UnifiedAvatarService().getAvatar(
               imageUrl: widget.video.creator.avatarURL ?? '',
-              radius: 20,
+              radius: 20, // Reduced from 24 back to 20
             ),
           ),
         ],
@@ -924,7 +933,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     bool isActive = false,
     bool isLoading = false,
   }) {
-    const btnSize = 44.0;
+    const btnSize = 52.0; // Increased from 44.0 to 52.0 to match _buildActionButtons
     return SizedBox(
       width: btnSize,
       height: btnSize,
@@ -951,7 +960,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
                 : Icon(
                     icon,
                     color: isActive ? const Color(0xFF9248D2) : Colors.white.withValues(alpha: 0.85),
-                    size: 24,
+                    size: 28, // Increased from 24 to 28
                   ),
             const SizedBox(height: 4),
             Text(

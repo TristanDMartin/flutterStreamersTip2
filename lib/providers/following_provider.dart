@@ -37,22 +37,26 @@ class FollowingState {
 
 class FollowingNotifier extends StateNotifier<FollowingState> {
   FollowingNotifier() : super(const FollowingState()) {
+    print('🔵 FollowingNotifier: Constructor called - initializing...');
     loadFollowingList();
   }
 
   /// Load the list of users being followed and followers
   Future<void> loadFollowingList() async {
+    print('🔵 FollowingNotifier: loadFollowingList() called');
     state = state.copyWith(isLoading: true, error: null);
     
     try {
       final followingList = await FollowingService.getFollowingList();
       final followersList = await FollowingService.getFollowersList();
+      print('🔵 FollowingNotifier: Loaded ${followingList.length} following, ${followersList.length} followers');
       state = state.copyWith(
         followingList: followingList,
         followersList: followersList,
         isLoading: false,
       );
     } catch (e) {
+      print('🔵 FollowingNotifier: Error loading follow lists: $e');
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
@@ -62,14 +66,17 @@ class FollowingNotifier extends StateNotifier<FollowingState> {
 
   /// Follow a user
   Future<bool> followUser(String userId) async {
+    print('🔵 FollowingNotifier: followUser($userId) called');
     try {
       final success = await FollowingService.followUser(userId);
+      print('🔵 FollowingNotifier: followUser result: $success');
       if (success) {
         // Reload the following list
         await loadFollowingList();
       }
       return success;
     } catch (e) {
+      print('🔵 FollowingNotifier: Error in followUser: $e');
       state = state.copyWith(error: e.toString());
       return false;
     }

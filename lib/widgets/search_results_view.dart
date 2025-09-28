@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/discover_provider.dart';
 import '../models/user.dart';
@@ -24,55 +23,33 @@ class SearchResultsView extends ConsumerStatefulWidget {
 }
 
 class _SearchResultsViewState extends ConsumerState<SearchResultsView> {
-  Timer? _searchTimer;
-
   @override
   void initState() {
     super.initState();
-    _debouncedSearch();
+    // Perform initial search if needed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.searchText.isNotEmpty) {
+        widget.viewModel.search(widget.searchText);
+      }
+    });
   }
 
   @override
   void didUpdateWidget(SearchResultsView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.searchText != widget.searchText) {
-      _debouncedSearch();
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchTimer?.cancel();
-    super.dispose();
-  }
-
-  void _debouncedSearch() {
-    // Cancel previous search timer
-    _searchTimer?.cancel();
-    
-    // Create new search timer
-    _searchTimer = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        _performSearch();
-      }
-    });
-  }
-
-  Future<void> _performSearch() async {
-    try {
-      if (widget.searchText.isNotEmpty) {
-        await widget.viewModel.search(widget.searchText);
-      }
-      // Search completed
-    } catch (e) {
-      // Error handling is done in the viewModel
-      // Search completed
+    // Only trigger search if text actually changed
+    if (oldWidget.searchText != widget.searchText && widget.searchText.isNotEmpty) {
+      widget.viewModel.search(widget.searchText);
+    } else if (widget.searchText.isEmpty) {
+      // Clear results immediately for empty search
+      widget.viewModel.clearSearch();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final searchResults = ref.watch(discoverProvider).searchResults;
+    // Only watch search results to minimize rebuilds
+    final searchResults = ref.watch(discoverProvider.select((state) => state.searchResults));
     
     return ListView.builder(
       shrinkWrap: true,
@@ -135,13 +112,22 @@ class SearchResultRow extends StatelessWidget {
       onTap: _handleTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
-            width: 1,
+        decoration: const BoxDecoration(
+          color: Color(0x26FFFFFF), // Pre-calculated alpha value
+          borderRadius: BorderRadius.all(Radius.circular(16)),
+          border: Border.fromBorderSide(
+            BorderSide(
+              color: Color(0x4DFFFFFF), // Pre-calculated alpha value
+              width: 1,
+            ),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x1A000000), // Pre-calculated alpha value
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -170,19 +156,25 @@ class SearchResultRow extends StatelessWidget {
   }
 
   Widget _buildIconOrImage() {
-    if (result.imageURL != null) {
+    // Make avatars larger and more prominent
+    const double avatarSize = 48.0;
+    
+    if (result.imageURL != null && result.imageURL!.isNotEmpty) {
       return Container(
-        width: 40,
-        height: 40,
+        width: avatarSize,
+        height: avatarSize,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.grey.withValues(alpha: 0.1),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.3),
+            width: 2,
+          ),
         ),
         child: ClipOval(
           child: OptimizedImage(
             imageUrl: result.imageURL!,
-            width: 40,
-            height: 40,
+            width: avatarSize,
+            height: avatarSize,
             fit: BoxFit.cover,
           ),
         ),
@@ -193,17 +185,28 @@ class SearchResultRow extends StatelessWidget {
   }
 
   Widget _buildIconPlaceholder() {
+    const double avatarSize = 48.0;
+    
     return Container(
-      width: 40,
-      height: 40,
+      width: avatarSize,
+      height: avatarSize,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.grey.withValues(alpha: 0.1),
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF6633CC), // Purple
+            Color(0xFF1A1A4D), // Dark blue
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 2,
+        ),
       ),
       child: Icon(
         _getIconForType(result.type),
-        color: Colors.blue,
-        size: 16,
+        color: Colors.white,
+        size: 20,
       ),
     );
   }
@@ -225,9 +228,9 @@ class SearchResultRow extends StatelessWidget {
         
         Text(
           result.subtitle,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 14,
-            color: Colors.white.withValues(alpha: 0.7),
+            color: Color(0xB3FFFFFF), // Pre-calculated alpha value
           ),
         ),
         
@@ -235,9 +238,9 @@ class SearchResultRow extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             result.metadata!,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.5),
+              color: Color(0x80FFFFFF), // Pre-calculated alpha value
             ),
           ),
         ],

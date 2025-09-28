@@ -57,20 +57,87 @@ class _IOSMinimalStartupState extends State<IOSMinimalStartup> {
             colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
           ),
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(
+              // App Logo
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 15,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.asset(
+                    'assets/logo.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      // Fallback to gradient icon if logo fails to load
+                      return Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6633CC), Color(0xFF1A1A4D)],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(
+                          Icons.play_circle_fill,
+                          color: Colors.white,
+                          size: 50,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // App Name
+              const Text(
+                'StreamersTip',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 6),
+              
+              // Tagline
+              Text(
+                'Connect • Create • Share',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 30),
+              
+              // Loading Indicator
+              const CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 strokeWidth: 3,
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 16),
+              
+              // Loading Text
               Text(
                 'Loading...',
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
               ),

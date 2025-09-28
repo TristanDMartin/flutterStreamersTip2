@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 import '../services/share_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
@@ -21,8 +20,10 @@ import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_card_view.dart';
+import '../widgets/share_profile_view.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
+import '../widgets/tiktok_account_switch_button.dart';
 
 
 class HomeView extends ConsumerStatefulWidget {
@@ -158,14 +159,17 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
 
 
 
-  void _openComments(String videoId) {
+  void _openComments(String videoId, String videoOwnerId) {
     HapticFeedback.lightImpact();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return CommentsViewOptimized(videoId: videoId);
+        return CommentsViewOptimized(
+          videoId: videoId,
+          videoOwnerId: videoOwnerId,
+        );
       },
     );
   }
@@ -412,7 +416,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                 showSheet: false,
                 sheetType: '',
                 onShowProfile: () => _showStreamerCardModal(video.creator),
-                onShowComments: () => _openComments(video.id),
+                onShowComments: () => _openComments(video.id, video.creator.id),
                 onShowShare: () => _shareVideo(video),
                 onShowStreamerCard: () => _showStreamerCardModal(video.creator),
                 isLiked: video.isLiked,
@@ -432,48 +436,40 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
       child: Scaffold(
         backgroundColor: Colors.black,
         extendBody: true, // This allows content to extend behind the bottom navigation
-        body: MediaQuery.removePadding(
-          context: context,
-          removeTop: true, // Remove top padding to extend behind status bar
-          removeBottom: true, // Remove bottom padding to extend behind bottom nav
-          child: SizedBox(
-            width: double.infinity,
-            height: double.infinity,
-            child: Stack(
-              children: [
-                // Main content - Full screen video that extends behind everything
-                Positioned.fill(
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: double.infinity,
-                    child: _buildVideoContent(homeState),
-                  ),
-                ),
-          
-                // Header overlay - positioned with proper status bar padding
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: _buildHeader(),
-                ),
+        body: Stack(
+          children: [
+            // Main content - Full screen video that extends behind everything
+            Positioned.fill(
+              child: SizedBox(
+                width: double.infinity,
+                height: double.infinity,
+                child: _buildVideoContent(homeState),
+              ),
+            ),
             
-                // Feed dropdown
-                if (_isFeedMenuOpen)
-                  Positioned(
-                    left: 40,
-                    top: MediaQuery.of(context).padding.top + 56,
-                    child: _buildFeedDropdown(),
-                  ),
-                
-                // StreamerCard full-screen modal
-                if (_showStreamerCard && _currentStreamerCard != null)
-                  Positioned.fill(
-                    child: SafeArea(
-                      child: StreamerCardView(
-                        userId: _currentStreamerCard!.id,
-                        currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
-                        onDismiss: _dismissStreamerCard,
+            // Header overlay - positioned with proper status bar padding
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _buildHeader(),
+            ),
+            
+            // Feed dropdown
+            if (_isFeedMenuOpen)
+              Positioned(
+                left: 40,
+                top: MediaQuery.of(context).padding.top + 56,
+                child: _buildFeedDropdown(),
+              ),
+            
+            // StreamerCard full-screen modal
+            if (_showStreamerCard && _currentStreamerCard != null)
+              Positioned.fill(
+                child: StreamerCardView(
+                      userId: _currentStreamerCard!.id,
+                      currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
+                      onDismiss: _dismissStreamerCard,
                       onFollow: (userId) async {
                         // Handle follow action with NetworkView-style logic
                         HapticFeedback.lightImpact();
@@ -485,6 +481,26 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                         final scaffoldMessenger = ScaffoldMessenger.of(context);
                         
                         try {
+                          // Debug: Check authentication
+                          final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+                          if (kDebugMode) {
+                            print('HomeView: Current user: ${currentUser?.uid}');
+                            print('HomeView: Target user ID: $userId');
+                          }
+                          
+                          if (currentUser == null) {
+                            if (mounted) {
+                              scaffoldMessenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text('Please sign in to follow users'),
+                                  backgroundColor: Colors.red,
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          
                           // Get the following provider
                           final followingNotifier = ref.read(followingProvider.notifier);
                           
@@ -492,6 +508,12 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                           final isCurrentlyFollowing = followingNotifier.isFollowing(userId);
                           final isFollowedBy = followingNotifier.isFollowedBy(userId);
                           final isMutualFollow = isCurrentlyFollowing && isFollowedBy;
+                          
+                          if (kDebugMode) {
+                            print('HomeView: isCurrentlyFollowing: $isCurrentlyFollowing');
+                            print('HomeView: isFollowedBy: $isFollowedBy');
+                            print('HomeView: isMutualFollow: $isMutualFollow');
+                          }
                           
                           if (isCurrentlyFollowing) {
                             // Unfollow the user
@@ -516,6 +538,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                                   ),
                                 );
                               }
+                              throw Exception('Failed to unfollow user');
                             }
                           } else {
                             // Follow the user (or follow back)
@@ -545,6 +568,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                                   ),
                                 );
                               }
+                              throw Exception('Failed to follow user');
                             }
                           }
                         } catch (e) {
@@ -558,17 +582,19 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                             } else if (e.toString().contains('network')) {
                               errorMessage = 'Network error. Please check your connection.';
                             } else if (e.toString().contains('not-found')) {
-                              errorMessage = 'User not found.';
+                              errorMessage = 'User not found (demo content).';
                             }
                             
                             scaffoldMessenger.showSnackBar(
                               SnackBar(
                                 content: Text(errorMessage),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 3),
+                                backgroundColor: Colors.orange,
+                                duration: const Duration(seconds: 2),
                               ),
                             );
                           }
+                          // Re-throw the error so StreamerCardView can handle it
+                          rethrow;
                         }
                       },
                       onMessage: (userId) {
@@ -607,76 +633,72 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                           ),
                         );
                       },
-                      onShare: (userId) async {
-                        // Handle share action
+                      onShare: (userId) {
+                        // Handle share action using ShareProfileView (same as ProfileView)
                         HapticFeedback.lightImpact();
                         if (kDebugMode) {
                           print('HomeView: Share action triggered for user: $userId');
                         }
                         
-                        // Capture context before async operations
-                        final scaffoldMessenger = ScaffoldMessenger.of(context);
-                        
-                        try {
-                          // Get user information for sharing
-                          final currentStreamer = _currentStreamerCard;
-                          if (currentStreamer == null) {
-                            if (mounted) {
-                              scaffoldMessenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text('User information not available'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                            return;
-                          }
-                          
-                          // Generate share content for user profile
-                          final shareText = 'Check out @${currentStreamer.username} on StreamersTip!\n\n'
-                              '${currentStreamer.displayName}\n\n'
-                              'Follow them for amazing content!\n\n'
-                              '#StreamersTip #${currentStreamer.username}';
-                          
-                          final shareUrl = 'https://streamerstip.com/user/${currentStreamer.username}';
-                          
-                          // Use system share sheet
-                          await SharePlus.instance.share(
-                            ShareParams(
-                              text: '$shareText\n\n$shareUrl',
-                            ),
-                          );
-                          
+                        // Get user information for sharing
+                        final currentStreamer = _currentStreamerCard;
+                        if (currentStreamer == null) {
                           if (mounted) {
-                            scaffoldMessenger.showSnackBar(
+                            ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('User profile shared successfully!'),
-                                backgroundColor: Colors.green,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (kDebugMode) {
-                            print('HomeView: Error sharing user profile: $e');
-                          }
-                          if (mounted) {
-                            scaffoldMessenger.showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to share user profile: ${e.toString()}'),
+                                content: Text('User information not available'),
                                 backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 2),
                               ),
                             );
                           }
+                          return;
                         }
+                        
+                        // Create user data map for ShareProfileView
+                        final userData = {
+                          'id': currentStreamer.id,
+                          'displayName': currentStreamer.displayName,
+                          'username': currentStreamer.username,
+                          'photoURL': currentStreamer.avatarURL,
+                          'bio': currentStreamer.bio,
+                        };
+                        
+                        // Navigate to ShareProfileView (same as ProfileView)
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => ShareProfileView(
+                              user: userData,
+                              dismiss: () => Navigator.of(context).pop(),
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ),
+            
+            // Bottom safe area overlay to prevent content from being covered by bottom nav
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Container(
+                  height: MediaQuery.of(context).padding.bottom + 140, // Increased height to ensure content is visible
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.9),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.8],
+                    ),
                   ),
-              ],
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -757,7 +779,9 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
             ),
           ),
           const Spacer(),
-          const SizedBox(width: 16),
+          // TikTok-style account switcher
+          const TikTokAccountSwitchIcon(),
+          const SizedBox(width: 12),
           // Discover button - bare icon with soft shadow
           InkResponse(
             onTap: () {

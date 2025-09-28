@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/simple_logout_service.dart';
-import 'add_account_modal.dart';
-import 'switch_account_modal.dart';
+import 'tiktok_account_switcher_modal.dart';
 import 'instant_response_button.dart';
 
 class AccountManagementMenu extends ConsumerWidget {
@@ -142,7 +141,7 @@ class AccountManagementMenu extends ConsumerWidget {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => const SwitchAccountModal(),
+      builder: (context) => const TikTokAccountSwitcherModal(),
     );
   }
 
@@ -156,7 +155,7 @@ class AccountManagementMenu extends ConsumerWidget {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => const AddAccountModal(),
+      builder: (context) => const TikTokAccountSwitcherModal(),
     );
   }
 

@@ -9,7 +9,12 @@ class FollowingService {
   static Future<bool> followUser(String userId) async {
     try {
       final currentUser = _auth.currentUser;
-      if (currentUser == null) return false;
+      if (currentUser == null) {
+        print('FollowingService: No authenticated user');
+        return false;
+      }
+      
+      print('FollowingService: Following user $userId by ${currentUser.uid}');
 
       final batch = _firestore.batch();
       
@@ -46,10 +51,37 @@ class FollowingService {
         'followerCount': FieldValue.increment(1),
       });
 
+      // Create activity notification for the target user in the correct collection
+      final activityRef = _firestore
+          .collection('notifications')
+          .doc(userId)
+          .collection('items')
+          .doc('follow_${currentUser.uid}');
+      batch.set(activityRef, {
+        'type': 'follow',
+        'user': {
+          'id': currentUser.uid,
+          'displayName': currentUser.displayName ?? 'User',
+          'username': currentUser.displayName ?? 'user',
+          'avatarURL': currentUser.photoURL,
+        },
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'pending',
+      });
+
+      // Also create a relationship document for compatibility with existing listeners
+      final relationshipRef = _firestore.collection('relationships').doc();
+      batch.set(relationshipRef, {
+        'followerId': currentUser.uid,
+        'followingId': userId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
       await batch.commit();
+      print('FollowingService: Successfully followed user $userId');
       return true;
     } catch (e) {
-    // print('Error following user: $e');
+      print('FollowingService: Error following user: $e');
       return false;
     }
   }
@@ -58,7 +90,12 @@ class FollowingService {
   static Future<bool> unfollowUser(String userId) async {
     try {
       final currentUser = _auth.currentUser;
-      if (currentUser == null) return false;
+      if (currentUser == null) {
+        print('FollowingService: No authenticated user for unfollow');
+        return false;
+      }
+      
+      print('FollowingService: Unfollowing user $userId by ${currentUser.uid}');
 
       final batch = _firestore.batch();
       
@@ -89,10 +126,30 @@ class FollowingService {
         'followerCount': FieldValue.increment(-1),
       });
 
+      // Remove activity notification for the target user from the correct collection
+      final activityRef = _firestore
+          .collection('notifications')
+          .doc(userId)
+          .collection('items')
+          .doc('follow_${currentUser.uid}');
+      batch.delete(activityRef);
+
+      // Remove relationship document for compatibility
+      final relationshipQuery = await _firestore
+          .collection('relationships')
+          .where('followerId', isEqualTo: currentUser.uid)
+          .where('followingId', isEqualTo: userId)
+          .get();
+      
+      for (final doc in relationshipQuery.docs) {
+        batch.delete(doc.reference);
+      }
+
       await batch.commit();
+      print('FollowingService: Successfully unfollowed user $userId');
       return true;
     } catch (e) {
-    // print('Error unfollowing user: $e');
+      print('FollowingService: Error unfollowing user: $e');
       return false;
     }
   }

@@ -91,8 +91,9 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
       if (_cameras!.isNotEmpty) {
         _cameraController = CameraController(
           _cameras![_isFrontCamera ? 1 : 0],
-          ResolutionPreset.low, // Force low resolution for performance
+          ResolutionPreset.medium, // Use medium resolution to prevent buffer overflow
           enableAudio: true,
+          imageFormatGroup: ImageFormatGroup.yuv420, // Use YUV420 to prevent buffer issues
         );
         
         await _cameraController!.initialize();
@@ -438,15 +439,11 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
       onScaleUpdate: _onScaleUpdate,
       child: Stack(
         children: [
-          // Simple camera preview
+          // Camera preview with proper aspect ratio and front camera distortion correction
           SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: 320,
-                height: 240,
-                child: CameraPreview(_cameraController!),
-              ),
+            child: AspectRatio(
+              aspectRatio: _cameraController!.value.aspectRatio,
+              child: CameraPreview(_cameraController!),
             ),
           ),
           // Focus indicator

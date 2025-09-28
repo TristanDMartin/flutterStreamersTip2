@@ -23,8 +23,23 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   String _alertMessage = "";
 
   @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final authService = ref.watch(robustAuthServiceProvider);
+    
+    // Listen to auth state changes to navigate when user signs in
+    ref.listen(robustAuthServiceProvider, (previous, next) {
+      // Check if user is now logged in
+      if (next.isLoggedIn && mounted) {
+        // User is authenticated, the AppStartupWrapper will handle navigation
+        // No need to manually navigate here since the parent widget will rebuild
+        debugPrint("✅ User authenticated, AppStartupWrapper will handle navigation");
+      }
+    });
 
     return Material(
       color: Colors.transparent,
@@ -375,13 +390,27 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
       final authService = ref.read(robustAuthServiceProvider);
       await authService.debouncedSignInWithGoogle();
       // Success - the auth state listener will handle navigation
+      debugPrint("✅ Google sign-in completed successfully");
     } catch (e) {
+      debugPrint("❌ Google sign-in error: $e");
       if (mounted) {
         setState(() {
-          _alertMessage = e.toString();
+          _alertMessage = _getUserFriendlyErrorMessage(e.toString());
           _showAlert = true;
         });
       }
+    }
+  }
+
+  String _getUserFriendlyErrorMessage(String error) {
+    if (error.contains('sign_in_canceled') || error.contains('cancelled')) {
+      return 'Sign-in was cancelled';
+    } else if (error.contains('network_error') || error.contains('network')) {
+      return 'Network error. Please check your connection';
+    } else if (error.contains('sign_in_failed')) {
+      return 'Sign-in failed. Please try again';
+    } else {
+      return 'Sign-in failed. Please try again';
     }
   }
 

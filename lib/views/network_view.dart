@@ -45,7 +45,8 @@ class _NetworkViewState extends State<NetworkView> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   
   // Real-time relationship listeners
-  StreamSubscription<QuerySnapshot>? _relationshipsSubscription;
+  StreamSubscription<QuerySnapshot>? _followersSubscription;
+  StreamSubscription<QuerySnapshot>? _followingSubscription;
 
   @override
   void initState() {
@@ -99,21 +100,48 @@ class _NetworkViewState extends State<NetworkView> {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     if (currentUserId == null) return;
 
-    // Use a more efficient listener with debouncing to prevent excessive refreshes
+    // Listen to multiple collections for comprehensive real-time updates
     Timer? debounceTimer;
-    _relationshipsSubscription = FirebaseFirestore.instance
-        .collection('relationships')
-        .where('followerId', isEqualTo: currentUserId)
-        .snapshots()
-        .listen((snapshot) {
-      // Only refresh if there are actual changes
+    
+    // Listen to both followers AND following subcollections
+    final followersStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .collection('followers')
+        .snapshots();
+        
+    final followingStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .collection('following')
+        .snapshots();
+    
+    // Listen to followers subcollection changes
+    _followersSubscription = followersStream.listen((snapshot) {
       if (snapshot.docChanges.isNotEmpty) {
+        debugPrint('🔄 NetworkView: Followers change detected, refreshing data...');
         // Debounce to prevent excessive calls
         debounceTimer?.cancel();
-        debounceTimer = Timer(const Duration(milliseconds: 500), () {
+        debounceTimer = Timer(const Duration(milliseconds: 300), () {
           _refreshDataInstantly();
         });
       }
+    }, onError: (error) {
+      debugPrint('❌ NetworkView: Error in followers listener: $error');
+    });
+    
+    // Listen to following subcollection changes
+    _followingSubscription = followingStream.listen((snapshot) {
+      if (snapshot.docChanges.isNotEmpty) {
+        debugPrint('🔄 NetworkView: Following change detected, refreshing data...');
+        // Debounce to prevent excessive calls
+        debounceTimer?.cancel();
+        debounceTimer = Timer(const Duration(milliseconds: 300), () {
+          _refreshDataInstantly();
+        });
+      }
+    }, onError: (error) {
+      debugPrint('❌ NetworkView: Error in following listener: $error');
     });
   }
   
@@ -177,6 +205,9 @@ class _NetworkViewState extends State<NetworkView> {
       // Ensure service is initialized before loading data
       await cleanSvc.initialize();
       
+      // Create test relationships if none exist (for demonstration)
+      await cleanSvc.createTestRelationshipsIfNeeded();
+      
       // Load all three lists in parallel
       final results = await Future.wait([
         cleanSvc.getUsersForSection('connections'),
@@ -190,6 +221,8 @@ class _NetworkViewState extends State<NetworkView> {
         _followingUsers = results[2];
         _isLoadingUsers = false;
       });
+      
+      debugPrint('🎯 NetworkView: Loaded ${_connectionsUsers.length} connections, ${_followersUsers.length} followers, ${_followingUsers.length} following');
     } catch (e) {
       debugPrint('Error loading users from clean service: $e');
       setState(() {
@@ -221,7 +254,8 @@ class _NetworkViewState extends State<NetworkView> {
     _searchController.dispose();
     _searchTimer?.cancel(); // Cancel search timer
     _connectivitySubscription?.cancel(); // Cancel connectivity subscription
-    _relationshipsSubscription?.cancel(); // Cancel relationship listeners
+    _followersSubscription?.cancel(); // Cancel followers listener
+    _followingSubscription?.cancel(); // Cancel following listener
     super.dispose();
   }
 
@@ -689,7 +723,7 @@ class _NetworkViewState extends State<NetworkView> {
     }
 
     return RefreshIndicator(
-      onRefresh: _loadUsersFromCleanService,
+      onRefresh: _handlePullToRefresh,
       color: Colors.white,
       child: ListView.builder(
         controller: _listController,
@@ -798,10 +832,12 @@ class _NetworkViewState extends State<NetworkView> {
   /// Refresh data instantly without showing loading indicator
   Future<void> _refreshDataInstantly() async {
     try {
+      debugPrint('🔄 NetworkView: Starting instant data refresh...');
       final cleanSvc = CleanRelationshipService();
       
-      // Ensure service is initialized
-      await cleanSvc.initialize();
+      // First refresh the service's internal state to get latest data
+      await cleanSvc.refresh();
+      debugPrint('✅ NetworkView: CleanRelationshipService refreshed');
       
       // Load all three lists in parallel
       final results = await Future.wait([
@@ -810,15 +846,18 @@ class _NetworkViewState extends State<NetworkView> {
         cleanSvc.getUsersForSection('following'),
       ]);
       
+      debugPrint('📊 NetworkView: Data loaded - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}');
+      
       if (mounted) {
         setState(() {
           _connectionsUsers = results[0];
           _followersUsers = results[1];
           _followingUsers = results[2];
         });
+        debugPrint('✅ NetworkView: UI updated with new data');
       }
     } catch (e) {
-      debugPrint('Error refreshing data instantly: $e');
+      debugPrint('❌ NetworkView: Error refreshing data instantly: $e');
     }
   }
 
@@ -830,5 +869,11 @@ class _NetworkViewState extends State<NetworkView> {
     } catch (e) {
       debugPrint('Error refreshing clean service state: $e');
     }
+  }
+
+  /// Handle pull-to-refresh action
+  Future<void> _handlePullToRefresh() async {
+    debugPrint('🔄 NetworkView: Pull-to-refresh triggered');
+    await _refreshDataInstantly();
   }
 }
