@@ -14,9 +14,11 @@ class ChatService {
   Future<Chat?> fetchOrCreateChat(String otherUID) async {
     final me = _auth.currentUser?.uid;
     if (me == null) {
-    // print("No current user signed in");
+      print("❌ ChatService: No current user signed in");
       return null;
     }
+
+    print("💬 ChatService: fetchOrCreateChat called with otherUID: $otherUID, currentUser: $me");
 
     try {
       // Query for existing chats
@@ -25,15 +27,20 @@ class ChatService {
           .where("participants", arrayContains: me)
           .get();
 
+      print("💬 ChatService: Found ${querySnapshot.docs.length} existing chats");
+
       // Check if there's an existing chat with the other user
       for (final doc in querySnapshot.docs) {
         final participants = List<String>.from(doc.data()["participants"] ?? []);
+        print("💬 ChatService: Checking chat ${doc.id} with participants: $participants");
         if (participants.contains(otherUID)) {
+          print("💬 ChatService: Found existing chat with user $otherUID");
           final chat = Chat.fromJson(doc.data());
           return chat.copyWith(id: doc.id);
         }
       }
 
+      print("💬 ChatService: No existing chat found, creating new chat");
       // No existing chat, create new
       final data = {
         "participants": [me, otherUID],
@@ -43,17 +50,20 @@ class ChatService {
       };
 
       final docRef = await _firestore.collection("chats").add(data);
+      print("💬 ChatService: Created new chat with ID: ${docRef.id}");
       
       // Fetch the created document
       final snapshot = await docRef.get();
       if (snapshot.exists) {
+        print("💬 ChatService: Successfully fetched created chat document");
         final chat = Chat.fromJson(snapshot.data()!);
         return chat.copyWith(id: snapshot.id);
       }
 
+      print("❌ ChatService: Created chat document doesn't exist");
       return null;
     } catch (e) {
-    // print("Error in fetchOrCreateChat: $e");
+      print("❌ ChatService: Error in fetchOrCreateChat: $e");
       return null;
     }
   }

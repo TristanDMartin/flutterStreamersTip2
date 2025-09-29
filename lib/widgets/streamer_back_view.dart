@@ -262,12 +262,17 @@ class _StreamerBackViewState extends State<StreamerBackView>
       ),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(child: _buildHeader()),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
-              SliverToBoxAdapter(child: _buildIdentity()),
+        body: Stack(
+          children: [
+            // Header with navigation buttons
+            _buildHeader(),
+            // Main content
+            Padding(
+              padding: const EdgeInsets.only(top: 80), // Space for the header buttons
+              child: CustomScrollView(
+                slivers: [
+                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                  SliverToBoxAdapter(child: _buildIdentity()),
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
               SliverToBoxAdapter(child: _buildTags()),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
@@ -280,36 +285,40 @@ class _StreamerBackViewState extends State<StreamerBackView>
               SliverToBoxAdapter(child: _buildSectionHeader('Calendar', _showCalendar, () => setState(() => _showCalendar = !_showCalendar))),
               if (_showCalendar) SliverToBoxAdapter(child: _buildCalendar(_calendarEvents)),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                ],
+              ),
+            ),
           ],
-          ),
         ),
       ),
     );
   }
 
   Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-          IconButton(
-            onPressed: () {
+            IconButton(
+              onPressed: () {
                 HapticFeedback.lightImpact();
                 widget.onDismiss?.call();
               },
-            icon: const Icon(Icons.close, color: Colors.white, size: 24),
-            tooltip: 'Close',
-          ),
-          IconButton(
-            onPressed: () {
+              icon: const Icon(Icons.close, color: Colors.white, size: 24),
+              tooltip: 'Close',
+            ),
+            IconButton(
+              onPressed: () {
                 HapticFeedback.lightImpact();
-              _handleFlip();
-            },
-            icon: const Icon(Icons.flip, color: Colors.white, size: 24),
-            tooltip: 'Flip',
-          ),
-        ],
+                _handleFlip();
+              },
+              icon: const Icon(Icons.flip, color: Colors.white, size: 24),
+              tooltip: 'Flip',
+            ),
+          ],
+        ),
       ),
     );
   }

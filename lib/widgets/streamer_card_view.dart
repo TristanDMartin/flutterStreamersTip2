@@ -15,6 +15,9 @@ import 'streamer_share_sheet.dart';
 import 'instant_response_button.dart';
 import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
+import '../services/chat_service.dart';
+import '../services/follows_service.dart';
+import 'chat_view.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
   final String userId; // Changed from StreamerCard to userId for live data
@@ -23,6 +26,7 @@ class StreamerCardView extends ConsumerStatefulWidget {
   final Function(String userId)? onFollow;
   final Function(String userId)? onMessage;
   final Function(String userId)? onShare;
+  final Function(String tabName)? onNavigateToTab; // New callback for tab navigation
 
   const StreamerCardView({
     super.key,
@@ -32,6 +36,7 @@ class StreamerCardView extends ConsumerStatefulWidget {
     this.onFollow,
     this.onMessage,
     this.onShare,
+    this.onNavigateToTab,
   });
 
   @override
@@ -41,6 +46,7 @@ class StreamerCardView extends ConsumerStatefulWidget {
 class _StreamerCardViewState extends ConsumerState<StreamerCardView> 
     with TickerProviderStateMixin {
   late AnimationController _flipController;
+  final FollowsService _followsService = FollowsService();
   late Animation<double> _flipAnimation;
   bool _isFront = true;
   
@@ -87,7 +93,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   
   // Firestore listeners for proper cleanup
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
-  StreamSubscription<QuerySnapshot>? _postsSubscription;
+  StreamSubscription<DocumentSnapshot>? _userStatsSubscription;
   StreamSubscription<QuerySnapshot>? _followersSubscription;
   StreamSubscription<QuerySnapshot>? _followingSubscription;
   StreamSubscription<QuerySnapshot>? _followingRelationshipSubscription;
@@ -114,9 +120,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       curve: Curves.easeInOut,
     ));
     
-    // Load user data and set up real-time listeners
+    // Load user data first, then relationship status will be checked when user data loads
     _loadUserData();
-    _checkConnectionStatus();
   }
 
   // MARK: - Data Loading
@@ -264,59 +269,86 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (_userData == null) return;
     
     // Cancel existing subscriptions
-    _postsSubscription?.cancel();
+    _userStatsSubscription?.cancel();
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
     
-    // Load posts count
-    _postsSubscription = FirebaseFirestore.instance
+    // Load stats from user document (denormalized counters)
+    _userStatsSubscription = FirebaseFirestore.instance
         .collection('users')
         .doc(widget.userId)
-        .collection('videos')
-        .where('status', isEqualTo: 'published')
         .snapshots()
         .listen((snapshot) {
-      if (mounted) {
+      if (mounted && snapshot.exists) {
+        final data = snapshot.data()!;
         setState(() {
-          _postsCount = snapshot.docs.length;
+          _postsCount = data['postCount'] ?? 0;
+          _followersCount = data['followerCount'] ?? 0;
+          _followingCount = data['followingCount'] ?? 0;
         });
+        
+        if (kDebugMode) {
+          print("📊 StreamerCardView: Stats loaded - Posts: $_postsCount, Followers: $_followersCount, Following: $_followingCount");
+        }
       }
     });
 
-    // Load followers count
+    // Also listen to followers collection for real-time updates
     _followersSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .collection('followers')
+        .collection('follows')
+        .where('followedId', isEqualTo: widget.userId)
         .snapshots()
         .listen((snapshot) {
       if (mounted) {
         setState(() {
           _followersCount = snapshot.docs.length;
         });
+        
+        if (kDebugMode) {
+          print("📊 StreamerCardView: Followers count updated from follows collection: $_followersCount");
+        }
       }
     });
 
-    // Load following count
+    // Also listen to following collection for real-time updates
     _followingSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .collection('following')
+        .collection('follows')
+        .where('followerId', isEqualTo: widget.userId)
         .snapshots()
         .listen((snapshot) {
       if (mounted) {
         setState(() {
           _followingCount = snapshot.docs.length;
         });
+        
+        if (kDebugMode) {
+          print("📊 StreamerCardView: Following count updated from follows collection: $_followingCount");
+        }
       }
     });
   }
 
   void _checkRelationshipStatus() {
-    if (widget.currentUserId == null || widget.currentUserId == widget.userId) return;
+    if (widget.currentUserId == null || widget.currentUserId == widget.userId) {
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Skipping relationship check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+      }
+      return;
+    }
     
-    // Set up real-time listeners for relationship changes
-    _setupRelationshipListeners();
+    if (kDebugMode) {
+      print("🔘 StreamerCardView: Checking relationship status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+    }
+    
+    // First do an initial check to set the current state
+    _checkConnectionStatus().then((_) {
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Initial relationship check complete - isFollowing: $_isFollowing, isFollowedByStreamer: $_isFollowedByStreamer, isConnected: $_isConnected");
+      }
+      
+      // Then set up real-time listeners for relationship changes
+      _setupRelationshipListeners();
+    });
   }
 
   void _setupRelationshipListeners() {
@@ -324,48 +356,69 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _followingRelationshipSubscription?.cancel();
     _followedByRelationshipSubscription?.cancel();
     
+    if (kDebugMode) {
+      print("🔘 StreamerCardView: Setting up relationship listeners");
+    }
+    
     // Listen for changes in current user's following list
     _followingRelationshipSubscription = FirebaseFirestore.instance
-        .collection('relationships')
+        .collection('follows')
         .where('followerId', isEqualTo: widget.currentUserId)
-        .where('followingId', isEqualTo: widget.userId)
+        .where('followedId', isEqualTo: widget.userId)
         .snapshots()
         .listen((snapshot) {
       if (mounted) {
+        final wasFollowing = _isFollowing;
         setState(() {
           _isFollowing = snapshot.docs.isNotEmpty;
           _updateConnectionStatus();
         });
         
         if (kDebugMode) {
-    // print("🔄 StreamerCardView: Following updated - isFollowing: $_isFollowing");
+          print("🔄 StreamerCardView: Following listener updated - wasFollowing: $wasFollowing, isFollowing: $_isFollowing, docs count: ${snapshot.docs.length}");
+          print("🔄 StreamerCardView: Connection state after following update - isConnected: $_isConnected");
         }
+      }
+    }, onError: (error) {
+      if (kDebugMode) {
+        print("❌ StreamerCardView: Error in following relationship listener: $error");
       }
     });
 
     // Listen for changes in this user's following list (to check if they follow current user)
     _followedByRelationshipSubscription = FirebaseFirestore.instance
-        .collection('relationships')
+        .collection('follows')
         .where('followerId', isEqualTo: widget.userId)
-        .where('followingId', isEqualTo: widget.currentUserId)
+        .where('followedId', isEqualTo: widget.currentUserId)
         .snapshots()
         .listen((snapshot) {
       if (mounted) {
+        final wasFollowedByStreamer = _isFollowedByStreamer;
         setState(() {
           _isFollowedByStreamer = snapshot.docs.isNotEmpty;
           _updateConnectionStatus();
         });
         
         if (kDebugMode) {
-    // print("🔄 StreamerCardView: Followed by streamer updated - isFollowedByStreamer: $_isFollowedByStreamer");
-    // print("🔄 StreamerCardView: Updated connection state - isConnected: $_isConnected");
+          print("🔄 StreamerCardView: Followed by streamer listener updated - wasFollowedByStreamer: $wasFollowedByStreamer, isFollowedByStreamer: $_isFollowedByStreamer, docs count: ${snapshot.docs.length}");
+          print("🔄 StreamerCardView: Connection state after followed by update - isConnected: $_isConnected");
         }
+      }
+    }, onError: (error) {
+      if (kDebugMode) {
+        print("❌ StreamerCardView: Error in followed by relationship listener: $error");
       }
     });
   }
 
   void _updateConnectionStatus() {
+    final previousConnected = _isConnected;
     _isConnected = _isFollowing && _isFollowedByStreamer;
+    
+    if (kDebugMode && previousConnected != _isConnected) {
+      print("🔄 StreamerCardView: Connection status changed from $previousConnected to $_isConnected");
+      print("🔄 StreamerCardView: _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+    }
   }
 
   // MARK: - Computed Properties
@@ -407,7 +460,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     
     // Cancel all Firestore subscriptions to prevent memory leaks
     _userDataSubscription?.cancel();
-    _postsSubscription?.cancel();
+    _userStatsSubscription?.cancel();
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
     _followingRelationshipSubscription?.cancel();
@@ -429,9 +482,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // MARK: - Connection Status
   Future<void> _checkConnectionStatus() async {
     if (widget.currentUserId == null || widget.currentUserId == widget.userId) {
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Skipping connection check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+      }
       return;
     }
 
+    if (kDebugMode) {
+      print("🔘 StreamerCardView: Checking connection status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+    }
 
     try {
       // Check if current user is following the streamer
@@ -443,6 +502,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       // Connection = mutual follows
       final isConnected = isFollowing && isFollowedByStreamer;
       
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Connection check results - isFollowing: $isFollowing, isFollowedByStreamer: $isFollowedByStreamer, isConnected: $isConnected");
+      }
+      
       if (mounted) {
         setState(() {
           _isFollowing = isFollowing;
@@ -452,7 +515,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (e) {
       if (kDebugMode) {
-    // print('Error checking connection status: $e');
+        print("❌ StreamerCardView: Error checking connection status: $e");
       }
       if (mounted) {
         setState(() {
@@ -466,16 +529,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Future<bool> _checkIfFollowing(String userId) async {
     try {
-      // Check if current user follows the target user using relationships collection
-      final query = await FirebaseFirestore.instance
-          .collection('relationships')
-          .where('followerId', isEqualTo: widget.currentUserId!)
-          .where('followingId', isEqualTo: userId)
-          .get();
-      return query.docs.isNotEmpty;
+      // Use FollowsService to check if current user follows the target user
+      return await _followsService.isFollowing(userId);
     } catch (e) {
       if (kDebugMode) {
-    // print('Error checking follow status: $e');
+        print('❌ StreamerCardView: Error checking follow status: $e');
       }
       return false;
     }
@@ -483,16 +541,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Future<bool> _checkIfFollowedBy(String userId) async {
     try {
-      // Check if target user follows the current user using relationships collection
-      final query = await FirebaseFirestore.instance
-          .collection('relationships')
-          .where('followerId', isEqualTo: userId)
-          .where('followingId', isEqualTo: widget.currentUserId!)
-          .get();
-      return query.docs.isNotEmpty;
+      // Use FollowsService to check if target user follows the current user
+      return await _followsService.isFollowedBy(userId);
     } catch (e) {
       if (kDebugMode) {
-    // print('Error checking followed by status: $e');
+        print('❌ StreamerCardView: Error checking followed by status: $e');
       }
       return false;
     }
@@ -912,56 +965,53 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildTopBar() {
-      return Padding(
-        padding: EdgeInsets.fromLTRB(
-          16, 
-          MediaQuery.of(context).padding.top + 50, // VERY LARGE ADJUSTMENT: 50px down from status bar
-          16, 
-          16
-        ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Back button
-          GestureDetector(
-            onTap: widget.onDismiss,
-            child: const Icon(
-              Icons.arrow_back,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
-          // Center: No title, clean gradient background
-          const SizedBox(width: 40), // Spacer for center
-          // Right side action buttons
-          Row(
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Back button
               GestureDetector(
-                onTap: () => _flipCard(),
+                onTap: widget.onDismiss,
                 child: const Icon(
-                  Icons.flip,
+                  Icons.arrow_back,
                   color: Colors.white,
                   size: 24,
                 ),
               ),
-              const SizedBox(width: 16),
-              InstantResponseButton(
-                onPressed: () => _showShareSheet(context),
-                hapticType: HapticFeedbackType.lightImpact,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  child: const Icon(
-                    Icons.more_horiz,
-                    color: Colors.white,
-                    size: 24,
+              // Center: No title, clean gradient background
+              const SizedBox(width: 40), // Spacer for center
+              // Right side action buttons
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => _flipCard(),
+                    child: const Icon(
+                      Icons.flip,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 16),
+                  InstantResponseButton(
+                    onPressed: () => _showShareSheet(context),
+                    hapticType: HapticFeedbackType.lightImpact,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      child: const Icon(
+                        Icons.more_horiz,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    );
+        ),
+      );
   }
 
   Widget _buildProfileSection() {
@@ -1118,6 +1168,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   VoidCallback? _getMessageButtonAction() {
+    if (kDebugMode) {
+      print("💬 StreamerCardView: _getMessageButtonAction - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+    }
     if (_isConnected) return _handleMessage; // Only enabled when connected (mutual follow)
     return null; // Disabled when not connected
   }
@@ -1128,17 +1181,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // MARK: - Follow Button Action Handler (Real-time Updates)
   void _handleFollowButtonTap() {
     if (kDebugMode) {
-    // print("🔘 Follow button tapped for user: ${widget.userId}");
-    // print("🔘 Current follow state: $_isFollowing");
-    // print("🔘 Is followed by other: $_isFollowedByStreamer");
-    // print("🔘 Is connected: $_isConnected");
+      print("🔘 Follow button tapped for user: ${widget.userId}");
+      print("🔘 Current follow state: $_isFollowing");
+      print("🔘 Is followed by other: $_isFollowedByStreamer");
+      print("🔘 Is connected: $_isConnected");
     }
     
     HapticFeedback.lightImpact();
     
-    if (_isFollowing) {
+    // Handle button actions based on current relationship state
+    if (_isConnected) {
+      // Both users follow each other - unfollow the other user
       _handleUnfollow();
-      } else {
+    } else if (_isFollowing) {
+      // Current user follows the other user - unfollow
+      _handleUnfollow();
+    } else {
+      // No relationship or only the other user follows - follow the other user
       _handleFollow();
     }
   }
@@ -1146,8 +1205,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Future<void> _handleFollow() async {
     if (_isFollowingOperation) return; // Prevent multiple simultaneous operations
     
+    // Check if currentUserId is available
+    if (widget.currentUserId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please log in to follow users'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+    
     if (kDebugMode) {
       print("🔘 StreamerCardView: Following user: ${widget.userId}");
+      print("🔘 StreamerCardView: Current user ID: ${widget.currentUserId}");
     }
     
     // Store original state for rollback
@@ -1205,23 +1279,43 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     
     // Fallback: Handle follow ourselves if no parent callback or it failed
     try {
-      // 1. Create relationship document in Firestore
-      await FirebaseFirestore.instance
-          .collection('relationships')
-          .add({
-        'followerId': widget.currentUserId!,
-        'followingId': widget.userId,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Starting Firebase follow operation using FollowsService");
+      }
       
-      // 2. Update follower count
-      await _updateFollowerCount(widget.userId, 1);
+      // Use FollowsService to follow the user (this updates the 'follows' collection)
+      final success = await _followsService.followUser(widget.userId);
       
-      // 3. Create follow notification
-      await _createFollowNotification();
+      if (!success) {
+        throw Exception('Failed to follow user via FollowsService');
+      }
       
       if (kDebugMode) {
-    // print("✅ Successfully followed user: ${widget.userId}");
+        print("✅ StreamerCardView: Successfully followed user via FollowsService");
+      }
+      
+      // Create follow notification
+      await _createFollowNotification();
+      
+      if (mounted) {
+        setState(() {
+          _isFollowingOperation = false;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully followed user!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        
+        // Navigate to appropriate tab in NetworkView
+        _navigateToAppropriateTab();
+      }
+      
+      if (kDebugMode) {
+        print("✅ Successfully followed user: ${widget.userId}");
       }
     } catch (error) {
       if (kDebugMode) {
@@ -1263,7 +1357,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (_isUnfollowingOperation) return; // Prevent multiple simultaneous operations
     
     if (kDebugMode) {
-    // print("🔘 Unfollowing user: ${widget.userId}");
+      print("🔘 StreamerCardView: Unfollowing user: ${widget.userId}");
+      print("🔘 StreamerCardView: Current state - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
     }
     
     // Store original state for rollback
@@ -1276,27 +1371,32 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       _updateConnectionStatus();
     });
     
+    if (kDebugMode) {
+      print("🔘 StreamerCardView: After optimistic update - _isFollowing: $_isFollowing, _isConnected: $_isConnected");
+    }
+    
     try {
-      // 1. Find and delete relationship document from Firestore
-      final relationshipQuery = await FirebaseFirestore.instance
-          .collection('relationships')
-          .where('followerId', isEqualTo: widget.currentUserId!)
-          .where('followingId', isEqualTo: widget.userId)
-          .get();
+      // Use FollowsService to unfollow the user (this updates the 'follows' collection)
+      final success = await _followsService.unfollowUser(widget.userId);
       
-      for (final doc in relationshipQuery.docs) {
-        await doc.reference.delete();
+      if (!success) {
+        throw Exception('Failed to unfollow user via FollowsService');
       }
       
-      // 2. Update follower count
-      await _updateFollowerCount(widget.userId, -1);
+      if (kDebugMode) {
+        print("✅ StreamerCardView: Successfully unfollowed user via FollowsService");
+      }
       
-      // 3. Remove follow notification
+      // Remove follow notification
       await _removeFollowNotification();
       
       if (kDebugMode) {
-    // print("✅ Successfully unfollowed user: ${widget.userId}");
+        print("✅ Successfully unfollowed user: ${widget.userId}");
+        print("🔘 StreamerCardView: Final state after unfollow - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
       }
+      
+      // Navigate to appropriate tab in NetworkView
+      _navigateToAppropriateTab();
     } catch (error) {
       if (kDebugMode) {
     // print("❌ Error unfollowing user: $error");
@@ -1332,10 +1432,180 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   void _handleMessage() {
+    if (kDebugMode) {
+      print("💬 StreamerCardView: _handleMessage called - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+    }
+    
     HapticFeedback.lightImpact();
+    
+    // Check if users are connected (mutual follow)
+    if (!_isConnected) {
+      if (kDebugMode) {
+        print("💬 StreamerCardView: Users are not connected, showing error message");
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You can only message users you are connected with'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+    
+    if (kDebugMode) {
+      print("💬 StreamerCardView: Users are connected, proceeding with message");
+    }
+    
+    // Call the parent callback first
     widget.onMessage?.call(widget.userId);
     
-    // TODO: Implement message functionality
+    // Navigate to chat view
+    _navigateToChat();
+  }
+
+  Future<void> _navigateToChat() async {
+    try {
+      // Import the necessary services
+      final chatService = ChatService.shared;
+      final currentUser = FirebaseAuth.instance.currentUser;
+      
+      if (kDebugMode) {
+        print("💬 StreamerCardView: Starting chat navigation for user: ${widget.userId}");
+        print("💬 StreamerCardView: Current user: ${currentUser?.uid}");
+        print("💬 StreamerCardView: User data: $_userData");
+      }
+      
+      if (currentUser == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please sign in to send messages'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Show loading indicator
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+        );
+      }
+
+      // Create or fetch chat
+      final chat = await chatService.fetchOrCreateChat(widget.userId);
+      
+      if (kDebugMode) {
+        print("💬 StreamerCardView: Chat created/fetched: $chat");
+      }
+      
+      // Hide loading indicator
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      if (chat != null && mounted) {
+        // Get user data for the chat view
+        final otherUserName = _userData?['displayName'] ?? _userData?['username'] ?? 'Unknown User';
+        final otherUserAvatarURL = _userData?['avatarURL'] ?? _userData?['profileImageURL'] ?? '';
+        final otherUserIsOnline = _userData?['isOnline'] ?? _userData?['onlineStatus'] == 'online' ?? false;
+        
+        if (kDebugMode) {
+          print("💬 StreamerCardView: Navigating to chat with:");
+          print("💬 StreamerCardView: - Name: $otherUserName");
+          print("💬 StreamerCardView: - Avatar: $otherUserAvatarURL");
+          print("💬 StreamerCardView: - Online: $otherUserIsOnline");
+        }
+        
+        // Navigate to chat view
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ChatView(
+              chat: chat,
+              otherUserName: otherUserName,
+              otherUserAvatarURL: otherUserAvatarURL,
+              otherUserIsOnline: otherUserIsOnline,
+            ),
+          ),
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to start conversation'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        
+        if (kDebugMode) {
+          print("💬 StreamerCardView: Failed to create/fetch chat - chat is null");
+        }
+      }
+    } catch (e) {
+      // Hide loading indicator if still showing
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error starting conversation: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      
+      if (kDebugMode) {
+        print("💬 StreamerCardView: Error starting conversation: $e");
+      }
+    }
+  }
+
+  void _navigateToAppropriateTab() {
+    if (widget.onNavigateToTab == null) return;
+    
+    // Determine which tab to navigate to based on current relationship state
+    if (_isConnected) {
+      // Both users follow each other - go to Connections tab
+      widget.onNavigateToTab!('connections');
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Navigating to Connections tab (mutual follow)");
+      }
+    } else if (_isFollowing) {
+      // Current user follows the other user - go to Following tab
+      widget.onNavigateToTab!('following');
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Navigating to Following tab");
+      }
+    } else if (_isFollowedByStreamer) {
+      // Other user follows current user - go to Followers tab
+      widget.onNavigateToTab!('followers');
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Navigating to Followers tab");
+      }
+    } else {
+      // No relationship - go to Following tab (where they'll be added)
+      widget.onNavigateToTab!('following');
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Navigating to Following tab (new follow)");
+      }
+    }
   }
 
   // MARK: - Video Navigation
@@ -1422,25 +1692,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   // MARK: - Helper Methods for Follow/Unfollow Operations
   
-  Future<void> _updateFollowerCount(String userId, int increment) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .update({
-        'followerCount': FieldValue.increment(increment),
-      });
-    } catch (error) {
-      if (kDebugMode) {
-    // print("❌ Error updating follower count: $error");
-      }
-      // Don't throw here - follower count is not critical for follow operation
-    }
-  }
-  
   Future<void> _createFollowNotification() async {
     try {
-      await FirebaseFirestore.instance
+      if (kDebugMode) {
+        print("🔘 StreamerCardView: Creating follow notification");
+      }
+      
+      final notificationDoc = await FirebaseFirestore.instance
           .collection('notifications')
           .add({
         'userId': widget.userId,
@@ -1450,9 +1708,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
       });
+      
+      if (kDebugMode) {
+        print("✅ StreamerCardView: Successfully created follow notification: ${notificationDoc.id}");
+      }
     } catch (error) {
       if (kDebugMode) {
-    // print("❌ Error creating follow notification: $error");
+        print("❌ StreamerCardView: Error creating follow notification: $error");
       }
       // Don't throw here - notification is not critical for follow operation
     }
@@ -1719,16 +1981,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       ),
       child: Stack(
         children: [
+          // Header with navigation buttons
+          _buildHeader(),
           // Main content
-          SafeArea(
-              top: false, // Disable automatic top safe area
-              child: Padding(
-                padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 50, // VERY LARGE ADJUSTMENT: 50px down from status bar
-                ),
-                child: CustomScrollView(
+          Padding(
+            padding: const EdgeInsets.only(top: 80), // Space for the header buttons
+            child: CustomScrollView(
                 slivers: [
-                  SliverToBoxAdapter(child: _buildHeader()),
                   const SliverToBoxAdapter(child: SizedBox(height: 12)),
                 SliverToBoxAdapter(child: _buildIdentity()),
                 const SliverToBoxAdapter(child: SizedBox(height: 12)),
@@ -1745,27 +2004,28 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 ],
               ),
-                ),
             ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
   }
 
 
 
   Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-          IconButton(
-            onPressed: _flipCard,
-            icon: const Icon(Icons.flip, color: Colors.white, size: 24),
-            tooltip: 'Flip',
-          ),
-        ],
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            IconButton(
+              onPressed: _flipCard,
+              icon: const Icon(Icons.flip, color: Colors.white, size: 24),
+              tooltip: 'Flip',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2561,9 +2821,6 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
     widget.onSave(event);
     Navigator.pop(context);
   }
-
-
-
 }
 
 class _SmallAvatar extends StatelessWidget {

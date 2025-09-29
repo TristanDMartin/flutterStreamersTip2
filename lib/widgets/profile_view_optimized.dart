@@ -337,7 +337,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       if (isCurrentUser && _profileUpdateService?.isDataLoaded == true) {
         _cachedUserData = _profileUpdateService?.userData ?? widget.user.toMap();
         if (kDebugMode) {
-    // print('ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
+          debugPrint('ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
         }
         
         // Save main user avatar for persistence
@@ -351,7 +351,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       // Otherwise use the widget user data
       _cachedUserData = widget.user.toMap();
       if (kDebugMode) {
-    // print('ProfileView: Using widget user data: ${_cachedUserData?.keys}');
+        debugPrint('ProfileView: Using widget user data: ${_cachedUserData?.keys}');
       }
       
       // Save main user avatar for persistence if this is the current user
@@ -360,9 +360,10 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       }
       
       return _cachedUserData!;
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (kDebugMode) {
-    // print('ProfileView: Error getting user data: $e');
+        debugPrint('❌ ProfileView: Error getting user data: $e');
+        debugPrint('❌ ProfileView: Stack trace: $stackTrace');
       }
       // Fallback to basic user data
       return {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -10,14 +11,15 @@ import '../models/network_models.dart' as network_models;
 import '../models/user_status.dart';
 import '../services/follows_service.dart';
 import '../services/migration_service.dart';
-import '../services/debug_service.dart';
 import '../services/performance_monitoring_service.dart';
 import '../services/network_analytics_service.dart';
 import '../widgets/streamer_card_view.dart';
 import '../providers/status_provider.dart';
 
 class NetworkView extends ConsumerStatefulWidget {
-  const NetworkView({super.key});
+  final String? initialTab;
+  
+  const NetworkView({super.key, this.initialTab});
 
   @override
   ConsumerState<NetworkView> createState() => _NetworkViewState();
@@ -45,8 +47,6 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
   List<user_model.User> _followingUsers = [];
   bool _isLoadingUsers = false;
   
-  // FollowsService instance
-  final FollowsService _followsService = FollowsService();
   
   // Network connectivity (kept for network error handling)
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -58,6 +58,14 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
   @override
   void initState() {
     super.initState();
+    
+    // Set initial tab if provided
+    if (widget.initialTab != null) {
+      _selectedTab = _getTabFromString(widget.initialTab!);
+      if (kDebugMode) {
+        print("🔵 NetworkView: Initialized with tab: ${widget.initialTab} -> ${_selectedTab.name}");
+      }
+    }
     
     // Set up global error handling
     FlutterError.onError = (FlutterErrorDetails details) {
@@ -952,13 +960,23 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
                 // Handle message action
                 HapticFeedback.lightImpact();
                 print('🔵 NetworkView: Message action triggered for user: $userId');
-                // TODO: Implement message functionality
+                // The StreamerCardView will handle the actual messaging logic
+                // This callback is just for tracking/logging purposes
               },
               onShare: (userId) {
                 // Handle share action
                 HapticFeedback.lightImpact();
                 print('🔵 NetworkView: Share action triggered for user: $userId');
                 // TODO: Implement share functionality
+              },
+              onNavigateToTab: (tabName) {
+                // Handle tab navigation from StreamerCardView
+                HapticFeedback.lightImpact();
+                print('🔵 NetworkView: Tab navigation requested: $tabName');
+                _navigateToTab(tabName);
+                
+                // Close the StreamerCardView and return to NetworkView
+                Navigator.of(context).pop();
               },
             ),
           ),
@@ -1086,6 +1104,32 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
     setState(() {
       _selectedTab = tab;
     });
+  }
+
+  network_models.NetworkTab _getTabFromString(String tabName) {
+    switch (tabName.toLowerCase()) {
+      case 'connections':
+        return network_models.NetworkTab.connections;
+      case 'followers':
+        return network_models.NetworkTab.followers;
+      case 'following':
+        return network_models.NetworkTab.following;
+      default:
+        return network_models.NetworkTab.connections;
+    }
+  }
+
+  void _navigateToTab(String tabName) {
+    network_models.NetworkTab targetTab = _getTabFromString(tabName);
+    
+    if (kDebugMode) {
+      print("🔵 NetworkView: Navigating to tab: $tabName (${targetTab.name})");
+    }
+    
+    _selectTab(targetTab);
+    
+    // Also refresh data to show the updated relationships
+    _refreshDataInstantly();
   }
 
   void _nextTab() {

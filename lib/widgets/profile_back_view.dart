@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -43,83 +42,67 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
   @override
   Widget build(BuildContext context) {
-    // ProfileBackView displays the user data passed to it directly
-    // No need to fetch from Firestore again
-    debugPrint("🔍 ProfileBackView: Building with user data: ${_currentUserData['username']}");
-    
-    // Extract platforms and events from the user data
-    List<CalendarEvent> events = [];
-    List<Map<String, dynamic>> platforms = [];
-    
-    // Load calendar events from user data
-    if (_currentUserData['calendarEvents'] != null) {
-      final eventsData = _currentUserData['calendarEvents'];
-      if (eventsData is List<dynamic>) {
-        events = eventsData.map((eventData) {
-          final eventMap = eventData as Map<String, dynamic>?;
-          if (eventMap != null && 
-              eventMap['id'] != null && 
-              eventMap['title'] != null && 
-              eventMap['description'] != null && 
-              eventMap['date'] != null) {
-            return CalendarEvent(
-              id: eventMap['id'] as String,
-              title: eventMap['title'] as String,
-              description: eventMap['description'] as String,
-              date: (eventMap['date'] as Timestamp).toDate(),
-            );
-          }
-          return null;
-        }).where((event) => event != null).cast<CalendarEvent>().toList();
+    try {
+      // ProfileBackView displays the user data passed to it directly
+      // No need to fetch from Firestore again
+      debugPrint("🔍 ProfileBackView: Building with user data: ${_currentUserData['username']}");
+      
+      // Extract platforms and events from the user data
+      List<CalendarEvent> events = [];
+      List<Map<String, dynamic>> platforms = [];
+      
+      // Load calendar events from user data
+      if (_currentUserData['calendarEvents'] != null) {
+        final eventsData = _currentUserData['calendarEvents'];
+        if (eventsData is List<dynamic>) {
+          events = eventsData.map((eventData) {
+            final eventMap = eventData as Map<String, dynamic>?;
+            if (eventMap != null && 
+                eventMap['id'] != null && 
+                eventMap['title'] != null && 
+                eventMap['description'] != null && 
+                eventMap['date'] != null) {
+              return CalendarEvent(
+                id: eventMap['id'] as String,
+                title: eventMap['title'] as String,
+                description: eventMap['description'] as String,
+                date: (eventMap['date'] as Timestamp).toDate(),
+              );
+            }
+            return null;
+          }).where((event) => event != null).cast<CalendarEvent>().toList();
+        }
       }
-    }
-    
-    // Load platforms from user data
-    if (_currentUserData['platforms'] != null) {
-      final platformsData = _currentUserData['platforms'];
-      if (platformsData is List<dynamic>) {
-        platforms = platformsData.map((platformData) {
-          final platformMap = platformData as Map<String, dynamic>?;
-          if (platformMap != null) {
-            return {
-              'id': platformMap['id']?.toString() ?? '',
-              'type': platformMap['type']?.toString() ?? '',
-              'username': platformMap['username']?.toString() ?? '',
-              'followers': (platformMap['followers'] as num?)?.toInt() ?? 0,
-              'url': platformMap['url']?.toString(),
-            };
-          }
-          return null;
-        }).where((platform) => platform != null).cast<Map<String, dynamic>>().toList();
+      
+      // Load platforms from user data
+      if (_currentUserData['platforms'] != null) {
+        final platformsData = _currentUserData['platforms'];
+        if (platformsData is List<dynamic>) {
+          platforms = platformsData.map((platformData) {
+            final platformMap = platformData as Map<String, dynamic>?;
+            if (platformMap != null) {
+              return {
+                'id': platformMap['id']?.toString() ?? '',
+                'type': platformMap['type']?.toString() ?? '',
+                'username': platformMap['username']?.toString() ?? '',
+                'followers': (platformMap['followers'] as num?)?.toInt() ?? 0,
+                'url': platformMap['url']?.toString(),
+              };
+            }
+            return null;
+          }).where((platform) => platform != null).cast<Map<String, dynamic>>().toList();
+        }
       }
+      
+      return _buildContent(events, platforms);
+    } catch (e, stackTrace) {
+      debugPrint("❌ ProfileBackView: Error building widget: $e");
+      debugPrint("❌ ProfileBackView: Stack trace: $stackTrace");
+      debugPrint("❌ ProfileBackView: User data: $_currentUserData");
+      return _buildErrorState(e);
     }
-    
-    return _buildContent(events, platforms);
   }
 
-  Widget _buildLoadingState() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-        ),
-      ),
-      child: SafeArea(
-        child: const Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildErrorState(Object? error) {
     return Container(
@@ -172,51 +155,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     );
   }
 
-  Widget _buildNoDataState() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-        ),
-      ),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.person_outline,
-                color: Colors.white,
-                size: 64,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Profile Not Found',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'This profile may not exist',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha:0.7),
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildContent(List<CalendarEvent> events, List<Map<String, dynamic>> platforms) {
     return Container(
@@ -793,24 +731,66 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Future<void> _launchPlatformUrl(Map<String, dynamic> platform) async {
     final url = platform['url'];
     final platformType = platform['type'] ?? '';
+    final username = platform['username'] ?? '';
+    
+    debugPrint('🔍 Platform data: type=$platformType, username=$username, url=$url');
     
     if (url != null && url.isNotEmpty) {
       try {
-        final uri = Uri.parse(url);
+        // Ensure URL has proper protocol
+        String finalUrl = url;
+        if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+          finalUrl = 'https://$finalUrl';
+        }
         
-        if (await canLaunchUrl(uri)) {
+        debugPrint('🔍 Final URL to launch: $finalUrl');
+        final uri = Uri.parse(finalUrl);
+        
+        // Try different launch modes
+        bool canLaunch = await canLaunchUrl(uri);
+        debugPrint('🔍 Can launch URL: $canLaunch');
+        
+        if (canLaunch) {
           await launchUrl(
             uri,
             mode: LaunchMode.externalApplication,
           );
+          debugPrint('🔗 Successfully opened ${_getPlatformDisplayName(platformType)}: $finalUrl');
           _showSuccessSnackBar('Opening ${_getPlatformDisplayName(platformType)}...');
         } else {
-          _showErrorSnackBar('Cannot open this link');
+          // Try with platform default mode
+          try {
+            await launchUrl(
+              uri,
+              mode: LaunchMode.platformDefault,
+            );
+            debugPrint('🔗 Successfully opened with platform default: $finalUrl');
+            _showSuccessSnackBar('Opening ${_getPlatformDisplayName(platformType)}...');
+          } catch (e) {
+            debugPrint('❌ Cannot launch URL in any mode: $finalUrl, error: $e');
+            _showErrorSnackBar('Cannot open this link');
+          }
         }
       } catch (e) {
+        debugPrint('❌ Error launching platform URL: $e');
         _showErrorSnackBar('Error opening link: ${e.toString()}');
       }
+    } else if (username.isNotEmpty) {
+      // Fallback: try to construct URL from username if no URL is provided
+      debugPrint('🔍 No URL provided, constructing from username: $username');
+      final constructedUrl = _constructPlatformUrl(platformType, username);
+      debugPrint('🔍 Constructed URL: $constructedUrl');
+      if (constructedUrl != null) {
+        await _launchPlatformUrl({
+          'url': constructedUrl,
+          'type': platformType,
+          'username': username,
+        });
+      } else {
+        _showErrorSnackBar('No link available for this platform');
+      }
     } else {
+      debugPrint('❌ No URL or username provided for platform: $platformType');
       _showErrorSnackBar('No link available for this platform');
     }
   }
@@ -839,6 +819,36 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     }
   }
 
+  String? _constructPlatformUrl(String platformType, String username) {
+    final cleanUsername = username.replaceAll('@', '');
+    
+    switch (platformType.toLowerCase()) {
+      case 'twitch':
+        return 'https://twitch.tv/$cleanUsername';
+      case 'youtube':
+        return 'https://youtube.com/@$cleanUsername';
+      case 'kick':
+        return 'https://kick.com/$cleanUsername';
+      case 'tiktok':
+        return 'https://tiktok.com/@$cleanUsername';
+      case 'facebook':
+        return 'https://facebook.com/$cleanUsername';
+      case 'bluesky':
+        return 'https://bsky.app/profile/$cleanUsername';
+      case 'twitter':
+        return 'https://twitter.com/$cleanUsername';
+      case 'instagram':
+        return 'https://instagram.com/$cleanUsername';
+      case 'reddit':
+        return 'https://reddit.com/user/$cleanUsername';
+      case 'discord':
+        // Discord doesn't have direct profile URLs, but we can open the Discord app or website
+        return 'https://discord.com';
+      default:
+        return null;
+    }
+  }
+
   String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {
       case 'twitch':
@@ -860,6 +870,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       // cspell:ignore reddit
       case 'reddit':
         return 'RedNote';
+      case 'discord':
+        return 'Discord';
       default:
         return platformType;
     }
@@ -909,6 +921,34 @@ class _ClickablePlatformRow extends StatelessWidget {
     required this.onTap,
   });
 
+  static String getPlatformDisplayName(String platformType) {
+    switch (platformType.toLowerCase()) {
+      case 'twitch':
+        return 'Twitch';
+      case 'youtube':
+        return 'YouTube';
+      case 'kick':
+        return 'Kick';
+      case 'tiktok':
+        return 'TikTok';
+      case 'facebook':
+        return 'Facebook';
+      case 'bluesky':
+        return 'Bluesky';
+      case 'twitter':
+        return 'Twitter';
+      case 'instagram':
+        return 'Instagram';
+      // cspell:ignore reddit
+      case 'reddit':
+        return 'RedNote';
+      case 'discord':
+        return 'Discord';
+      default:
+        return platformType;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final platformType = platform['type'] ?? '';
@@ -942,7 +982,7 @@ class _ClickablePlatformRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _getPlatformDisplayName(platformType),
+                      getPlatformDisplayName(platformType),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -973,34 +1013,6 @@ class _ClickablePlatformRow extends StatelessWidget {
         ),
       ),
     );
-  }
-
-
-
-  String _getPlatformDisplayName(String platformType) {
-    switch (platformType.toLowerCase()) {
-      case 'twitch':
-        return 'Twitch';
-      case 'youtube':
-        return 'YouTube';
-      case 'kick':
-        return 'Kick';
-      case 'tiktok':
-        return 'TikTok';
-      case 'facebook':
-        return 'Facebook';
-      case 'bluesky':
-        return 'Bluesky';
-      case 'twitter':
-        return 'Twitter';
-      case 'instagram':
-        return 'Instagram';
-      // cspell:ignore reddit
-      case 'reddit':
-        return 'RedNote';
-      default:
-        return platformType;
-    }
   }
 }
 

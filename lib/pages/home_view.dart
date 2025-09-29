@@ -12,12 +12,12 @@ import '../providers/home_provider.dart' as hp;
 import '../providers/favorites_provider.dart';
 import '../providers/following_provider.dart';
 import '../services/error_handling_service.dart';
-import '../widgets/instant_response_button.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/video_performance_service.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
+import '../views/network_view.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/share_profile_view.dart';
@@ -333,6 +333,15 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     }
   }
 
+  void _navigateToNetworkViewWithTab(String tabName) {
+    // Navigate to NetworkView with the specified tab
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => NetworkView(initialTab: tabName),
+      ),
+    );
+  }
+
   Widget _buildVideoContent(hp.HomeState homeState) {
     // Use videos from the provider based on current feed tab
     final videos = _feedTab == FeedTab.forYou ? homeState.forYouVideos : homeState.followingVideos;
@@ -598,40 +607,22 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                         }
                       },
                       onMessage: (userId) {
-                        // Handle message action
                         HapticFeedback.lightImpact();
                         if (kDebugMode) {
                           print('HomeView: Message action triggered for user: $userId');
                         }
+                        // The StreamerCardView will handle the actual messaging logic
+                        // This callback is just for tracking/logging purposes
+                      },
+                      onNavigateToTab: (tabName) {
+                        // Handle tab navigation from StreamerCardView
+                        HapticFeedback.lightImpact();
+                        if (kDebugMode) {
+                          print('HomeView: Tab navigation requested: $tabName');
+                        }
                         
-                        // Show a dialog for messaging functionality
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Message User'),
-                            content: Text('Messaging functionality will be implemented here for user: $userId'),
-                            actions: [
-                              InstantTextButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                hapticType: HapticFeedbackType.lightImpact,
-                                child: const Text('Close'),
-                              ),
-                              InstantTextButton(
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                  // Navigate to chat/messaging screen
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Messaging feature coming soon!'),
-                                      backgroundColor: Colors.blue,
-                                    ),
-                                  );
-                                },
-                                child: const Text('Open Chat'),
-                              ),
-                            ],
-                          ),
-                        );
+                        // Navigate to NetworkView with the specified tab
+                        _navigateToNetworkViewWithTab(tabName);
                       },
                       onShare: (userId) {
                         // Handle share action using ShareProfileView (same as ProfileView)
