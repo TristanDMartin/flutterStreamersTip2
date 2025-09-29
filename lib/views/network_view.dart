@@ -3,22 +3,27 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../models/user_model.dart' as user_model;
 import '../models/network_models.dart' as network_models;
-import '../services/clean_relationship_service.dart';
+import '../models/user_status.dart';
+import '../services/follows_service.dart';
+import '../services/migration_service.dart';
+import '../services/debug_service.dart';
 import '../services/performance_monitoring_service.dart';
 import '../services/network_analytics_service.dart';
 import '../widgets/streamer_card_view.dart';
+import '../providers/status_provider.dart';
 
-class NetworkView extends StatefulWidget {
+class NetworkView extends ConsumerStatefulWidget {
   const NetworkView({super.key});
 
   @override
-  State<NetworkView> createState() => _NetworkViewState();
+  ConsumerState<NetworkView> createState() => _NetworkViewState();
 }
 
-class _NetworkViewState extends State<NetworkView> {
+class _NetworkViewState extends ConsumerState<NetworkView> {
   network_models.NetworkTab _selectedTab = network_models.NetworkTab.connections;
   final ScrollController _listController = ScrollController();
   
@@ -34,14 +39,16 @@ class _NetworkViewState extends State<NetworkView> {
   String _sortBy = 'name';
   bool _sortAscending = true;
   
-  // Clean relationship service data
+  // FollowsService data
   List<user_model.User> _connectionsUsers = [];
   List<user_model.User> _followersUsers = [];
   List<user_model.User> _followingUsers = [];
   bool _isLoadingUsers = false;
   
-  // Network connectivity
-  bool _hasInternetConnection = true;
+  // FollowsService instance
+  final FollowsService _followsService = FollowsService();
+  
+  // Network connectivity (kept for network error handling)
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   
   // Real-time relationship listeners
@@ -71,7 +78,7 @@ class _NetworkViewState extends State<NetworkView> {
     _initializeRelationshipListeners();
     
     // Load users from clean relationship service
-    _loadUsersFromCleanService();
+    _loadUsersFromFollowsService();
   }
   
   /// Initialize network connectivity monitoring
@@ -82,11 +89,7 @@ class _NetworkViewState extends State<NetworkView> {
                              results.contains(ConnectivityResult.wifi) ||
                              results.contains(ConnectivityResult.ethernet);
         
-        if (mounted) {
-          setState(() {
-            _hasInternetConnection = hasConnection;
-          });
-        }
+        // Connection status is now handled by the status provider
         
         if (!hasConnection && mounted) {
           _showNetworkError();
@@ -98,51 +101,47 @@ class _NetworkViewState extends State<NetworkView> {
   /// Initialize real-time relationship listeners for instant updates (OPTIMIZED)
   void _initializeRelationshipListeners() {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUserId == null) return;
+    if (currentUserId == null) {
+      debugPrint('❌ NetworkView: No current user ID, cannot initialize listeners');
+      return;
+    }
 
-    // Listen to multiple collections for comprehensive real-time updates
+    debugPrint('🔄 NetworkView: Initializing real-time listeners for user: $currentUserId');
+    
+    // Listen to the new follows collection for real-time updates
     Timer? debounceTimer;
     
-    // Listen to both followers AND following subcollections
-    final followersStream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(currentUserId)
-        .collection('followers')
-        .snapshots();
-        
-    final followingStream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(currentUserId)
-        .collection('following')
+    // Listen to the follows collection for any changes
+    final followsStream = FirebaseFirestore.instance
+        .collection('follows')
         .snapshots();
     
-    // Listen to followers subcollection changes
-    _followersSubscription = followersStream.listen((snapshot) {
+    // Listen to follows collection changes
+    _followersSubscription = followsStream.listen((snapshot) {
+      debugPrint('🔄 NetworkView: Follows collection changed - ${snapshot.docChanges.length} changes detected');
+      
+      // Log each change for debugging
+      for (var change in snapshot.docChanges) {
+        debugPrint('  📝 Change: ${change.type} - ${change.doc.id}');
+      }
+      
       if (snapshot.docChanges.isNotEmpty) {
-        debugPrint('🔄 NetworkView: Followers change detected, refreshing data...');
+        debugPrint('🔄 NetworkView: Follows change detected, refreshing data...');
         // Debounce to prevent excessive calls
         debounceTimer?.cancel();
-        debounceTimer = Timer(const Duration(milliseconds: 300), () {
+        debounceTimer = Timer(const Duration(milliseconds: 500), () {
+          debugPrint('🔄 NetworkView: Debounced refresh triggered');
           _refreshDataInstantly();
         });
       }
     }, onError: (error) {
-      debugPrint('❌ NetworkView: Error in followers listener: $error');
+      debugPrint('❌ NetworkView: Error in follows listener: $error');
     });
     
-    // Listen to following subcollection changes
-    _followingSubscription = followingStream.listen((snapshot) {
-      if (snapshot.docChanges.isNotEmpty) {
-        debugPrint('🔄 NetworkView: Following change detected, refreshing data...');
-        // Debounce to prevent excessive calls
-        debounceTimer?.cancel();
-        debounceTimer = Timer(const Duration(milliseconds: 300), () {
-          _refreshDataInstantly();
-        });
-      }
-    }, onError: (error) {
-      debugPrint('❌ NetworkView: Error in following listener: $error');
-    });
+    // Set following subscription to null since we're using a single stream now
+    _followingSubscription = null;
+    
+    debugPrint('✅ NetworkView: Real-time listeners initialized');
   }
   
   /// Check network connectivity before API calls
@@ -153,11 +152,7 @@ class _NetworkViewState extends State<NetworkView> {
                            connectivityResults.contains(ConnectivityResult.wifi) ||
                            connectivityResults.contains(ConnectivityResult.ethernet);
       
-      if (mounted) {
-        setState(() {
-          _hasInternetConnection = hasConnection;
-        });
-      }
+      // Connection status is now handled by the status provider
       
       return hasConnection;
     } catch (e) {
@@ -178,7 +173,7 @@ class _NetworkViewState extends State<NetworkView> {
             label: 'Retry',
             textColor: Colors.white,
             onPressed: () {
-              _loadUsersFromCleanService();
+              _loadUsersFromFollowsService();
             },
           ),
         ),
@@ -187,7 +182,7 @@ class _NetworkViewState extends State<NetworkView> {
   }
   
   /// Load users from clean relationship service
-  Future<void> _loadUsersFromCleanService() async {
+  Future<void> _loadUsersFromFollowsService() async {
     // Check network connectivity first
     final hasConnection = await _checkNetworkConnectivity();
     if (!hasConnection) {
@@ -200,20 +195,22 @@ class _NetworkViewState extends State<NetworkView> {
     });
     
     try {
-      final cleanSvc = CleanRelationshipService();
+      debugPrint('🔄 NetworkView: Starting to load users from FollowsService...');
       
-      // Ensure service is initialized before loading data
-      await cleanSvc.initialize();
+      // Check if migration is needed and run it
+      await _runMigrationIfNeeded();
       
-      // Create test relationships if none exist (for demonstration)
-      await cleanSvc.createTestRelationshipsIfNeeded();
+      final followsSvc = FollowsService();
       
-      // Load all three lists in parallel
+      // Load all three lists in parallel using the correct tab logic
+      debugPrint('🔄 NetworkView: Loading connections, followers, and following...');
       final results = await Future.wait([
-        cleanSvc.getUsersForSection('connections'),
-        cleanSvc.getUsersForSection('followers'),
-        cleanSvc.getUsersForSection('following'),
+        followsSvc.getUsersForTab('connections'),
+        followsSvc.getUsersForTab('followers'),
+        followsSvc.getUsersForTab('following'),
       ]);
+      
+      debugPrint('📊 NetworkView: Raw results - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}');
       
       setState(() {
         _connectionsUsers = results[0];
@@ -222,9 +219,26 @@ class _NetworkViewState extends State<NetworkView> {
         _isLoadingUsers = false;
       });
       
-      debugPrint('🎯 NetworkView: Loaded ${_connectionsUsers.length} connections, ${_followersUsers.length} followers, ${_followingUsers.length} following');
+      debugPrint('🎯 NetworkView: Final state - Connections: ${_connectionsUsers.length}, Followers: ${_followersUsers.length}, Following: ${_followingUsers.length}');
+      
+      // Debug: Print user details with clear section headers
+      debugPrint('🔗 CONNECTIONS (Mutual Follows):');
+      for (int i = 0; i < _connectionsUsers.length; i++) {
+        debugPrint('  $i: ${_connectionsUsers[i].displayName} (${_connectionsUsers[i].id})');
+      }
+      
+      debugPrint('👥 FOLLOWERS (They follow you):');
+      for (int i = 0; i < _followersUsers.length; i++) {
+        debugPrint('  $i: ${_followersUsers[i].displayName} (${_followersUsers[i].id})');
+      }
+      
+      debugPrint('➡️ FOLLOWING (You follow them):');
+      for (int i = 0; i < _followingUsers.length; i++) {
+        debugPrint('  $i: ${_followingUsers[i].displayName} (${_followingUsers[i].id})');
+      }
+      
     } catch (e) {
-      debugPrint('Error loading users from clean service: $e');
+      debugPrint('❌ Error loading users from follows service: $e');
       setState(() {
         _isLoadingUsers = false;
       });
@@ -239,11 +253,36 @@ class _NetworkViewState extends State<NetworkView> {
             action: SnackBarAction(
               label: 'Retry',
               textColor: Colors.white,
-              onPressed: _loadUsersFromCleanService,
+              onPressed: _loadUsersFromFollowsService,
             ),
           ),
         );
       }
+    }
+  }
+
+  /// Run migration if needed (check if follows collection is empty)
+  Future<void> _runMigrationIfNeeded() async {
+    try {
+      // Check if follows collection has any data
+      final followsSnapshot = await FirebaseFirestore.instance
+          .collection('follows')
+          .limit(1)
+          .get();
+      
+      if (followsSnapshot.docs.isEmpty) {
+        debugPrint('🔄 NetworkView: No follows data found, running migration...');
+        final migrationSuccess = await MigrationService.runCompleteMigration();
+        if (migrationSuccess) {
+          debugPrint('✅ NetworkView: Migration completed successfully');
+        } else {
+          debugPrint('❌ NetworkView: Migration failed, continuing with empty data');
+        }
+      } else {
+        debugPrint('✅ NetworkView: Follows data already exists, skipping migration');
+      }
+    } catch (e) {
+      debugPrint('❌ NetworkView: Error checking migration status: $e');
     }
   }
 
@@ -406,9 +445,6 @@ class _NetworkViewState extends State<NetworkView> {
         case 'name':
           comparison = a.displayName.compareTo(b.displayName);
           break;
-        case 'followers':
-          comparison = a.followerCount.compareTo(b.followerCount);
-          break;
       }
       
       return _sortAscending ? comparison : -comparison;
@@ -436,44 +472,186 @@ class _NetworkViewState extends State<NetworkView> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Network connectivity indicator
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _hasInternetConnection 
-                          ? Colors.green.withValues(alpha: 0.2)
-                          : Colors.red.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _hasInternetConnection 
-                            ? Colors.green.withValues(alpha: 0.4)
-                            : Colors.red.withValues(alpha: 0.4),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _hasInternetConnection ? Icons.wifi : Icons.wifi_off,
-                          color: _hasInternetConnection ? Colors.green : Colors.red,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _hasInternetConnection ? 'Online' : 'Offline',
-                          style: TextStyle(
-                            color: _hasInternetConnection ? Colors.green : Colors.red,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                  // User status indicator - sync with ProfileView
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final statusAsync = ref.watch(statusNotifierProvider);
+                      
+                      return statusAsync.when(
+                        data: (presence) {
+                          final statusColor = _getStatusColor(presence.status);
+                          final statusText = presence.status.displayName;
+                          final statusIcon = _getStatusIcon(presence.status);
+                          
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: statusColor.withValues(alpha: 0.4),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  statusIcon,
+                                  color: statusColor,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  statusText,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        loading: () => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.grey.withValues(alpha: 0.4),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Loading...',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                        error: (error, stack) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.red.withValues(alpha: 0.4),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.error,
+                                color: Colors.red,
+                                size: 16,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Error',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   // Search and sort icons
                   Row(
                 children: [
+                  // Manual refresh button
+                  GestureDetector(
+                    onTap: () {
+                      debugPrint('🔄 Manual refresh triggered');
+                      _refreshDataInstantly();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                      ),
+                      child: const Icon(
+                        Icons.refresh,
+                        color: Colors.green,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                  // Debug button
+                  GestureDetector(
+                    onTap: () async {
+                      debugPrint('🔧 Debug: Testing FollowsService...');
+                      final followsSvc = FollowsService();
+                      
+                      // Test all three tabs
+                      final connections = await followsSvc.getUsersForTab('connections');
+                      final followers = await followsSvc.getUsersForTab('followers');
+                      final following = await followsSvc.getUsersForTab('following');
+                      
+                      debugPrint('🔧 Debug Results:');
+                      debugPrint('  Connections: ${connections.length}');
+                      debugPrint('  Followers: ${followers.length}');
+                      debugPrint('  Following: ${following.length}');
+                      
+                      // Show results in UI
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Debug: C:${connections.length} F:${followers.length} Fo:${following.length}'),
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                      
+                      // Force refresh
+                      _refreshDataInstantly();
+                      
+                      // Also test the real-time listeners
+                      debugPrint('🔧 Debug: Testing real-time listeners...');
+                      _initializeRelationshipListeners();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                      ),
+                      child: const Icon(
+                        Icons.bug_report,
+                        color: Colors.orange,
+                        size: 20,
+                      ),
+                    ),
+                  ),
                   // Sort button
                   GestureDetector(
                     onTap: _showSortOptions,
@@ -717,11 +895,18 @@ class _NetworkViewState extends State<NetworkView> {
     }
 
     final currentList = _currentList();
+    debugPrint('🎯 NetworkView: _buildMainContent - currentList.length: ${currentList.length}');
+    debugPrint('🎯 NetworkView: _buildMainContent - _selectedTab: $_selectedTab');
+    debugPrint('🎯 NetworkView: _buildMainContent - _connectionsUsers.length: ${_connectionsUsers.length}');
+    debugPrint('🎯 NetworkView: _buildMainContent - _followersUsers.length: ${_followersUsers.length}');
+    debugPrint('🎯 NetworkView: _buildMainContent - _followingUsers.length: ${_followingUsers.length}');
     
     if (currentList.isEmpty) {
+      debugPrint('⚠️ NetworkView: currentList is empty, showing empty state');
       return _buildEmptyState();
     }
 
+    debugPrint('✅ NetworkView: Building ListView with ${currentList.length} users');
     return RefreshIndicator(
       onRefresh: _handlePullToRefresh,
       color: Colors.white,
@@ -731,19 +916,134 @@ class _NetworkViewState extends State<NetworkView> {
         itemCount: currentList.length,
         itemBuilder: (context, index) {
           final user = currentList[index];
+          debugPrint('🔨 NetworkView: Building user card $index: ${user.displayName} (${user.id})');
           return _buildUserCard(user);
         },
       ),
     );
   }
 
+  void _navigateToStreamerCard(user_model.User user) {
+    print('🔵 NetworkView: _navigateToStreamerCard called for user: ${user.displayName}');
+    
+    // Use multiple approaches to prevent backgrounding
+    Future.microtask(() {
+      if (mounted) {
+        // Force the app to stay in foreground with multiple approaches
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+        
+        // Use push instead of pushReplacement to maintain navigation stack
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => StreamerCardView(
+              userId: user.id,
+              currentUserId: FirebaseAuth.instance.currentUser?.uid,
+              onDismiss: () => Navigator.of(context).pop(),
+              onFollow: (userId) async {
+                // Handle follow action - just refresh data since StreamerCardView handles the actual follow
+                HapticFeedback.lightImpact();
+                print('🔵 NetworkView: Follow action triggered for user: $userId - refreshing data');
+                
+                // Just refresh the data to reflect any changes made by StreamerCardView
+                _refreshDataInstantly();
+              },
+              onMessage: (userId) {
+                // Handle message action
+                HapticFeedback.lightImpact();
+                print('🔵 NetworkView: Message action triggered for user: $userId');
+                // TODO: Implement message functionality
+              },
+              onShare: (userId) {
+                // Handle share action
+                HapticFeedback.lightImpact();
+                print('🔵 NetworkView: Share action triggered for user: $userId');
+                // TODO: Implement share functionality
+              },
+            ),
+          ),
+        );
+      }
+    });
+  }
+
   Widget _buildUserCard(user_model.User user) {
+    debugPrint('🎨 NetworkView: _buildUserCard called for user: ${user.displayName} (${user.id})');
+    
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: StreamerCardView(
-        userId: user.id,
-        currentUserId: FirebaseAuth.instance.currentUser?.uid ?? '',
-        onFollow: _handleFollowAction, // Add callback for instant updates
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        onTap: () {
+          print('🔵 NetworkView: User card tapped for user: ${user.displayName}');
+          HapticFeedback.lightImpact();
+          
+          // Use the custom navigation method
+          _navigateToStreamerCard(user);
+        },
+        child: Container(
+          height: 80,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // Avatar
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  backgroundImage: user.avatarURL != null && user.avatarURL!.isNotEmpty
+                      ? NetworkImage(user.avatarURL!)
+                      : null,
+                  child: user.avatarURL == null || user.avatarURL!.isEmpty
+                      ? Icon(
+                          Icons.person,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          size: 24,
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                // User info
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.displayName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '@${user.username}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 13,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Arrow icon
+                Icon(
+                  Icons.chevron_right,
+                  color: Colors.white.withValues(alpha: 0.5),
+                  size: 24,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -820,33 +1120,38 @@ class _NetworkViewState extends State<NetworkView> {
     });
   }
 
-  /// Handle follow/unfollow actions from StreamerCardView for instant updates
-  void _handleFollowAction(String userId) {
-    // Refresh data instantly after follow/unfollow action
-    _refreshDataInstantly();
-    
-    // Also refresh the CleanRelationshipService state
-    _refreshCleanServiceState();
-  }
 
   /// Refresh data instantly without showing loading indicator
   Future<void> _refreshDataInstantly() async {
     try {
       debugPrint('🔄 NetworkView: Starting instant data refresh...');
-      final cleanSvc = CleanRelationshipService();
+      final followsSvc = FollowsService();
       
-      // First refresh the service's internal state to get latest data
-      await cleanSvc.refresh();
-      debugPrint('✅ NetworkView: CleanRelationshipService refreshed');
-      
-      // Load all three lists in parallel
+      // Load all three lists in parallel using the correct tab logic
+      debugPrint('🔄 NetworkView: Loading connections, followers, and following...');
       final results = await Future.wait([
-        cleanSvc.getUsersForSection('connections'),
-        cleanSvc.getUsersForSection('followers'),
-        cleanSvc.getUsersForSection('following'),
+        followsSvc.getUsersForTab('connections'),
+        followsSvc.getUsersForTab('followers'),
+        followsSvc.getUsersForTab('following'),
       ]);
       
       debugPrint('📊 NetworkView: Data loaded - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}');
+      
+      // Debug: Print user details
+      debugPrint('🔗 CONNECTIONS (Mutual Follows):');
+      for (int i = 0; i < results[0].length; i++) {
+        debugPrint('  $i: ${results[0][i].displayName} (${results[0][i].id})');
+      }
+      
+      debugPrint('👥 FOLLOWERS (They follow you):');
+      for (int i = 0; i < results[1].length; i++) {
+        debugPrint('  $i: ${results[1][i].displayName} (${results[1][i].id})');
+      }
+      
+      debugPrint('➡️ FOLLOWING (You follow them):');
+      for (int i = 0; i < results[2].length; i++) {
+        debugPrint('  $i: ${results[2][i].displayName} (${results[2][i].id})');
+      }
       
       if (mounted) {
         setState(() {
@@ -861,19 +1166,42 @@ class _NetworkViewState extends State<NetworkView> {
     }
   }
 
-  /// Refresh the CleanRelationshipService state to get latest data
-  Future<void> _refreshCleanServiceState() async {
-    try {
-      final cleanSvc = CleanRelationshipService();
-      await cleanSvc.refresh(); // Refresh the service's internal state
-    } catch (e) {
-      debugPrint('Error refreshing clean service state: $e');
-    }
-  }
 
   /// Handle pull-to-refresh action
   Future<void> _handlePullToRefresh() async {
     debugPrint('🔄 NetworkView: Pull-to-refresh triggered');
     await _refreshDataInstantly();
+  }
+
+  /// Get status color for user status indicator
+  Color _getStatusColor(UserStatus status) {
+    switch (status) {
+      case UserStatus.online:
+        return const Color(0xFF4CAF50); // Green
+      case UserStatus.offline:
+        return const Color(0xFF9E9E9E); // Grey
+      case UserStatus.busy:
+        return const Color(0xFFFF9800); // Orange
+      case UserStatus.dnd:
+        return const Color(0xFFF44336); // Red
+      case UserStatus.streaming:
+        return const Color(0xFF9C27B0); // Purple
+    }
+  }
+
+  /// Get status icon for user status indicator
+  IconData _getStatusIcon(UserStatus status) {
+    switch (status) {
+      case UserStatus.online:
+        return Icons.circle;
+      case UserStatus.offline:
+        return Icons.circle_outlined;
+      case UserStatus.busy:
+        return Icons.pause_circle;
+      case UserStatus.dnd:
+        return Icons.block;
+      case UserStatus.streaming:
+        return Icons.play_circle;
+    }
   }
 }

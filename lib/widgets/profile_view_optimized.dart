@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import '../models/user.dart' as app_user;
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
@@ -33,6 +35,19 @@ class ProfileViewOptimized extends ConsumerStatefulWidget {
 class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized> 
     with TickerProviderStateMixin {
   late AnimationController _segmentedController;
+  
+  // Stats tracking
+  int _followersCount = 0;
+  int _followingCount = 0;
+  int _postsCount = 0;
+  
+  // Test flag to show if stats are loading
+  bool _statsLoaded = false;
+  
+  // Stream subscriptions for stats
+  StreamSubscription<QuerySnapshot>? _followersSubscription;
+  StreamSubscription<QuerySnapshot>? _followingSubscription;
+  StreamSubscription<QuerySnapshot>? _postsSubscription;
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
@@ -62,6 +77,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     
     // Listen for profile updates
     _profileUpdateService?.addProfileViewListener(_onProfileUpdated);
+    
+    // Load stats
+    _loadStats();
   }
 
   @override
@@ -69,6 +87,12 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _profileUpdateService?.removeProfileViewListener(_onProfileUpdated);
     _segmentedController.dispose();
     _flipController.dispose();
+    
+    // Cancel stats subscriptions
+    _followersSubscription?.cancel();
+    _followingSubscription?.cancel();
+    _postsSubscription?.cancel();
+    
     super.dispose();
   }
 
@@ -89,6 +113,77 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         // The ProfileUpdateService will have the latest user data
       });
     }
+  }
+
+  void _loadStats() {
+    if (widget.user.id.isEmpty) {
+      return;
+    }
+    
+    setState(() {
+      _statsLoaded = true;
+    });
+    
+    // Cancel existing subscriptions
+    _postsSubscription?.cancel();
+    _followersSubscription?.cancel();
+    _followingSubscription?.cancel();
+    
+    // Load posts count
+    _postsSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.user.id)
+        .collection('videos')
+        .where('status', isEqualTo: 'published')
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (mounted) {
+          setState(() {
+            _postsCount = snapshot.docs.length;
+          });
+        }
+      },
+      onError: (error) {
+        // Handle error silently in production
+      },
+    );
+
+    // Load followers count from new follows collection
+    _followersSubscription = FirebaseFirestore.instance
+        .collection('follows')
+        .where('followedId', isEqualTo: widget.user.id)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (mounted) {
+          setState(() {
+            _followersCount = snapshot.docs.length;
+          });
+        }
+      },
+      onError: (error) {
+        // Handle error silently in production
+      },
+    );
+
+    // Load following count from new follows collection
+    _followingSubscription = FirebaseFirestore.instance
+        .collection('follows')
+        .where('followerId', isEqualTo: widget.user.id)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (mounted) {
+          setState(() {
+            _followingCount = snapshot.docs.length;
+          });
+        }
+      },
+      onError: (error) {
+        // Handle error silently in production
+      },
+    );
   }
 
   void _flipCard() {
@@ -300,6 +395,16 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   @override
   Widget build(BuildContext context) {
+    // Ensure stats are loaded when widget builds
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // debugPrint('🔧 ProfileView: Widget built, calling _loadStats()');
+        _loadStats();
+      }
+    });
+    
+    // debugPrint('🔧 ProfileView: Building ProfileViewOptimized for user: ${widget.user.id}');
+    
     return Scaffold(
       backgroundColor: Colors.black,
       extendBody: true,
@@ -563,17 +668,39 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   Widget _buildStatsRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildStatItem('Posts', '0'),
-        const SizedBox(width: 54),
-        _buildStatItem('Followers', '0'),
-        const SizedBox(width: 54),
-        _buildStatItem('Following', '0'),
-      ],
+    return Consumer(
+      builder: (context, ref, child) {
+        // Stats row building
+        
+        // Show loading indicator if stats haven't loaded yet
+        if (!_statsLoaded) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildStatItem('Posts', '...'),
+              const SizedBox(width: 54),
+              _buildStatItem('Followers', '...'),
+              const SizedBox(width: 54),
+              _buildStatItem('Following', '...'),
+            ],
+          );
+        }
+        
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStatItem('Posts', _postsCount.toString()),
+            const SizedBox(width: 54),
+            _buildStatItem('Followers', _followersCount.toString()),
+            const SizedBox(width: 54),
+            _buildStatItem('Following', _followingCount.toString()),
+          ],
+        );
+      },
     );
   }
+
+
 
   Widget _buildStatItem(String label, String value) {
     return Column(

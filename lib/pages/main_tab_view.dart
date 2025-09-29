@@ -152,6 +152,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             _currentIndex = index;
           });
         },
+        // Disable swipe gestures when on NetworkView (index 1)
+        physics: _currentIndex == 1 
+            ? const NeverScrollableScrollPhysics() 
+            : const ClampingScrollPhysics(),
         children: const [
           // Home View
           HomeView(),

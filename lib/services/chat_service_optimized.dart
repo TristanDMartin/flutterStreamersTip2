@@ -241,12 +241,15 @@ class ChatServiceOptimized {
 
   /// Map Firestore document to Message model
   app_message.Message _mapMessage(String id, Map<String, dynamic> data) {
+    final currentUser = _auth.currentUser?.uid ?? '';
+    final senderId = data['senderId'] ?? '';
+    
     return app_message.Message(
       id: id,
       chatId: '', // Will be set by the calling context
       text: data['text'] ?? '',
-      from: data['senderId'] ?? '',
-      to: '', // Will be set by the calling context
+      from: senderId,
+      to: senderId == currentUser ? 'other_user' : currentUser, // Simplified for now
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isRead: data['isRead'] ?? false,
       gifUrl: data['gifUrl'],

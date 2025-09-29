@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/streamer_card.dart';
-import '../models/user.dart' as app_user;
-import '../models/home_video.dart';
 import '../services/following_service.dart';
-import '../services/share_service_optimized.dart';
-import '../services/profile_update_service.dart';
 import '../widgets/chat_view_optimized.dart';
 import '../models/chat.dart' as app_chat;
 import 'online_status_indicator.dart';
@@ -36,7 +31,6 @@ class StreamerCardViewOptimized extends StatefulWidget {
 
 class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     with TickerProviderStateMixin {
-  ProfileUpdateService? _profileUpdateService;
   
   // Pre-defined gradients for better performance - using your preferred color palette
   static const LinearGradient _mainGradient = LinearGradient(
@@ -58,11 +52,6 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   );
   
 
-  static const LinearGradient _shareGradient = LinearGradient(
-    colors: [Color(0xFF9248D2), Color(0xFF3C8BD6)],
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-  );
   
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
@@ -85,9 +74,6 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   bool _showChatView = false;
   Map<String, dynamic>? _selectedChat;
   
-  // Calendar and platforms data
-  List<Map<String, dynamic>> _calendarEvents = [];
-  List<Map<String, dynamic>> _platforms = [];
 
   @override
   void initState() {
@@ -109,16 +95,12 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       _selectedHashtag = hashtags.first;
     }
     
-    // Check connection status for messaging
-    _checkConnectionStatus();
-    
-    // Load additional data
-    _loadCalendarEvents();
-    _loadPlatforms();
-    
-    // Listen for profile updates
-    _profileUpdateService = ProfileUpdateService();
-    _profileUpdateService?.addStreamerCardViewListener(_onProfileUpdated);
+    // TEMPORARY: Disable ALL async operations to prevent app backgrounding
+    // _checkConnectionStatus();
+    // _loadCalendarEvents();
+    // _loadPlatforms();
+    // _profileUpdateService = ProfileUpdateService();
+    // _profileUpdateService?.addStreamerCardViewListener(_onProfileUpdated);
   }
 
   // Computed Properties
@@ -138,178 +120,22 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
 
   @override
   void dispose() {
-    _profileUpdateService?.removeStreamerCardViewListener(_onProfileUpdated);
+    // TEMPORARY: Disable cleanup to prevent issues
+    // _profileUpdateService?.removeStreamerCardViewListener(_onProfileUpdated);
     _flipController.dispose();
     super.dispose();
   }
 
-  void _onProfileUpdated() {
-    if (mounted) {
-      setState(() {
-        // Trigger rebuild when profile data is updated
-        // The ProfileUpdateService will have the latest user data
-      });
-    }
-  }
 
-  /// Get the current streamer card data, either from widget or from ProfileUpdateService
+  /// Get the current streamer card data - simplified for testing
   StreamerCard get _currentStreamerCard {
-    // Check if this is the current user by comparing user IDs
-    final currentUserId = _profileUpdateService?.currentUser?.uid;
-    final isCurrentUser = currentUserId != null && currentUserId == displayStreamer.id;
-    
-    // If this is the current user, get data from ProfileUpdateService and create StreamerCard
-    if (isCurrentUser && _profileUpdateService?.isDataLoaded == true) {
-      final userData = _profileUpdateService?.userData;
-      if (userData != null) {
-        return StreamerCard(
-          id: userData['id'] ?? displayStreamer.id,
-          username: userData['username'] ?? displayStreamer.username,
-          displayName: userData['displayName'] ?? displayStreamer.displayName,
-          bio: userData['bio'] ?? displayStreamer.bio,
-          avatarURL: userData['avatarURL'] ?? displayStreamer.avatarURL,
-          coverImageURL: displayStreamer.coverImageURL,
-          platforms: _convertPlatformsFromUserData(userData['platforms'] ?? displayStreamer.platforms),
-          hashtags: List<String>.from(userData['hashtags'] ?? displayStreamer.hashtags),
-          socialLinks: displayStreamer.socialLinks,
-          isConnected: displayStreamer.isConnected,
-        );
-      }
-    }
-    // Otherwise use the widget streamer card data
+    // TEMPORARY: Always use widget data to prevent any async issues
     return displayStreamer;
   }
 
-  /// Convert platforms from user data format to Platform objects
-  List<Platform> _convertPlatformsFromUserData(dynamic platformsData) {
-    if (platformsData is List) {
-      return platformsData.map((platform) {
-        if (platform is Map<String, dynamic>) {
-          return Platform(
-            id: platform['id'] ?? '',
-            type: _getPlatformTypeFromString(platform['name'] ?? ''),
-            username: platform['username'] ?? '',
-            followers: platform['followers'] ?? 0,
-            url: platform['url'] ?? '',
-          );
-        }
-        return const Platform(
-          id: '',
-          type: PlatformType.other,
-          username: '',
-          followers: 0,
-          url: '',
-        );
-      }).toList();
-    }
-    return displayStreamer.platforms;
-  }
 
-  /// Convert string platform name to PlatformType enum
-  PlatformType _getPlatformTypeFromString(String name) {
-    switch (name.toLowerCase()) {
-      case 'twitch':
-        return PlatformType.twitch;
-      case 'youtube':
-        return PlatformType.youtube;
-      case 'kick':
-        return PlatformType.kick;
-      case 'tiktok':
-        return PlatformType.tiktok;
-      case 'facebook':
-        return PlatformType.facebook;
-      case 'bluesky':
-        return PlatformType.bluesky;
-      case 'twitter':
-      case 'x':
-        return PlatformType.twitter;
-      case 'instagram':
-        return PlatformType.instagram;
-      case 'reddit':
-        return PlatformType.reddit;
-      default:
-        return PlatformType.other;
-    }
-  }
 
-  // Connection Status - Optimized with caching
-  Future<void> _checkConnectionStatus() async {
-    if (widget.currentUserId == null || widget.currentUserId == _currentStreamerCard.id) {
-      return;
-    }
 
-    // Skip if already checked
-    if (!_isCheckingConnection && (_isFollowing || _isFollowedByStreamer)) {
-      return;
-    }
-
-    if (mounted) {
-      setState(() {
-        _isCheckingConnection = true;
-      });
-    }
-
-    try {
-      // Run both checks in parallel for better performance
-      final results = await Future.wait([
-        _checkIfFollowing(_currentStreamerCard.id),
-        _checkIfFollowedBy(_currentStreamerCard.id),
-      ]);
-      
-      final isFollowing = results[0];
-      final isFollowedByStreamer = results[1];
-      final isConnected = isFollowing && isFollowedByStreamer;
-      
-      if (mounted) {
-        setState(() {
-          _isFollowing = isFollowing;
-          _isFollowedByStreamer = isFollowedByStreamer;
-          _isConnected = isConnected;
-          _isCheckingConnection = false;
-        });
-      }
-    } catch (e) {
-    // print('Error checking connection status: $e');
-      if (mounted) {
-        setState(() {
-          _isFollowing = false;
-          _isFollowedByStreamer = false;
-          _isConnected = false;
-          _isCheckingConnection = false;
-        });
-      }
-    }
-  }
-
-  Future<bool> _checkIfFollowing(String userId) async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.currentUserId!)
-          .collection('following')
-          .doc(userId)
-          .get();
-      return doc.exists;
-    } catch (e) {
-    // print('Error checking follow status: $e');
-      return false;
-    }
-  }
-
-  Future<bool> _checkIfFollowedBy(String userId) async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .collection('following')
-          .doc(widget.currentUserId!)
-          .get();
-      return doc.exists;
-    } catch (e) {
-    // print('Error checking followed by status: $e');
-      return false;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -582,6 +408,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildActionButtons() {
+    print('🔵 StreamerCardView: _buildActionButtons called');
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
@@ -666,64 +493,34 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildMessageButton() {
-    // Don't show message button for owner
-    if (isOwner) {
-      return const SizedBox.shrink();
-    }
-
-    // Show loading state while checking connection
-    if (_isCheckingConnection) {
-      return Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha:0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Colors.white.withValues(alpha:0.2),
-            width: 1,
-          ),
-        ),
-        child: const Center(
-          child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Message button - disabled when not connected
+    print('🔵 StreamerCardView: _buildMessageButton called - isOwner: $isOwner, _isCheckingConnection: $_isCheckingConnection, _isConnected: $_isConnected');
+    
+    // ULTRA SIMPLE TEST: Just a basic container with tap
     return GestureDetector(
-      onTap: _isConnected ? _handleMessageButtonTap : null,
+      onTap: () {
+        print('🔵 ULTRA SIMPLE: Message button tapped!');
+        print('🔵 ULTRA SIMPLE: Current _isCheckingConnection: $_isCheckingConnection');
+        // Show a very obvious visual change
+        setState(() {
+          _isCheckingConnection = !_isCheckingConnection;
+        });
+        print('🔵 ULTRA SIMPLE: After setState _isCheckingConnection: $_isCheckingConnection');
+      },
       child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        height: 60, // Make it bigger and more obvious
+        width: double.infinity,
         decoration: BoxDecoration(
-          color: _isConnected 
-              ? Colors.white.withValues(alpha:0.15)
-              : Colors.white.withValues(alpha:0.05),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: _isConnected 
-                ? Colors.white.withValues(alpha:0.2)
-                : Colors.white.withValues(alpha:0.1),
-            width: 1,
-          ),
+          color: _isCheckingConnection ? Colors.red : Colors.blue,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white, width: 2), // Add white border
         ),
         child: Center(
           child: Text(
-            'Message',
+            _isCheckingConnection ? 'TAPPED!' : 'Message',
             style: TextStyle(
-              color: _isConnected 
-                  ? Colors.white 
-                  : Colors.white.withValues(alpha:0.3),
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+              color: Colors.white,
+              fontSize: 18, // Make text bigger
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
@@ -732,26 +529,32 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildShareButton() {
+    // ULTRA SIMPLE TEST: Just a basic container with tap
     return GestureDetector(
-      onTap: _handleShareButtonTap,
+      onTap: () {
+        print('🔵 ULTRA SIMPLE: Share button tapped!');
+        print('🔵 ULTRA SIMPLE: Current _showBio: $_showBio');
+        // Show a very obvious visual change
+        setState(() {
+          _showBio = !_showBio; // Toggle some state
+        });
+        print('🔵 ULTRA SIMPLE: After setState _showBio: $_showBio');
+      },
       child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        height: 60, // Make it bigger and more obvious
+        width: double.infinity,
         decoration: BoxDecoration(
-          gradient: _shareGradient,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Colors.white.withValues(alpha:0.2),
-            width: 1,
-          ),
+          color: _showBio ? Colors.green : Colors.orange,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white, width: 2), // Add white border
         ),
-        child: const Center(
+        child: Center(
           child: Text(
-            'Share',
+            _showBio ? 'TAPPED!' : 'Share',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+              fontSize: 18, // Make text bigger
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
@@ -1229,40 +1032,6 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
 
 
 
-  // Data loading methods - Optimized with caching
-  Future<void> _loadCalendarEvents() async {
-    // Skip if already loaded
-    if (_calendarEvents.isNotEmpty) return;
-    
-    try {
-      // TODO: Load calendar events from Firebase with caching
-      // This would typically fetch from a calendar events collection
-      if (mounted) {
-        setState(() {
-          _calendarEvents = [];
-        });
-      }
-    } catch (e) {
-    // print('Error loading calendar events: $e');
-    }
-  }
-
-  Future<void> _loadPlatforms() async {
-    // Skip if already loaded
-    if (_platforms.isNotEmpty) return;
-    
-    try {
-      // TODO: Load platforms from Firebase with caching
-      // This would typically fetch from a platforms collection
-      if (mounted) {
-        setState(() {
-          _platforms = [];
-        });
-      }
-    } catch (e) {
-    // print('Error loading platforms: $e');
-    }
-  }
 
 
   Widget _buildChatOverlay() {
@@ -1310,9 +1079,9 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                   lastTimestamp: DateTime.now(),
                   chatType: 'direct',
                 ),
-                otherUserId: _currentStreamerCard.id,
-                otherUserName: _currentStreamerCard.displayName,
-                otherUserAvatarURL: _currentStreamerCard.avatarURL,
+                otherUserId: displayStreamer.id,
+                otherUserName: displayStreamer.displayName,
+                otherUserAvatarURL: displayStreamer.avatarURL,
               ),
             ),
           ],
@@ -1431,183 +1200,8 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     }
   }
 
-  void _handleMessageButtonTap() {
-    HapticFeedback.lightImpact();
-    
-    if (!_isConnected) {
-      _showConnectionRequiredDialog();
-      return;
-    }
 
-    _findOrCreateChat();
-  }
 
-  void _handleShareButtonTap() {
-    HapticFeedback.lightImpact();
-    
-    // Create user object for sharing
-    final user = app_user.User(
-      id: displayStreamer.id,
-      username: displayStreamer.username,
-      displayName: displayStreamer.displayName,
-      avatarURL: displayStreamer.avatarURL,
-      bio: displayStreamer.bio,
-      hashtags: displayStreamer.hashtags,
-    );
-    
-    // Create HomeVideo object for sharing
-    final homeVideo = HomeVideo(
-      id: 'profile_${displayStreamer.id}',
-      videoURL: '',
-      thumbnailURL: displayStreamer.avatarURL ?? '',
-      caption: 'Check out ${displayStreamer.displayName} on StreamersTip!\n\n@${displayStreamer.username}\n\n${displayStreamer.bio}\n\n#StreamersTip',
-      creator: user,
-      likes: 0,
-      comments: 0,
-      isLiked: false,
-      isFavorited: false,
-    );
-    
-    // Share using the optimized service
-    ShareServiceOptimized().shareVideo(homeVideo);
-  }
-
-  void _showConnectionRequiredDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Connection Required',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'You need to be connected with this streamer to send messages. Follow them and wait for them to follow you back.',
-          style: TextStyle(color: Colors.grey),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Color(0xFF9248D2)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _findOrCreateChat() async {
-    if (widget.currentUserId == null) return;
-
-    try {
-    // print('🔍 Finding or creating chat with: ${displayStreamer.id}');
-      
-      // First, try to find existing chat
-      final existingChat = await _findExistingChat();
-      if (existingChat != null) {
-    // print('✅ Found existing chat: ${existingChat['id']}');
-        _selectedChat = existingChat;
-        setState(() {
-          _showChatView = true;
-        });
-        return;
-      }
-
-      // If no existing chat, create a new one
-    // print('📝 Creating new chat...');
-      final newChat = await _createNewChat();
-      if (newChat != null) {
-    // print('✅ Created new chat: ${newChat['id']}');
-        _selectedChat = newChat;
-        setState(() {
-          _showChatView = true;
-        });
-      } else {
-    // print('❌ Failed to create chat');
-        _showErrorDialog('Failed to create chat. Please try again.');
-      }
-    } catch (e) {
-    // print('❌ Error in chat creation: $e');
-      _showErrorDialog('Error creating chat: $e');
-    }
-  }
-
-  Future<Map<String, dynamic>?> _findExistingChat() async {
-    try {
-      final query = await FirebaseFirestore.instance
-          .collection('chats')
-          .where('participants', arrayContains: widget.currentUserId!)
-          .get();
-
-      for (final doc in query.docs) {
-        final data = doc.data();
-        final participants = List<String>.from(data['participants'] ?? []);
-        
-        if (participants.contains(displayStreamer.id)) {
-          return {
-            'id': doc.id,
-            ...data,
-          };
-        }
-      }
-      return null;
-    } catch (e) {
-    // print('Error finding existing chat: $e');
-      return null;
-    }
-  }
-
-  Future<Map<String, dynamic>?> _createNewChat() async {
-    try {
-      final chatData = {
-        'participants': [widget.currentUserId!, displayStreamer.id],
-        'lastMessage': '',
-        'lastTimestamp': FieldValue.serverTimestamp(),
-        'chatType': 'direct',
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      final docRef = await FirebaseFirestore.instance
-          .collection('chats')
-          .add(chatData);
-
-      return {
-        'id': docRef.id,
-        ...chatData,
-      };
-    } catch (e) {
-    // print('Error creating new chat: $e');
-      return null;
-    }
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Error',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.grey),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Color(0xFF9248D2)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // Optimized const widget for empty states

@@ -1879,7 +1879,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
+    debugPrint('🔗 _buildPlatforms: Building platforms section with ${platforms.length} platforms');
     if (platforms.isEmpty) {
+      debugPrint('🔗 _buildPlatforms: No platforms found, showing empty state');
     return Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
         child: Text(
@@ -2110,10 +2112,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   void _loadPlatforms() {
+    debugPrint('🔗 _loadPlatforms: Starting to load platforms');
     if (_userData != null && _userData!['platforms'] != null) {
+      debugPrint('🔗 _loadPlatforms: User data has platforms field');
       try {
         final platformsData = _userData!['platforms'];
+        debugPrint('🔗 _loadPlatforms: Platforms data: $platformsData');
         if (platformsData is List) {
+          debugPrint('🔗 _loadPlatforms: Platforms is a List with ${platformsData.length} items');
           setState(() {
             _platforms = platformsData.map((platform) {
               if (platform is Map<String, dynamic>) {
@@ -2193,12 +2199,32 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   void _launchPlatformUrl(Map<String, dynamic> platform) async {
     final url = platform['url'] as String?;
+    debugPrint('🔗 StreamerCardView: Attempting to launch URL: $url');
+    
     if (url != null && url.isNotEmpty) {
       try {
         final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
+        debugPrint('🔗 StreamerCardView: Parsed URI: $uri');
+        
+        final canLaunch = await canLaunchUrl(uri);
+        debugPrint('🔗 StreamerCardView: Can launch URL: $canLaunch');
+        
+        if (canLaunch) {
+          debugPrint('🔗 StreamerCardView: Launching URL...');
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          debugPrint('🔗 StreamerCardView: URL launched successfully');
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Opening ${_getPlatformDisplayName(platform['type'])}...'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
         } else {
+          debugPrint('🔗 StreamerCardView: Cannot launch URL');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -2209,6 +2235,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           }
         }
       } catch (e) {
+        debugPrint('🔗 StreamerCardView: Error launching URL: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -2218,6 +2245,25 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           );
         }
       }
+    } else {
+      debugPrint('🔗 StreamerCardView: No URL provided');
+    }
+  }
+
+  String _getPlatformDisplayName(String platformType) {
+    switch (platformType.toLowerCase()) {
+      case 'twitch': return 'Twitch';
+      case 'youtube': return 'YouTube';
+      case 'kick': return 'Kick';
+      case 'tiktok': return 'TikTok';
+      case 'facebook': return 'Facebook';
+      case 'bluesky': return 'Bluesky';
+      case 'twitter': return 'Twitter';
+      case 'instagram': return 'Instagram';
+      case 'reddit': return 'Reddit';
+      case 'discord': return 'Discord';
+      case 'other': return 'Website';
+      default: return platformType;
     }
   }
 
@@ -2569,8 +2615,13 @@ class _ClickablePlatformRow extends StatelessWidget {
     final username = platform['username'] as String? ?? '';
     // final url = platform['url'] as String? ?? '';
 
+    debugPrint('🔗 _ClickablePlatformRow: Building platform card - type: $platformType, username: $username');
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        debugPrint('🔗 _ClickablePlatformRow: Platform card tapped!');
+        onTap();
+      },
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(

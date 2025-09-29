@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/calendar_event.dart';
 import '../services/robust_auth_service.dart';
-import '../services/profile_update_service.dart';
 import 'brand_icons.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
@@ -23,168 +22,79 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   bool isPlatformsExpanded = true;
   bool isCalendarExpanded = true;
   String? _selectedHashtag;
-  ProfileUpdateService? _profileUpdateService;
 
   @override
   void initState() {
     super.initState();
-    _profileUpdateService = ProfileUpdateService();
-    
-    // Listen for profile updates
-    _profileUpdateService?.addProfileBackViewListener(_onProfileUpdated);
+    // ProfileBackView doesn't need to listen for updates since it displays static user data
+    // This prevents infinite loading loops
   }
 
   @override
   void dispose() {
-    _profileUpdateService?.removeProfileBackViewListener(_onProfileUpdated);
     super.dispose();
   }
 
-  void _onProfileUpdated() {
-    if (mounted) {
-      setState(() {
-        // Trigger rebuild when profile data is updated
-        // The ProfileUpdateService will have the latest user data
-      });
-    }
-  }
-
-  /// Get the current user data, either from widget or from ProfileUpdateService
+  /// Get the current user data from widget
   Map<String, dynamic> get _currentUserData {
-    // Check if this is the current user by comparing user IDs
-    final currentUserId = _profileUpdateService?.currentUser?.uid;
-    final isCurrentUser = currentUserId != null && currentUserId == widget.user['id'];
-    
-    debugPrint("🔍 ProfileBackView: Widget user ID: ${widget.user['id']}");
-    debugPrint("🔍 ProfileBackView: ProfileUpdateService user ID: $currentUserId");
-    debugPrint("🔍 ProfileBackView: Is current user: $isCurrentUser");
-    
-    // If this is the current user, get data from ProfileUpdateService
-    if (isCurrentUser && _profileUpdateService?.isDataLoaded == true) {
-      debugPrint("🔍 ProfileBackView: Using ProfileUpdateService data");
-      return _profileUpdateService?.userData ?? widget.user;
-    }
-    
-    // For current user, always use the correct Firebase user ID
-    if (isCurrentUser) {
-      debugPrint("🔍 ProfileBackView: Using correct Firebase user ID: $currentUserId");
-      final correctedUserData = Map<String, dynamic>.from(widget.user);
-      correctedUserData['id'] = currentUserId;
-      return correctedUserData;
-    }
-    
-    // Otherwise use the widget user data
-    debugPrint("🔍 ProfileBackView: Using widget user data");
+    // ProfileBackView displays static user data from the widget
     return widget.user;
   }
 
   @override
   Widget build(BuildContext context) {
-    final String userId = _currentUserData['id'] as String;
+    // ProfileBackView displays the user data passed to it directly
+    // No need to fetch from Firestore again
+    debugPrint("🔍 ProfileBackView: Building with user data: ${_currentUserData['username']}");
     
-    debugPrint("🔍 ProfileBackView: Looking for user with ID: $userId");
-    debugPrint("🔍 ProfileBackView: Current user data: $_currentUserData");
+    // Extract platforms and events from the user data
+    List<CalendarEvent> events = [];
+    List<Map<String, dynamic>> platforms = [];
     
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        debugPrint("🔍 ProfileBackView: StreamBuilder state: ${snapshot.connectionState}");
-        debugPrint("🔍 ProfileBackView: Has data: ${snapshot.hasData}");
-        debugPrint("🔍 ProfileBackView: Has error: ${snapshot.hasError}");
-        if (snapshot.hasData) {
-          debugPrint("🔍 ProfileBackView: Document exists: ${snapshot.data!.exists}");
-        }
-        if (snapshot.hasError) {
-          debugPrint("🔍 ProfileBackView: Error: ${snapshot.error}");
-        }
-        
-        // Handle loading state
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingState();
-        }
-        
-        // Handle error state
-        if (snapshot.hasError) {
-          return _buildErrorState(snapshot.error);
-        }
-        
-        // Handle no data state
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          debugPrint("🔍 ProfileBackView: No data or document doesn't exist - showing Profile Not Found");
-          return _buildNoDataState();
-        }
-        
-        List<CalendarEvent> events = [];
-        List<Map<String, dynamic>> platforms = [];
-        
-        if (snapshot.hasData && snapshot.data!.exists) {
-          final data = snapshot.data!.data() as Map<String, dynamic>?;
-          if (data != null) {
-            // Load calendar events
-            if (data['calendarEvents'] != null) {
-              final eventsData = data['calendarEvents'];
-              if (eventsData is List<dynamic>) {
-                events = eventsData.map((eventData) {
-                  final eventMap = eventData as Map<String, dynamic>?;
-                  if (eventMap != null && 
-                      eventMap['id'] != null && 
-                      eventMap['title'] != null && 
-                      eventMap['description'] != null && 
-                      eventMap['date'] != null) {
-                    return CalendarEvent(
-                      id: eventMap['id'] as String,
-                      title: eventMap['title'] as String,
-                      description: eventMap['description'] as String,
-                      date: (eventMap['date'] as Timestamp).toDate(),
-                    );
-                  }
-                  return null;
-                }).where((event) => event != null).cast<CalendarEvent>().toList();
-                // Events loaded successfully
-              } else {
-                if (kDebugMode) {
-    // debugPrint('calendarEvents is not a List, got: ${eventsData.runtimeType}');
-                }
-              }
-            }
-            
-            // Load platforms
-            if (data['platforms'] != null) {
-              final platformsData = data['platforms'];
-              if (platformsData is List<dynamic>) {
-                platforms = platformsData.map((platformData) {
-                  final platformMap = platformData as Map<String, dynamic>?;
-                  if (platformMap != null) {
-                    return {
-                      'id': platformMap['id']?.toString() ?? '',
-                      'type': platformMap['type']?.toString() ?? '',
-                      'username': platformMap['username']?.toString() ?? '',
-                      'followers': (platformMap['followers'] as num?)?.toInt() ?? 0,
-                      'url': platformMap['url']?.toString(),
-                    };
-                  }
-                  return null;
-                }).where((platform) => platform != null).cast<Map<String, dynamic>>().toList();
-                // Platforms loaded successfully
-              } else {
-                if (kDebugMode) {
-    // debugPrint('platforms is not a List, got: ${platformsData.runtimeType}');
-                }
-              }
-            }
+    // Load calendar events from user data
+    if (_currentUserData['calendarEvents'] != null) {
+      final eventsData = _currentUserData['calendarEvents'];
+      if (eventsData is List<dynamic>) {
+        events = eventsData.map((eventData) {
+          final eventMap = eventData as Map<String, dynamic>?;
+          if (eventMap != null && 
+              eventMap['id'] != null && 
+              eventMap['title'] != null && 
+              eventMap['description'] != null && 
+              eventMap['date'] != null) {
+            return CalendarEvent(
+              id: eventMap['id'] as String,
+              title: eventMap['title'] as String,
+              description: eventMap['description'] as String,
+              date: (eventMap['date'] as Timestamp).toDate(),
+            );
           }
-        } else if (snapshot.hasError) {
-          if (kDebugMode) {
-    // debugPrint('Error loading data: ${snapshot.error}');
+          return null;
+        }).where((event) => event != null).cast<CalendarEvent>().toList();
+      }
+    }
+    
+    // Load platforms from user data
+    if (_currentUserData['platforms'] != null) {
+      final platformsData = _currentUserData['platforms'];
+      if (platformsData is List<dynamic>) {
+        platforms = platformsData.map((platformData) {
+          final platformMap = platformData as Map<String, dynamic>?;
+          if (platformMap != null) {
+            return {
+              'id': platformMap['id']?.toString() ?? '',
+              'type': platformMap['type']?.toString() ?? '',
+              'username': platformMap['username']?.toString() ?? '',
+              'followers': (platformMap['followers'] as num?)?.toInt() ?? 0,
+              'url': platformMap['url']?.toString(),
+            };
           }
-        }
-        
-        return _buildContent(events, platforms);
-      },
-    );
+          return null;
+        }).where((platform) => platform != null).cast<Map<String, dynamic>>().toList();
+      }
+    }
+    
+    return _buildContent(events, platforms);
   }
 
   Widget _buildLoadingState() {

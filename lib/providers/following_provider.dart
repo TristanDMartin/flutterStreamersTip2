@@ -47,12 +47,12 @@ class FollowingNotifier extends StateNotifier<FollowingState> {
     state = state.copyWith(isLoading: true, error: null);
     
     try {
-      final followingList = await FollowingService.getFollowingList();
-      final followersList = await FollowingService.getFollowersList();
-      print('🔵 FollowingNotifier: Loaded ${followingList.length} following, ${followersList.length} followers');
+      final followingUsers = await FollowingService.getFollowingList();
+      final followersUsers = await FollowingService.getFollowersList();
+      print('🔵 FollowingNotifier: Loaded ${followingUsers.length} following, ${followersUsers.length} followers');
       state = state.copyWith(
-        followingList: followingList,
-        followersList: followersList,
+        followingList: followingUsers.map((user) => user.id).toList(),
+        followersList: followersUsers.map((user) => user.id).toList(),
         isLoading: false,
       );
     } catch (e) {
