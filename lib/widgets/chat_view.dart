@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
@@ -18,6 +19,7 @@ final chatNotifierProvider = StateNotifierProvider.family<ChatNotifier, ChatStat
 
 class ChatView extends ConsumerStatefulWidget {
   final Chat chat;
+  final String otherUserId;
   final String otherUserName;
   final String? otherUserAvatarURL;
   final bool otherUserIsOnline;
@@ -25,6 +27,7 @@ class ChatView extends ConsumerStatefulWidget {
   const ChatView({
     super.key,
     required this.chat,
+    required this.otherUserId,
     required this.otherUserName,
     this.otherUserAvatarURL,
     required this.otherUserIsOnline,
@@ -59,7 +62,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
   void _loadOtherUserData() {
     final currentUser = fa.FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
-      _otherUserId = widget.chat.participants.firstWhere((id) => id != currentUser.uid);
+      // Use the provided otherUserId instead of deriving it
+      _otherUserId = widget.otherUserId;
       
       // Load current user's data
       FirebaseFirestore.instance
@@ -69,11 +73,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
           .then((snapshot) {
         if (snapshot.exists && mounted) {
           final data = snapshot.data()!;
+          debugPrint('ChatView: Loading current user data - displayName: ${data['displayName']}, avatarURL: ${data['avatarURL']}');
           setState(() {
             _currentUserDisplayName = data['displayName'] ?? 'You';
             _currentUserAvatarURL = data['avatarURL'];
           });
         }
+      }).catchError((error) {
+        debugPrint('ChatView: Error loading current user data: $error');
       });
       
       // Listen to other user's data
@@ -105,14 +112,12 @@ class _ChatViewState extends ConsumerState<ChatView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(child: _buildMessagesList()),
-            _buildInputBar(),
-          ],
-        ),
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(child: _buildMessagesList()),
+          _buildInputBar(),
+        ],
       ),
     );
   }
@@ -121,7 +126,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   Widget _buildHeader() {
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 8,
+        top: MediaQuery.of(context).padding.top + 16,
         left: 16,
         right: 16,
         bottom: 16,
@@ -342,15 +347,16 @@ class _ChatViewState extends ConsumerState<ChatView> {
             final message = chatState.messages[index];
             final isFromCurrentUser = chatNotifier.isFromCurrentUser(message);
             
-            return _buildMessageBubble(message, isFromCurrentUser, chatState.messages, index);
+            return _buildMessageBubble(message, isFromCurrentUser, chatState.messages, index, chatNotifier);
           },
         );
       },
     );
   }
 
-  Widget _buildMessageBubble(Message message, bool isFromCurrentUser, List<Message> messages, int index) {
-    final showAvatar = _shouldShowAvatar(messages, index);
+  Widget _buildMessageBubble(Message message, bool isFromCurrentUser, List<Message> messages, int index, ChatNotifier chatNotifier) {
+    final showAvatar = _shouldShowAvatar(messages, index, chatNotifier);
+    debugPrint('ChatView: Building message bubble - isFromCurrentUser: $isFromCurrentUser, showAvatar: $showAvatar, currentUserDisplayName: $_currentUserDisplayName, currentUserAvatarURL: $_currentUserAvatarURL');
     
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 300),
@@ -367,6 +373,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 children: [
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: isFromCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
                     children: [
               // For incoming messages (left side)
               if (!isFromCurrentUser) ...[
@@ -391,6 +398,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 // Message bubble for incoming
                 Flexible(
                   child: Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -492,35 +502,45 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 // Message bubble for outgoing
                 Flexible(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFF9248D2),
-                          Color(0xFF7B2CBF),
-                          Color(0xFF6A1B9A),
-                        ],
-                      ),
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(24),
-                        topRight: Radius.circular(24),
-                        bottomLeft: Radius.circular(24),
-                        bottomRight: Radius.circular(8),
-                      ),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha:0.3),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF9248D2).withValues(alpha:0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
                     ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF9248D2), // Purple
+                Color(0xFF7768DF), // Another purple
+                Color(0xFF1670DE), // Blue
+                Color(0xFF3C8BD6), // Lighter blue
+                Color(0xFF4897D2), // Lightest blue
+              ],
+            ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+              bottomLeft: Radius.circular(24),
+              bottomRight: Radius.circular(8),
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha:0.3),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF9248D2).withValues(alpha:0.4),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: const Color(0xFF1670DE).withValues(alpha:0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
                     child: message.messageType == 'gif' && message.gifUrl != null
                         ? Stack(
                             children: [
@@ -629,8 +649,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
     );
   }
 
-  Widget _buildSmallAvatar([String? displayName]) {
-    final name = displayName ?? _otherUserDisplayName;
+  Widget _buildSmallAvatar(String? displayName) {
+    final name = displayName ?? 'User';
+    debugPrint('ChatView: Building small avatar for name: $name');
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -676,7 +697,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     return '$displayHour:${minute.toString().padLeft(2, '0')} $period';
   }
 
-  bool _shouldShowAvatar(List<Message> messages, int index) {
+  bool _shouldShowAvatar(List<Message> messages, int index, ChatNotifier chatNotifier) {
     if (index == 0) return true;
     
     final currentMessage = messages[index];
@@ -684,13 +705,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
     
     // Show avatar if the previous message is from a different user
     // or if there's a time gap of more than 5 minutes
-    return _isFromCurrentUser(currentMessage) != _isFromCurrentUser(previousMessage) ||
+    return chatNotifier.isFromCurrentUser(currentMessage) != chatNotifier.isFromCurrentUser(previousMessage) ||
            currentMessage.timestamp.difference(previousMessage.timestamp).inMinutes > 5;
-  }
-
-  bool _isFromCurrentUser(Message message) {
-    final currentUser = fa.FirebaseAuth.instance.currentUser;
-    return currentUser != null && message.senderId == currentUser.uid;
   }
 
   // Input Bar
@@ -816,53 +832,56 @@ class _ChatViewState extends ConsumerState<ChatView> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.3),
-                borderRadius: BorderRadius.circular(2),
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(top: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha:0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Choose GIF Source',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+              const SizedBox(height: 20),
+              const Text(
+                'Choose GIF Source',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            _buildGifOption(
-              icon: Icons.gif_box_outlined,
-              title: 'Giphy GIFs', // cspell:ignore Giphy
-              subtitle: 'Browse trending GIFs online',
-              onTap: () {
-                Navigator.pop(context);
-                _showGiphyPicker(); // cspell:ignore Giphy
-              },
-            ),
-            _buildGifOption(
-              icon: Icons.photo_library_outlined,
-              title: 'Device GIFs',
-              subtitle: 'Use GIFs from your gallery',
-              onTap: () {
-                Navigator.pop(context);
-                _pickDeviceGif();
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
+              const SizedBox(height: 20),
+              _buildGifOption(
+                icon: Icons.gif_box_outlined,
+                title: 'Giphy GIFs', // cspell:ignore Giphy
+                subtitle: 'Browse trending GIFs online',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showGiphyPicker(); // cspell:ignore Giphy
+                },
+              ),
+              _buildGifOption(
+                icon: Icons.photo_library_outlined,
+                title: 'Device GIFs',
+                subtitle: 'Use GIFs from your gallery',
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickDeviceGif();
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -905,6 +924,19 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   void _showGiphyPicker() async { // cspell:ignore Giphy
     try {
+      debugPrint('ChatView: Opening Giphy picker with API key: ${GiphyConfig.apiKey}');
+      
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Opening Giphy...'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+      
       final gif = await GiphyPicker.pickGif( // cspell:ignore Giphy
         context: context,
         apiKey: GiphyConfig.apiKey, // cspell:ignore Giphy
@@ -912,26 +944,70 @@ class _ChatViewState extends ConsumerState<ChatView> {
         previewType: GiphyPreviewType.previewWebp, // cspell:ignore Giphy Webp
       );
 
+      debugPrint('ChatView: Giphy picker returned: ${gif != null ? "GIF selected" : "No GIF selected"}');
+      
       if (gif != null && mounted) {
-        final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
-        await chatNotifier.sendGif(gif.images.original?.url ?? '');
+        debugPrint('ChatView: GIF details - title: ${gif.title}, URL: ${gif.images.original?.url}');
+        
+        final gifUrl = gif.images.original?.url ?? '';
+        if (gifUrl.isNotEmpty) {
+          final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
+          await chatNotifier.sendGif(gifUrl);
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('GIF sent successfully!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Failed to get GIF URL. Please try again.'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      } else if (mounted) {
+        // User cancelled or no GIF selected
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No GIF selected'),
+            backgroundColor: Colors.grey,
+            duration: Duration(seconds: 1),
+          ),
+        );
       }
     } catch (e) {
+      debugPrint('ChatView: Giphy picker error: $e');
+      
       if (mounted) {
         String errorMessage = 'GIF picker temporarily unavailable';
         if (e.toString().contains('403') || e.toString().contains('banned')) {
           errorMessage = 'GIF picker needs API key setup. Please get a free Giphy API key from https://developers.giphy.com/'; // cspell:ignore Giphy
+        } else if (e.toString().contains('network')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else {
+          errorMessage = 'Failed to open GIF picker: ${e.toString()}';
         }
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
-            backgroundColor: Colors.orange,
+            backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
             action: SnackBarAction(
-              label: 'Get API Key',
+              label: 'Retry',
               textColor: Colors.white,
-              onPressed: () {},
+              onPressed: () {
+                _showGiphyPicker();
+              },
             ),
           ),
         );
@@ -942,9 +1018,23 @@ class _ChatViewState extends ConsumerState<ChatView> {
   void _pickDeviceGif() async {
     try {
       final ImagePicker picker = ImagePicker();
+      
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Opening gallery...'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+      
       final XFile? image = await picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 80,
+        maxWidth: 1024,
+        maxHeight: 1024,
       );
 
       if (image != null && mounted) {
@@ -952,29 +1042,64 @@ class _ChatViewState extends ConsumerState<ChatView> {
         final file = File(image.path);
         final extension = image.path.toLowerCase().split('.').last;
         
+        debugPrint('Selected file: ${image.path}, extension: $extension');
+        
         if (extension == 'gif') {
           // Upload the GIF file to Firebase Storage and get the URL
           final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
           await chatNotifier.sendDeviceGif(file);
-        } else {
+          
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Please select a GIF file'),
-                backgroundColor: Colors.orange,
+                content: Text('GIF sent successfully!'),
+                backgroundColor: Colors.green,
                 duration: Duration(seconds: 2),
               ),
             );
           }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Please select a GIF file. Selected file type: $extension'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
         }
+      } else if (mounted) {
+        // User cancelled or no file selected
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No file selected'),
+            backgroundColor: Colors.grey,
+            duration: Duration(seconds: 1),
+          ),
+        );
       }
     } catch (e) {
+      debugPrint('Error picking device GIF: $e');
+      
       if (mounted) {
+        String errorMessage = 'Failed to access gallery';
+        
+        if (e.toString().contains('Permission denied')) {
+          errorMessage = 'Gallery permission denied. Please enable storage permissions in app settings.';
+        } else if (e.toString().contains('No application found')) {
+          errorMessage = 'No gallery app found. Please install a gallery app or file manager.';
+        } else if (e.toString().contains('User cancelled')) {
+          errorMessage = 'Gallery access cancelled';
+        } else {
+          errorMessage = 'Failed to pick GIF: ${e.toString()}';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to pick GIF: ${e.toString()}'),
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }

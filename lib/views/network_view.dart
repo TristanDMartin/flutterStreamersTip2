@@ -925,7 +925,7 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
         itemBuilder: (context, index) {
           final user = currentList[index];
           debugPrint('🔨 NetworkView: Building user card $index: ${user.displayName} (${user.id})');
-          return _buildUserCard(user);
+          return _buildUserCard(user); // User cards now match search bar width
         },
       ),
     );
@@ -999,19 +999,20 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
           _navigateToStreamerCard(user);
         },
         child: Container(
-          height: 80,
+          width: double.infinity, // Match the full width of the search input box
+          height: 60, // Shorter height for better appearance
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
                 // Avatar
                 CircleAvatar(
-                  radius: 24,
+                  radius: 20, // Slightly smaller to fit the shorter height
                   backgroundColor: Colors.white.withValues(alpha: 0.2),
                   backgroundImage: user.avatarURL != null && user.avatarURL!.isNotEmpty
                       ? NetworkImage(user.avatarURL!)
@@ -1020,7 +1021,7 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
                       ? Icon(
                           Icons.person,
                           color: Colors.white.withValues(alpha: 0.7),
-                          size: 24,
+                          size: 20,
                         )
                       : null,
                 ),
@@ -1035,7 +1036,7 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
                         user.displayName,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 18,
+                          fontSize: 16, // Slightly smaller font
                           fontWeight: FontWeight.bold,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -1045,7 +1046,7 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
                         '@${user.username}',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 13,
+                          fontSize: 12, // Slightly smaller font
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1056,7 +1057,7 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
                 Icon(
                   Icons.chevron_right,
                   color: Colors.white.withValues(alpha: 0.5),
-                  size: 24,
+                  size: 20, // Slightly smaller icon
                 ),
               ],
             ),

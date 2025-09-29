@@ -9,6 +9,7 @@ import 'status_button.dart';
 import '../services/auth_service.dart';
 import '../services/profile_update_service.dart';
 import '../services/content_moderation_service.dart';
+import '../services/storage_diagnostic_service.dart';
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
 
@@ -208,18 +209,25 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   void _showImagePicker() {
+    debugPrint('🖼️ EditProfileView: Opening image picker modal');
+    print('🖼️ EditProfileView: Opening image picker modal (print)');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => ImagePickerWidget(
         onImageSelected: _handleImageSelected,
-        onCancel: () => Navigator.pop(context),
+        onCancel: () {
+          debugPrint('❌ EditProfileView: Image picker cancelled');
+          Navigator.pop(context);
+        },
       ),
     );
   }
 
   void _handleImageSelected(File imageFile) {
+    debugPrint('📸 EditProfileView: Image selected: ${imageFile.path}');
+    print('📸 EditProfileView: Image selected: ${imageFile.path} (print)');
     setState(() {
       _selectedImage = imageFile;
       _uploadError = null;
@@ -229,14 +237,28 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _uploadAvatar(File imageFile) async {
+    debugPrint('🔄 EditProfileView: Starting avatar upload process');
+    print('🔄 EditProfileView: Starting avatar upload process (print)');
+    
     setState(() {
       _isUploadingAvatar = true;
       _uploadError = null;
     });
 
     try {
+      // Validate file before upload
+      if (!await imageFile.exists()) {
+        throw Exception('Selected image file does not exist');
+      }
+
+      final fileSize = await imageFile.length();
+      debugPrint('📁 EditProfileView: File size: ${fileSize} bytes');
+      
       final authService = ProviderScope.containerOf(context).read(authServiceProvider);
+      debugPrint('🔐 EditProfileView: AuthService obtained, starting upload...');
+      
       final downloadUrl = await authService.uploadAvatar(imageFile);
+      debugPrint('✅ EditProfileView: Upload completed, URL: $downloadUrl');
       
       setState(() {
         _user['avatarURL'] = downloadUrl;
@@ -246,6 +268,7 @@ class _EditProfileViewState extends State<EditProfileView> {
       
       // Update local callback
       widget.onUserUpdated(_user);
+      debugPrint('📱 EditProfileView: Local user data updated');
       
       // Update all profile views through ProfileUpdateService
       try {
@@ -254,6 +277,7 @@ class _EditProfileViewState extends State<EditProfileView> {
         debugPrint('✅ EditProfileView: Avatar updated in all profile views');
       } catch (e) {
         debugPrint('❌ EditProfileView: Error updating avatar in profile views: $e');
+        // Don't show error to user for this secondary update
       }
       
       if (mounted) {
@@ -261,19 +285,106 @@ class _EditProfileViewState extends State<EditProfileView> {
           const SnackBar(
             content: Text('Avatar updated successfully!'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
           ),
         );
+        debugPrint('🎉 EditProfileView: Success message shown to user');
       }
     } catch (e) {
+      debugPrint('❌ EditProfileView: Avatar upload failed: $e');
+      
       setState(() {
         _isUploadingAvatar = false;
         _uploadError = e.toString();
       });
       
       if (mounted) {
+        String errorMessage = 'Failed to upload avatar';
+        
+        // Extract user-friendly error message
+        if (e.toString().contains('Storage access denied')) {
+          errorMessage = 'Storage access denied. Please check your permissions.';
+        } else if (e.toString().contains('Network error')) {
+          errorMessage = 'Network error. Please check your internet connection.';
+        } else if (e.toString().contains('too large')) {
+          errorMessage = 'Image file is too large. Please choose a smaller image.';
+        } else if (e.toString().contains('does not exist')) {
+          errorMessage = 'Selected image file not found. Please try again.';
+        } else if (e.toString().contains('User not authenticated')) {
+          errorMessage = 'Please sign in again to upload your avatar.';
+        } else {
+          errorMessage = e.toString().replaceAll('Exception: ', '');
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to upload avatar: ${e.toString()}'),
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Diagnose',
+              textColor: Colors.white,
+              onPressed: () {
+                _runStorageDiagnostics();
+              },
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _runStorageDiagnostics() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Running Firebase Storage diagnostics...'),
+          backgroundColor: Colors.blue,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      final results = await StorageDiagnosticService.runDiagnostics();
+      final recommendations = StorageDiagnosticService.getRecommendations(results);
+      
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Firebase Storage Diagnostics'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Status: ${results['overall_status']}'),
+                  const SizedBox(height: 8),
+                  Text('Storage Instance: ${results['storage_instance']}'),
+                  Text('Storage Bucket: ${results['storage_bucket']}'),
+                  Text('User Authenticated: ${results['user_authenticated']}'),
+                  Text('Storage Access: ${results['storage_access']}'),
+                  Text('Storage Write: ${results['storage_write']}'),
+                  const SizedBox(height: 16),
+                  const Text('Recommendations:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(recommendations),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Diagnostics failed: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -552,7 +663,11 @@ class _EditProfileViewState extends State<EditProfileView> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20),
       child: GestureDetector(
-        onTap: _isUploadingAvatar ? null : _showImagePicker,
+        onTap: _isUploadingAvatar ? null : () {
+          debugPrint('👆 EditProfileView: Avatar button tapped');
+          print('👆 EditProfileView: Avatar button tapped (print)');
+          _showImagePicker();
+        },
         child: Column(
           children: [
             Stack(

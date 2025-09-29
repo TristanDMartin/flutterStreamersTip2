@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/shared_draft.dart';
 import '../models/user.dart' as app_user;
@@ -8,7 +10,7 @@ import '../services/inbox_service_optimized.dart';
 import '../services/logging_service.dart';
 import '../services/offline_inbox_service.dart';
 import '../providers/unread_messages_provider.dart';
-import 'chat_view_optimized.dart';
+import 'chat_view.dart';
 import 'new_message_view.dart';
 import 'draft_creation_view.dart';
 
@@ -114,6 +116,52 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         }
       },
     );
+
+    // Set up real-time user profile listeners for existing chats
+    _setupUserProfileListeners();
+  }
+
+  void _setupUserProfileListeners() {
+    final currentUser = _inboxService.auth.currentUser;
+    if (currentUser == null) return;
+
+    for (final chat in _chats) {
+      final otherUserId = chat.participants.firstWhere(
+        (id) => id != currentUser.uid,
+        orElse: () => chat.participants.first,
+      );
+
+      // Listen to user profile changes
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(otherUserId)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.exists && mounted) {
+          final data = snapshot.data()!;
+          final updatedUser = app_user.User(
+            id: snapshot.id,
+            displayName: data['displayName'] ?? 'User',
+            username: data['username'] ?? 'user',
+            bio: data['bio'],
+            avatarURL: data['avatarURL'],
+            onlineStatus: data['onlineStatus'] ?? 'offline',
+            hashtags: data['hashtags'] is List ? List<String>.from(data['hashtags']) : [],
+            aiSelf: data['aiSelf'] ?? '',
+            postCount: data['postCount'] ?? 0,
+            followerCount: data['followerCount'] ?? 0,
+            followingCount: data['followingCount'] ?? 0,
+            calendarEvents: [],
+          );
+          
+          setState(() {
+            _userProfiles[otherUserId] = updatedUser;
+          });
+          
+          debugPrint('InboxView: Updated user profile for $otherUserId - displayName: ${updatedUser.displayName}, username: ${updatedUser.username}');
+        }
+      });
+    }
   }
 
   Future<void> _loadOfflineData() async {
@@ -190,6 +238,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final currentUser = _inboxService.auth.currentUser;
     if (currentUser == null) return;
 
+    debugPrint('InboxView: Loading user data for ${chats.length} chats');
+
     // Load user profiles and unread counts in parallel
     final futures = <Future>[];
     
@@ -200,10 +250,15 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         orElse: () => chat.participants.first,
       );
 
+      debugPrint('InboxView: Loading data for other user: $otherUserId');
+
       // Load user profile
       futures.add(_inboxService.getUserProfile(otherUserId).then((user) {
         if (user != null) {
+          debugPrint('InboxView: Loaded user profile - displayName: ${user.displayName}, username: ${user.username}, avatarURL: ${user.avatarURL}');
           _userProfiles[otherUserId] = user;
+        } else {
+          debugPrint('InboxView: Failed to load user profile for $otherUserId');
         }
       }));
 
@@ -219,6 +274,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
 
     await Future.wait(futures);
+    
+    debugPrint('InboxView: Loaded ${_userProfiles.length} user profiles');
     
     // Cache user data offline
     await _offlineService.cacheUserProfiles(_userProfiles);
@@ -668,12 +725,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         : chat.participants.first;
     
     final userProfile = _userProfiles[otherUserId];
-    final participantName = userProfile?.displayName ?? userProfile?.username ?? 'Unknown User';
-    final initials = participantName.isNotEmpty 
+    final participantName = userProfile?.displayName ?? userProfile?.username ?? 'Loading...';
+    final initials = participantName.isNotEmpty && participantName != 'Loading...'
         ? participantName[0].toUpperCase() 
-        : 'U';
+        : 'L';
     final unreadCount = _unreadCounts[chat.id ?? ''] ?? 0;
     final isOnline = _onlineStatus[otherUserId] ?? false;
+    
+    debugPrint('InboxView: Building chat tile for $otherUserId - userProfile: ${userProfile != null ? 'loaded' : 'null'}, name: $participantName');
     
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
@@ -1488,11 +1547,12 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     if (mounted) {
       Navigator.of(context).push(
         _createSlideTransition(
-          page: ChatViewOptimized(
+          page: ChatView(
             chat: chat,
             otherUserId: otherUserId,
             otherUserName: userProfile?.displayName ?? userProfile?.username ?? 'User',
             otherUserAvatarURL: userProfile?.avatarURL,
+            otherUserIsOnline: _onlineStatus[otherUserId] ?? false,
           ),
           begin: const Offset(1.0, 0.0),
           fullscreenDialog: false,

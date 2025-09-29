@@ -1534,6 +1534,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           MaterialPageRoute(
             builder: (context) => ChatView(
               chat: chat,
+              otherUserId: widget.userId,
               otherUserName: otherUserName,
               otherUserAvatarURL: otherUserAvatarURL,
               otherUserIsOnline: otherUserIsOnline,

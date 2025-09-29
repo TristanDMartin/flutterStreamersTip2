@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter/foundation.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/shared_draft.dart';
 import '../models/user.dart' as app_user;
@@ -122,18 +123,26 @@ class InboxServiceOptimized {
   /// Get user profile by ID
   Future<app_user.User?> getUserProfile(String userId) async {
     if (_userCache.containsKey(userId)) {
+      debugPrint('InboxService: Returning cached user profile for $userId');
       return _userCache[userId];
     }
 
     try {
+      debugPrint('InboxService: Fetching user profile for $userId from Firebase');
       final doc = await _firestore.collection('users').doc(userId).get();
       if (doc.exists) {
-        final user = _mapUser(doc.id, doc.data()!);
+        final data = doc.data()!;
+        debugPrint('InboxService: User data found - displayName: ${data['displayName']}, username: ${data['username']}, avatarURL: ${data['avatarURL']}');
+        final user = _mapUser(doc.id, data);
         _userCache[userId] = user;
+        debugPrint('InboxService: Mapped user - displayName: ${user.displayName}, username: ${user.username}, avatarURL: ${user.avatarURL}');
         return user;
+      } else {
+        debugPrint('InboxService: No user document found for $userId');
       }
       return null;
     } catch (e) {
+      debugPrint('InboxService: Error getting user profile for $userId: $e');
       LoggingService.instance.error('Error getting user profile: $e');
       return null;
     }
@@ -398,12 +407,12 @@ class InboxServiceOptimized {
   app_user.User _mapUser(String id, Map<String, dynamic> data) {
     return app_user.User(
       id: id,
-      displayName: data['displayName'] ?? '',
-      username: data['username'] ?? '',
+      displayName: data['displayName'] ?? 'User',
+      username: data['username'] ?? 'user',
       bio: data['bio'],
       avatarURL: data['avatarURL'],
       onlineStatus: data['onlineStatus'] ?? 'offline',
-      hashtags: List<String>.from(data['hashtags'] ?? []),
+      hashtags: data['hashtags'] is List ? List<String>.from(data['hashtags']) : [],
       aiSelf: data['aiSelf'] ?? '',
       postCount: data['postCount'] ?? 0,
       followerCount: data['followerCount'] ?? 0,

@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/user.dart';
 import '../models/user_status.dart';
 import 'username_lock_service.dart';
@@ -659,27 +660,100 @@ class AuthenticationService extends ChangeNotifier {
   Future<String> uploadAvatar(File imageFile) async {
     try {
       setLoading(true);
+      debugPrint('🔄 Starting avatar upload for user: ${_auth.currentUser?.uid}');
       
       final user = _auth.currentUser;
       if (user == null) {
+        debugPrint('❌ Avatar upload failed: User not authenticated');
         throw Exception('User not authenticated');
       }
 
+      // Validate file exists and is readable
+      if (!await imageFile.exists()) {
+        debugPrint('❌ Avatar upload failed: File does not exist');
+        throw Exception('Selected image file does not exist');
+      }
+
+      // Check file size (max 10MB)
+      final fileSize = await imageFile.length();
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (fileSize > maxSize) {
+        debugPrint('❌ Avatar upload failed: File too large (${fileSize} bytes)');
+        throw Exception('Image file is too large. Maximum size is 10MB.');
+      }
+
+      debugPrint('✅ File validation passed. Size: ${fileSize} bytes');
+
+      // Check network connectivity
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult == ConnectivityResult.none) {
+        debugPrint('❌ Avatar upload failed: No network connection');
+        throw Exception('No internet connection. Please check your network and try again.');
+      }
+      debugPrint('✅ Network connectivity confirmed');
+
+                  // Test Firebase Storage connectivity first
+                  try {
+                    debugPrint('🧪 Testing Firebase Storage connectivity...');
+                    await _storage.ref().child('test').getMetadata();
+                    debugPrint('✅ Firebase Storage is accessible');
+                  } catch (e) {
+                    debugPrint('❌ Firebase Storage test failed: $e');
+                    if (e.toString().contains('storage/bucket-not-found')) {
+                      throw Exception('Firebase Storage bucket not configured. Please set up Storage in Firebase Console.');
+                    } else if (e.toString().contains('storage/object-not-found')) {
+                      // object-not-found is expected for a test file, so this is actually success
+                      debugPrint('✅ Firebase Storage is accessible (object-not-found is expected for test file)');
+                    } else {
+                      throw Exception('Firebase Storage is not accessible. Please check your Firebase configuration.');
+                    }
+                  }
+
       // Create a reference to the file in Firebase Storage
-      final ref = _storage.ref().child('avatars/${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      debugPrint('🔧 Firebase Storage instance: ${_storage.app.name}');
+      debugPrint('🔧 Firebase Storage bucket: ${_storage.bucket}');
+      final ref = _storage.ref().child('avatars/${user.uid}_$timestamp.jpg');
       
-      // Upload the file
-      final uploadTask = ref.putFile(imageFile);
+      debugPrint('📁 Storage reference created: avatars/${user.uid}_$timestamp.jpg');
+      debugPrint('📁 Storage reference full path: ${ref.fullPath}');
+      
+      // Upload the file with metadata
+      final uploadTask = ref.putFile(
+        imageFile,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'uploadedBy': user.uid,
+            'uploadedAt': timestamp.toString(),
+          },
+        ),
+      );
+      
+      debugPrint('⬆️ Starting file upload to Firebase Storage...');
+      
+      // Listen to upload progress
+      uploadTask.snapshotEvents.listen((snapshot) {
+        final progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        debugPrint('📊 Upload progress: ${progress.toStringAsFixed(1)}%');
+      });
+      
       final snapshot = await uploadTask;
+      
+      debugPrint('✅ File upload completed successfully');
       
       // Get the download URL
       final downloadUrl = await snapshot.ref.getDownloadURL();
+      debugPrint('🔗 Download URL obtained: $downloadUrl');
       
       // Update user profile in Firestore
+      debugPrint('💾 Updating user profile in Firestore...');
       await _firestore.collection('users').doc(user.uid).update({
         'avatarURL': downloadUrl,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      
+      debugPrint('✅ Firestore profile updated successfully');
       
       // Update current user profile data
       if (_currentUserProfile != null) {
@@ -687,12 +761,70 @@ class AuthenticationService extends ChangeNotifier {
         _currentUserProfile!['updatedAt'] = DateTime.now().toIso8601String();
       }
       
-    // print('✅ Avatar uploaded successfully: $downloadUrl');
+      // Update current user object
+      if (_currentUser != null) {
+        _currentUser = User(
+          id: _currentUser!.id,
+          username: _currentUser!.username,
+          displayName: _currentUser!.displayName,
+          bio: _currentUser!.bio,
+          avatarURL: downloadUrl,
+          onlineStatus: _currentUser!.onlineStatus,
+          hashtags: _currentUser!.hashtags,
+          postCount: _currentUser!.postCount,
+          followerCount: _currentUser!.followerCount,
+          followingCount: _currentUser!.followingCount,
+        );
+        notifyListeners();
+      }
+      
+      debugPrint('🎉 Avatar uploaded successfully: $downloadUrl');
       return downloadUrl;
       
     } catch (e) {
-    // print('❌ Error uploading avatar: $e');
-      throw Exception('Failed to upload avatar: ${e.toString()}');
+      debugPrint('❌ Error uploading avatar: $e');
+      debugPrint('❌ Error type: ${e.runtimeType}');
+      debugPrint('❌ Error toString: ${e.toString()}');
+      if (e is Exception) {
+        debugPrint('❌ Exception details: ${e.toString()}');
+      }
+      
+      // Provide more specific error messages
+      String errorMessage = 'Failed to upload avatar';
+      
+      if (e.toString().contains('Storage bucket not configured')) {
+        errorMessage = 'Firebase Storage not set up. Please enable Storage in Firebase Console.';
+      } else if (e.toString().contains('Storage is not accessible')) {
+        errorMessage = 'Firebase Storage connection failed. Please check your internet connection.';
+      } else if (e.toString().contains('No internet connection')) {
+        errorMessage = 'No internet connection. Please check your network and try again.';
+      } else if (e.toString().contains('storage/unauthorized')) {
+        errorMessage = 'Storage access denied. Please check your permissions.';
+      } else if (e.toString().contains('storage/object-not-found')) {
+        errorMessage = 'Storage object not found. Please try again.';
+      } else if (e.toString().contains('storage/bucket-not-found')) {
+        errorMessage = 'Firebase Storage bucket not found. Please set up Storage in Firebase Console.';
+      } else if (e.toString().contains('storage/project-not-found')) {
+        errorMessage = 'Firebase project not found. Please contact support.';
+      } else if (e.toString().contains('storage/quota-exceeded')) {
+        errorMessage = 'Storage quota exceeded. Please contact support.';
+      } else if (e.toString().contains('network') || e.toString().contains('timeout')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (e.toString().contains('permission')) {
+        errorMessage = 'Permission denied. Please check your app permissions.';
+      } else if (e.toString().contains('too large')) {
+        errorMessage = e.toString().split(': ').last;
+      } else if (e.toString().contains('does not exist')) {
+        errorMessage = e.toString().split(': ').last;
+      } else if (e.toString().contains('User not authenticated')) {
+        errorMessage = 'Please sign in again to upload your avatar.';
+      } else if (e.toString().contains('firebase_storage/unknown')) {
+        errorMessage = 'Firebase Storage is not properly configured. Please enable Storage in Firebase Console.';
+      } else {
+        errorMessage = 'Failed to upload avatar: ${e.toString()}';
+      }
+      
+      throw Exception(errorMessage);
     } finally {
       setLoading(false);
     }

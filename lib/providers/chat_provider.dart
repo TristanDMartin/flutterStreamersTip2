@@ -112,12 +112,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   Future<void> sendGif(String gifUrl) async {
+    print('ChatNotifier: sendGif called with URL: $gifUrl');
+    
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
+      print('ChatNotifier: No current user found');
       state = state.copyWith(error: "You need to be signed in to send messages");
       return;
     }
     if (chat.id == null || chat.id!.isEmpty) {
+      print('ChatNotifier: No chat ID found');
       state = state.copyWith(error: "Chat not found. Please try again.");
       return;
     }
@@ -127,6 +131,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
       (id) => id != currentUser.uid,
       orElse: () => "",
     );
+
+    print('ChatNotifier: Sending GIF - chatId: $chatId, otherId: $otherId, gifUrl: $gifUrl');
 
     try {
       await FirebaseFirestore.instance
@@ -150,7 +156,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastMessage": "[GIF]",
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
+      
+      print('ChatNotifier: GIF sent successfully');
     } catch (e) {
+      print('ChatNotifier: Error sending GIF: $e');
       state = state.copyWith(error: "Failed to send GIF: ${e.toString()}");
     }
   }

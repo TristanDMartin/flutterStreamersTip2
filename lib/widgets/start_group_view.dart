@@ -133,6 +133,7 @@ class _StartGroupViewState extends ConsumerState<StartGroupView> {
           MaterialPageRoute(
             builder: (context) => ChatView(
               chat: chat,
+              otherUserId: chat.participants.firstWhere((id) => id != fa.FirebaseAuth.instance.currentUser?.uid, orElse: () => chat.participants.first),
               otherUserName: groupName,
               otherUserAvatarURL: null,
               otherUserIsOnline: false,

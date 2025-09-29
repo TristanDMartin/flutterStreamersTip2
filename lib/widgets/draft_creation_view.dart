@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/shared_draft.dart';
+import '../models/user_model.dart' as user_model;
 import '../services/draft_service.dart';
 import '../services/logging_service.dart';
+import 'friend_selection_view.dart';
 
 class DraftCreationView extends StatefulWidget {
   final String? receiverId;
@@ -28,6 +30,7 @@ class _DraftCreationViewState extends State<DraftCreationView> {
   bool _isLoading = false;
   String? _thumbnailUrl;
   int _duration = 0;
+  user_model.User? _selectedUser;
 
   @override
   void initState() {
@@ -125,19 +128,10 @@ class _DraftCreationViewState extends State<DraftCreationView> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Receiver field
-                  _buildSectionTitle('Receiver ID'),
+                  // Friend selection field
+                  _buildSectionTitle('Send To'),
                   const SizedBox(height: 8),
-                  _buildTextField(
-                    controller: _receiverController,
-                    hintText: 'Enter receiver user ID',
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Receiver ID is required';
-                      }
-                      return null;
-                    },
-                  ),
+                  _buildFriendSelectionField(),
                   const SizedBox(height: 24),
 
                   // Message field
@@ -333,6 +327,17 @@ class _DraftCreationViewState extends State<DraftCreationView> {
 
   Future<void> _saveDraft() async {
     if (!_formKey.currentState!.validate()) return;
+    
+    // Check if a friend is selected
+    if (_selectedUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a friend to share with'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -365,7 +370,7 @@ class _DraftCreationViewState extends State<DraftCreationView> {
         final draft = await _draftService.createDraft(
           title: _titleController.text,
           message: _messageController.text,
-          receiverId: _receiverController.text,
+          receiverId: _selectedUser!.id,
           thumbnailUrl: _thumbnailUrl,
           duration: _duration,
         );
@@ -397,6 +402,152 @@ class _DraftCreationViewState extends State<DraftCreationView> {
         });
       }
     }
+  }
+
+  Widget _buildFriendSelectionField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _selectFriend,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.person_add,
+                  color: Colors.white.withOpacity(0.6),
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _selectedUser != null
+                      ? Row(
+                          children: [
+                            // Selected user avatar
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: _selectedUser!.avatarURL != null 
+                                    ? null
+                                    : const LinearGradient(
+                                        colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
+                                      ),
+                              ),
+                              child: _selectedUser!.avatarURL != null
+                                  ? ClipOval(
+                                      child: Image.network(
+                                        _selectedUser!.avatarURL!,
+                                        width: 32,
+                                        height: 32,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return Center(
+                                            child: Text(
+                                              _selectedUser!.displayName.isNotEmpty 
+                                                  ? _selectedUser!.displayName[0].toUpperCase()
+                                                  : 'U',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Text(
+                                        _selectedUser!.displayName.isNotEmpty 
+                                            ? _selectedUser!.displayName[0].toUpperCase()
+                                            : 'U',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _selectedUser!.displayName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    '@${_selectedUser!.username}',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.6),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          'Select a friend to share with',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white.withOpacity(0.4),
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectFriend() async {
+    HapticFeedback.lightImpact();
+    
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FriendSelectionView(
+          onUserSelected: (user_model.User user) {
+            setState(() {
+              _selectedUser = user;
+              _receiverController.text = user.id;
+            });
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteDraft() async {

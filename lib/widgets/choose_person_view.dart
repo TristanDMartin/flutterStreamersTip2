@@ -98,6 +98,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
           MaterialPageRoute(
             builder: (context) => ChatView(
               chat: chat,
+              otherUserId: person.id,
               otherUserName: person.displayName,
               otherUserAvatarURL: person.avatarURL,
               otherUserIsOnline: person.onlineStatus == 'online',

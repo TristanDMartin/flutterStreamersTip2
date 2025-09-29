@@ -29,6 +29,9 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
     });
     
     try {
+      debugPrint('📱 ImagePickerWidget: Opening gallery picker');
+      print('📱 ImagePickerWidget: Opening gallery picker (print)');
+      
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 1024,
@@ -37,12 +40,60 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       );
       
       if (image != null) {
-        widget.onImageSelected(File(image.path));
+        debugPrint('✅ ImagePickerWidget: Image selected from gallery: ${image.path}');
+        
+        // Validate the selected file
+        final file = File(image.path);
+        if (await file.exists()) {
+          final fileSize = await file.length();
+          debugPrint('📁 ImagePickerWidget: File size: ${fileSize} bytes');
+          
+          if (fileSize > 10 * 1024 * 1024) { // 10MB limit
+            debugPrint('❌ ImagePickerWidget: File too large');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Image file is too large. Please choose a smaller image (max 10MB).'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            widget.onCancel?.call();
+            return;
+          }
+          
+          print('✅ ImagePickerWidget: Calling onImageSelected callback');
+          widget.onImageSelected(file);
+        } else {
+          debugPrint('❌ ImagePickerWidget: Selected file does not exist');
+          print('❌ ImagePickerWidget: Selected file does not exist (print)');
+          widget.onCancel?.call();
+        }
       } else {
+        debugPrint('ℹ️ ImagePickerWidget: Gallery picker cancelled');
         widget.onCancel?.call();
       }
     } catch (e) {
-      debugPrint('❌ Error picking image: $e');
+      debugPrint('❌ ImagePickerWidget: Error picking image from gallery: $e');
+      
+      if (mounted) {
+        String errorMessage = 'Failed to pick image';
+        if (e.toString().contains('Permission denied')) {
+          errorMessage = 'Permission denied. Please allow access to photos in settings.';
+        } else if (e.toString().contains('User cancelled')) {
+          errorMessage = 'Image selection cancelled.';
+        } else {
+          errorMessage = 'Failed to pick image: ${e.toString()}';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      
       widget.onCancel?.call();
     } finally {
       if (mounted) {
