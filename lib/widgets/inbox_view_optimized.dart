@@ -27,6 +27,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   final InboxServiceOptimized _inboxService = InboxServiceOptimized();
   final OfflineInboxService _offlineService = OfflineInboxService();
   final TextEditingController _searchController = TextEditingController();
+  bool _isNavigating = false;
 
   // Constants
   static const Color _primaryColor = Color(0xFF9248D2);
@@ -1521,43 +1522,66 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   void _openChat(app_chat.Chat chat) async {
     HapticFeedback.lightImpact();
     
-    // Get other user ID
-    final currentUser = _inboxService.auth.currentUser;
-    if (currentUser == null) return;
+    // Prevent multiple simultaneous taps
+    if (_isNavigating) return;
+    _isNavigating = true;
     
-    final otherUserId = chat.participants.firstWhere(
-      (id) => id != currentUser.uid,
-      orElse: () => chat.participants.first,
-    );
-    
-    // Mark messages as read when opening chat
-    await _inboxService.markAsRead(chat.id ?? '');
-    
-    // Update unread count
-    setState(() {
-      _unreadCounts[chat.id ?? ''] = 0;
-    });
-    
-    // Force refresh the unread messages provider
-    ref.invalidate(unreadMessagesProvider);
-    
-    final userProfile = _userProfiles[otherUserId];
-    // final isOnline = _onlineStatus[otherUserId] ?? false; // Unused variable commented out
-    
-    if (mounted) {
-      Navigator.of(context).push(
-        _createSlideTransition(
-          page: ChatView(
-            chat: chat,
-            otherUserId: otherUserId,
-            otherUserName: userProfile?.displayName ?? userProfile?.username ?? 'User',
-            otherUserAvatarURL: userProfile?.avatarURL,
-            otherUserIsOnline: _onlineStatus[otherUserId] ?? false,
-          ),
-          begin: const Offset(1.0, 0.0),
-          fullscreenDialog: false,
-        ),
+    try {
+      // Get other user ID
+      final currentUser = _inboxService.auth.currentUser;
+      if (currentUser == null) return;
+      
+      final otherUserId = chat.participants.firstWhere(
+        (id) => id != currentUser.uid,
+        orElse: () => chat.participants.first,
       );
+      
+      debugPrint('InboxView: Opening chat with user: $otherUserId');
+      
+      // Mark messages as read when opening chat (non-blocking)
+      _inboxService.markAsRead(chat.id ?? '').catchError((error) {
+        debugPrint('InboxView: Error marking as read: $error');
+      });
+      
+      // Update unread count
+      if (mounted) {
+        setState(() {
+          _unreadCounts[chat.id ?? ''] = 0;
+        });
+      }
+      
+      // Force refresh the unread messages provider
+      ref.invalidate(unreadMessagesProvider);
+      
+      final userProfile = _userProfiles[otherUserId];
+      
+      if (mounted) {
+        // Use a simpler navigation without complex transitions
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ChatView(
+              chat: chat,
+              otherUserId: otherUserId,
+              otherUserName: userProfile?.displayName ?? userProfile?.username ?? 'User',
+              otherUserAvatarURL: userProfile?.avatarURL,
+              otherUserIsOnline: _onlineStatus[otherUserId] ?? false,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('InboxView: Error opening chat: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to open chat: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      _isNavigating = false;
     }
   }
 

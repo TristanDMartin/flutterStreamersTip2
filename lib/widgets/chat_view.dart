@@ -40,8 +40,11 @@ class ChatView extends ConsumerStatefulWidget {
 class _ChatViewState extends ConsumerState<ChatView> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _isPickingGif = false;
   String _otherUserId = '';
   String _otherUserDisplayName = '';
+  String _otherUserUsername = '';
   String? _otherUserAvatarURL;
   String? _currentUserAvatarURL;
   String _currentUserDisplayName = '';
@@ -57,7 +60,204 @@ class _ChatViewState extends ConsumerState<ChatView> {
         UnreadMessagesService.markChatAsRead(widget.chat.id!);
       }
     });
+    
+    // Listen to keyboard changes to auto-scroll
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _scrollToBottom();
+      }
+    });
+    
+    // Listen for shared content from keyboards
+    _listenForSharedContent();
   }
+  
+  void _listenForSharedContent() {
+    // This would typically be handled by a plugin like share_plus
+    // For now, we'll add a listener for when the app receives shared content
+    try {
+      // Listen for shared images/GIFs from keyboard
+      // This is a placeholder - in a real implementation, you'd use a plugin
+      // like share_plus or receive_sharing_intent to handle this
+      debugPrint('ChatView: Listening for shared content from keyboard');
+    } catch (e) {
+      debugPrint('ChatView: Error setting up shared content listener: $e');
+    }
+  }
+
+  void _showGifUrlCopyDialog() {
+    final TextEditingController urlController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          'Get GIF URL',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter a GIF URL to copy it to your clipboard:',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: urlController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'https://media.giphy.com/media/...',
+                hintStyle: TextStyle(color: Colors.white70),
+                border: OutlineInputBorder(),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF9248D2)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (urlController.text.isNotEmpty) {
+                await Clipboard.setData(ClipboardData(text: urlController.text.trim()));
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('GIF URL copied to clipboard!'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Copy', style: TextStyle(color: Color(0xFF9248D2))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handlePastedContent() async {
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      if (clipboardData?.text != null) {
+        final pastedText = clipboardData!.text!;
+        debugPrint('ChatView: Pasted content: $pastedText');
+        
+        // Check if the pasted content is a GIF URL
+        if (_isGifUrl(pastedText)) {
+          await _handleGifUrl(pastedText);
+        } else {
+          // Show message that it's not a GIF URL
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please paste a GIF URL (e.g., from Giphy)'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No content found in clipboard'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('ChatView: Error handling pasted content: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error pasting content: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  bool _isGifUrl(String text) {
+    // Check if the text is a GIF URL
+    final gifPatterns = [
+      RegExp(r'https?://.*\.gif(\?.*)?$', caseSensitive: false),
+      RegExp(r'https?://.*giphy\.com.*\.gif', caseSensitive: false),
+      RegExp(r'https?://.*tenor\.com.*\.gif', caseSensitive: false),
+      RegExp(r'https?://.*media\.giphy\.com.*', caseSensitive: false),
+    ];
+    
+    return gifPatterns.any((pattern) => pattern.hasMatch(text));
+  }
+
+  Future<void> _handleGifUrl(String gifUrl) async {
+    try {
+      debugPrint('ChatView: Handling GIF URL: $gifUrl');
+      
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sending GIF...'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      
+      // Send the GIF using the chat notifier
+      final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
+      await chatNotifier.sendGif(gifUrl);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('GIF sent successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('ChatView: Error sending GIF from URL: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send GIF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
 
   void _loadOtherUserData() {
     final currentUser = fa.FirebaseAuth.instance.currentUser;
@@ -93,6 +293,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
           final data = snapshot.data()!;
           setState(() {
             _otherUserDisplayName = data['displayName'] ?? 'User';
+            _otherUserUsername = data['username'] ?? 'user';
             _otherUserAvatarURL = data['avatarURL'];
             _otherUserIsOnline = data['onlineStatus'] == 'online';
           });
@@ -111,13 +312,28 @@ class _ChatViewState extends ConsumerState<ChatView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Column(
-        children: [
-          _buildHeader(),
-          Expanded(child: _buildMessagesList()),
-          _buildInputBar(),
-        ],
+      resizeToAvoidBottomInset: true,
+      body: GestureDetector(
+        onTap: () {
+          // Hide keyboard when tapping on the screen
+          FocusScope.of(context).unfocus();
+        },
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+            ),
+          ),
+          child: Column(
+            children: [
+              _buildHeader(),
+              Expanded(child: _buildMessagesList()),
+              _buildInputBar(),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -135,7 +351,15 @@ class _ChatViewState extends ConsumerState<ChatView> {
         children: [
           // Back arrow
           GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () {
+              debugPrint('ChatView: Back button tapped');
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else {
+                debugPrint('ChatView: Cannot pop, using system back');
+                SystemNavigator.pop();
+              }
+            },
             child: const Icon(
               Icons.arrow_back,
               color: Colors.white,
@@ -157,11 +381,18 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       height: 40,
                       decoration: const BoxDecoration(shape: BoxShape.circle),
                       child: ClipOval(
-                        child: _otherUserAvatarURL != null
+                        child: _otherUserAvatarURL != null && _otherUserAvatarURL!.isNotEmpty
                             ? Image.network(
                                 _otherUserAvatarURL!,
                                 fit: BoxFit.cover,
+                                width: 40,
+                                height: 40,
                                 errorBuilder: (context, error, stackTrace) {
+                                  debugPrint('ChatView: Error loading other user avatar: $error');
+                                  return _buildDefaultAvatar();
+                                },
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
                                   return _buildDefaultAvatar();
                                 },
                               )
@@ -203,7 +434,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        '@${_otherUserId.isNotEmpty ? _otherUserId.substring(0, 8) : 'user'}',
+                        '@${_otherUserUsername.isNotEmpty ? _otherUserUsername : 'user'}',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha:0.6),
                           fontSize: 14,
@@ -233,7 +464,23 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   Widget _buildDefaultAvatar() {
     return Container(
-      color: Colors.grey.withValues(alpha:0.3),
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF9248D2).withValues(alpha:0.8),
+            const Color(0xFF7B2CBF).withValues(alpha:0.8),
+          ],
+        ),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha:0.3),
+          width: 2,
+        ),
+      ),
       child: Center(
         child: Text(
           _otherUserDisplayName.isNotEmpty ? _otherUserDisplayName[0].toUpperCase() : 'U',
@@ -251,29 +498,34 @@ class _ChatViewState extends ConsumerState<ChatView> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.3),
-                borderRadius: BorderRadius.circular(2),
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(top: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha:0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            _buildSettingsOption(Icons.volume_off, 'Mute', () {}),
-            _buildSettingsOption(Icons.flag, 'Report', () {}),
-            _buildSettingsOption(Icons.block, 'Block', () {}),
-            const SizedBox(height: 20),
-          ],
+              const SizedBox(height: 20),
+              _buildSettingsOption(Icons.volume_off, 'Mute', () {}),
+              _buildSettingsOption(Icons.flag, 'Report', () {}),
+              _buildSettingsOption(Icons.block, 'Block', () {}),
+              const SizedBox(height: 20),
+              // Add extra padding at the bottom to ensure content is not cut off
+              SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+            ],
+          ),
         ),
       ),
     );
@@ -339,16 +591,29 @@ class _ChatViewState extends ConsumerState<ChatView> {
           );
         }
         
-        return ListView.builder(
-          controller: _scrollController,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          itemCount: chatState.messages.length,
-          itemBuilder: (context, index) {
-            final message = chatState.messages[index];
-            final isFromCurrentUser = chatNotifier.isFromCurrentUser(message);
-            
-            return _buildMessageBubble(message, isFromCurrentUser, chatState.messages, index, chatNotifier);
+        return GestureDetector(
+          onTap: () {
+            // Hide keyboard when tapping on messages area
+            FocusScope.of(context).unfocus();
           },
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            itemCount: chatState.messages.length,
+            itemBuilder: (context, index) {
+              final message = chatState.messages[index];
+              final isFromCurrentUser = chatNotifier.isFromCurrentUser(message);
+              
+              // Auto-scroll to bottom when new messages arrive
+              if (index == chatState.messages.length - 1) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scrollToBottom();
+                });
+              }
+              
+              return _buildMessageBubble(message, isFromCurrentUser, chatState.messages, index, chatNotifier);
+            },
+          ),
         );
       },
     );
@@ -383,11 +648,18 @@ class _ChatViewState extends ConsumerState<ChatView> {
                   margin: const EdgeInsets.only(right: 8),
                   child: showAvatar
                       ? ClipOval(
-                          child: _otherUserAvatarURL != null
+                          child: _otherUserAvatarURL != null && _otherUserAvatarURL!.isNotEmpty
                               ? Image.network(
                                   _otherUserAvatarURL!,
                                   fit: BoxFit.cover,
+                                  width: 32,
+                                  height: 32,
                                   errorBuilder: (context, error, stackTrace) {
+                                    debugPrint('ChatView: Error loading other user small avatar: $error');
+                                    return _buildSmallAvatar(_otherUserDisplayName);
+                                  },
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
                                     return _buildSmallAvatar(_otherUserDisplayName);
                                   },
                                 )
@@ -613,11 +885,18 @@ class _ChatViewState extends ConsumerState<ChatView> {
                   margin: const EdgeInsets.only(left: 8),
                   child: showAvatar
                       ? ClipOval(
-                          child: _currentUserAvatarURL != null
+                          child: _currentUserAvatarURL != null && _currentUserAvatarURL!.isNotEmpty
                               ? Image.network(
                                   _currentUserAvatarURL!,
                                   fit: BoxFit.cover,
+                                  width: 32,
+                                  height: 32,
                                   errorBuilder: (context, error, stackTrace) {
+                                    debugPrint('ChatView: Error loading current user avatar: $error');
+                                    return _buildSmallAvatar(_currentUserDisplayName);
+                                  },
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
                                     return _buildSmallAvatar(_currentUserDisplayName);
                                   },
                                 )
@@ -716,16 +995,21 @@ class _ChatViewState extends ConsumerState<ChatView> {
         final chatNotifier = ref.watch(chatNotifierProvider(widget.chat).notifier);
         final chatState = ref.watch(chatNotifierProvider(widget.chat));
         
-        return Container(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 12,
-            bottom: MediaQuery.of(context).padding.bottom + 12,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
+        return GestureDetector(
+          onTap: () {
+            // Prevent tap from propagating to parent GestureDetector
+            // This keeps the keyboard open when tapping the input area
+          },
+          child: Container(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 12,
+              bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 12,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
               // Text field
               Expanded(
                 child: Container(
@@ -741,10 +1025,16 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       width: 1,
                     ),
                   ),
-                  child: TextField(
+                  child: TextFormField(
                     controller: _textController,
                     onChanged: (value) {
                       chatNotifier.updateComposedText(value);
+                    },
+                    onTap: () {
+                      // Scroll to bottom when user taps to type
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        _scrollToBottom();
+                      });
                     },
                     decoration: const InputDecoration(
                       hintText: 'Message…',
@@ -758,6 +1048,20 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     style: const TextStyle(color: Colors.white),
                     maxLines: null,
                     textCapitalization: TextCapitalization.sentences,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    enableSuggestions: true,
+                    autocorrect: true,
+                    // Enable keyboard GIF and image support
+                    enableInteractiveSelection: true,
+                    // Allow rich content from keyboard
+                    enableIMEPersonalizedLearning: true,
+                    smartDashesType: SmartDashesType.enabled,
+                    smartQuotesType: SmartQuotesType.enabled,
+                    // Allow all input types - remove any restrictions
+                    readOnly: false,
+                    // Enable all content types
+                    buildCounter: null,
                   ),
                 ),
               ),
@@ -770,7 +1074,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 children: [
                   // GIF picker button
                   GestureDetector(
-                    onTap: () => _showGifOptions(),
+                    onTap: _isPickingGif ? null : () => _showGifOptions(),
                     child: Container(
                       width: 40,
                       height: 40,
@@ -778,11 +1082,20 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         color: Colors.white.withValues(alpha:0.1),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.gif_box_outlined,
-                        color: Colors.white,
-                        size: 20,
-                      ),
+                      child: _isPickingGif
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.gif_box_outlined,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                     ),
                   ),
                   
@@ -821,7 +1134,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
               ),
             ],
           ),
-        );
+        ),
+      );
       },
     );
   }
@@ -864,7 +1178,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
               _buildGifOption(
                 icon: Icons.gif_box_outlined,
                 title: 'Giphy GIFs', // cspell:ignore Giphy
-                subtitle: 'Browse trending GIFs online',
+                subtitle: 'Browse and copy GIFs online',
                 onTap: () {
                   Navigator.pop(context);
                   _showGiphyPicker(); // cspell:ignore Giphy
@@ -877,6 +1191,24 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 onTap: () {
                   Navigator.pop(context);
                   _pickDeviceGif();
+                },
+              ),
+              _buildGifOption(
+                icon: Icons.content_copy,
+                title: 'Copy GIF URL',
+                subtitle: 'Get a GIF URL to copy',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showGifUrlCopyDialog();
+                },
+              ),
+              _buildGifOption(
+                icon: Icons.content_paste,
+                title: 'Paste GIF URL',
+                subtitle: 'Paste copied GIF link',
+                onTap: () {
+                  Navigator.pop(context);
+                  _handlePastedContent();
                 },
               ),
               const SizedBox(height: 20),
@@ -926,13 +1258,13 @@ class _ChatViewState extends ConsumerState<ChatView> {
     try {
       debugPrint('ChatView: Opening Giphy picker with API key: ${GiphyConfig.apiKey}');
       
-      // Show loading indicator
+      // Show instructions for using Giphy
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Opening Giphy...'),
+            content: Text('💡 Tip: Tap any GIF to send it, or use "Copy GIF URL" to get the link'),
             backgroundColor: Colors.blue,
-            duration: Duration(seconds: 1),
+            duration: Duration(seconds: 4),
           ),
         );
       }
@@ -1016,8 +1348,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 
   void _pickDeviceGif() async {
+    if (_isPickingGif) return; // Prevent multiple simultaneous picks
+    
+    setState(() {
+      _isPickingGif = true;
+    });
+    
     try {
-      final ImagePicker picker = ImagePicker();
+      debugPrint('ChatView: Opening device GIF picker...');
       
       // Show loading indicator
       if (mounted) {
@@ -1030,19 +1368,21 @@ class _ChatViewState extends ConsumerState<ChatView> {
         );
       }
       
-      final XFile? image = await picker.pickImage(
+      final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 80,
         maxWidth: 1024,
         maxHeight: 1024,
       );
 
+      debugPrint('ChatView: Image picker result: ${image != null ? "Image selected: ${image.path}" : "No image selected"}');
+
       if (image != null && mounted) {
         // Check if the file is a GIF
         final file = File(image.path);
         final extension = image.path.toLowerCase().split('.').last;
         
-        debugPrint('Selected file: ${image.path}, extension: $extension');
+        debugPrint('ChatView: Selected file: ${image.path}, extension: $extension');
         
         if (extension == 'gif') {
           // Upload the GIF file to Firebase Storage and get the URL
@@ -1071,6 +1411,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
         }
       } else if (mounted) {
         // User cancelled or no file selected
+        debugPrint('ChatView: User cancelled or no file selected');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No file selected'),
@@ -1080,17 +1421,19 @@ class _ChatViewState extends ConsumerState<ChatView> {
         );
       }
     } catch (e) {
-      debugPrint('Error picking device GIF: $e');
+      debugPrint('ChatView: Error picking device GIF: $e');
       
       if (mounted) {
         String errorMessage = 'Failed to access gallery';
         
-        if (e.toString().contains('Permission denied')) {
+        if (e.toString().contains('Permission denied') || e.toString().contains('permission')) {
           errorMessage = 'Gallery permission denied. Please enable storage permissions in app settings.';
-        } else if (e.toString().contains('No application found')) {
+        } else if (e.toString().contains('No application found') || e.toString().contains('No app')) {
           errorMessage = 'No gallery app found. Please install a gallery app or file manager.';
-        } else if (e.toString().contains('User cancelled')) {
+        } else if (e.toString().contains('User cancelled') || e.toString().contains('cancel')) {
           errorMessage = 'Gallery access cancelled';
+        } else if (e.toString().contains('PlatformException')) {
+          errorMessage = 'Platform error accessing gallery. Please check app permissions.';
         } else {
           errorMessage = 'Failed to pick GIF: ${e.toString()}';
         }
@@ -1100,8 +1443,21 @@ class _ChatViewState extends ConsumerState<ChatView> {
             content: Text(errorMessage),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: () {
+                _pickDeviceGif();
+              },
+            ),
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPickingGif = false;
+        });
       }
     }
   }
