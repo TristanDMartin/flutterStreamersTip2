@@ -11,12 +11,16 @@ class ActivityRowView extends ConsumerStatefulWidget {
   final ActivityNotification notification;
   final ValueChanged<User> onProfileTap;
   final ValueChanged<ActivityNotification> onPostTap;
+  final ValueChanged<User>? onFollowAction;
+  final ValueChanged<ActivityNotification>? onCardTap;
 
   const ActivityRowView({
     super.key,
     required this.notification,
     required this.onProfileTap,
     required this.onPostTap,
+    this.onFollowAction,
+    this.onCardTap,
   });
 
   @override
@@ -85,6 +89,10 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
             _isPressed = false;
           });
           _scaleController.reverse();
+          // Handle card tap
+          if (widget.onCardTap != null) {
+            widget.onCardTap!(widget.notification);
+          }
         },
         onTapCancel: () {
           setState(() {
@@ -146,6 +154,21 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                         _buildActionItem(isFollowing, isMutualFollow, currentUserId),
                       ],
                     ),
+                    
+                    // Unread indicator
+                    if (widget.notification.status == 'pending')
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF9248D2),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
                     
                     // Processing indicator overlay
                     if (widget.notification.status == 'processing')
@@ -361,9 +384,14 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       return GestureDetector(
         onTap: () {
           HapticFeedback.lightImpact();
-          _handleFollowAction(isFollowing, isMutualFollow);
+          if (widget.onFollowAction != null) {
+            widget.onFollowAction!(widget.notification.user);
+          } else {
+            _handleFollowAction(isFollowing, isMutualFollow);
+          }
         },
-        child: Container(
+        child: AbsorbPointer(
+          child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
             gradient: isMutualFollow
@@ -408,6 +436,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
               fontWeight: FontWeight.w600,
             ),
           ),
+        ),
         ),
       );
     }

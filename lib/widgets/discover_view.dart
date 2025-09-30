@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/discover_provider.dart';
+import '../providers/activity_provider.dart';
+import '../providers/unread_messages_provider.dart';
 import '../models/trending_creator.dart';
 import 'category_card.dart';
 import 'recommended_content_card.dart';
@@ -368,6 +370,24 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
 
   Widget _buildNotificationButton(BuildContext context, WidgetRef ref) {
+    final unreadCountAsync = ref.watch(unreadMessagesProvider);
+    final activityState = ref.watch(activityProvider);
+    
+    // Calculate total unread count (messages + activity notifications)
+    int totalUnreadCount = 0;
+    unreadCountAsync.whenOrNull(
+      data: (unreadCount) => totalUnreadCount += unreadCount,
+    );
+    
+    // Add activity notification count
+    for (final notifications in activityState.grouped.values) {
+      for (final notification in notifications) {
+        if (notification.status == 'pending') {
+          totalUnreadCount++;
+        }
+      }
+    }
+    
     return GestureDetector(
       onTap: () {
         LoggingService.instance.debug('GestureDetector onTap triggered', tag: 'DiscoverView');
@@ -376,10 +396,40 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       child: Container(
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.all(8),
-        child: const Icon(
+        child: Stack(
+          children: [
+            const Icon(
               Icons.notifications_outlined,
               color: Colors.white,
               size: 24,
+            ),
+            // Notification badge
+            if (totalUnreadCount > 0)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    totalUnreadCount > 99 ? '99+' : totalUnreadCount.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

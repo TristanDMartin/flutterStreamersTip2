@@ -4,6 +4,7 @@ import '../models/chat.dart';
 import '../providers/chat_provider.dart';
 import '../models/message.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
 
 class ChatViewNew extends ConsumerStatefulWidget {
   final Chat chat;
@@ -35,7 +36,7 @@ class _ChatViewNewState extends ConsumerState<ChatViewNew> {
     // print("🔍 ChatViewNew init - Chat ID: ${widget.chat.id ?? "nil"}");
     
     // Create the chat notifier
-    chatNotifier = ChatNotifier(widget.chat, widget.authService);
+    chatNotifier = ChatNotifier(widget.chat, ref.read(authServiceProvider));
     _textController = TextEditingController();
   }
 

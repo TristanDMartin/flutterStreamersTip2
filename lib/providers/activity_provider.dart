@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import '../models/activity_notification.dart';
 import '../models/json_converters.dart';
@@ -29,11 +30,17 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   bool _isInitialized = false; // FIXED: Prevent multiple initializations
 
   Future<void> init(String userId) async {
-    // FIXED: Prevent infinite loop by checking if already initialized
+    debugPrint('🔄 ActivityNotifier.init called for user: $userId');
+    debugPrint('  - _isInitialized: $_isInitialized');
+    debugPrint('  - Current state: ${state.grouped.length} notifications');
+    
+    // Prevent multiple simultaneous initializations
     if (_isInitialized) {
       debugPrint('⚠️ ActivityNotifier already initialized, skipping...');
       return;
     }
+    
+    _isInitialized = true; // Mark as initialized immediately to prevent multiple calls
     
     try {
       await _notifSub?.cancel();
@@ -46,15 +53,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       // Try to load from Firestore in background (non-blocking)
       _loadFirestoreData(userId);
       
-      _isInitialized = true; // Mark as initialized
-      
     } catch (e) {
       debugPrint('❌ Error in init: $e');
-      // Only load offline data if we haven't already loaded it
-      if (state.grouped.isEmpty) {
-        _loadOfflineData();
-      }
-      _isInitialized = true; // Mark as initialized even on error
+      // Always load offline data as fallback
+      _loadOfflineData();
     }
   }
 
@@ -85,18 +87,23 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
                   );
                 }).toList();
 
-                final grouped = <String, List<ActivityNotification>>{};
-                for (final n in items) {
-                  final key = _groupKey(n.timestamp);
-                  grouped.putIfAbsent(key, () => []).add(n);
+                // Only update if we have actual data from Firestore
+                if (items.isNotEmpty) {
+                  final grouped = <String, List<ActivityNotification>>{};
+                  for (final n in items) {
+                    final key = _groupKey(n.timestamp);
+                    grouped.putIfAbsent(key, () => []).add(n);
+                  }
+                  state = state.copyWith(
+                    grouped: grouped, 
+                    isLoading: false, 
+                    hasError: false,
+                    error: null,
+                  );
+                  debugPrint('✅ Firestore data loaded successfully');
+                } else {
+                  debugPrint('⚠️ No Firestore notifications found, keeping offline data');
                 }
-                state = state.copyWith(
-                  grouped: grouped, 
-                  isLoading: false, 
-                  hasError: false,
-                  error: null,
-                );
-                debugPrint('✅ Firestore data loaded successfully');
               } catch (e) {
                 debugPrint('🚨 Firestore parsing error: $e');
                 // Keep offline data if Firestore fails - don't reload offline data
@@ -132,7 +139,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   }
 
   List<ActivityNotification> _generateMockNotifications() {
-    return [
+    debugPrint('🎭 Generating mock notifications...');
+    final now = DateTime.now();
+    
+    final notifications = [
       ActivityNotification(
         id: '1',
         type: ActivityNotificationType.like,
@@ -140,10 +150,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           'id': 'user1',
           'username': 'gamer_girl',
           'displayName': 'Gamer Girl',
-          'avatarURL': 'https://via.placeholder.com/100',
+          'avatarURL': 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face',
         }),
-        timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
-        postThumbnailUrl: 'https://via.placeholder.com/200',
+        timestamp: now.subtract(const Duration(minutes: 5)),
+        postThumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop',
         status: 'delivered',
       ),
       ActivityNotification(
@@ -153,9 +163,9 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           'id': 'user2',
           'username': 'art_streamer',
           'displayName': 'Art Streamer',
-          'avatarURL': 'https://via.placeholder.com/100',
+          'avatarURL': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face',
         }),
-        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
+        timestamp: now.subtract(const Duration(hours: 1)),
         status: 'delivered',
       ),
       ActivityNotification(
@@ -165,13 +175,42 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           'id': 'user3',
           'username': 'music_lover',
           'displayName': 'Music Lover',
-          'avatarURL': 'https://via.placeholder.com/100',
+          'avatarURL': 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=face',
         }),
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        commentText: 'Great content!',
+        timestamp: now.subtract(const Duration(hours: 2)),
+        commentText: 'Great content! Keep it up! 🎵',
+        status: 'delivered',
+      ),
+      ActivityNotification(
+        id: '4',
+        type: ActivityNotificationType.like,
+        user: const UserConverter().fromJson({
+          'id': 'user4',
+          'username': 'tech_reviewer',
+          'displayName': 'Tech Reviewer',
+          'avatarURL': 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face',
+        }),
+        timestamp: now.subtract(const Duration(hours: 3)),
+        postThumbnailUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=200&h=200&fit=crop',
+        status: 'pending',
+      ),
+      ActivityNotification(
+        id: '5',
+        type: ActivityNotificationType.mention,
+        user: const UserConverter().fromJson({
+          'id': 'user5',
+          'username': 'fitness_coach',
+          'displayName': 'Fitness Coach',
+          'avatarURL': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face',
+        }),
+        timestamp: now.subtract(const Duration(days: 1)),
+        commentText: 'Thanks for the shoutout! 💪',
         status: 'delivered',
       ),
     ];
+    
+    debugPrint('✅ Generated ${notifications.length} mock notifications');
+    return notifications;
   }
 
   Future<void> markAllDelivered(String userId) async {
@@ -193,6 +232,51 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         error: 'Failed to mark notifications as read: ${e.toString()}',
       );
     }
+  }
+
+  Future<void> markNotificationAsRead(String notificationId) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      // Update in Firestore
+      await _db
+          .collection('notifications')
+          .doc(currentUser.uid)
+          .collection('items')
+          .doc(notificationId)
+          .update({'status': 'delivered'});
+
+      // Update local state immediately for better UX
+      final updatedGrouped = Map<String, List<ActivityNotification>>.from(state.grouped);
+      for (final key in updatedGrouped.keys) {
+        final notifications = updatedGrouped[key]!;
+        for (int i = 0; i < notifications.length; i++) {
+          if (notifications[i].id == notificationId) {
+            updatedGrouped[key]![i] = notifications[i].copyWith(status: 'delivered');
+            break;
+          }
+        }
+      }
+      
+      state = state.copyWith(grouped: updatedGrouped);
+      debugPrint('✅ Marked notification $notificationId as read');
+    } catch (e) {
+      debugPrint('❌ Error marking notification as read: $e');
+    }
+  }
+
+  // Get count of unread notifications
+  int getUnreadCount() {
+    int count = 0;
+    for (final notifications in state.grouped.values) {
+      for (final notification in notifications) {
+        if (notification.status == 'pending') {
+          count++;
+        }
+      }
+    }
+    return count;
   }
 
   void startProcessingListener(String userId) {

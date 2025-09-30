@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,10 +9,11 @@ import 'dart:convert';
 import 'dart:io';
 import '../models/chat.dart';
 import '../models/message.dart';
+import '../services/auth_service.dart';
 
 class ChatNotifier extends StateNotifier<ChatState> {
   final Chat chat;
-  final Object authService;
+  final AuthenticationService authService;
   StreamSubscription<QuerySnapshot>? _messageListener; // kept for API compatibility
 
   // Persistence key
@@ -25,6 +27,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   @override
   void dispose() {
     _messageListener?.cancel();
+    _messageListener = null;
     super.dispose();
   }
 
@@ -68,6 +71,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> send() async {
     final trimmedText = state.composedText.trim();
     if (trimmedText.isEmpty) return;
+    
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       state = state.copyWith(error: "You need to be signed in to send messages");
@@ -84,7 +88,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
       orElse: () => "",
     );
 
+    if (otherId.isEmpty) {
+      state = state.copyWith(error: "Invalid chat participants. Please try again.");
+      return;
+    }
+
+    // Set loading state
+    state = state.copyWith(isLoading: true, error: null);
+
     try {
+      // Send message
       await FirebaseFirestore.instance
           .collection("chats")
           .doc(chatId)
@@ -96,32 +109,46 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "isRead": false,
         "timestamp": FieldValue.serverTimestamp(),
         "chatId": chatId,
-        "recipients": [otherId], // Only the recipient (not sender) needs to read this
-        "readBy": [currentUser.uid], // Sender has "read" their own message
+        "recipients": [otherId],
+        "readBy": [currentUser.uid],
       });
 
+      // Update chat last message
       await FirebaseFirestore.instance.collection("chats").doc(chatId).update({
         "lastMessage": trimmedText,
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
 
-      state = state.copyWith(composedText: "");
+      // Clear composed text and loading state
+      state = state.copyWith(composedText: "", isLoading: false);
     } catch (e) {
-      state = state.copyWith(error: "Failed to send message: ${e.toString()}");
+      String errorMessage = "Failed to send message";
+      
+      if (e.toString().contains('permission-denied')) {
+        errorMessage = "You don't have permission to send messages in this chat";
+      } else if (e.toString().contains('not-found')) {
+        errorMessage = "Chat not found. Please refresh and try again";
+      } else if (e.toString().contains('unavailable')) {
+        errorMessage = "Service temporarily unavailable. Please try again";
+      } else if (e.toString().contains('network')) {
+        errorMessage = "Network error. Please check your connection";
+      } else {
+        errorMessage = "Failed to send message: ${e.toString()}";
+      }
+      
+      state = state.copyWith(isLoading: false, error: errorMessage);
     }
   }
 
   Future<void> sendGif(String gifUrl) async {
-    print('ChatNotifier: sendGif called with URL: $gifUrl');
+    debugPrint('ChatNotifier: sendGif called with URL: $gifUrl');
     
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      print('ChatNotifier: No current user found');
       state = state.copyWith(error: "You need to be signed in to send messages");
       return;
     }
     if (chat.id == null || chat.id!.isEmpty) {
-      print('ChatNotifier: No chat ID found');
       state = state.copyWith(error: "Chat not found. Please try again.");
       return;
     }
@@ -132,7 +159,19 @@ class ChatNotifier extends StateNotifier<ChatState> {
       orElse: () => "",
     );
 
-    print('ChatNotifier: Sending GIF - chatId: $chatId, otherId: $otherId, gifUrl: $gifUrl');
+    if (otherId.isEmpty) {
+      state = state.copyWith(error: "Invalid chat participants. Please try again.");
+      return;
+    }
+
+    // Validate GIF URL
+    if (!_isValidGifUrl(gifUrl)) {
+      state = state.copyWith(error: "Invalid GIF URL. Please try again.");
+      return;
+    }
+
+    // Set loading state
+    state = state.copyWith(isLoading: true, error: null);
 
     try {
       await FirebaseFirestore.instance
@@ -157,10 +196,36 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
       
-      print('ChatNotifier: GIF sent successfully');
+      state = state.copyWith(isLoading: false);
+      debugPrint('ChatNotifier: GIF sent successfully');
     } catch (e) {
-      print('ChatNotifier: Error sending GIF: $e');
-      state = state.copyWith(error: "Failed to send GIF: ${e.toString()}");
+      String errorMessage = "Failed to send GIF";
+      
+      if (e.toString().contains('permission-denied')) {
+        errorMessage = "You don't have permission to send messages in this chat";
+      } else if (e.toString().contains('not-found')) {
+        errorMessage = "Chat not found. Please refresh and try again";
+      } else if (e.toString().contains('unavailable')) {
+        errorMessage = "Service temporarily unavailable. Please try again";
+      } else if (e.toString().contains('network')) {
+        errorMessage = "Network error. Please check your connection";
+      } else if (e.toString().contains('invalid-argument')) {
+        errorMessage = "Invalid GIF URL. Please try a different GIF";
+      } else {
+        errorMessage = "Failed to send GIF: ${e.toString()}";
+      }
+      
+      state = state.copyWith(isLoading: false, error: errorMessage);
+      debugPrint('ChatNotifier: Error sending GIF: $e');
+    }
+  }
+
+  bool _isValidGifUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
+    } catch (e) {
+      return false;
     }
   }
 
@@ -336,7 +401,7 @@ class ChatState {
   }
 }
 
+// Provider for individual chat state
 final chatProvider = StateNotifierProvider.family<ChatNotifier, ChatState, Chat>((ref, chat) {
-  final authService = Object();
-  return ChatNotifier(chat, authService);
+  return ChatNotifier(chat, ref.read(authServiceProvider));
 });

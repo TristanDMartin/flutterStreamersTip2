@@ -29,6 +29,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   
   bool _isLoadingMore = false;
   final ScrollController _scrollController = ScrollController();
+  bool _isInitialized = false;
 
   // Common gradient used throughout the view
   static const LinearGradient _backgroundGradient = LinearGradient(
@@ -77,6 +78,26 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     
     // Setup scroll listener for pagination
     _scrollController.addListener(_onScroll);
+    
+    // Initialize activity data
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeActivityView();
+    });
+  }
+
+  void _initializeActivityView() {
+    if (_isInitialized) return;
+    
+    final notifier = ref.read(activityProvider.notifier);
+    final auth = ref.read(authServiceProvider);
+    final userId = auth.currentUser?.id;
+    
+    if (userId != null) {
+      debugPrint('🔄 Initializing ActivityView for user: $userId');
+      notifier.startProcessingListener(userId);
+      notifier.init(userId);
+      _isInitialized = true;
+    }
   }
 
   @override
@@ -106,7 +127,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   Widget build(BuildContext context) {
     final auth = ref.watch(authServiceProvider);
     final state = ref.watch(activityProvider);
-    final notifier = ref.read(activityProvider.notifier);
 
     if (auth.isLoading) {
       return _buildLoadingScaffold();
@@ -132,17 +152,19 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        notifier.startProcessingListener(userId);
-        notifier.init(userId);
-      } catch (e) {
-        debugPrint('Error initializing activity: $e');
-      }
-    });
+    // Activity data is initialized in initState
 
     final filteredGrouped = _filterNotifications(state.grouped);
     final titles = _orderedSectionTitles(filteredGrouped.keys.toList());
+
+    // Debug information
+    debugPrint('🔍 ActivityView State Debug:');
+    debugPrint('  - isLoading: ${state.isLoading}');
+    debugPrint('  - hasError: ${state.hasError}');
+    debugPrint('  - error: ${state.error}');
+    debugPrint('  - grouped count: ${state.grouped.length}');
+    debugPrint('  - filtered count: ${filteredGrouped.length}');
+    debugPrint('  - titles: $titles');
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -156,6 +178,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               _buildHeader(state),
               _buildFilterChips(),
               if (state.isProcessing) _buildProcessingIndicator(state.processingCount),
+              // Debug button for testing
+              if (state.grouped.isEmpty && !state.isLoading)
+                _buildDebugButton(),
               Expanded(
                 child: FadeTransition(
                   opacity: _fadeController,
@@ -843,6 +868,8 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     notification: notification,
                     onProfileTap: (user) => _handleProfileTap(user as user_model.User),
                     onPostTap: _handlePostTap,
+                    onFollowAction: _handleFollowAction,
+                    onCardTap: _handleNotificationTap,
                   ),
                 ),
             ],
@@ -934,6 +961,19 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       _refreshController.reset();
     });
     
+    // Force refresh the activity data
+    final notifier = ref.read(activityProvider.notifier);
+    final auth = ref.read(authServiceProvider);
+    final userId = auth.currentUser?.id;
+    
+    if (userId != null) {
+      debugPrint('🔄 Force refreshing activity data...');
+      _isInitialized = false; // Reset initialization flag
+      notifier.reset(); // Reset the provider
+      await notifier.init(userId); // Re-initialize
+      debugPrint('🔄 Refresh completed');
+    }
+    
     // Simulate refresh delay
     await Future.delayed(const Duration(milliseconds: 1500));
   }
@@ -970,7 +1010,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   int _getTotalNotificationCount(Map<String, List<ActivityNotification>> grouped) {
     int count = 0;
     for (final notifications in grouped.values) {
-      count += notifications.length;
+      for (final notification in notifications) {
+        if (notification.status == 'pending') {
+          count++;
+        }
+      }
     }
     return count;
   }
@@ -999,10 +1043,83 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   void _handlePostTap(ActivityNotification notification) {
     HapticFeedback.lightImpact();
+    
+    // Mark notification as read
+    _markNotificationAsRead(notification);
+    
     _navigateWithSlideTransition(
       PostDetailView(notification: notification),
       const Offset(0.0, 1.0),
       fullscreenDialog: true,
+    );
+  }
+
+  void _handleNotificationTap(ActivityNotification notification) {
+    HapticFeedback.lightImpact();
+    
+    // Mark notification as read
+    _markNotificationAsRead(notification);
+    
+    // Navigate based on notification type
+    switch (notification.type) {
+      case ActivityNotificationType.like:
+      case ActivityNotificationType.comment:
+        if (notification.postThumbnailUrl != null) {
+          _handlePostTap(notification);
+        } else {
+          _handleProfileTap(notification.user as user_model.User);
+        }
+        break;
+      case ActivityNotificationType.follow:
+      case ActivityNotificationType.mention:
+      case ActivityNotificationType.tag:
+        _handleProfileTap(notification.user as user_model.User);
+        break;
+    }
+  }
+
+  void _markNotificationAsRead(ActivityNotification notification) {
+    if (notification.status == 'pending') {
+      final notifier = ref.read(activityProvider.notifier);
+      notifier.markNotificationAsRead(notification.id);
+      
+      // Trigger badge animation for visual feedback
+      _badgeController.reset();
+      _badgeController.forward();
+    }
+  }
+
+  void _handleFollowAction(User user) {
+    HapticFeedback.lightImpact();
+    
+    // Navigate to StreamerCardView
+    _handleProfileTap(user as user_model.User);
+  }
+
+  Widget _buildDebugButton() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: ElevatedButton(
+        onPressed: () async {
+          debugPrint('🔧 Debug button pressed - forcing data load...');
+          final notifier = ref.read(activityProvider.notifier);
+          final auth = ref.read(authServiceProvider);
+          final userId = auth.currentUser?.id;
+          
+          if (userId != null) {
+            _isInitialized = false; // Reset initialization flag
+            notifier.reset();
+            await notifier.init(userId);
+            debugPrint('🔧 Debug button - data reload completed');
+          }
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF9248D2),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        ),
+        child: const Text('Load Test Notifications'),
+      ),
     );
   }
 
