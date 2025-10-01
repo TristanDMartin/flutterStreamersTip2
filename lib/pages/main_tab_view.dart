@@ -42,6 +42,36 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Listen for route changes to detect when returning to HomeView
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkIfReturnedToHomeView();
+    });
+  }
+
+  void _checkIfReturnedToHomeView() {
+    // Check if we're currently on HomeView and no modal is open
+    if (_currentIndex == 0 && ModalRoute.of(context)?.isFirst == true) {
+      _resumeHomeViewVideos();
+    }
+  }
+
+  void _resumeHomeViewVideos() {
+    try {
+      // Notify HomeView to resume current video
+      final homeNotifier = ref.read(homeProvider.notifier);
+      homeNotifier.resumeCurrentVideo();
+      
+      log('▶️ MainTabView: Resumed HomeView current video');
+      debugPrint('▶️ MainTabView: Resumed HomeView current video');
+    } catch (e) {
+      log('❌ MainTabView: Error resuming HomeView video: $e');
+      debugPrint('❌ MainTabView: Error resuming HomeView video: $e');
+    }
+  }
+
   void _startDataSync() {
     // Initialize data synchronization after login
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -101,6 +131,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   }
 
   void _onUploadTapped() {
+    // Pause HomeView videos before navigating to CameraView
+    _pauseAllHomeViewVideos();
+    
     // Navigate directly to camera view
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -110,6 +143,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   }
 
   void _onInboxTapped() {
+    // Pause HomeView videos before navigating to InboxView
+    _pauseAllHomeViewVideos();
+    
     // Navigate to inbox view as full screen
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -120,6 +156,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   }
 
   void _onProfileTapped() {
+    // Pause HomeView videos before navigating to ProfileView
+    _pauseAllHomeViewVideos();
+    
     // Navigate to profile view as full screen
     final authService = ref.read(robustAuthServiceProvider);
     if (authService.currentUser != null) {
@@ -166,6 +205,20 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     }
   }
 
+  void _pauseAllHomeViewVideos() {
+    try {
+      // Notify HomeView to pause all videos
+      final homeNotifier = ref.read(homeProvider.notifier);
+      homeNotifier.pauseAllVideos();
+      
+      log('⏸️ MainTabView: Paused all HomeView videos');
+      debugPrint('⏸️ MainTabView: Paused all HomeView videos');
+    } catch (e) {
+      log('❌ MainTabView: Error pausing HomeView videos: $e');
+      debugPrint('❌ MainTabView: Error pausing HomeView videos: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -176,6 +229,11 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
           setState(() {
             _currentIndex = index;
           });
+          
+          // Pause videos when leaving HomeView (index 0)
+          if (_currentIndex != 0) {
+            _pauseAllHomeViewVideos();
+          }
         },
         // Disable swipe gestures when on NetworkView (index 1)
         physics: _currentIndex == 1 

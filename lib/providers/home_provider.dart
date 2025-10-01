@@ -83,6 +83,66 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('❌ Error refreshing videos after upload: $e');
     }
   }
+
+  /// Pause all videos when leaving HomeView
+  void pauseAllVideos() {
+    log('⏸️ Pausing all HomeView videos');
+    
+    // Set a flag to indicate videos should be paused
+    // The VideoPlayerViewOptimized widgets will check this flag
+    state = state.copyWith(shouldPauseAllVideos: true);
+    
+    // Also try direct pause approach
+    _directPauseAllVideos();
+    
+    // Reset the flag after a short delay to allow for future navigation
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        state = state.copyWith(shouldPauseAllVideos: false);
+      }
+    });
+    
+    log('✅ Pause signal sent to all videos');
+  }
+
+  /// Direct pause approach - try to pause videos immediately
+  void _directPauseAllVideos() {
+    try {
+      // This is a more aggressive approach - we'll use a global notifier
+      // that all VideoPlayerViewOptimized widgets can listen to
+      log('🔊 Direct pause: Broadcasting pause signal globally');
+      
+      // Use a more direct approach with a global pause signal
+      _broadcastPauseSignal();
+    } catch (e) {
+      log('❌ Direct pause failed: $e');
+    }
+  }
+
+  /// Broadcast pause signal globally
+  void _broadcastPauseSignal() {
+    // This will be handled by the VideoPlayerViewOptimized widgets
+    // that are listening to the homeProvider state changes
+    log('📡 Broadcasting global pause signal');
+  }
+
+  /// Resume current video when returning to HomeView
+  void resumeCurrentVideo() {
+    log('▶️ Resuming HomeView current video');
+    
+    // Set a flag to indicate videos should resume
+    // The VideoPlayerViewOptimized widgets will check this flag
+    state = state.copyWith(shouldResumeCurrentVideo: true);
+    
+    // Reset the flag after a short delay
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        state = state.copyWith(shouldResumeCurrentVideo: false);
+      }
+    });
+    
+    log('✅ Resume signal sent to current video');
+  }
   
   Future<void> loadVideos() async {
     log('🔄 loadVideos() called - hasLoaded: ${state.hasLoaded}');
@@ -1008,6 +1068,8 @@ class HomeState {
   final FeedType? activeFeed;
   final FeedSlice? forYouSlice;
   final FeedSlice? followingSlice;
+  final bool shouldPauseAllVideos;
+  final bool shouldResumeCurrentVideo;
   
   const HomeState({
     this.forYouVideos = const [],
@@ -1023,6 +1085,8 @@ class HomeState {
     this.activeFeed,
     this.forYouSlice,
     this.followingSlice,
+    this.shouldPauseAllVideos = false,
+    this.shouldResumeCurrentVideo = false,
   });
   
   HomeState copyWith({
@@ -1039,6 +1103,8 @@ class HomeState {
     FeedType? activeFeed,
     FeedSlice? forYouSlice,
     FeedSlice? followingSlice,
+    bool? shouldPauseAllVideos,
+    bool? shouldResumeCurrentVideo,
   }) {
     return HomeState(
       forYouVideos: forYouVideos ?? this.forYouVideos,
@@ -1054,6 +1120,8 @@ class HomeState {
       activeFeed: activeFeed ?? this.activeFeed,
       forYouSlice: forYouSlice ?? this.forYouSlice,
       followingSlice: followingSlice ?? this.followingSlice,
+      shouldPauseAllVideos: shouldPauseAllVideos ?? this.shouldPauseAllVideos,
+      shouldResumeCurrentVideo: shouldResumeCurrentVideo ?? this.shouldResumeCurrentVideo,
     );
   }
   

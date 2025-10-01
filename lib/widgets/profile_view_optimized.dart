@@ -7,6 +7,7 @@ import 'dart:async';
 import '../models/user.dart' as app_user;
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
+import '../providers/home_provider.dart';
 import '../services/profile_update_service.dart';
 import '../views/menu_view.dart';
 import 'edit_profile_view.dart';
@@ -279,6 +280,15 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     // print('ProfileView: Navigating to StreamerCardView');
       }
       
+    // Pause HomeView videos before navigating to StreamerCardView
+    try {
+      final homeNotifier = ref.read(homeProvider.notifier);
+      homeNotifier.pauseAllVideos();
+      debugPrint('⏸️ ProfileView: Paused HomeView videos before StreamerCard navigation');
+    } catch (e) {
+      debugPrint('❌ ProfileView: Error pausing videos: $e');
+    }
+    
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => StreamerCardView(

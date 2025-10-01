@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -15,7 +16,6 @@ import '../services/engagement_analytics_service.dart';
 import '../services/robust_auth_service.dart';
 import '../services/like_service.dart';
 import '../services/video_performance_service.dart';
-import '../services/unified_avatar_service.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_share_sheet.dart';
 
@@ -63,6 +63,10 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   bool _showPlayPauseIndicatorOverlay = false; // Show play/pause indicator animation
   bool _audioUnmuted = false; // Track if audio has been unmuted by user interaction
   
+  // Track state changes to prevent duplicate callbacks
+  bool _lastShouldPauseAllVideos = false;
+  bool _lastShouldResumeCurrentVideo = false;
+  
   // Track last tap position for floating hearts
   Offset _lastTapPosition = Offset.zero;
   
@@ -97,6 +101,21 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   void didUpdateWidget(covariant VideoPlayerViewOptimized oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_videoPlayerController == null || !_isInitialized) return;
+    
+          // Check if we should pause all videos (when leaving HomeView)
+          final homeState = ref.read(homeProvider);
+          if (homeState.shouldPauseAllVideos) {
+            // IMMEDIATE pause - stops audio instantly
+            _videoPlayerController!.pause();
+            log('⏸️ Video paused due to HomeView navigation: ${widget.video.id}');
+            // Update UI state after build completes (prevents setState error)
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() => _isPlaying = false);
+              }
+            });
+            return;
+          }
     
     // React when the page becomes current/non-current
     if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
@@ -722,30 +741,73 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _handleTap,
-      onDoubleTap: _handleDoubleTap,
-      onDoubleTapDown: _handleDoubleTapDown,
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: Colors.black,
-        child: Stack(
-          children: [
-            // TIKTOK-STYLE: Always show video player, no placeholder delay
-            _buildVideoPlayer(),
-            
-            // UI Overlay
-            _buildUIOverlay(),
-            
-            // Action buttons overlay
-            _buildActionButtons(),
-            
-            // Play/Pause indicator overlay
-            if (_showPlayPauseIndicatorOverlay) _buildPlayPauseIndicator(),
-          ],
-        ),
-      ),
+    return Consumer(
+      builder: (context, ref, child) {
+        // Listen for pause signal when leaving HomeView
+        final homeState = ref.watch(homeProvider);
+        
+        // Check if we should pause all videos (when leaving HomeView)
+        if (homeState.shouldPauseAllVideos && !_lastShouldPauseAllVideos && _videoPlayerController != null && _isInitialized) {
+          _lastShouldPauseAllVideos = true;
+          // IMMEDIATE pause - stops audio instantly
+          _videoPlayerController!.pause();
+          log('⏸️ Video paused due to HomeView navigation (Consumer): ${widget.video.id}');
+          // Update UI state after build completes (prevents setState error)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _isPlaying = false);
+            }
+          });
+        } else if (!homeState.shouldPauseAllVideos) {
+          _lastShouldPauseAllVideos = false;
+        }
+        
+        // Check if we should resume current video (when returning to HomeView)
+        if (homeState.shouldResumeCurrentVideo && !_lastShouldResumeCurrentVideo && widget.isCurrentVideo && _videoPlayerController != null && _isInitialized) {
+          _lastShouldResumeCurrentVideo = true;
+          // IMMEDIATE resume - starts audio instantly
+          _videoPlayerController!.setVolume(1.0);
+          _videoPlayerController!.play();
+          log('▶️ Video resumed when returning to HomeView: ${widget.video.id}');
+          // Update UI state after build completes (prevents setState error)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _audioUnmuted = true;
+                _isPlaying = true;
+              });
+            }
+          });
+        } else if (!homeState.shouldResumeCurrentVideo) {
+          _lastShouldResumeCurrentVideo = false;
+        }
+        
+        return GestureDetector(
+          onTap: _handleTap,
+          onDoubleTap: _handleDoubleTap,
+          onDoubleTapDown: _handleDoubleTapDown,
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Colors.black,
+            child: Stack(
+              children: [
+                // TIKTOK-STYLE: Always show video player, no placeholder delay
+                _buildVideoPlayer(),
+                
+                // UI Overlay
+                _buildUIOverlay(),
+                
+                // Action buttons overlay
+                _buildActionButtons(),
+                
+                // Play/Pause indicator overlay
+                if (_showPlayPauseIndicatorOverlay) _buildPlayPauseIndicator(),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -849,10 +911,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
               children: [
                 GestureDetector(
                   onTap: widget.onShowProfile,
-                  child: UnifiedAvatarService().getAvatar(
-                    imageUrl: widget.video.creator.avatarURL ?? '',
-                    radius: 16,
-                  ),
+                  child: _buildUserAvatar(),
                 ),
                 const SizedBox(width: 8),
                 Flexible(
@@ -880,7 +939,12 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: isFollowing ? Colors.grey[600] : const Color(0xFF9248D2),
+                          gradient: isFollowing ? null : const LinearGradient(
+                            colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileView edit button
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                          color: isFollowing ? Colors.grey[600] : null,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
@@ -987,10 +1051,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           // Creator avatar - Made slightly smaller
           GestureDetector(
             onTap: widget.onShowProfile,
-            child: UnifiedAvatarService().getAvatar(
-              imageUrl: widget.video.creator.avatarURL ?? '',
-              radius: 20, // Reduced from 24 back to 20
-            ),
+            child: _buildActionAvatar(),
           ),
         ],
       ),
@@ -1043,6 +1104,126 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserAvatar() {
+    final avatarUrl = widget.video.creator.avatarURL;
+    
+    if (avatarUrl == null || avatarUrl.isEmpty) {
+      return _buildDefaultAvatar();
+    }
+    
+    return CachedNetworkImage(
+      imageUrl: avatarUrl,
+      width: 32,
+      height: 32,
+      imageBuilder: (context, imageProvider) => Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          image: DecorationImage(
+            image: imageProvider,
+            fit: BoxFit.cover,
+          ),
+        ),
+      ),
+      placeholder: (context, url) => _buildDefaultAvatar(),
+      errorWidget: (context, url, error) {
+        log('❌ Avatar load error for ${widget.video.creator.username}: $error');
+        return _buildDefaultAvatar();
+      },
+    );
+  }
+
+  Widget _buildActionAvatar() {
+    final avatarUrl = widget.video.creator.avatarURL;
+    
+    if (avatarUrl == null || avatarUrl.isEmpty) {
+      return _buildDefaultActionAvatar();
+    }
+    
+    return CachedNetworkImage(
+      imageUrl: avatarUrl,
+      width: 40,
+      height: 40,
+      imageBuilder: (context, imageProvider) => Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          image: DecorationImage(
+            image: imageProvider,
+            fit: BoxFit.cover,
+          ),
+        ),
+      ),
+      placeholder: (context, url) => _buildDefaultActionAvatar(),
+      errorWidget: (context, url, error) {
+        log('❌ Action avatar load error for ${widget.video.creator.username}: $error');
+        return _buildDefaultActionAvatar();
+      },
+    );
+  }
+
+  Widget _buildDefaultAvatar() {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [
+            Color(0xFFFF6CAB),
+            Color(0xFF8E54E9),
+            Color(0xFF3D99F7),
+            Color(0xFFFF6CAB),
+          ],
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.grey,
+        ),
+        child: const Icon(
+          Icons.person,
+          color: Colors.white,
+          size: 16,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDefaultActionAvatar() {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [
+            Color(0xFFFF6CAB),
+            Color(0xFF8E54E9),
+            Color(0xFF3D99F7),
+            Color(0xFFFF6CAB),
+          ],
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.grey,
+        ),
+        child: const Icon(
+          Icons.person,
+          color: Colors.white,
+          size: 20,
         ),
       ),
     );
@@ -1137,4 +1318,5 @@ class _FloatingHeartOverlayState extends State<_FloatingHeartOverlay>
       ),
     );
   }
+
 }

@@ -21,8 +21,8 @@ class UnifiedAvatarService {
   final Map<String, ImageProvider> _memoryCache = {};
   final Map<String, bool> _loadingStates = {};
   
-  // FIXED: Reduced to prevent buffer overflow
-  static const int _maxConcurrentLoads = 0; // CRITICAL: Disable all concurrent loads to prevent buffer overflow
+  // FIXED: Set reasonable limit to allow avatar loading while preventing buffer overflow
+  static const int _maxConcurrentLoads = 3; // Allow up to 3 concurrent avatar loads
   int _currentLoads = 0;
   final Queue<String> _loadQueue = Queue<String>();
   

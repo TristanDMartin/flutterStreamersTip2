@@ -498,6 +498,9 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
   void _showStreamerCardModal(User user) {
     HapticFeedback.lightImpact();
     
+    // Pause HomeView videos before showing StreamerCard
+    _pauseAllHomeViewVideos();
+    
     // Convert User to StreamerCard
     final streamerCard = StreamerCard(
       id: user.id,
@@ -522,6 +525,20 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
         _showStreamerCard = false;
         _currentStreamerCard = null;
       });
+    }
+  }
+
+  void _pauseAllHomeViewVideos() {
+    try {
+      // Notify HomeView to pause all videos
+      final homeNotifier = ref.read(hp.homeProvider.notifier);
+      homeNotifier.pauseAllVideos();
+      
+      log('⏸️ HomeView: Paused all videos before navigation');
+      debugPrint('⏸️ HomeView: Paused all videos before navigation');
+    } catch (e) {
+      log('❌ HomeView: Error pausing videos: $e');
+      debugPrint('❌ HomeView: Error pausing videos: $e');
     }
   }
 
@@ -984,6 +1001,8 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
           InkResponse(
             onTap: () {
               HapticFeedback.lightImpact();
+              // Pause HomeView videos before navigating to DiscoverView
+              _pauseAllHomeViewVideos();
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const DiscoverView()),
