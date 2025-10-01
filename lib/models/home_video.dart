@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user.dart';
 
 part 'home_video.freezed.dart';
@@ -19,5 +20,6 @@ class HomeVideo with _$HomeVideo {
     @Default(false) bool isDraft,
     @Default(0.0) double mlScore,
     @Default('') String categoryId,
+    Timestamp? createdAt, // For sorting by upload date
   }) = _HomeVideo;
 }

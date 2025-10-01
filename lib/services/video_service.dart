@@ -15,9 +15,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     try {
       debugPrint('🎬 VideoService: Loading all videos...');
       
-      // Get all videos (simple query, no complex indexes needed)
+      // Get all videos ordered by creation date (newest first)
       final snapshot = await _firestore
           .collection('videos')
+          .orderBy('createdAt', descending: true) // Newest first
           .limit(100) // Reasonable limit
           .get();
       
@@ -49,6 +50,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           likes: data['likes']?.toInt() ?? 0,
           comments: data['comments']?.toInt() ?? 0,
           isDraft: false,
+          // Store creation date for proper sorting
+          createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
         );
         
         videos.add(video);
@@ -64,6 +67,14 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       
       // Convert back to list and sort by creation date (newest first)
       final deduplicatedVideos = uniqueVideos.values.toList();
+      
+      // Sort by creation date - newest first (most recent uploads at top)
+      deduplicatedVideos.sort((a, b) {
+        // Sort by creation timestamp - newest first
+        final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+        final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime); // Reverse order for newest first
+      });
       
       state = deduplicatedVideos;
       debugPrint('✅ VideoService: Loaded ${deduplicatedVideos.length} unique videos (removed ${videos.length - deduplicatedVideos.length} duplicates)');
@@ -88,6 +99,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       currentVideos.insert(0, video);
       debugPrint('✅ VideoService: Added new video: ${video.caption}');
     }
+    
+    // Re-sort to maintain newest-first order
+    currentVideos.sort((a, b) {
+      final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+      return bTime.compareTo(aTime); // Reverse order for newest first
+    });
     
     state = currentVideos;
   }

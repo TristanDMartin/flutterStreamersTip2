@@ -29,6 +29,7 @@ mixin _$HomeVideo {
   bool get isDraft => throw _privateConstructorUsedError;
   double get mlScore => throw _privateConstructorUsedError;
   String get categoryId => throw _privateConstructorUsedError;
+  Timestamp? get createdAt => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $HomeVideoCopyWith<HomeVideo> get copyWith =>
@@ -53,7 +54,8 @@ abstract class $HomeVideoCopyWith<$Res> {
       bool isFavorited,
       bool isDraft,
       double mlScore,
-      String categoryId});
+      String categoryId,
+      Timestamp? createdAt});
 }
 
 /// @nodoc
@@ -82,6 +84,7 @@ class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
     Object? isDraft = null,
     Object? mlScore = null,
     Object? categoryId = null,
+    Object? createdAt = freezed,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -136,6 +139,10 @@ class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
           ? _value.categoryId
           : categoryId // ignore: cast_nullable_to_non_nullable
               as String,
+      createdAt: freezed == createdAt
+          ? _value.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as Timestamp?,
     ) as $Val);
   }
 }
@@ -161,7 +168,8 @@ abstract class _$$HomeVideoImplCopyWith<$Res>
       bool isFavorited,
       bool isDraft,
       double mlScore,
-      String categoryId});
+      String categoryId,
+      Timestamp? createdAt});
 }
 
 /// @nodoc
@@ -188,6 +196,7 @@ class __$$HomeVideoImplCopyWithImpl<$Res>
     Object? isDraft = null,
     Object? mlScore = null,
     Object? categoryId = null,
+    Object? createdAt = freezed,
   }) {
     return _then(_$HomeVideoImpl(
       id: null == id
@@ -242,6 +251,10 @@ class __$$HomeVideoImplCopyWithImpl<$Res>
           ? _value.categoryId
           : categoryId // ignore: cast_nullable_to_non_nullable
               as String,
+      createdAt: freezed == createdAt
+          ? _value.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as Timestamp?,
     ));
   }
 }
@@ -262,7 +275,8 @@ class _$HomeVideoImpl implements _HomeVideo {
       this.isFavorited = false,
       this.isDraft = false,
       this.mlScore = 0.0,
-      this.categoryId = ''});
+      this.categoryId = '',
+      this.createdAt});
 
   @override
   final String id;
@@ -299,10 +313,12 @@ class _$HomeVideoImpl implements _HomeVideo {
   @override
   @JsonKey()
   final String categoryId;
+  @override
+  final Timestamp? createdAt;
 
   @override
   String toString() {
-    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId)';
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, createdAt: $createdAt)';
   }
 
   @override
@@ -327,7 +343,9 @@ class _$HomeVideoImpl implements _HomeVideo {
             (identical(other.isDraft, isDraft) || other.isDraft == isDraft) &&
             (identical(other.mlScore, mlScore) || other.mlScore == mlScore) &&
             (identical(other.categoryId, categoryId) ||
-                other.categoryId == categoryId));
+                other.categoryId == categoryId) &&
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt));
   }
 
   @override
@@ -345,7 +363,8 @@ class _$HomeVideoImpl implements _HomeVideo {
       isFavorited,
       isDraft,
       mlScore,
-      categoryId);
+      categoryId,
+      createdAt);
 
   @JsonKey(ignore: true)
   @override
@@ -368,7 +387,8 @@ abstract class _HomeVideo implements HomeVideo {
       final bool isFavorited,
       final bool isDraft,
       final double mlScore,
-      final String categoryId}) = _$HomeVideoImpl;
+      final String categoryId,
+      final Timestamp? createdAt}) = _$HomeVideoImpl;
 
   @override
   String get id;
@@ -396,6 +416,8 @@ abstract class _HomeVideo implements HomeVideo {
   double get mlScore;
   @override
   String get categoryId;
+  @override
+  Timestamp? get createdAt;
   @override
   @JsonKey(ignore: true)
   _$$HomeVideoImplCopyWith<_$HomeVideoImpl> get copyWith =>
