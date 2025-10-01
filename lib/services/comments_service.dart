@@ -1,15 +1,24 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter/foundation.dart';
 import '../models/comment.dart';
 import '../models/user.dart' as app_user;
+import 'event_trigger_service.dart';
 
 class CommentsService {
   static final CommentsService _instance = CommentsService._internal();
   factory CommentsService() => _instance;
-  CommentsService._internal();
-
+  
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
+  EventTriggerService? _eventTriggerService;
+  
+  CommentsService._internal();
+  
+  /// Set the EventTriggerService instance (should be called from provider)
+  void setEventTriggerService(EventTriggerService eventTriggerService) {
+    _eventTriggerService = eventTriggerService;
+  }
 
   /// Fetch comments for a video
   Future<List<Comment>> fetchCommentsForVideo(String videoId) async {
@@ -60,9 +69,12 @@ class CommentsService {
     required String text,
     required app_user.User author,
   }) async {
+    debugPrint('🔔 CommentsService.addComment called: $videoId');
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) throw Exception('User not authenticated');
+      
+      debugPrint('🔔 CommentsService: Current user: ${currentUser.uid}');
 
       final comment = Comment(
         id: '', // Will be set by Firestore
@@ -80,7 +92,12 @@ class CommentsService {
           .collection('comments')
           .add(comment.toJson());
 
-      return comment.copyWith(id: docRef.id);
+      final commentWithId = comment.copyWith(id: docRef.id);
+
+      // Trigger comment event for notifications
+      await _triggerCommentEvent(videoId, currentUser.uid, text);
+
+      return commentWithId;
     } catch (e) {
     // print('Error adding comment: $e');
       // Provide more specific error messages
@@ -228,6 +245,44 @@ class CommentsService {
       }
       // print('Error deleting comment: $e');
       return false;
+    }
+  }
+
+  /// Trigger comment event for notifications
+  Future<void> _triggerCommentEvent(String videoId, String commenterId, String commentText) async {
+    try {
+      debugPrint('🔔 CommentsService._triggerCommentEvent called: $commenterId -> $videoId');
+
+      if (_eventTriggerService == null) {
+        debugPrint('🔔 EventTriggerService not set - skipping notification');
+        return;
+      }
+
+      // Get video owner ID
+      final videoDoc = await _firestore.collection('videos').doc(videoId).get();
+      if (!videoDoc.exists) {
+        debugPrint('🔔 Video document not found: $videoId');
+        return;
+      }
+      
+      final videoData = videoDoc.data()!;
+      final videoOwnerId = videoData['userId'] as String?;
+      
+      if (videoOwnerId != null) {
+        debugPrint('🔔 Triggering comment event: $commenterId -> $videoOwnerId for video $videoId');
+        await _eventTriggerService!.triggerCommentEvent(
+          commenterId: commenterId,
+          videoId: videoId,
+          videoOwnerId: videoOwnerId,
+          commentText: commentText,
+          postThumbnailUrl: videoData['thumbnailUrl'] as String?,
+        );
+        debugPrint('✅ Comment event triggered successfully');
+      } else {
+        debugPrint('🔔 Video owner ID not found in video data');
+      }
+    } catch (e) {
+      debugPrint('❌ Error triggering comment event: $e');
     }
   }
 

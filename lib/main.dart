@@ -15,6 +15,7 @@ import 'services/firestore_cache_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/performance_emergency_service.dart';
 import 'widgets/ios_minimal_startup.dart';
+import 'providers/service_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -113,11 +114,14 @@ class PerformanceObserver extends WidgetsBindingObserver {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Initialize the EventTriggerService provider to ensure it's set up
+    ref.read(eventTriggerServiceProvider);
+    
     return MaterialApp(
       title: 'StreamersTip',
       navigatorKey: nav.NavigationService.navigatorKey,

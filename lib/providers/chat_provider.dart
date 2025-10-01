@@ -8,11 +8,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import '../models/chat.dart';
+import '../services/push_notification_service.dart';
 import '../models/message.dart';
 import '../services/auth_service.dart';
 
 class ChatNotifier extends StateNotifier<ChatState> {
   final Chat chat;
+  final PushNotificationService _pushNotificationService = PushNotificationService();
   final AuthenticationService authService;
   StreamSubscription<QuerySnapshot>? _messageListener; // kept for API compatibility
 
@@ -118,6 +120,24 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastMessage": trimmedText,
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
+
+      // Send push notification to the recipient
+      try {
+        await _pushNotificationService.sendNotificationToUser(
+          userId: otherId,
+          title: 'New Message',
+          body: trimmedText.length > 50 ? '${trimmedText.substring(0, 50)}...' : trimmedText,
+          type: 'chat',
+          data: {
+            'chatId': chatId,
+            'senderId': currentUser.uid,
+            'messageText': trimmedText,
+          },
+        );
+      } catch (e) {
+        debugPrint('❌ Error sending push notification: $e');
+        // Don't fail the message send if push notification fails
+      }
 
       // Clear composed text and loading state
       state = state.copyWith(composedText: "", isLoading: false);

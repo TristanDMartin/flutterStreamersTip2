@@ -7,6 +7,7 @@ import 'video_moderation_service.dart';
 import 'enhanced_error_handling_service.dart';
 import 'video_processing_service.dart';
 import 'logging_service.dart';
+import 'tag_mention_service.dart';
 
 class VideoUploadResult {
   final bool success;
@@ -34,6 +35,7 @@ class VideoUploadService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final VideoModerationService _moderationService = VideoModerationService();
   final EnhancedErrorHandlingService _errorHandler = EnhancedErrorHandlingService();
+  final TagMentionService _tagMentionService = TagMentionService();
 
   /// Upload video with comprehensive moderation checks
   Future<VideoUploadResult> uploadVideo({
@@ -190,6 +192,21 @@ class VideoUploadService {
         debugPrint('✅ Video added to feeds');
       } catch (e) {
         debugPrint('⚠️ Failed to add video to feeds: $e');
+        // Continue anyway, this is not critical
+      }
+
+      // 10. Process tags and mentions from caption
+      try {
+        debugPrint('🏷️ Processing tags and mentions from caption...');
+        await _tagMentionService.processVideoTagsAndMentions(
+          videoId: videoId,
+          videoOwnerId: userId,
+          caption: caption,
+          postThumbnailUrl: thumbnailUrl,
+        );
+        debugPrint('✅ Tags and mentions processed');
+      } catch (e) {
+        debugPrint('⚠️ Failed to process tags and mentions: $e');
         // Continue anyway, this is not critical
       }
 

@@ -15,6 +15,7 @@ import '../services/unified_avatar_service.dart';
 import '../services/like_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
+import '../widgets/video_player_view_optimized.dart';
 
 enum FeedType { forYou, following }
 
@@ -86,14 +87,38 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   /// Pause all videos when leaving HomeView
   void pauseAllVideos() {
+    print('🚨 HOMEPROVIDER: pauseAllVideos() called!');
+    log('🚨 HOMEPROVIDER: pauseAllVideos() called!');
+    print('⏸️ Pausing all HomeView videos');
     log('⏸️ Pausing all HomeView videos');
     
     // Set a flag to indicate videos should be paused
     // The VideoPlayerViewOptimized widgets will check this flag
+    print('🔍 DEBUG: About to set shouldPauseAllVideos=true');
+    log('🔍 DEBUG: About to set shouldPauseAllVideos=true');
     state = state.copyWith(shouldPauseAllVideos: true);
+    print('🔍 DEBUG: Set shouldPauseAllVideos=true, new state: ${state.shouldPauseAllVideos}');
+    log('🔍 DEBUG: Set shouldPauseAllVideos=true, new state: ${state.shouldPauseAllVideos}');
     
     // Also try direct pause approach
+    print('🔍 DEBUG: About to call _directPauseAllVideos()');
+    log('🔍 DEBUG: About to call _directPauseAllVideos()');
     _directPauseAllVideos();
+    print('🔍 DEBUG: Called _directPauseAllVideos()');
+    log('🔍 DEBUG: Called _directPauseAllVideos()');
+    
+    // ALSO call global controller for immediate response
+    try {
+      // This will provide immediate pause without waiting for Consumer
+      print('🔊 HomeProvider: Calling GlobalVideoController.pauseAllVideos()');
+      log('🔊 HomeProvider: Calling GlobalVideoController.pauseAllVideos()');
+      GlobalVideoController.pauseAllVideos();
+      print('🔊 HomeProvider: GlobalVideoController.pauseAllVideos() completed');
+      log('🔊 HomeProvider: GlobalVideoController.pauseAllVideos() completed');
+    } catch (e) {
+      print('❌ HomeProvider: Error calling GlobalVideoController: $e');
+      log('❌ HomeProvider: Error calling GlobalVideoController: $e');
+    }
     
     // Reset the flag after a short delay to allow for future navigation
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -133,6 +158,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
     // Set a flag to indicate videos should resume
     // The VideoPlayerViewOptimized widgets will check this flag
     state = state.copyWith(shouldResumeCurrentVideo: true);
+    
+    // ALSO call global controller for immediate response
+    try {
+      log('🔊 HomeProvider: Calling GlobalVideoController.resumeCurrentVideo()');
+      GlobalVideoController.resumeCurrentVideo();
+    } catch (e) {
+      log('❌ HomeProvider: Error calling GlobalVideoController resume: $e');
+    }
     
     // Reset the flag after a short delay
     Future.delayed(const Duration(milliseconds: 100), () {

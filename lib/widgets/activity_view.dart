@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -79,15 +80,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     // Setup scroll listener for pagination
     _scrollController.addListener(_onScroll);
     
-    // Initialize activity data
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeActivityView();
-    });
+    // Initialize activity data will be called in build method
   }
 
   void _initializeActivityView() {
-    if (_isInitialized) return;
-    
     final notifier = ref.read(activityProvider.notifier);
     final auth = ref.read(authServiceProvider);
     final userId = auth.currentUser?.id;
@@ -116,6 +112,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   @override
   void activate() {
     super.activate();
+    // Re-initialize when user navigates back to ActivityView
+    if (_isInitialized) {
+      _initializeActivityView();
+    }
   }
 
   @override
@@ -135,6 +135,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     final userId = auth.currentUser?.id;
     if (userId == null) {
       return _buildSignInRequiredScaffold();
+    }
+
+    // Initialize ActivityView if not already initialized
+    if (!_isInitialized) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initializeActivityView();
+      });
     }
 
     ref.listen(activityProvider, (prev, next) {
@@ -157,14 +164,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     final filteredGrouped = _filterNotifications(state.grouped);
     final titles = _orderedSectionTitles(filteredGrouped.keys.toList());
 
-    // Debug information
-    debugPrint('🔍 ActivityView State Debug:');
-    debugPrint('  - isLoading: ${state.isLoading}');
-    debugPrint('  - hasError: ${state.hasError}');
-    debugPrint('  - error: ${state.error}');
-    debugPrint('  - grouped count: ${state.grouped.length}');
-    debugPrint('  - filtered count: ${filteredGrouped.length}');
-    debugPrint('  - titles: $titles');
+    // Debug information (reduced for production)
+    if (state.grouped.isNotEmpty) {
+      debugPrint('🔍 ActivityView: ${state.grouped.length} sections, ${filteredGrouped.length} filtered');
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -178,9 +181,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
               _buildHeader(state),
               _buildFilterChips(),
               if (state.isProcessing) _buildProcessingIndicator(state.processingCount),
-              // Debug button for testing
-              if (state.grouped.isEmpty && !state.isLoading)
-                _buildDebugButton(),
               Expanded(
                 child: FadeTransition(
                   opacity: _fadeController,
@@ -374,6 +374,50 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     child: const Icon(
                       Icons.done_all,
                       color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 8),
+              // Test notifications button (for development)
+              if (kDebugMode)
+                GestureDetector(
+                  onTap: _handleCreateTestNotifications,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha:0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha:0.4),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.science,
+                      color: Colors.orange,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 8),
+              // Simulate comment button (for development)
+              if (kDebugMode)
+                GestureDetector(
+                  onTap: _handleSimulateComment,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha:0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.green.withValues(alpha:0.4),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.comment,
+                      color: Colors.green,
                       size: 20,
                     ),
                   ),
@@ -996,6 +1040,46 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     }
   }
 
+  void _handleCreateTestNotifications() {
+    HapticFeedback.lightImpact();
+    final notifier = ref.read(activityProvider.notifier);
+    final auth = ref.read(authServiceProvider);
+    final userId = auth.currentUser?.id;
+    
+    if (userId != null) {
+      notifier.createRealisticTestNotifications(userId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Test notifications created! Check your activity feed.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _handleSimulateComment() {
+    HapticFeedback.lightImpact();
+    final notifier = ref.read(activityProvider.notifier);
+    final auth = ref.read(authServiceProvider);
+    final userId = auth.currentUser?.id;
+    
+    if (userId != null) {
+      // Use a test commenter ID - you can change this to a real user ID
+      const testCommenterId = 'test_commenter_123';
+      const testVideoId = 'test_video_456';
+      
+      notifier.simulateCommentNotification(userId, testCommenterId, testVideoId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Comment notification simulated! Check your activity feed.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   bool _hasUnreadNotifications(Map<String, List<ActivityNotification>> grouped) {
     for (final notifications in grouped.values) {
       for (final notification in notifications) {
@@ -1096,32 +1180,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     _handleProfileTap(user as user_model.User);
   }
 
-  Widget _buildDebugButton() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      child: ElevatedButton(
-        onPressed: () async {
-          debugPrint('🔧 Debug button pressed - forcing data load...');
-          final notifier = ref.read(activityProvider.notifier);
-          final auth = ref.read(authServiceProvider);
-          final userId = auth.currentUser?.id;
-          
-          if (userId != null) {
-            _isInitialized = false; // Reset initialization flag
-            notifier.reset();
-            await notifier.init(userId);
-            debugPrint('🔧 Debug button - data reload completed');
-          }
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF9248D2),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        ),
-        child: const Text('Load Test Notifications'),
-      ),
-    );
-  }
 
   void _navigateWithSlideTransition(Widget page, Offset beginOffset, {bool fullscreenDialog = false}) {
     Navigator.of(context).push(

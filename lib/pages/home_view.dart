@@ -525,20 +525,37 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
         _showStreamerCard = false;
         _currentStreamerCard = null;
       });
+      
+      // Resume current video when dismissing StreamerCard
+      try {
+        final homeNotifier = ref.read(hp.homeProvider.notifier);
+        homeNotifier.resumeCurrentVideo();
+        log('▶️ HomeView: Resumed current video after dismissing StreamerCard');
+      } catch (e) {
+        log('❌ HomeView: Error resuming video after StreamerCard dismissal: $e');
+      }
     }
   }
 
   void _pauseAllHomeViewVideos() {
+    print('🚨 PAUSE METHOD: _pauseAllHomeViewVideos() called!');
+    log('🚨 PAUSE METHOD: _pauseAllHomeViewVideos() called!');
+    print('🔍 HomeView._pauseAllHomeViewVideos(): Starting pause process');
+    log('🔍 HomeView._pauseAllHomeViewVideos(): Starting pause process');
     try {
+      print('🔍 HomeView._pauseAllHomeViewVideos(): About to get homeNotifier');
+      log('🔍 HomeView._pauseAllHomeViewVideos(): About to get homeNotifier');
       // Notify HomeView to pause all videos
       final homeNotifier = ref.read(hp.homeProvider.notifier);
+      print('🔍 HomeView._pauseAllHomeViewVideos(): Got homeNotifier, calling pauseAllVideos()');
+      log('🔍 HomeView._pauseAllHomeViewVideos(): Got homeNotifier, calling pauseAllVideos()');
       homeNotifier.pauseAllVideos();
+      print('🔍 HomeView._pauseAllHomeViewVideos(): Called pauseAllVideos() successfully');
+      log('🔍 HomeView._pauseAllHomeViewVideos(): Called pauseAllVideos() successfully');
       
       log('⏸️ HomeView: Paused all videos before navigation');
-      debugPrint('⏸️ HomeView: Paused all videos before navigation');
     } catch (e) {
       log('❌ HomeView: Error pausing videos: $e');
-      debugPrint('❌ HomeView: Error pausing videos: $e');
     }
   }
 
@@ -1001,12 +1018,34 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
           InkResponse(
             onTap: () {
               HapticFeedback.lightImpact();
+              print('🚨 DISCOVER NAVIGATION: Tap detected!');
+              log('🚨 DISCOVER NAVIGATION: Tap detected!');
               // Pause HomeView videos before navigating to DiscoverView
-              _pauseAllHomeViewVideos();
+              log('🔍 HomeView: About to navigate to DiscoverView - calling _pauseAllHomeViewVideos()');
+              print('🔍 HomeView: About to navigate to DiscoverView - calling _pauseAllHomeViewVideos()');
+              try {
+                _pauseAllHomeViewVideos();
+                log('🔍 HomeView: Called _pauseAllHomeViewVideos() - now navigating to DiscoverView');
+                print('🔍 HomeView: Called _pauseAllHomeViewVideos() - now navigating to DiscoverView');
+              } catch (e) {
+                log('❌ HomeView: Error calling _pauseAllHomeViewVideos(): $e');
+                print('❌ HomeView: Error calling _pauseAllHomeViewVideos(): $e');
+              }
+              
+              // DIRECT TEST: Try to pause video immediately
+              try {
+                final homeState = ref.read(hp.homeProvider);
+                log('🔍 HomeView: Direct test - Current home state shouldPauseAllVideos: ${homeState.shouldPauseAllVideos}');
+              } catch (e) {
+                log('❌ HomeView: Direct test error: $e');
+              }
+              
+              log('🚨 DISCOVER NAVIGATION: About to call Navigator.push');
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const DiscoverView()),
               );
+              log('🚨 DISCOVER NAVIGATION: Navigator.push completed');
             },
             radius: 24, // keeps 44x44 tap target
             child: Container(

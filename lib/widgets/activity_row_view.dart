@@ -212,14 +212,51 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       },
       child: Stack(
         children: [
-          OptimizedAvatar(
-            imageUrl: widget.notification.user.avatarURL,
-            radius: 22,
-            backgroundColor: Colors.white.withValues(alpha:0.2),
-            child: Icon(
-              Icons.person,
-              color: Colors.white.withValues(alpha:0.7),
-              size: 24,
+          // User avatar
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha:0.3),
+                width: 2,
+              ),
+            ),
+            child: ClipOval(
+              child: widget.notification.user.avatarURL != null && 
+                     widget.notification.user.avatarURL!.isNotEmpty
+                  ? OptimizedImage(
+                      imageUrl: widget.notification.user.avatarURL!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      borderRadius: BorderRadius.circular(20),
+                      placeholder: Container(
+                        color: Colors.white.withValues(alpha:0.2),
+                        child: Icon(
+                          Icons.person,
+                          color: Colors.white.withValues(alpha:0.7),
+                          size: 24,
+                        ),
+                      ),
+                      errorWidget: Container(
+                        color: Colors.white.withValues(alpha:0.2),
+                        child: Icon(
+                          Icons.person,
+                          color: Colors.white.withValues(alpha:0.7),
+                          size: 24,
+                        ),
+                      ),
+                    )
+                  : Container(
+                      color: Colors.white.withValues(alpha:0.2),
+                      child: Icon(
+                        Icons.person,
+                        color: Colors.white.withValues(alpha:0.7),
+                        size: 24,
+                      ),
+                    ),
             ),
           ),
           
@@ -329,7 +366,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   }
 
   Widget _buildActionItem(bool isFollowing, bool isMutualFollow, String? currentUserId) {
-    if (widget.notification.postThumbnailUrl != null) {
+    if (widget.notification.postThumbnailUrl != null && 
+        widget.notification.postThumbnailUrl!.isNotEmpty) {
       return GestureDetector(
         onTap: () {
           HapticFeedback.lightImpact();
@@ -341,38 +379,60 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.white.withValues(alpha:0.2),
-              width: 1,
+              color: Colors.white.withValues(alpha:0.3),
+              width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha:0.1),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
+                color: Colors.black.withValues(alpha:0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: OptimizedImage(
-              imageUrl: widget.notification.postThumbnailUrl,
+              imageUrl: widget.notification.postThumbnailUrl!,
               width: 50,
               height: 50,
               fit: BoxFit.cover,
               placeholder: Container(
                 color: Colors.white.withValues(alpha:0.1),
-                child: Icon(
-                  Icons.photo,
-                  color: Colors.white.withValues(alpha:0.6),
-                  size: 20,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.play_circle_outline,
+                      color: Colors.white.withValues(alpha:0.6),
+                      size: 20,
+                    ),
+                    const SizedBox(height: 2),
+                    Icon(
+                      Icons.photo,
+                      color: Colors.white.withValues(alpha:0.4),
+                      size: 12,
+                    ),
+                  ],
                 ),
               ),
               errorWidget: Container(
                 color: Colors.white.withValues(alpha:0.1),
-                child: Icon(
-                  Icons.photo,
-                  color: Colors.white.withValues(alpha:0.6),
-                  size: 20,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.play_circle_outline,
+                      color: Colors.white.withValues(alpha:0.6),
+                      size: 20,
+                    ),
+                    const SizedBox(height: 2),
+                    Icon(
+                      Icons.photo,
+                      color: Colors.white.withValues(alpha:0.4),
+                      size: 12,
+                    ),
+                  ],
                 ),
               ),
             ),

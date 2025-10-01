@@ -19,6 +19,37 @@ import '../services/video_performance_service.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_share_sheet.dart';
 
+// Global pause signal for immediate video control
+class GlobalVideoController {
+  static bool _shouldPauseAllVideos = false;
+  static bool _shouldResumeCurrentVideo = false;
+  
+  static bool get shouldPauseAllVideos => _shouldPauseAllVideos;
+  static bool get shouldResumeCurrentVideo => _shouldResumeCurrentVideo;
+  
+  static void pauseAllVideos() {
+    _shouldPauseAllVideos = true;
+    print('🔊 GlobalVideoController: Set pause signal to true');
+    log('🔊 GlobalVideoController: Set pause signal to true');
+    // Reset after a short delay
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _shouldPauseAllVideos = false;
+      print('🔊 GlobalVideoController: Reset pause signal to false');
+      log('🔊 GlobalVideoController: Reset pause signal to false');
+    });
+  }
+  
+  static void resumeCurrentVideo() {
+    _shouldResumeCurrentVideo = true;
+    log('🔊 GlobalVideoController: Set resume signal to true');
+    // Reset after a short delay
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _shouldResumeCurrentVideo = false;
+      log('🔊 GlobalVideoController: Reset resume signal to false');
+    });
+  }
+}
+
 class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final HomeVideo video;
   final bool isCurrentVideo;
@@ -66,6 +97,8 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   // Track state changes to prevent duplicate callbacks
   bool _lastShouldPauseAllVideos = false;
   bool _lastShouldResumeCurrentVideo = false;
+  bool _lastGlobalShouldPauseAllVideos = false;
+  bool _lastGlobalShouldResumeCurrentVideo = false;
   
   // Track last tap position for floating hearts
   Offset _lastTapPosition = Offset.zero;
@@ -746,10 +779,16 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         // Listen for pause signal when leaving HomeView
         final homeState = ref.watch(homeProvider);
         
+        // DEBUG: Log every state change
+        log('🔍 Consumer: shouldPauseAllVideos=${homeState.shouldPauseAllVideos}, _lastShouldPauseAllVideos=$_lastShouldPauseAllVideos, controller=${_videoPlayerController != null}, initialized=$_isInitialized');
+        log('🔍 GlobalController: shouldPauseAllVideos=${GlobalVideoController.shouldPauseAllVideos}, _lastGlobalShouldPauseAllVideos=$_lastGlobalShouldPauseAllVideos');
+        
         // Check if we should pause all videos (when leaving HomeView)
         if (homeState.shouldPauseAllVideos && !_lastShouldPauseAllVideos && _videoPlayerController != null && _isInitialized) {
           _lastShouldPauseAllVideos = true;
           // IMMEDIATE pause - stops audio instantly
+          // CRITICAL: Mute audio first, then pause video
+          _videoPlayerController!.setVolume(0.0);
           _videoPlayerController!.pause();
           log('⏸️ Video paused due to HomeView navigation (Consumer): ${widget.video.id}');
           // Update UI state after build completes (prevents setState error)
@@ -780,6 +819,57 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
           });
         } else if (!homeState.shouldResumeCurrentVideo) {
           _lastShouldResumeCurrentVideo = false;
+        }
+        
+        // ALSO check global controller for immediate response
+        if (GlobalVideoController.shouldPauseAllVideos && !_lastGlobalShouldPauseAllVideos && _videoPlayerController != null && _isInitialized) {
+          _lastGlobalShouldPauseAllVideos = true;
+          // IMMEDIATE pause - stops audio instantly
+          print('⏸️ Video paused due to GlobalVideoController: ${widget.video.id}');
+          log('⏸️ Video paused due to GlobalVideoController: ${widget.video.id}');
+          // CRITICAL: Mute audio first, then pause video
+          _videoPlayerController!.setVolume(0.0);
+          _videoPlayerController!.pause();
+          // Update UI state after build completes (prevents setState error)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _isPlaying = false);
+            }
+          });
+        } else if (!GlobalVideoController.shouldPauseAllVideos) {
+          _lastGlobalShouldPauseAllVideos = false;
+        }
+        
+        // AGGRESSIVE TEST: Try to pause immediately if we detect any navigation
+        // This is a temporary test to see if we can force pause
+        if (_videoPlayerController != null && _isInitialized && _isPlaying) {
+          // Check if we're not the current video (which might indicate navigation)
+          if (!widget.isCurrentVideo) {
+            log('🔍 AGGRESSIVE TEST: Video not current, attempting immediate pause: ${widget.video.id}');
+            _videoPlayerController!.pause();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() => _isPlaying = false);
+              }
+            });
+          }
+        }
+        
+        // Check if we should resume current video (when returning to HomeView)
+        if (GlobalVideoController.shouldResumeCurrentVideo && !_lastGlobalShouldResumeCurrentVideo && widget.isCurrentVideo && _videoPlayerController != null && _isInitialized) {
+          _lastGlobalShouldResumeCurrentVideo = true;
+          // IMMEDIATE resume - starts audio instantly
+          _videoPlayerController!.setVolume(1.0);
+          _videoPlayerController!.play();
+          log('▶️ Video resumed due to GlobalVideoController: ${widget.video.id}');
+          // Update UI state after build completes (prevents setState error)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _isPlaying = true);
+            }
+          });
+        } else if (!GlobalVideoController.shouldResumeCurrentVideo) {
+          _lastGlobalShouldResumeCurrentVideo = false;
         }
         
         return GestureDetector(

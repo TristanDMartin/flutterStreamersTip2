@@ -736,7 +736,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     debugPrint('InboxView: Building chat tile for $otherUserId - userProfile: ${userProfile != null ? 'loaded' : 'null'}, name: $participantName');
     
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       decoration: BoxDecoration(
         color: isSelected 
             ? _primaryColor.withValues(alpha: 0.15)
@@ -769,8 +769,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 Stack(
                   children: [
                     Container(
-                      width: 56,
-                      height: 56,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: userProfile?.avatarURL != null 
@@ -790,8 +790,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           ? ClipOval(
                               child: Image.network(
                                 userProfile!.avatarURL!,
-                                width: 56,
-                                height: 56,
+                                width: 44,
+                                height: 44,
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Center(
@@ -799,7 +799,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                                       initials,
                                       style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 20,
+                                        fontSize: 18,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
@@ -812,7 +812,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                                 initials,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 20,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -824,8 +824,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         right: 0,
                         bottom: 0,
                         child: Container(
-                          width: 16,
-                          height: 16,
+                          width: 14,
+                          height: 14,
                           decoration: BoxDecoration(
                             color: _successColor,
                             shape: BoxShape.circle,
@@ -842,8 +842,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         right: 0,
                         top: 0,
                         child: Container(
-                          width: 20,
-                          height: 20,
+                          width: 18,
+                          height: 18,
                           decoration: const BoxDecoration(
                             color: _primaryColor,
                             shape: BoxShape.circle,
@@ -851,7 +851,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           child: const Icon(
                             Icons.check,
                             color: Colors.white,
-                            size: 12,
+                            size: 10,
                           ),
                         ),
                       ),
@@ -861,20 +861,20 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         right: -2,
                         top: -2,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: const BoxDecoration(
                             color: _primaryColor,
                             shape: BoxShape.circle,
                           ),
                           constraints: const BoxConstraints(
-                            minWidth: 20,
-                            minHeight: 20,
+                            minWidth: 18,
+                            minHeight: 18,
                           ),
                           child: Text(
                             unreadCount > 99 ? '99+' : unreadCount.toString(),
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 10,
+                              fontSize: 9,
                               fontWeight: FontWeight.bold,
                             ),
                             textAlign: TextAlign.center,
@@ -883,7 +883,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       ),
                   ],
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 // Chat content
                 Expanded(
                   child: Column(
@@ -896,8 +896,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               participantName,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
                                 letterSpacing: -0.3,
                               ),
                               maxLines: 1,
@@ -927,7 +927,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         chat.lastMessage ?? 'No messages yet',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 15,
+                          fontSize: 13,
                           fontWeight: FontWeight.w400,
                           height: 1.3,
                         ),
@@ -957,7 +957,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final isUnread = draft.status != SharedDraftStatus.viewed;
     
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       decoration: BoxDecoration(
         color: isSelected 
             ? _primaryColor.withValues(alpha: 0.15)

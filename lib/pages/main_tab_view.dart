@@ -53,8 +53,16 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
   void _checkIfReturnedToHomeView() {
     // Check if we're currently on HomeView and no modal is open
+    // CRITICAL FIX: Only resume if we're actually on the first route (HomeView)
+    // Don't resume if we've navigated to another view via Navigator.push()
     if (_currentIndex == 0 && ModalRoute.of(context)?.isFirst == true) {
-      _resumeHomeViewVideos();
+      // Additional check: make sure we're not in a pushed route
+      final navigator = Navigator.of(context);
+      if (navigator.canPop() == false) {
+        _resumeHomeViewVideos();
+      } else {
+        log('🚫 MainTabView: Not resuming video - navigated to another view');
+      }
     }
   }
 
@@ -132,14 +140,20 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
   void _onUploadTapped() {
     // Pause HomeView videos before navigating to CameraView
+    log('🚨 CAMERA NAVIGATION: Tap detected!');
+    print('🚨 CAMERA NAVIGATION: Tap detected!');
     _pauseAllHomeViewVideos();
     
+    log('🚨 CAMERA NAVIGATION: About to call Navigator.push');
+    print('🚨 CAMERA NAVIGATION: About to call Navigator.push');
     // Navigate directly to camera view
     Navigator.of(context).push(
       MaterialPageRoute(
           builder: (context) => const CameraViewOptimized(),
       ),
     );
+    log('🚨 CAMERA NAVIGATION: Navigator.push completed');
+    print('🚨 CAMERA NAVIGATION: Navigator.push completed');
   }
 
   void _onInboxTapped() {

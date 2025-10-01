@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart' as user_model;
+import 'event_trigger_service.dart';
 
 /// Service for managing follow relationships using the correct data model
 /// 
@@ -20,6 +21,12 @@ class FollowsService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  EventTriggerService? _eventTriggerService;
+
+  /// Set the EventTriggerService instance (should be called from provider)
+  void setEventTriggerService(EventTriggerService eventTriggerService) {
+    _eventTriggerService = eventTriggerService;
+  }
 
   /// Follow a user
   /// Creates follows/{followerId}_{followedId} and handles mutual relationship logic
@@ -93,6 +100,17 @@ class FollowsService {
             _firestore.collection('users').doc(targetUserId),
             {'followersCount': FieldValue.increment(1)},
           );
+        }
+
+        // Trigger follow event for notifications
+        if (_eventTriggerService != null) {
+          debugPrint('🔔 FollowsService: Triggering follow event notification');
+          await _eventTriggerService!.triggerFollowEvent(
+            followerId: currentUserId,
+            followingId: targetUserId,
+          );
+        } else {
+          debugPrint('⚠️ FollowsService: EventTriggerService not set - no notification will be created');
         }
 
         return true;

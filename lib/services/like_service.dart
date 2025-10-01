@@ -4,14 +4,22 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'engagement_analytics_service.dart';
+import 'event_trigger_service.dart';
 
 class LikeService {
   static final LikeService _instance = LikeService._internal();
   factory LikeService() => _instance;
-  LikeService._internal();
-
+  
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  EventTriggerService? _eventTriggerService;
+  
+  LikeService._internal();
+  
+  /// Set the EventTriggerService instance (should be called from provider)
+  void setEventTriggerService(EventTriggerService eventTriggerService) {
+    _eventTriggerService = eventTriggerService;
+  }
   
   // Local persistence for likes
   static const String _likedVideosKey = 'liked_videos';
@@ -19,14 +27,17 @@ class LikeService {
 
   /// Toggle like status for a video
   Future<bool> toggleLike(String videoId) async {
+    debugPrint('🔔 LikeService.toggleLike called: $videoId');
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
+        debugPrint('🔔 LikeService: No current user, updating local storage only');
         // If no user, just update local storage
         await _updateLocalStorageOnly(videoId);
         return true;
       }
 
+      debugPrint('🔔 LikeService: Current user: ${currentUser.uid}');
       // Check current like status
       final isLiked = await _isVideoLiked(videoId);
       
@@ -34,11 +45,25 @@ class LikeService {
         // Try to unlike in Firebase, but always update local storage
         final firebaseSuccess = await _unlikeVideo(videoId);
         await _updateLocalStorageOnly(videoId);
+        
+        // Trigger unlike event for notifications
+        final currentUser = _auth.currentUser;
+        if (currentUser != null) {
+          await _triggerUnlikeEvent(videoId, currentUser.uid);
+        }
+        
         return firebaseSuccess;
       } else {
         // Try to like in Firebase, but always update local storage
         final firebaseSuccess = await _likeVideo(videoId);
         await _updateLocalStorageOnly(videoId);
+        
+        // Trigger like event for notifications
+        final currentUser = _auth.currentUser;
+        if (currentUser != null) {
+          await _triggerLikeEvent(videoId, currentUser.uid);
+        }
+        
         return firebaseSuccess;
       }
     } catch (e) {
@@ -175,6 +200,81 @@ class LikeService {
         'isReplay': false,
       },
     );
+  }
+
+  /// Trigger like event for notifications
+  Future<void> _triggerLikeEvent(String videoId, String likerId) async {
+    try {
+      debugPrint('🔔 LikeService._triggerLikeEvent called: $likerId -> $videoId');
+
+      if (_eventTriggerService == null) {
+        debugPrint('🔔 EventTriggerService not set - skipping notification');
+        return;
+      }
+
+      // Get video owner ID
+      final videoDoc = await _firestore.collection('videos').doc(videoId).get();
+      if (!videoDoc.exists) {
+        debugPrint('🔔 Video document not found: $videoId');
+        return;
+      }
+
+      final videoData = videoDoc.data()!;
+      final videoOwnerId = videoData['userId'] as String?;
+
+      if (videoOwnerId != null) {
+        debugPrint('🔔 Triggering like event: $likerId -> $videoOwnerId for video $videoId');
+        debugPrint('🔔 Video data: $videoData');
+        
+        await _eventTriggerService!.triggerLikeEvent(
+          likerId: likerId,
+          videoId: videoId,
+          videoOwnerId: videoOwnerId,
+          postThumbnailUrl: videoData['thumbnailUrl'] as String?,
+        );
+        debugPrint('✅ Like event triggered successfully');
+      } else {
+        debugPrint('🔔 Video owner ID not found in video data');
+      }
+    } catch (e) {
+      debugPrint('❌ Error triggering like event: $e');
+    }
+  }
+
+  /// Trigger unlike event for notifications
+  Future<void> _triggerUnlikeEvent(String videoId, String likerId) async {
+    try {
+      debugPrint('🔔 LikeService._triggerUnlikeEvent called: $likerId -> $videoId');
+
+      if (_eventTriggerService == null) {
+        debugPrint('🔔 EventTriggerService not set - skipping notification');
+        return;
+      }
+
+      // Get video owner ID
+      final videoDoc = await _firestore.collection('videos').doc(videoId).get();
+      if (!videoDoc.exists) {
+        debugPrint('🔔 Video document not found: $videoId');
+        return;
+      }
+      
+      final videoData = videoDoc.data()!;
+      final videoOwnerId = videoData['userId'] as String?;
+      
+      if (videoOwnerId != null) {
+        debugPrint('🔔 Triggering unlike event: $likerId -> $videoOwnerId for video $videoId');
+        await _eventTriggerService!.triggerUnlikeEvent(
+          likerId: likerId,
+          videoId: videoId,
+          videoOwnerId: videoOwnerId,
+        );
+        debugPrint('✅ Unlike event triggered successfully');
+      } else {
+        debugPrint('🔔 Video owner ID not found in video data');
+      }
+    } catch (e) {
+      debugPrint('❌ Error triggering unlike event: $e');
+    }
   }
 
   /// Get liked videos from local storage

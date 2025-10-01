@@ -190,6 +190,39 @@ class PushNotificationService {
     }
   }
 
+  /// Handle local notification tap
+  void _onNotificationTapped(NotificationResponse response) {
+    try {
+      final payload = response.payload;
+      if (payload == null) return;
+      
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      final type = data['type'] ?? 'general';
+      
+      LoggingService.instance.debug('Local notification tapped: $type', tag: 'PushNotificationService');
+      
+      // Navigate based on notification type
+      switch (type) {
+        case 'chat':
+          _navigateToChat(data['chatId']);
+          break;
+        case 'video':
+          _navigateToVideo(data['videoId']);
+          break;
+        case 'profile':
+          _navigateToProfile(data['senderId'] ?? data['followerId']);
+          break;
+        case 'follow':
+          _navigateToProfile(data['followerId']);
+          break;
+        default:
+          _navigateToHome();
+      }
+    } catch (e) {
+      LoggingService.instance.error('Error handling local notification tap: $e', tag: 'PushNotificationService', error: e);
+    }
+  }
+
   /// Show local notification
   Future<void> _showLocalNotification(RemoteMessage message) async {
     try {
@@ -225,6 +258,54 @@ class PushNotificationService {
       );
     } catch (e) {
       LoggingService.instance.error('Error showing local notification', tag: 'PushNotificationService', error: e);
+    }
+  }
+
+  /// Show local notification directly (for immediate notifications)
+  Future<void> _showLocalNotificationDirect({
+    required String title,
+    required String body,
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'streamers_tip_channel',
+        'StreamersTip Notifications',
+        channelDescription: 'Notifications for StreamersTip app',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        showWhen: true,
+        enableVibration: true,
+        playSound: true,
+      );
+
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        sound: 'default',
+      );
+
+      const details = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      // Generate unique ID for each notification
+      final notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+
+      await _localNotifications.show(
+        notificationId,
+        title,
+        body,
+        details,
+        payload: jsonEncode(data),
+      );
+
+      LoggingService.instance.debug('✅ Local notification shown: $title', tag: 'PushNotificationService');
+    } catch (e) {
+      LoggingService.instance.error('Error showing local notification directly: $e', tag: 'PushNotificationService', error: e);
     }
   }
 
@@ -279,20 +360,34 @@ class PushNotificationService {
     required String body,
     Map<String, dynamic>? data,
   }) async {
-    // Note: In production, this should be done via Cloud Functions
-    // This is a simplified implementation for demonstration
-    LoggingService.instance.debug('Sending FCM notification to: $token', tag: 'PushNotificationService');
-    
-    // Store notification in Firestore for the user
-    await _firestore.collection('notifications').add({
-      'userId': _auth.currentUser?.uid,
-      'title': title,
-      'body': body,
-      'type': data?['type'] ?? 'general',
-      'data': data ?? {},
-      'timestamp': FieldValue.serverTimestamp(),
-      'isRead': false,
-    });
+    try {
+      LoggingService.instance.debug('Sending FCM notification to: $token', tag: 'PushNotificationService');
+      
+      // For now, we'll use local notifications as a fallback since direct FCM requires server-side implementation
+      // In production, this should be done via Cloud Functions
+      
+      // Show local notification immediately
+      await _showLocalNotificationDirect(
+        title: title,
+        body: body,
+        data: data ?? {},
+      );
+      
+      // Also store in Firestore for persistence
+      await _firestore.collection('notifications').add({
+        'userId': _auth.currentUser?.uid,
+        'title': title,
+        'body': body,
+        'type': data?['type'] ?? 'general',
+        'data': data ?? {},
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+      });
+      
+      LoggingService.instance.debug('✅ Local notification sent successfully', tag: 'PushNotificationService');
+    } catch (e) {
+      LoggingService.instance.error('Error sending FCM notification: $e', tag: 'PushNotificationService');
+    }
   }
 
   /// Send chat notification
@@ -376,31 +471,6 @@ class PushNotificationService {
     // Implement navigation to home
   }
 
-  /// Handle local notification tap
-  void _onNotificationTapped(NotificationResponse response) {
-    try {
-      if (response.payload != null) {
-        final data = jsonDecode(response.payload!) as Map<String, dynamic>;
-        final type = data['type'] ?? 'general';
-        
-        switch (type) {
-          case 'chat':
-            _navigateToChat(data['roomId']);
-            break;
-          case 'video':
-            _navigateToVideo(data['videoId']);
-            break;
-          case 'profile':
-            _navigateToProfile(data['userId']);
-            break;
-          default:
-            _navigateToHome();
-        }
-      }
-    } catch (e) {
-      LoggingService.instance.error('Error handling notification tap', tag: 'PushNotificationService', error: e);
-    }
-  }
 
   /// Handle token refresh
   void _onTokenRefresh(String token) {

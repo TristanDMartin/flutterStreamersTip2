@@ -33,35 +33,98 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     debugPrint('🔄 ActivityNotifier.init called for user: $userId');
     debugPrint('  - _isInitialized: $_isInitialized');
     debugPrint('  - Current state: ${state.grouped.length} notifications');
+    debugPrint('🔍 ActivityNotifier: About to set up Firestore listener...');
     
-    // Prevent multiple simultaneous initializations
-    if (_isInitialized) {
-      debugPrint('⚠️ ActivityNotifier already initialized, skipping...');
-      return;
-    }
-    
-    _isInitialized = true; // Mark as initialized immediately to prevent multiple calls
+    // Always re-initialize to ensure real-time updates work
+    _isInitialized = true; // Mark as initialized
     
     try {
       await _notifSub?.cancel();
       state = state.copyWith(isLoading: true, hasError: false, error: null);
       
-      // Load offline data immediately as fallback
-      debugPrint('🔄 Loading offline data immediately...');
-      _loadOfflineData();
-      
-      // Try to load from Firestore in background (non-blocking)
-      _loadFirestoreData(userId);
+      // Load real data from Firestore
+      debugPrint('🔄 Loading real data from Firestore...');
+      await _loadFirestoreData(userId);
       
     } catch (e) {
       debugPrint('❌ Error in init: $e');
-      // Always load offline data as fallback
-      _loadOfflineData();
+      state = state.copyWith(
+        isLoading: false,
+        hasError: true,
+        error: 'Failed to load notifications: ${e.toString()}',
+      );
     }
   }
 
   Future<void> _loadFirestoreData(String userId) async {
     try {
+      debugPrint('🔍 ActivityNotifier: Setting up Firestore listener for user: $userId');
+      debugPrint('🔍 ActivityNotifier: Path: notifications/$userId/items');
+      
+      // First, try to get initial data
+      try {
+        final initialSnapshot = await _db
+            .collection('notifications')
+            .doc(userId)
+            .collection('items')
+            .orderBy('timestamp', descending: true)
+            .get();
+        
+        debugPrint('🔍 ActivityNotifier: Initial load - ${initialSnapshot.docs.length} documents');
+        
+        if (initialSnapshot.docs.isNotEmpty) {
+          final items = initialSnapshot.docs.map((d) {
+            final data = d.data();
+            debugPrint('🔍 ActivityNotifier: Processing document ${d.id}: $data');
+            
+            return ActivityNotification(
+              id: d.id,
+              type: _typeFromString((data['type'] ?? 'like').toString()),
+              user: const UserConverter().fromJson(
+                Map<String, dynamic>.from(data['user'] ?? {}),
+              ),
+              timestamp: const TimestampConverter().fromJson(data['timestamp']),
+              postThumbnailUrl: data['postThumbnailUrl'] as String?,
+              commentText: data['commentText'] as String?,
+              status: (data['status'] ?? 'pending').toString(),
+              videoId: data['videoId'] as String?,
+            );
+          }).toList();
+
+          final grouped = <String, List<ActivityNotification>>{};
+          for (final n in items) {
+            final key = _groupKey(n.timestamp);
+            grouped.putIfAbsent(key, () => []).add(n);
+          }
+          
+          state = state.copyWith(
+            grouped: grouped, 
+            isLoading: false, 
+            hasError: false,
+            error: null,
+          );
+          debugPrint('✅ Initial Firestore data loaded successfully with ${items.length} notifications');
+        } else {
+          // No notifications found
+          state = state.copyWith(
+            grouped: {}, 
+            isLoading: false, 
+            hasError: false,
+            error: null,
+          );
+          debugPrint('ℹ️ No notifications found for user: $userId');
+        }
+      } catch (e) {
+        debugPrint('🚨 Error loading initial data: $e');
+        state = state.copyWith(
+          isLoading: false,
+          hasError: true,
+          error: 'Failed to load notifications: ${e.toString()}',
+        );
+        return;
+      }
+      
+      // Then set up real-time listener
       _notifSub = _db
           .collection('notifications')
           .doc(userId)
@@ -71,6 +134,8 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           .listen(
             (snap) {
               try {
+                debugPrint('🔍 ActivityNotifier: Real-time update - ${snap.docs.length} documents');
+                
                 final items = snap.docs.map((d) {
                   final data = d.data();
                   return ActivityNotification(
@@ -87,131 +152,45 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
                   );
                 }).toList();
 
-                // Only update if we have actual data from Firestore
-                if (items.isNotEmpty) {
-                  final grouped = <String, List<ActivityNotification>>{};
-                  for (final n in items) {
-                    final key = _groupKey(n.timestamp);
-                    grouped.putIfAbsent(key, () => []).add(n);
-                  }
-                  state = state.copyWith(
-                    grouped: grouped, 
-                    isLoading: false, 
-                    hasError: false,
-                    error: null,
-                  );
-                  debugPrint('✅ Firestore data loaded successfully');
-                } else {
-                  debugPrint('⚠️ No Firestore notifications found, keeping offline data');
+                final grouped = <String, List<ActivityNotification>>{};
+                for (final n in items) {
+                  final key = _groupKey(n.timestamp);
+                  grouped.putIfAbsent(key, () => []).add(n);
                 }
+                
+                state = state.copyWith(
+                  grouped: grouped, 
+                  isLoading: false, 
+                  hasError: false,
+                  error: null,
+                );
+                debugPrint('✅ Real-time update successful with ${items.length} notifications');
               } catch (e) {
-                debugPrint('🚨 Firestore parsing error: $e');
-                // Keep offline data if Firestore fails - don't reload offline data
+                debugPrint('🚨 Real-time update parsing error: $e');
+                state = state.copyWith(
+                  hasError: true,
+                  error: 'Failed to parse real-time updates: ${e.toString()}',
+                );
               }
             },
             onError: (error) {
-              debugPrint('🚨 Firestore error: $error');
-              // Keep offline data if Firestore fails - don't reload offline data
+              debugPrint('🚨 Real-time listener error: $error');
+              state = state.copyWith(
+                hasError: true,
+                error: 'Real-time updates failed: ${error.toString()}',
+              );
             },
           );
     } catch (e) {
       debugPrint('🚨 Firestore setup error: $e');
-      // Keep offline data if Firestore setup fails - don't reload offline data
+      state = state.copyWith(
+        isLoading: false,
+        hasError: true,
+        error: 'Failed to setup notifications: ${e.toString()}',
+      );
     }
   }
 
-  void _loadOfflineData() {
-    debugPrint('🔄 Loading offline data as fallback...');
-    // Load mock data as fallback when Firestore fails
-    final mockNotifications = _generateMockNotifications();
-    final grouped = <String, List<ActivityNotification>>{};
-    for (final n in mockNotifications) {
-      final key = _groupKey(n.timestamp);
-      grouped.putIfAbsent(key, () => []).add(n);
-    }
-    state = state.copyWith(
-      grouped: grouped,
-      isLoading: false,
-      hasError: false,
-      error: null,
-    );
-    debugPrint('✅ Offline data loaded successfully');
-  }
-
-  List<ActivityNotification> _generateMockNotifications() {
-    debugPrint('🎭 Generating mock notifications...');
-    final now = DateTime.now();
-    
-    final notifications = [
-      ActivityNotification(
-        id: '1',
-        type: ActivityNotificationType.like,
-        user: const UserConverter().fromJson({
-          'id': 'user1',
-          'username': 'gamer_girl',
-          'displayName': 'Gamer Girl',
-          'avatarURL': 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face',
-        }),
-        timestamp: now.subtract(const Duration(minutes: 5)),
-        postThumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop',
-        status: 'delivered',
-      ),
-      ActivityNotification(
-        id: '2',
-        type: ActivityNotificationType.follow,
-        user: const UserConverter().fromJson({
-          'id': 'user2',
-          'username': 'art_streamer',
-          'displayName': 'Art Streamer',
-          'avatarURL': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face',
-        }),
-        timestamp: now.subtract(const Duration(hours: 1)),
-        status: 'delivered',
-      ),
-      ActivityNotification(
-        id: '3',
-        type: ActivityNotificationType.comment,
-        user: const UserConverter().fromJson({
-          'id': 'user3',
-          'username': 'music_lover',
-          'displayName': 'Music Lover',
-          'avatarURL': 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=face',
-        }),
-        timestamp: now.subtract(const Duration(hours: 2)),
-        commentText: 'Great content! Keep it up! 🎵',
-        status: 'delivered',
-      ),
-      ActivityNotification(
-        id: '4',
-        type: ActivityNotificationType.like,
-        user: const UserConverter().fromJson({
-          'id': 'user4',
-          'username': 'tech_reviewer',
-          'displayName': 'Tech Reviewer',
-          'avatarURL': 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face',
-        }),
-        timestamp: now.subtract(const Duration(hours: 3)),
-        postThumbnailUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=200&h=200&fit=crop',
-        status: 'pending',
-      ),
-      ActivityNotification(
-        id: '5',
-        type: ActivityNotificationType.mention,
-        user: const UserConverter().fromJson({
-          'id': 'user5',
-          'username': 'fitness_coach',
-          'displayName': 'Fitness Coach',
-          'avatarURL': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face',
-        }),
-        timestamp: now.subtract(const Duration(days: 1)),
-        commentText: 'Thanks for the shoutout! 💪',
-        status: 'delivered',
-      ),
-    ];
-    
-    debugPrint('✅ Generated ${notifications.length} mock notifications');
-    return notifications;
-  }
 
   Future<void> markAllDelivered(String userId) async {
     try {
@@ -305,6 +284,220 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           );
     } catch (e) {
       debugPrint('Failed to start processing listener: $e');
+    }
+  }
+
+  /// Test method to manually create notifications of all types
+  Future<void> createTestNotification(String userId) async {
+    try {
+      debugPrint('🧪 Creating test notifications for user: $userId');
+      
+      // Get current user data for more realistic test notifications
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        debugPrint('❌ No current user found for test notifications');
+        return;
+      }
+      
+      // Get current user's display name and photo URL
+      final userDoc = await _db.collection('users').doc(currentUser.uid).get();
+      final userData = userDoc.data() ?? {};
+      
+      final testUser = {
+        'id': currentUser.uid,
+        'username': userData['username'] ?? 'current_user',
+        'displayName': userData['displayName'] ?? currentUser.displayName ?? 'Current User',
+        'avatarURL': userData['avatarURL'] ?? currentUser.photoURL ?? 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face',
+      };
+      
+      // Create all notification types
+      final notificationTypes = [
+        {'type': 'like', 'data': {'videoId': 'test_video', 'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'}},
+        {'type': 'follow', 'data': {}},
+        {'type': 'comment', 'data': {'videoId': 'test_video', 'commentText': 'Great video!', 'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'}},
+        {'type': 'tag', 'data': {'videoId': 'test_video', 'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'}},
+        {'type': 'mention', 'data': {'videoId': 'test_video', 'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'}},
+      ];
+      
+      for (final notificationType in notificationTypes) {
+        final notificationData = {
+          'type': notificationType['type'],
+          'user': testUser,
+          'timestamp': FieldValue.serverTimestamp(),
+          'isRead': false,
+          'status': 'pending',
+          ...notificationType['data'] as Map<String, dynamic>,
+        };
+        
+        await _db
+            .collection('notifications')
+            .doc(userId)
+            .collection('items')
+            .add(notificationData);
+      }
+      
+      debugPrint('✅ Test notifications created successfully (all types)');
+    } catch (e) {
+      debugPrint('❌ Error creating test notifications: $e');
+    }
+  }
+
+  /// Method to create test notifications with different users for more realistic testing
+  Future<void> createRealisticTestNotifications(String userId) async {
+    try {
+      debugPrint('🧪 Creating realistic test notifications for user: $userId');
+      
+      // Create notifications from different users with high-quality avatars
+      final testUsers = [
+        {
+          'id': 'test_user_1',
+          'username': 'gamer_pro',
+          'displayName': 'Gamer Pro',
+          'avatarURL': 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+        },
+        {
+          'id': 'test_user_2',
+          'username': 'art_creator',
+          'displayName': 'Art Creator',
+          'avatarURL': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+        },
+        {
+          'id': 'test_user_3',
+          'username': 'music_lover',
+          'displayName': 'Music Lover',
+          'avatarURL': 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+        },
+        {
+          'id': 'test_user_4',
+          'username': 'tech_reviewer',
+          'displayName': 'Tech Reviewer',
+          'avatarURL': 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+        },
+        {
+          'id': 'test_user_5',
+          'username': 'fitness_coach',
+          'displayName': 'Fitness Coach',
+          'avatarURL': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+        },
+      ];
+      
+      final now = DateTime.now();
+      
+      // Create various notification types from different users with high-quality video thumbnails
+      final notifications = [
+        {
+          'type': 'like',
+          'user': testUsers[0],
+          'videoId': 'video_1',
+          'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp': Timestamp.fromDate(now.subtract(const Duration(minutes: 5))),
+          'status': 'pending',
+        },
+        {
+          'type': 'follow',
+          'user': testUsers[1],
+          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 1))),
+          'status': 'delivered',
+        },
+        {
+          'type': 'comment',
+          'user': testUsers[2],
+          'videoId': 'video_2',
+          'commentText': 'Amazing content! Keep it up! 🎵',
+          'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 2))),
+          'status': 'delivered',
+        },
+        {
+          'type': 'like',
+          'user': testUsers[3],
+          'videoId': 'video_3',
+          'postThumbnailUrl': 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 3))),
+          'status': 'pending',
+        },
+        {
+          'type': 'mention',
+          'user': testUsers[4],
+          'videoId': 'video_4',
+          'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp': Timestamp.fromDate(now.subtract(const Duration(days: 1))),
+          'status': 'delivered',
+        },
+        {
+          'type': 'comment',
+          'user': testUsers[0],
+          'videoId': 'video_5',
+          'commentText': 'This is incredible! 🔥',
+          'postThumbnailUrl': 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 4))),
+          'status': 'delivered',
+        },
+        {
+          'type': 'like',
+          'user': testUsers[2],
+          'videoId': 'video_6',
+          'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 6))),
+          'status': 'pending',
+        },
+      ];
+      
+      for (final notification in notifications) {
+        await _db
+            .collection('notifications')
+            .doc(userId)
+            .collection('items')
+            .add(notification);
+      }
+      
+      debugPrint('✅ Realistic test notifications created successfully');
+    } catch (e) {
+      debugPrint('❌ Error creating realistic test notifications: $e');
+    }
+  }
+
+  /// Method to simulate a comment notification from another user
+  Future<void> simulateCommentNotification(String userId, String commenterId, String videoId) async {
+    try {
+      debugPrint('🧪 Simulating comment notification for user: $userId');
+      
+      // Get commenter user data
+      final commenterDoc = await _db.collection('users').doc(commenterId).get();
+      if (!commenterDoc.exists) {
+        debugPrint('❌ Commenter user not found: $commenterId');
+        return;
+      }
+      
+      final commenterData = commenterDoc.data()!;
+      
+      // Create notification data
+      final notificationData = {
+        'type': 'comment',
+        'user': {
+          'id': commenterId,
+          'username': commenterData['username'] ?? 'Unknown',
+          'displayName': commenterData['displayName'] ?? 'Unknown',
+          'avatarURL': commenterData['avatarURL'] ?? commenterData['avatarUrl'],
+        },
+        'videoId': videoId,
+        'commentText': 'Great video! This is a test comment.',
+        'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'status': 'pending',
+      };
+      
+      // Add notification to Firestore
+      await _db
+          .collection('notifications')
+          .doc(userId)
+          .collection('items')
+          .add(notificationData);
+      
+      debugPrint('✅ Comment notification simulated successfully');
+    } catch (e) {
+      debugPrint('❌ Error simulating comment notification: $e');
     }
   }
 

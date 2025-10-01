@@ -52,18 +52,20 @@ class EventTriggerService extends ChangeNotifier {
     required String videoOwnerId,
     String? postThumbnailUrl,
   }) async {
-    // print("🔄 EventTriggerService: Like event triggered - $likerId -> $videoId");
+    debugPrint("🔄 EventTriggerService: Like event triggered - $likerId -> $videoId");
     
     // Update like count
     await _updateLikeCount(videoId, 1);
     
     // Create notification
+    debugPrint("🔄 EventTriggerService: Calling NotificationService.handleLikeEvent");
     await _notificationService?.handleLikeEvent(
       likerId: likerId,
       videoOwnerId: videoOwnerId,
       videoId: videoId,
       postThumbnailUrl: postThumbnailUrl,
     );
+    debugPrint("🔄 EventTriggerService: NotificationService.handleLikeEvent completed");
     
     // Store like in Firestore
     await _createLike(likerId: likerId, videoId: videoId);
@@ -92,12 +94,13 @@ class EventTriggerService extends ChangeNotifier {
     required String commentText,
     String? postThumbnailUrl,
   }) async {
-    // print("🔄 EventTriggerService: Comment event triggered - $commenterId -> $videoId");
+    debugPrint("🔄 EventTriggerService: Comment event triggered - $commenterId -> $videoId");
     
     // Update comment count
     await _updateCommentCount(videoId, 1);
     
     // Create notification
+    debugPrint("🔄 EventTriggerService: Calling NotificationService.handleCommentEvent");
     await _notificationService?.handleCommentEvent(
       commenterId: commenterId,
       videoOwnerId: videoOwnerId,
@@ -105,6 +108,7 @@ class EventTriggerService extends ChangeNotifier {
       commentText: commentText,
       postThumbnailUrl: postThumbnailUrl,
     );
+    debugPrint("🔄 EventTriggerService: NotificationService.handleCommentEvent completed");
     
     // Store comment in Firestore
     await _createComment(
@@ -122,7 +126,7 @@ class EventTriggerService extends ChangeNotifier {
     required String videoId,
     String? postThumbnailUrl,
   }) async {
-    // print("🔄 EventTriggerService: Tag event triggered - $taggerId -> $taggedUserId");
+    debugPrint("🔄 EventTriggerService: Tag event triggered - $taggerId -> $taggedUserId");
     
     // Create notification
     await _notificationService?.handleTagEvent(
@@ -136,6 +140,32 @@ class EventTriggerService extends ChangeNotifier {
     await _createTag(
       taggerId: taggerId,
       taggedUserId: taggedUserId,
+      videoId: videoId,
+    );
+  }
+
+  // MARK: - Mention Event Triggers
+  
+  Future<void> triggerMentionEvent({
+    required String mentionerId,
+    required String mentionedUserId,
+    required String videoId,
+    String? postThumbnailUrl,
+  }) async {
+    debugPrint("🔄 EventTriggerService: Mention event triggered - $mentionerId -> $mentionedUserId");
+    
+    // Create notification
+    await _notificationService?.handleMentionEvent(
+      mentionerId: mentionerId,
+      mentionedUserId: mentionedUserId,
+      videoId: videoId,
+      postThumbnailUrl: postThumbnailUrl,
+    );
+    
+    // Store mention in Firestore
+    await _createMention(
+      mentionerId: mentionerId,
+      mentionedUserId: mentionedUserId,
       videoId: videoId,
     );
   }
@@ -367,6 +397,24 @@ class EventTriggerService extends ChangeNotifier {
     // print("✅ Created tag: $taggerId -> $taggedUserId");
     } catch (e) {
     // print("❌ Error creating tag: $e");
+    }
+  }
+
+  Future<void> _createMention({
+    required String mentionerId,
+    required String mentionedUserId,
+    required String videoId,
+  }) async {
+    try {
+      await _db.collection("mentions").add({
+        "mentionerId": mentionerId,
+        "mentionedUserId": mentionedUserId,
+        "videoId": videoId,
+        "timestamp": FieldValue.serverTimestamp(),
+      });
+    // print("✅ Created mention: $mentionerId -> $mentionedUserId");
+    } catch (e) {
+    // print("❌ Error creating mention: $e");
     }
   }
 }
