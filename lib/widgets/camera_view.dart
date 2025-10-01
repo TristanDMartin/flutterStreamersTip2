@@ -889,11 +889,17 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
       ),
       isDismissible: true,
       enableDrag: true,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
             Container(
               width: 40,
               height: 4,
@@ -939,7 +945,10 @@ class _CameraViewState extends State<CameraView> with TickerProviderStateMixin {
               subtitle: 'Capture a photo',
               onTap: () => _handleSettingTap(() => _capturePhoto()),
             ),
+            const SizedBox(height: 20), // Extra spacing at bottom
           ],
+            ),
+          ),
         ),
       ),
     );

@@ -154,6 +154,7 @@ class _VideoEditViewState extends State<VideoEditView>
                   position: _currentPosition,
                   startTime: _startTime,
                   endTime: _endTime,
+                  videoFile: widget.videoFile, // Pass video file for thumbnails
                   onTrimChanged: (startTime, endTime) {
                     setState(() {
                       _startTime = startTime;
@@ -394,15 +395,15 @@ class _VideoEditViewState extends State<VideoEditView>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-        children: [
-          const Text(
-            'Trim Video',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+            children: [
+              const Text(
+                'Trim Video',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const Spacer(),
               // Undo/Redo buttons
               if (_historyIndex > 0)
@@ -442,14 +443,14 @@ class _VideoEditViewState extends State<VideoEditView>
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 14,
-                  ),
                 ),
-              ],
+              ),
+            ],
           ),
           
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           
-          // Action Buttons
+          // Basic Trim Controls (keep existing functionality)
           Row(
             children: [
               Expanded(
@@ -514,20 +515,20 @@ class _VideoEditViewState extends State<VideoEditView>
           ),
           
           if (_isProcessing) ...[
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
             LinearProgressIndicator(
               value: _processingProgress,
               backgroundColor: Colors.white.withValues(alpha: 0.2),
               valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
             ),
             const SizedBox(height: 8),
-          Text(
+            Text(
               _processingStatus ?? 'Processing...',
-            style: TextStyle(
+              style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 12,
+                fontSize: 12,
+              ),
             ),
-          ),
           ],
         ],
       ),

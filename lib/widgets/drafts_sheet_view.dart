@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../models/video.dart';
-import 'share_draft_sheet_view.dart';
+import 'draft_thumbnail_view.dart';
 
-enum DraftSheetAction { delete, edit }
-
-class DraftsSheetView extends HookConsumerWidget {
-  final List<Video> drafts;
-  final Function(Video) onDelete;
-  final Function(Video) onEdit;
+/// DraftsSheetView - Sheet view for managing drafts
+/// 
+/// Features:
+/// - Lists all user drafts
+/// - Shows creation time
+/// - Allows editing and deletion
+/// - Matches iOS design specifications
+class DraftsSheetView extends StatelessWidget {
+  final List<Map<String, dynamic>> drafts;
+  final Function(Map<String, dynamic>) onDelete;
+  final Function(Map<String, dynamic>) onEdit;
 
   const DraftsSheetView({
     super.key,
@@ -19,44 +21,28 @@ class DraftsSheetView extends HookConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selectedDrafts = useState<Set<String>>({});
-
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text(
-          'Drafts (${drafts.length})',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+        title: const Text(
+          'Drafts',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: const Icon(Icons.close, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        actions: [
-          if (selectedDrafts.value.isNotEmpty)
-            TextButton(
-              onPressed: () {
-                _showDeleteConfirmation(context, selectedDrafts.value);
-              },
-              child: Text(
-                'Delete (${selectedDrafts.value.length})',
-                style: const TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-        ],
+        elevation: 0,
       ),
       body: drafts.isEmpty
           ? _buildEmptyState()
-          : _buildDraftsList(selectedDrafts),
+          : _buildDraftsList(),
     );
   }
 
@@ -66,25 +52,25 @@ class DraftsSheetView extends HookConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.video_library_outlined,
-            size: 64,
-            color: Colors.grey,
+            Icons.videocam_outlined,
+            size: 80,
+            color: Colors.white54,
           ),
           SizedBox(height: 16),
           Text(
-            'No drafts yet',
+            'No Drafts Yet',
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
               color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
             ),
           ),
           SizedBox(height: 8),
           Text(
-            'Start recording to create your first draft',
+            'Your saved drafts will appear here',
             style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
+              color: Colors.white54,
+              fontSize: 16,
             ),
           ),
         ],
@@ -92,169 +78,130 @@ class DraftsSheetView extends HookConsumerWidget {
     );
   }
 
-  Widget _buildDraftsList(ValueNotifier<Set<String>> selectedDrafts) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: drafts.length,
-      itemBuilder: (context, index) {
-        final draft = drafts[index];
-        final isSelected = selectedDrafts.value.contains(draft.id);
+  Widget _buildDraftsList() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: ListView.builder(
+        itemCount: drafts.length,
+        itemBuilder: (context, index) {
+          return _buildDraftItem(drafts[index]);
+        },
+      ),
+    );
+  }
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+  Widget _buildDraftItem(Map<String, dynamic> draft) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      child: GestureDetector(
+        onTap: () => onEdit(draft),
+        child: Container(
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.grey[900],
-            borderRadius: BorderRadius.circular(12),
-            border: isSelected
-                ? Border.all(color: const Color(0xFF9248d2), width: 2)
-                : null,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.grey[700]!,
+              width: 1,
+            ),
           ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(12),
-            leading: _buildDraftThumbnail(draft),
-            title: Text(
-              _formatDraftTitle(draft),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
+          child: Row(
+            children: [
+              // Draft thumbnail
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: DraftThumbnailView(
+                  videoUrl: draft['videoPath'] ?? draft['videoUrl'] ?? '',
+                  width: 100,
+                  height: 140,
+                ),
               ),
-            ),
-            subtitle: Text(
-              _formatDraftSubtitle(draft),
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 12,
+              
+              const SizedBox(width: 16),
+              
+              // Draft info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Caption
+                    Text(
+                      draft['caption']?.isNotEmpty == true 
+                          ? draft['caption'] 
+                          : 'Untitled Draft',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    
+                    const SizedBox(height: 8),
+                    
+                    // Creation time
+                    Text(
+                      _formatTimeAgo(draft['createdAt']),
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 8),
+                    
+                    // Hashtags
+                    if (draft['hashtags'] != null && 
+                        (draft['hashtags'] as List).isNotEmpty)
+                      Text(
+                        (draft['hashtags'] as List).join(' '),
+                        style: const TextStyle(
+                          color: Color(0xFF9248D2),
+                          fontSize: 14,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
               ),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.share, color: Color(0xFF9248d2)),
-                  onPressed: () => _showShareSheet(context, draft),
+              
+              // Delete button
+              IconButton(
+                onPressed: () => onDelete(draft),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.red,
+                  size: 24,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.white),
-                  onPressed: () => onEdit(draft),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => _showDeleteConfirmation(context, {draft.id}),
-                ),
-              ],
-            ),
-            onTap: () {
-              final newSelection = Set<String>.from(selectedDrafts.value);
-              if (isSelected) {
-                newSelection.remove(draft.id);
-              } else {
-                newSelection.add(draft.id);
-              }
-              selectedDrafts.value = newSelection;
-            },
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Widget _buildDraftThumbnail(Video draft) {
-    return Container(
-      width: 60,
-      height: 80,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey[800],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: draft.videoURL.isNotEmpty
-            ? Image.network(
-                draft.videoURL,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Icon(
-                    Icons.video_library,
-                    color: Colors.grey,
-                    size: 24,
-                  );
-                },
-              )
-            : const Icon(
-                Icons.video_library,
-                color: Colors.grey,
-                size: 24,
-              ),
-      ),
-    );
-  }
-
-  String _formatDraftTitle(Video draft) {
-    if (draft.creator.displayName.isNotEmpty) {
-      return draft.creator.displayName;
+  String _formatTimeAgo(String? dateString) {
+    if (dateString == null) return 'Unknown';
+    
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+      
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return 'Unknown';
     }
-    return 'Untitled Draft';
-  }
-
-  String _formatDraftSubtitle(Video draft) {
-    final duration = _formatDuration(30); // Default duration
-    final size = _formatFileSize(1024000); // Default size
-    return '$duration • $size';
-  }
-
-  String _formatDuration(int seconds) {
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
-  }
-
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024) return '${bytes}B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
-  }
-
-  void _showShareSheet(BuildContext context, Video draft) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => ShareDraftSheetView(
-          draft: draft,
-          onDismiss: () => Navigator.of(context).pop(),
-        ),
-      ),
-    );
-  }
-
-  void _showDeleteConfirmation(BuildContext context, Set<String> draftIds) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          'Delete Drafts',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'Are you sure you want to delete ${draftIds.length} draft${draftIds.length > 1 ? 's' : ''}? This action cannot be undone.',
-          style: const TextStyle(color: Colors.grey),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              for (final draftId in draftIds) {
-                final draft = drafts.firstWhere((d) => d.id == draftId);
-                onDelete(draft);
-              }
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
   }
 }

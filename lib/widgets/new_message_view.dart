@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'choose_person_view.dart';
 import 'invite_friends_view.dart';
 import 'start_group_view.dart';
+import 'draft_selection_view.dart';
 
 class NewMessageView extends ConsumerStatefulWidget {
   const NewMessageView({super.key});
@@ -174,6 +175,16 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
           
           const SizedBox(height: 12),
           
+          // Send Draft
+          _buildActionCard(
+            icon: Icons.drafts,
+            title: 'Send Draft',
+            subtitle: 'Share a draft video with your connections',
+            onTap: () => _navigateToDraftSelection(),
+          ),
+          
+          const SizedBox(height: 12),
+          
           // Group Chat (multi-select, then create)
           _buildActionCard(
             icon: Icons.group,
@@ -316,6 +327,15 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const StartGroupView(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
+  void _navigateToDraftSelection() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const DraftSelectionView(),
         fullscreenDialog: true,
       ),
     );

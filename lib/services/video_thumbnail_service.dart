@@ -7,9 +7,11 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
 class VideoThumbnailService {
-  static const int _maxWidth = 80;
-  static const int _maxHeight = 120;
+  // TikTok-quality thumbnail settings
+  static const int _maxWidth = 720; // High resolution for crisp thumbnails
+  static const int _maxHeight = 1280; // High resolution for crisp thumbnails
   static const int _thumbnailTimeMs = 1000; // 1 second
+  static const int _highQuality = 95; // High quality for crisp images
   
   // Cache for thumbnails
   static final Map<String, Uint8List> _thumbnailCache = {};
@@ -38,7 +40,7 @@ class VideoThumbnailService {
         maxWidth: _maxWidth,
         maxHeight: _maxHeight,
         timeMs: _thumbnailTimeMs,
-        quality: 75,
+        quality: _highQuality,
       );
 
       // Cache the thumbnail
@@ -93,7 +95,7 @@ class VideoThumbnailService {
         maxWidth: _maxWidth,
         maxHeight: _maxHeight,
         timeMs: _thumbnailTimeMs,
-        quality: 75,
+        quality: _highQuality,
       );
       return thumbnailPath;
     } catch (e) {
@@ -117,7 +119,7 @@ class VideoThumbnailService {
           maxWidth: _maxWidth,
           maxHeight: _maxHeight,
           timeMs: timeMs,
-          quality: 75,
+          quality: _highQuality,
         );
         thumbnails.add(thumbnail);
       } catch (e) {
@@ -129,13 +131,46 @@ class VideoThumbnailService {
     return thumbnails;
   }
 
+  /// Generates a TikTok-quality thumbnail with optimal settings
+  static Future<Uint8List?> generateTikTokQualityThumbnail(
+    String videoPath, {
+    int? maxWidth,
+    int? maxHeight,
+    int? timeMs,
+  }) async {
+    try {
+      String localPath = videoPath;
+      
+      // If it's a network URL, download it first
+      if (videoPath.startsWith('http')) {
+        final downloadedPath = await _downloadVideoToLocal(videoPath);
+        if (downloadedPath == null) return null;
+        localPath = downloadedPath;
+      }
+
+      final thumbnail = await VideoThumbnail.thumbnailData(
+        video: localPath,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: maxWidth ?? 720, // TikTok uses high resolution
+        maxHeight: maxHeight ?? 1280, // TikTok uses high resolution
+        timeMs: timeMs ?? _thumbnailTimeMs,
+        quality: 95, // Maximum quality for crisp images
+      );
+
+      return thumbnail;
+    } catch (e) {
+      debugPrint('Error generating TikTok-quality thumbnail: $e');
+      return null;
+    }
+  }
+
   /// Generates a thumbnail with custom dimensions
   static Future<Uint8List?> generateCustomThumbnail(
     String videoPath, {
     int? maxWidth,
     int? maxHeight,
     int? timeMs,
-    int quality = 75,
+    int quality = 95, // Default to high quality
   }) async {
     try {
       final thumbnail = await VideoThumbnail.thumbnailData(

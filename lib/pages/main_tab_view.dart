@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import '../widgets/profile_view_optimized.dart';
@@ -12,6 +13,7 @@ import '../models/user.dart';
 import '../services/network_view_model_advanced.dart';
 import '../services/profile_update_service.dart';
 import '../services/clean_relationship_service.dart';
+import '../providers/home_provider.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
   const MainTabView({super.key});
@@ -82,6 +84,12 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       return;
     }
     
+    // Handle Home tab (index 0) - refresh video feed if already on Home
+    if (index == 0 && _currentIndex == 0) {
+      _refreshHomeView();
+      return;
+    }
+    
     setState(() {
       _currentIndex = index;
     });
@@ -138,6 +146,23 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
           fullscreenDialog: true,
         ),
       );
+    }
+  }
+
+  void _refreshHomeView() {
+    try {
+      // Refresh the home provider to reload videos
+      final homeNotifier = ref.read(homeProvider.notifier);
+      homeNotifier.loadVideos();
+      
+      log('🔄 MainTabView: Refreshing HomeView video feed');
+      debugPrint('🔄 MainTabView: Refreshing HomeView video feed');
+      
+      // Provide haptic feedback
+      HapticFeedback.lightImpact();
+    } catch (e) {
+      log('❌ MainTabView: Error refreshing HomeView: $e');
+      debugPrint('❌ MainTabView: Error refreshing HomeView: $e');
     }
   }
 

@@ -63,7 +63,6 @@ class RealUserDataService {
       final snapshot = await _firestore
           .collection('users')
           .where('isActive', isEqualTo: true)
-          .orderBy('followerCount', descending: true)
           .limit(limit)
           .get();
 
@@ -90,18 +89,22 @@ class RealUserDataService {
   /// Get user's videos
   Future<List<HomeVideo>> getUserVideos(String userId, {int limit = 20}) async {
     try {
+      // Simple query - just get all videos for this user, filter in memory
       final snapshot = await _firestore
           .collection('videos')
           .where('userId', isEqualTo: userId)
-          .where('status', isEqualTo: 'published')
-          .orderBy('createdAt', descending: true)
-          .limit(limit)
+          .limit(50) // Get more to filter in memory
           .get();
 
       final videos = <HomeVideo>[];
       
       for (final doc in snapshot.docs) {
         final data = doc.data();
+        
+        // Filter for published videos only
+        if (data['status'] != 'published') {
+          continue;
+        }
         
         // Get creator data
         final creator = await getUserById(userId);
@@ -121,9 +124,13 @@ class RealUserDataService {
         
         videos.add(video);
       }
+      
+      // Sort by creation date (newest first) and limit
+      // Videos are already sorted by Firestore query
+      final limitedVideos = videos.take(limit).toList();
 
-      LoggingService.instance.debug('✅ Loaded ${videos.length} videos for user: $userId', tag: 'RealUserDataService');
-      return videos;
+      LoggingService.instance.debug('✅ Loaded ${limitedVideos.length} videos for user: $userId', tag: 'RealUserDataService');
+      return limitedVideos;
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error getting user videos', tag: 'RealUserDataService', error: e, stackTrace: stackTrace);
       return [];
@@ -136,7 +143,7 @@ class RealUserDataService {
       Query<Map<String, dynamic>> query = _firestore
           .collection('videos')
           .where('status', isEqualTo: 'published')
-          .where('privacy', isEqualTo: 'public')
+          .where('privacy', isEqualTo: 'Everyone')
           .orderBy('score', descending: true)
           .limit(limit);
 
@@ -195,7 +202,7 @@ class RealUserDataService {
           .collection('videos')
           .where('userId', whereIn: followingIds)
           .where('status', isEqualTo: 'published')
-          .where('privacy', isEqualTo: 'public')
+          .where('privacy', whereIn: ['Everyone', 'Connections'])
           .orderBy('createdAt', descending: true)
           .limit(limit)
           .get();

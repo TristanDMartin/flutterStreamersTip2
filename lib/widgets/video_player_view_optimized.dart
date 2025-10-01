@@ -61,6 +61,7 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
   bool _hasIncrementedView = false;
   bool _isBookmarkLoading = false; // Prevent multiple rapid taps
   bool _showPlayPauseIndicatorOverlay = false; // Show play/pause indicator animation
+  bool _audioUnmuted = false; // Track if audio has been unmuted by user interaction
   
   // Track last tap position for floating hearts
   Offset _lastTapPosition = Offset.zero;
@@ -100,8 +101,15 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     // React when the page becomes current/non-current
     if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
       if (widget.isCurrentVideo) {
+        // Auto-unmute audio when video becomes current (instant audio)
+        _videoPlayerController!.setVolume(1.0);
+        setState(() => _audioUnmuted = true);
+        
         _videoPlayerController!.play();
         setState(() => _isPlaying = true);
+        
+        log('🔊 Auto-unmuted audio for current video: ${widget.video.id}');
+        debugPrint('🔊 Auto-unmuted audio for current video: ${widget.video.id}');
       } else {
         _videoPlayerController!.pause();
         setState(() => _isPlaying = false);
@@ -122,8 +130,15 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         break;
       case AppLifecycleState.resumed:
         if (widget.isCurrentVideo) {
+          // Auto-unmute audio when app resumes (instant audio)
+          _videoPlayerController!.setVolume(1.0);
+          setState(() => _audioUnmuted = true);
+          
           _videoPlayerController!.play();
           setState(() => _isPlaying = true);
+          
+          log('🔊 Auto-unmuted audio on app resume: ${widget.video.id}');
+          debugPrint('🔊 Auto-unmuted audio on app resume: ${widget.video.id}');
         }
         break;
       case AppLifecycleState.detached:
@@ -158,6 +173,16 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
       // Try warm controller first (TikTok style)
       _videoPlayerController = VideoPerformanceService().getReady(widget.video.videoURL);
       
+      if (_videoPlayerController != null) {
+        log('🎬 Using prewarmed controller from VideoPerformanceService');
+        debugPrint('🎬 Using prewarmed controller from VideoPerformanceService');
+        // Ensure prewarmed controller has correct settings
+        await _videoPlayerController!.setLooping(true);
+        await _videoPlayerController!.setVolume(0); // Start muted for autoplay compliance
+        log('🔇 Prewarmed controller set to volume 0');
+        debugPrint('🔇 Prewarmed controller set to volume 0');
+      }
+      
       if (_videoPlayerController == null) {
         // Create new controller if not prewarmed
         _videoPlayerController = VideoPlayerController.networkUrl(
@@ -182,6 +207,8 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         
         await _videoPlayerController!.setLooping(true);
         await _videoPlayerController!.setVolume(0); // Start muted for autoplay compliance
+        log('🔇 Video initialized with volume 0 for autoplay compliance');
+        debugPrint('🔇 Video initialized with volume 0 for autoplay compliance');
       }
       
       if (mounted) {
@@ -192,8 +219,14 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         
         // TIKTOK-STYLE INSTANT PLAYBACK: Play immediately without any delay
         if (_isPlaying && mounted && _videoPlayerController != null) {
+          // Auto-unmute audio for instant playback
+          _videoPlayerController!.setVolume(1.0);
+          setState(() => _audioUnmuted = true);
+          
           _videoPlayerController!.play();
           log('🎬 INSTANT PLAY: Video started immediately for ${widget.video.id}');
+          log('🔊 Auto-unmuted audio for instant playback - Volume: 1.0');
+          debugPrint('🔊 Auto-unmuted audio for instant playback - Volume: 1.0');
         }
         
         // Complete performance tracking
@@ -263,8 +296,54 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
     }
   }
 
-  void _togglePlayPause() {
+  Future<void> _togglePlayPause() async {
     if (_videoPlayerController == null || !_isInitialized) return;
+    
+    // Unmute audio on first user interaction
+    if (!_audioUnmuted) {
+      // Try multiple approaches to ensure audio works
+      await _videoPlayerController!.setVolume(1.0);
+      
+      // Wait a moment for the volume change to take effect
+      await Future.delayed(const Duration(milliseconds: 100));
+      
+      // Try setting volume again to ensure it sticks
+      await _videoPlayerController!.setVolume(1.0);
+      
+      // Force a restart of playback to ensure audio takes effect
+      final wasPlaying = _videoPlayerController!.value.isPlaying;
+      if (wasPlaying) {
+        await _videoPlayerController!.pause();
+        await Future.delayed(const Duration(milliseconds: 50));
+        await _videoPlayerController!.play();
+      }
+      
+      setState(() {
+        _audioUnmuted = true;
+      });
+      
+      log('🔊 Audio unmuted by user interaction - Volume set to 1.0');
+      debugPrint('🔊 Audio unmuted by user interaction - Volume set to 1.0');
+      
+      // Verify volume was set correctly
+      final currentVolume = _videoPlayerController!.value.volume;
+      log('🔊 Current volume after setting: $currentVolume');
+      debugPrint('🔊 Current volume after setting: $currentVolume');
+      
+      // Check video player state
+      final isPlaying = _videoPlayerController!.value.isPlaying;
+      final position = _videoPlayerController!.value.position;
+      final duration = _videoPlayerController!.value.duration;
+      
+      log('🔊 Video state - Playing: $isPlaying, Position: $position, Duration: $duration');
+      debugPrint('🔊 Video state - Playing: $isPlaying, Position: $position, Duration: $duration');
+      
+      // Note: Video should have audio if it was uploaded with audio
+      log('🔊 Audio unmuting completed for video: ${widget.video.id}');
+      debugPrint('🔊 Audio unmuting completed for video: ${widget.video.id}');
+      
+      // Audio is now auto-unmuted, no need for user feedback
+    }
     
     if (_isPlaying) {
       _videoPlayerController!.pause();
@@ -607,25 +686,17 @@ class _VideoPlayerViewOptimizedState extends ConsumerState<VideoPlayerViewOptimi
         child: AnimatedOpacity(
           opacity: _showPlayPauseIndicatorOverlay ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 150),
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.7),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 20,
-                  spreadRadius: 5,
-                ),
-              ],
-            ),
-            child: Icon(
-              _isPlaying ? Icons.pause : Icons.play_arrow,
-              color: Colors.white,
-              size: 40,
-            ),
+          child: Icon(
+            _isPlaying ? Icons.pause : Icons.play_arrow,
+            color: Colors.white,
+            size: 60, // Increased size since no container background
+            shadows: [
+              Shadow(
+                color: Colors.black.withValues(alpha: 0.8),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
         ),
       ),

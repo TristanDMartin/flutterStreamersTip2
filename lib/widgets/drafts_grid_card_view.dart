@@ -1,111 +1,80 @@
 import 'package:flutter/material.dart';
+import 'draft_thumbnail_view.dart';
 
+/// DraftsGridCardView - Displays a grid card for drafts in ProfileView
+/// 
+/// Features:
+/// - Shows draft count badge
+/// - Displays thumbnail of first draft
+/// - Handles tap to open drafts sheet
+/// - Matches iOS design specifications
 class DraftsGridCardView extends StatelessWidget {
-  final List<dynamic> drafts;
-  final VoidCallback? onTap;
+  final List<Map<String, dynamic>> drafts;
+  final VoidCallback onTap;
 
   const DraftsGridCardView({
     super.key,
     required this.drafts,
-    this.onTap,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (drafts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        width: 110,
+        height: 170,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFF9248d2),
-            width: 2,
-          ),
+          borderRadius: BorderRadius.circular(28),
+          color: Colors.grey[900],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Stack(
-            children: [
-              // Background gradient
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF9248d2),
-                      Color(0xFF4897d2),
-                    ],
-                  ),
-                ),
+        child: Stack(
+          children: [
+            // Draft thumbnail
+            ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: DraftThumbnailView(
+                videoUrl: _getFirstDraftVideoUrl(),
+                width: 110,
+                height: 170,
               ),
-              
-              // Content
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Draft icon
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.edit,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // Draft count
-                    Text(
-                      '${drafts.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    
-                    // Label
-                    Text(
-                      'Drafts',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+            ),
+            
+            // Drafts count badge (bottom trailing)
+            Positioned(
+              bottom: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-              ),
-              
-              // Edit indicator
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: const BoxDecoration(
+                child: Text(
+                  'Drafts: ${drafts.length}',
+                  style: const TextStyle(
                     color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.edit,
-                    color: Color(0xFF9248d2),
-                    size: 12,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  String _getFirstDraftVideoUrl() {
+    if (drafts.isNotEmpty) {
+      return drafts.first['videoPath'] ?? drafts.first['videoUrl'] ?? '';
+    }
+    return '';
   }
 }

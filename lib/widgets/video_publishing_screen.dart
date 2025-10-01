@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
 import 'dart:math';
 import '../services/video_upload_service.dart';
+import '../services/video_service.dart';
+import '../services/local_draft_service.dart';
+import '../models/user.dart' as user_model;
+import '../models/home_video.dart';
+import '../providers/home_provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/video_moderation_service.dart';
 import '../services/enhanced_error_handling_service.dart';
 import '../services/video_watermark_service.dart';
-import '../services/upload_status_manager.dart';
 import '../services/optimistic_video_service.dart';
 import '../services/hashtag_lock_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/schedule_post_widget.dart';
 import '../models/scheduled_post.dart';
 
-class VideoPublishingScreen extends StatefulWidget {
+class VideoPublishingScreen extends ConsumerStatefulWidget {
   final File videoFile;
   final String caption;
   final List<String> hashtags;
@@ -31,7 +36,7 @@ class VideoPublishingScreen extends StatefulWidget {
   });
 
   @override
-  State<VideoPublishingScreen> createState() => _VideoPublishingScreenState();
+  ConsumerState<VideoPublishingScreen> createState() => _VideoPublishingScreenState();
 }
 
 // Category data structure
@@ -51,7 +56,7 @@ class VideoCategory {
   });
 }
 
-class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
+class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
@@ -159,14 +164,20 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
   final VideoModerationService _moderationService = VideoModerationService();
   final EnhancedErrorHandlingService _errorHandler = EnhancedErrorHandlingService();
   final VideoWatermarkService _watermarkService = VideoWatermarkService();
-  final UploadStatusManager _uploadStatusManager = UploadStatusManager();
   final OptimisticVideoService _optimisticVideoService = OptimisticVideoService();
+  
+  // Text controllers
+  late TextEditingController _captionController;
 
   @override
   void initState() {
     super.initState();
     _caption = widget.caption;
     _hashtags = List.from(widget.hashtags);
+    
+    // Initialize text controller with the caption
+    _captionController = TextEditingController(text: _caption);
+    
     _initializeVideo();
   }
 
@@ -183,7 +194,56 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _captionController.dispose();
     super.dispose();
+  }
+
+  /// Add hashtag to caption text
+  void _addHashtagToCaption(String hashtag) {
+    final currentText = _captionController.text;
+    
+    // Check if hashtag is already in the caption
+    if (!currentText.contains(hashtag)) {
+      String newText;
+      if (currentText.isEmpty) {
+        newText = hashtag;
+      } else if (currentText.endsWith(' ')) {
+        newText = currentText + hashtag;
+      } else {
+        newText = currentText + ' ' + hashtag;
+      }
+      
+      _captionController.text = newText;
+      _caption = newText;
+      
+      // Move cursor to end
+      _captionController.selection = TextSelection.fromPosition(
+        TextPosition(offset: newText.length),
+      );
+    }
+  }
+
+  /// Remove hashtag from caption text
+  void _removeHashtagFromCaption(String hashtag) {
+    final currentText = _captionController.text;
+    String newText = currentText;
+    
+    // Remove the hashtag from the text
+    newText = newText.replaceAll('$hashtag ', '');
+    newText = newText.replaceAll('$hashtag', '');
+    newText = newText.replaceAll(' $hashtag', '');
+    
+    // Clean up any double spaces
+    newText = newText.replaceAll('  ', ' ');
+    newText = newText.trim();
+    
+    _captionController.text = newText;
+    _caption = newText;
+    
+    // Move cursor to end
+    _captionController.selection = TextSelection.fromPosition(
+      TextPosition(offset: newText.length),
+    );
   }
 
   void _togglePlayPause() {
@@ -201,6 +261,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -214,13 +275,19 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           // Header
           _buildHeader(),
           
+          // Video Player Area (matching Edit Video layout)
+          Expanded(
+            flex: 3,
+            child: _buildVideoPreview(),
+          ),
+          
           // Content
           Expanded(
+            flex: 4,
             child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 20),
               child: Column(
                 children: [
-                  // Video Preview
-                  _buildVideoPreview(),
                   
                   const SizedBox(height: 20),
                   
@@ -247,7 +314,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                   // Schedule Post
                   _buildSchedulePostSection(),
                   
-                  const SizedBox(height: 100), // Space for bottom button
+                  const SizedBox(height: 120), // Space for bottom buttons with safe area
                 ],
               ),
             ),
@@ -356,81 +423,83 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
   }
 
   Widget _buildVideoPreview() {
-    return Container(
-      height: 200,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.black,
-      ),
-      child: Stack(
-        children: [
-          if (_isInitialized)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              ),
-            )
-          else
-            const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            ),
-          
-          // Play/Pause Overlay
-          Center(
-            child: GestureDetector(
-              onTap: _togglePlayPause,
-              child: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha:0.5),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isPlaying ? Icons.pause : Icons.play_arrow,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-            ),
+    return GestureDetector(
+      onTap: _togglePlayPause,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.black,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
           ),
-          
-          // Upload Progress
-          if (_isUploading)
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha:0.7),
-                  borderRadius: BorderRadius.circular(12),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Video player
+              if (_isInitialized)
+                AspectRatio(
+                  aspectRatio: _controller.value.aspectRatio,
+                  child: VideoPlayer(_controller),
+                )
+              else
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(
-                        value: _uploadProgress,
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Uploading... ${(_uploadProgress * 100).toInt()}%',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+              
+              // Play/Pause overlay
+              if (!_isPlaying)
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                    size: 40,
                   ),
                 ),
-              ),
-            ),
-        ],
+              
+              // Upload Progress
+              if (_isUploading)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha:0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            value: _uploadProgress,
+                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Uploading... ${(_uploadProgress * 100).toInt()}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -538,10 +607,21 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           ),
           const SizedBox(height: 12),
           TextField(
-            onChanged: (value) => setState(() => _caption = value),
-            controller: TextEditingController(text: _caption),
+            controller: _captionController,
+            onChanged: (value) {
+              setState(() {
+                _caption = value;
+              });
+            },
             maxLines: 4,
-            style: const TextStyle(color: Colors.white),
+            minLines: 1,
+            textInputAction: TextInputAction.newline,
+            keyboardType: TextInputType.multiline,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              height: 1.4,
+            ),
             decoration: InputDecoration(
               hintText: 'Write a caption...',
               hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
@@ -557,6 +637,9 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Color(0xFF9248D2)),
               ),
+              contentPadding: const EdgeInsets.all(16),
+              filled: true,
+              fillColor: Colors.white.withValues(alpha:0.03),
             ),
           ),
           const SizedBox(height: 12),
@@ -711,122 +794,124 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
   }
 
   Widget _buildBottomActions() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.transparent,
-            const Color(0xFF1C135D).withValues(alpha: 0.8),
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              const Color(0xFF1C135D).withValues(alpha: 0.9),
+            ],
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _saveAsDraft();
+                },
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'Save as Draft',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: GestureDetector(
+                onTap: (_isUploading || _isModerating) ? null : () {
+                  HapticFeedback.lightImpact();
+                  _publishVideo();
+                },
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: (_isUploading || _isModerating)
+                        ? null
+                        : const LinearGradient(
+                            colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                    color: (_isUploading || _isModerating) ? Colors.grey.withValues(alpha: 0.3) : null,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: (_isUploading || _isModerating) ? null : [
+                      BoxShadow(
+                        color: const Color(0xFF9248D2).withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: _isModerating
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Moderating...',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          )
+                        : _isUploading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Text(
+                                _schedule != null ? 'Schedule' : 'Publish',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                widget.onCancel();
-              },
-              child: Container(
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    width: 1,
-                  ),
-                ),
-                child: const Center(
-                  child: Text(
-                    'Save as Draft',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: GestureDetector(
-              onTap: (_isUploading || _isModerating) ? null : () {
-                HapticFeedback.lightImpact();
-                _publishVideo();
-              },
-              child: Container(
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: (_isUploading || _isModerating)
-                      ? null
-                      : const LinearGradient(
-                          colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        ),
-                  color: (_isUploading || _isModerating) ? Colors.grey.withValues(alpha: 0.3) : null,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: (_isUploading || _isModerating) ? null : [
-                    BoxShadow(
-                      color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: _isModerating
-                      ? const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Moderating...',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        )
-                      : _isUploading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              _schedule != null ? 'Schedule' : 'Publish',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -835,8 +920,10 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
     return GestureDetector(
       onTap: () async {
         if (_hashtags.contains(hashtag)) {
+          // Remove from hashtag list and caption
           setState(() {
             _hashtags.remove(hashtag);
+            _removeHashtagFromCaption(hashtag);
           });
         } else {
           // Validate hashtag before adding
@@ -848,6 +935,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
           if (validation.isValid) {
             setState(() {
               _hashtags.add(hashtag);
+              _addHashtagToCaption(hashtag);
             });
           } else {
             // Show error message
@@ -1059,28 +1147,64 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
         },
       );
 
-      // 4. Start background upload
-    // print('📤 Starting background upload...');
-      await _uploadStatusManager.startUpload(
-        fileUri: videoFileToUpload.path,
-        title: _caption,
-        categories: [_selectedCategory],
-        videoId: videoId,
-        metadata: {
-          'privacy': _selectedPrivacy,
-          'allowComments': _allowComments,
-          'cross_platform_sharing': _selectedPlatforms.toList(),
-          'watermark_applied': _watermarkService.shouldApplyWatermark(_selectedPlatforms),
-          'moderation_confidence': moderationResult.confidence,
-          'moderation_checked_at': DateTime.now().toIso8601String(),
-          'duration': 0,
-          'fileSize': await videoFileToUpload.length(),
-        },
-      );
+      // 4. Upload video directly to all required feeds
+      setState(() {
+        _isUploading = true;
+        _uploadProgress = 0.0;
+      });
 
-      // 5. Close composer immediately
-      if (mounted) {
-        Navigator.of(context).pop();
+      try {
+        final uploadResult = await _uploadService.uploadVideo(
+          videoFile: videoFileToUpload,
+          caption: _caption,
+          hashtags: _hashtags,
+          privacy: _selectedPrivacy,
+          allowComments: _allowComments,
+          additionalMetadata: {
+            'category': _selectedCategory,
+            'cross_platform_sharing': _selectedPlatforms.toList(),
+            'watermark_applied': _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+            'moderation_confidence': moderationResult.confidence,
+            'moderation_checked_at': DateTime.now().toIso8601String(),
+            'duration': 0,
+            'fileSize': await videoFileToUpload.length(),
+          },
+        );
+
+        setState(() {
+          _isUploading = false;
+        });
+
+          if (uploadResult.success) {
+            // Add video to centralized VideoService for immediate display
+            await _addVideoToService(uploadResult);
+            
+            // Show success message
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Video published successfully! 🎉'),
+                  backgroundColor: Color(0xFF9248D2),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            }
+            // Navigate back to main tab view (which shows HomeView by default)
+            if (mounted) {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            }
+          } else {
+          if (mounted) {
+            _showUploadErrorDialog(uploadResult.error ?? 'Failed to publish video');
+          }
+        }
+      } catch (e) {
+        setState(() {
+          _isUploading = false;
+        });
+        if (mounted) {
+          _showUploadErrorDialog('Failed to publish video: ${e.toString()}');
+        }
       }
 
     } catch (e) {
@@ -1239,14 +1363,16 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
     });
 
     try {
-      final uploadResult = await _uploadService.saveAsDraft(
+      // Use LocalDraftService to save draft locally
+      final localDraftService = LocalDraftService();
+      final success = await localDraftService.saveDraft(
         videoFile: widget.videoFile,
         caption: _caption,
         hashtags: _hashtags,
         privacy: _selectedPrivacy,
         allowComments: _allowComments,
+        category: _selectedCategory,
         additionalMetadata: {
-          'category': _selectedCategory,
           'cross_platform_sharing': _selectedPlatforms.toList(),
           'watermark_applied': _watermarkService.shouldApplyWatermark(_selectedPlatforms),
         },
@@ -1256,7 +1382,7 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
         _isUploading = false;
       });
 
-      if (uploadResult.success) {
+      if (success) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1266,10 +1392,13 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
             ),
           );
         }
-        widget.onPublish();
+        // Navigate back to HomeView after saving draft
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
       } else {
         if (mounted) {
-          _showUploadErrorDialog(uploadResult.error ?? 'Failed to save draft');
+          _showUploadErrorDialog('Failed to save draft');
         }
       }
     } catch (e) {
@@ -1291,6 +1420,45 @@ class _VideoPublishingScreenState extends State<VideoPublishingScreen> {
         _isUploading = false;
       });
       _showUploadErrorDialog('Failed to save draft: ${e.toString()}');
+    }
+  }
+
+  /// Add uploaded video to centralized VideoService for immediate display
+  Future<void> _addVideoToService(VideoUploadResult uploadResult) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      // Create a HomeVideo object from the upload result
+      final video = HomeVideo(
+        id: uploadResult.metadata?['videoId'] as String? ?? '',
+        creator: user_model.User(
+          id: currentUser.uid,
+          username: currentUser.displayName ?? 'User',
+          displayName: currentUser.displayName ?? 'User',
+          bio: '',
+          avatarURL: currentUser.photoURL ?? '',
+          followerCount: 0,
+          followingCount: 0,
+        ),
+        videoURL: uploadResult.videoUrl ?? '',
+        thumbnailURL: uploadResult.thumbnailUrl ?? '',
+        caption: _caption.isNotEmpty ? _caption : 'Untitled',
+        categoryId: _selectedCategory,
+        isDraft: false,
+      );
+
+      // Add to VideoService for immediate display
+      final videoService = ref.read(videoServiceProvider.notifier);
+      videoService.addVideo(video);
+      
+      // Refresh HomeView to show the new video immediately
+      final homeProviderNotifier = ref.read(homeProvider.notifier);
+      await homeProviderNotifier.refreshAfterUpload();
+      
+      debugPrint('✅ Video added to VideoService and HomeView refreshed: ${video.caption}');
+    } catch (e) {
+      debugPrint('❌ Error adding video to VideoService: $e');
     }
   }
 }

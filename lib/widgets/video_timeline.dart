@@ -10,6 +10,7 @@ class VideoTimeline extends StatefulWidget {
   final Function(Duration position)? onSeekTo;
   final bool isDragging;
   final Function(bool isDragging)? onDraggingChanged;
+  final File? videoFile;
 
   const VideoTimeline({
     super.key,
@@ -21,6 +22,7 @@ class VideoTimeline extends StatefulWidget {
     this.onSeekTo,
     this.isDragging = false,
     this.onDraggingChanged,
+    this.videoFile,
   });
 
   @override
@@ -58,6 +60,7 @@ class _VideoTimelineState extends State<VideoTimeline> {
   }
 
   void _onPanStart(DragStartDetails details, String handleType) {
+    debugPrint('🎯 Pan started: $handleType');
     widget.onDraggingChanged?.call(true);
   }
 
@@ -65,19 +68,25 @@ class _VideoTimelineState extends State<VideoTimeline> {
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     final localPosition = renderBox.globalToLocal(details.globalPosition);
     final width = renderBox.size.width;
+    
+    // Simple position calculation without margins
     final position = (localPosition.dx / width).clamp(0.0, 1.0);
     final newDuration = _getDurationFromPosition(position);
+    
+    debugPrint('🎯 Pan update: $handleType, position: ${position.toStringAsFixed(2)}, duration: ${newDuration.inSeconds}s');
 
     setState(() {
       switch (handleType) {
         case 'start':
           _startTime = newDuration;
+          // Ensure minimum 1 second duration
           if (_startTime >= _endTime) {
-            _startTime = Duration(milliseconds: _endTime.inMilliseconds - 1000);
+            _startTime = Duration(milliseconds: (_endTime.inMilliseconds - 1000).clamp(0, _endTime.inMilliseconds - 1000));
           }
           break;
         case 'end':
           _endTime = newDuration;
+          // Ensure minimum 1 second duration
           if (_endTime <= _startTime) {
             _endTime = Duration(milliseconds: _startTime.inMilliseconds + 1000);
           }
@@ -92,6 +101,7 @@ class _VideoTimelineState extends State<VideoTimeline> {
   }
 
   void _onPanEnd(DragEndDetails details, String handleType) {
+    debugPrint('🎯 Pan ended: $handleType');
     widget.onDraggingChanged?.call(false);
   }
 
@@ -154,18 +164,19 @@ class _VideoTimelineState extends State<VideoTimeline> {
           
           // Start trim handle
           Positioned(
-            left: 20 + (startPosition * (MediaQuery.of(context).size.width - 80)) - 10,
+            left: 20 + (startPosition * (MediaQuery.of(context).size.width - 80)) - 15,
             top: 15,
             child: GestureDetector(
               onPanStart: (details) => _onPanStart(details, 'start'),
               onPanUpdate: (details) => _onPanUpdate(details, 'start'),
               onPanEnd: (details) => _onPanEnd(details, 'start'),
               child: Container(
-                width: 20,
+                width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF9248D2),
-                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: Colors.black, width: 2),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.3),
@@ -176,7 +187,7 @@ class _VideoTimelineState extends State<VideoTimeline> {
                 ),
                 child: const Icon(
                   Icons.drag_handle,
-                  color: Colors.white,
+                  color: Colors.black,
                   size: 16,
                 ),
               ),
@@ -185,18 +196,19 @@ class _VideoTimelineState extends State<VideoTimeline> {
           
           // End trim handle
           Positioned(
-            left: 20 + (endPosition * (MediaQuery.of(context).size.width - 80)) - 10,
+            left: 20 + (endPosition * (MediaQuery.of(context).size.width - 80)) - 15,
             top: 15,
             child: GestureDetector(
               onPanStart: (details) => _onPanStart(details, 'end'),
               onPanUpdate: (details) => _onPanUpdate(details, 'end'),
               onPanEnd: (details) => _onPanEnd(details, 'end'),
               child: Container(
-                width: 20,
+                width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF9248D2),
-                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: Colors.black, width: 2),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.3),
@@ -207,7 +219,7 @@ class _VideoTimelineState extends State<VideoTimeline> {
                 ),
                 child: const Icon(
                   Icons.drag_handle,
-                  color: Colors.white,
+                  color: Colors.black,
                   size: 16,
                 ),
               ),
@@ -251,30 +263,19 @@ class VideoTimelineThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 60,
-      height: 40,
+      width: 40,
+      height: 30,
       decoration: BoxDecoration(
         color: Colors.grey[800],
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.3),
-          width: 1,
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.play_circle_outline,
+          color: Colors.white,
+          size: 16,
         ),
       ),
-      child: videoFile != null
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: const Icon(
-                Icons.videocam,
-                color: Colors.white,
-                size: 24,
-              ),
-            )
-          : const Icon(
-              Icons.video_library,
-              color: Colors.white,
-              size: 24,
-            ),
     );
   }
 }

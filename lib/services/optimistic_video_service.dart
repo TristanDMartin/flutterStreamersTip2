@@ -95,47 +95,123 @@ class OptimisticVideoService extends ChangeNotifier {
       'status': 'processing',
     });
 
-    // Add to category feeds for each category
-    for (final category in video.categories) {
-      await _firestore
-          .collection('feeds')
-          .doc('categories')
-          .collection(category)
-          .doc(video.videoId)
-          .set({
-        'videoId': video.videoId,
-        'userId': video.ownerId,
-        'category': category,
-        'status': 'processing',
-        'addedAt': video.createdAt,
-      });
+    // Get privacy setting from metadata
+    final privacy = video.metadata?['privacy'] as String? ?? 'Everyone';
+    
+    // Add to appropriate feeds based on privacy setting
+    switch (privacy) {
+      case 'Everyone':
+        // Add to public feeds (For You feed)
+        await _firestore
+            .collection('feeds')
+            .doc('for_you')
+            .collection('videos')
+            .doc(video.videoId)
+            .set({
+          'videoId': video.videoId,
+          'userId': video.ownerId,
+          'privacy': privacy,
+          'status': 'processing',
+          'addedAt': video.createdAt,
+        });
+        
+        // Add to following feed
+        await _firestore
+            .collection('feeds')
+            .doc('following')
+            .collection('videos')
+            .doc(video.videoId)
+            .set({
+          'videoId': video.videoId,
+          'userId': video.ownerId,
+          'privacy': privacy,
+          'status': 'processing',
+          'addedAt': video.createdAt,
+        });
+
+        // Add to category feeds for each category
+        for (final category in video.categories) {
+          await _firestore
+              .collection('feeds')
+              .doc('categories')
+              .collection(category)
+              .doc(video.videoId)
+              .set({
+            'videoId': video.videoId,
+            'userId': video.ownerId,
+            'category': category,
+            'privacy': privacy,
+            'status': 'processing',
+            'addedAt': video.createdAt,
+          });
+        }
+        break;
+
+      case 'Connections':
+        // Add only to following feed
+        await _firestore
+            .collection('feeds')
+            .doc('following')
+            .collection('videos')
+            .doc(video.videoId)
+            .set({
+          'videoId': video.videoId,
+          'userId': video.ownerId,
+          'privacy': privacy,
+          'status': 'processing',
+          'addedAt': video.createdAt,
+        });
+
+        // Add to connections-only category feeds
+        for (final category in video.categories) {
+          await _firestore
+              .collection('feeds')
+              .doc('connections_categories')
+              .collection(category)
+              .doc(video.videoId)
+              .set({
+            'videoId': video.videoId,
+            'userId': video.ownerId,
+            'category': category,
+            'privacy': privacy,
+            'status': 'processing',
+            'addedAt': video.createdAt,
+          });
+        }
+        break;
+
+      case 'Private':
+        // Add only to user's private collection
+        await _firestore
+            .collection('users')
+            .doc(video.ownerId)
+            .collection('private_videos')
+            .doc(video.videoId)
+            .set({
+          'videoId': video.videoId,
+          'userId': video.ownerId,
+          'privacy': privacy,
+          'status': 'processing',
+          'addedAt': video.createdAt,
+        });
+        break;
+
+      default:
+        // Default to private
+        await _firestore
+            .collection('users')
+            .doc(video.ownerId)
+            .collection('private_videos')
+            .doc(video.videoId)
+            .set({
+          'videoId': video.videoId,
+          'userId': video.ownerId,
+          'privacy': privacy,
+          'status': 'processing',
+          'addedAt': video.createdAt,
+        });
+        break;
     }
-
-    // Add to public feeds (for_you)
-    await _firestore
-        .collection('feeds')
-        .doc('for_you')
-        .collection('videos')
-        .doc(video.videoId)
-        .set({
-      'videoId': video.videoId,
-      'userId': video.ownerId,
-      'status': 'processing',
-      'addedAt': video.createdAt,
-    });
-
-    // Add to following feed
-    await _firestore
-        .collection('feeds')
-        .doc('following')
-        .collection('videos')
-        .doc(video.videoId)
-        .set({
-      'videoId': video.videoId,
-      'userId': video.ownerId,
-      'status': 'processing',
-      'addedAt': video.createdAt,
-    });
   }
 
   /// Set up listener for video status changes

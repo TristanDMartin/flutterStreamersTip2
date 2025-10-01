@@ -1,21 +1,11 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:camera/camera.dart';
-import 'package:video_player/video_player.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
-import 'dart:async';
-import 'video_recording_preview.dart';
+import 'recording_preview_view.dart';
 import 'video_edit_view.dart';
-
-enum NavigationState {
-  none,
-  recordingPreview,
-  editDescription,
-  editVideo,
-  share,
-}
 
 class CameraViewOptimized extends StatefulWidget {
   const CameraViewOptimized({super.key});
@@ -25,228 +15,101 @@ class CameraViewOptimized extends StatefulWidget {
 }
 
 class _CameraViewOptimizedState extends State<CameraViewOptimized> {
-  // Core camera functionality only
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
-  bool _isRecording = false;
   bool _isInitialized = false;
-  bool _isFrontCamera = false;
-  
-  // Recording state
-  File? _currentVideoFile;
-  VideoPlayerController? _previewController;
-  NavigationState _navigationState = NavigationState.none;
+  bool _isRecording = false;
   Timer? _recordingTimer;
-  int _recordingDuration = 0;
-  
-  // Simple UI state
+  Offset? _focusPoint;
+  bool _isFocusing = false;
+  double _currentZoom = 1.0;
   bool _showGrid = false;
   final ImagePicker _imagePicker = ImagePicker();
-  
-  // Focus and zoom (simplified)
-  Offset? _focusPoint;
-  double _currentZoom = 1.0;
-  bool _isFocusing = false;
 
   @override
   void initState() {
     super.initState();
-    _checkPermissionsAndInitialize();
+    _initializeCamera();
   }
 
   @override
   void dispose() {
     _cameraController?.dispose();
-    _previewController?.dispose();
     _recordingTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _checkPermissionsAndInitialize() async {
-    try {
-      final cameraStatus = await Permission.camera.status;
-      final micStatus = await Permission.microphone.status;
-      
-      if (cameraStatus.isGranted && micStatus.isGranted) {
-        await _initializeCamera();
-      } else {
-        final cameraResult = await Permission.camera.request();
-        final micResult = await Permission.microphone.request();
-        
-        if (cameraResult.isGranted && micResult.isGranted) {
-          await _initializeCamera();
-        } else {
-          _showPermissionDeniedDialog();
-        }
-      }
-    } catch (e) {
-      debugPrint('Error checking permissions: $e');
-      _showPermissionDeniedDialog();
-    }
-  }
-
+  // Clean, simple camera initialization following the brief
   Future<void> _initializeCamera() async {
     try {
+      debugPrint('🎥 Starting camera initialization...');
       _cameras = await availableCameras();
+      
       if (_cameras!.isNotEmpty) {
+        // Select back camera explicitly for best quality
+        final backCamera = _cameras!.firstWhere(
+          (camera) => camera.lensDirection == CameraLensDirection.back,
+          orElse: () => _cameras!.first,
+        );
+        
+        debugPrint('🎥 Selected camera: ${backCamera.name} (Back Wide)');
+        
         _cameraController = CameraController(
-          _cameras![_isFrontCamera ? 1 : 0],
-          ResolutionPreset.medium, // Use medium resolution to prevent buffer overflow
+          backCamera,
+          ResolutionPreset.max, // Highest available resolution for crisp preview
           enableAudio: true,
-          imageFormatGroup: ImageFormatGroup.yuv420, // Use YUV420 to prevent buffer issues
+          imageFormatGroup: ImageFormatGroup.yuv420, // Best preview quality on Android
         );
         
         await _cameraController!.initialize();
+        
+        // Lock orientation to portrait for consistent preview
+        await _cameraController!.lockCaptureOrientation(DeviceOrientation.portraitUp);
+        
+        // Apply professional camera settings
+        await _applyCameraSettings();
         
         if (mounted) {
           setState(() {
             _isInitialized = true;
           });
+          debugPrint('✅ Camera ready with professional settings');
         }
       }
     } catch (e) {
-      debugPrint('Error initializing camera: $e');
+      debugPrint('❌ Camera initialization failed: $e');
+      _showErrorDialog('Camera initialization failed');
     }
   }
 
-  Future<void> _startRecording() async {
+  // Simple, professional camera settings
+  Future<void> _applyCameraSettings() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
-
-    HapticFeedback.mediumImpact();
+    
     try {
-      await _cameraController!.startVideoRecording();
-      setState(() {
-        _isRecording = true;
-        _recordingDuration = 0;
-      });
-
-      _startRecordingTimer();
-    } catch (e) {
-      debugPrint('Error starting recording: $e');
-    }
-  }
-
-  Future<void> _stopRecording() async {
-    if (_cameraController == null || !_isRecording) return;
-
-    // Check minimum recording duration
-    if (_recordingDuration < 1) {
-      _showRecordingError('Please record for at least 1 second');
-      return;
-    }
-
-    HapticFeedback.mediumImpact();
-    try {
-      final XFile videoFile = await _cameraController!.stopVideoRecording();
+      // Set continuous autofocus for sharp preview
+      await _cameraController!.setFocusMode(FocusMode.auto);
       
-      // Verify the video file was created and has content
-      final file = File(videoFile.path);
-      if (await file.exists()) {
-        final fileSize = await file.length();
-        debugPrint('Video file created: ${videoFile.path}, size: $fileSize bytes');
-        
-        if (fileSize > 0) {
-          setState(() {
-            _isRecording = false;
-            _currentVideoFile = file;
-            _navigationState = NavigationState.recordingPreview;
-          });
-        } else {
-          debugPrint('Video file is empty, recording may have failed');
-          _showRecordingError('Recording failed - empty file');
-        }
-      } else {
-        debugPrint('Video file was not created');
-        _showRecordingError('Recording failed - file not created');
+      // Set continuous auto exposure for proper lighting
+      await _cameraController!.setExposureMode(ExposureMode.auto);
+      
+      // Set flash mode
+      await _cameraController!.setFlashMode(FlashMode.off);
+      
+      // Reset zoom to 1.0 for natural view
+      try {
+        await _cameraController!.setZoomLevel(1.0);
+      } catch (e) {
+        debugPrint('Zoom reset not available: $e');
       }
+      
+      debugPrint('✅ Professional camera settings applied');
     } catch (e) {
-      debugPrint('Error stopping recording: $e');
-      _showRecordingError('Recording failed: ${e.toString()}');
+      debugPrint('Error applying camera settings: $e');
     }
   }
 
-  void _showRecordingError(String message) {
-    setState(() {
-      _isRecording = false;
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  void _startRecordingTimer() {
-    _recordingTimer?.cancel();
-    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_isRecording && mounted) {
-        setState(() {
-          _recordingDuration++;
-        });
-      } else {
-        timer.cancel();
-      }
-    });
-  }
-
-
-  void _switchCamera() {
-    if (_cameras == null || _cameras!.length < 2) return;
-    
-    HapticFeedback.lightImpact();
-    setState(() {
-      _isFrontCamera = !_isFrontCamera;
-    });
-    _initializeCamera();
-  }
-
-  void _onBack() {
-    setState(() {
-      _navigationState = NavigationState.none;
-      _currentVideoFile = null;
-      _previewController?.dispose();
-      _previewController = null;
-    });
-  }
-
-  void _onNext() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => VideoEditView(
-          videoFile: _currentVideoFile!,
-          onCancel: () => Navigator.of(context).pop(),
-          onNext: _onSaveVideo,
-        ),
-      ),
-    );
-  }
-
-  void _onSaveVideo() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Video processed successfully! 🎉'),
-        backgroundColor: Color(0xFF9248d2),
-        duration: Duration(seconds: 3),
-      ),
-    );
-    
-    setState(() {
-      _navigationState = NavigationState.none;
-      _currentVideoFile = null;
-    });
-    
-    Navigator.of(context).pop();
-  }
-
-  void _toggleGrid() {
-    setState(() {
-      _showGrid = !_showGrid;
-    });
-  }
-
+  // Clean tap-to-focus implementation
   void _onTapToFocus(TapDownDetails details) async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
@@ -257,14 +120,30 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
       final double x = localPoint.dx / renderBox.size.width;
       final double y = localPoint.dy / renderBox.size.height;
       
+      // Clamp values to valid range
+      final double clampedX = x.clamp(0.0, 1.0);
+      final double clampedY = y.clamp(0.0, 1.0);
+      
       setState(() {
         _focusPoint = localPoint;
         _isFocusing = true;
       });
 
-      await _cameraController!.setFocusPoint(Offset(x, y));
-      await _cameraController!.setFocusMode(FocusMode.auto);
+      // Set exposure point for proper lighting
+      try {
+        await _cameraController!.setExposurePoint(Offset(clampedX, clampedY));
+      } catch (e) {
+        debugPrint('Exposure point setting not supported: $e');
+      }
+      
+      // Set focus point
+      try {
+        await _cameraController!.setFocusPoint(Offset(clampedX, clampedY));
+      } catch (e) {
+        debugPrint('Focus point setting not supported: $e');
+      }
 
+      // Hide focus indicator after 2 seconds
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
           setState(() {
@@ -279,6 +158,7 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
     }
   }
 
+  // Simple zoom implementation
   void _onScaleUpdate(ScaleUpdateDetails details) async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
@@ -289,135 +169,177 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
         _currentZoom = newZoom;
       });
 
-      await _cameraController!.setZoomLevel(newZoom);
+      try {
+        await _cameraController!.setZoomLevel(newZoom);
+      } catch (e) {
+        debugPrint('Zoom not available: $e');
+      }
     } catch (e) {
       debugPrint('Error zooming: $e');
     }
   }
 
+  // Simple recording functions
+  Future<void> _startRecording() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
-  Future<void> _pickFromGallery() async {
     try {
-      final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
-      if (image != null && mounted) {
-        // For now, just show a success message
-        // Later this will be integrated with the video editing flow
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Photo selected! Stories feature coming soon.'),
-            backgroundColor: Color(0xFF9248d2),
-            duration: Duration(seconds: 2),
-          ),
-        );
-        HapticFeedback.lightImpact();
-      }
+      await _cameraController!.startVideoRecording();
+      
+      setState(() {
+        _isRecording = true;
+      });
+      
+      _startRecordingTimer();
+      HapticFeedback.mediumImpact();
+      
+      debugPrint('✅ Recording started');
     } catch (e) {
-      debugPrint('Error picking from gallery: $e');
+      debugPrint('Error starting recording: $e');
+      _showErrorDialog('Failed to start recording');
     }
   }
 
-  void _showSettingsMenu() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0E1220),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.grid_on, color: Colors.white),
-              title: const Text(
-                'Grid Lines',
-                style: TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                _showGrid ? 'Hide grid' : 'Show grid',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _toggleGrid();
+  Future<void> _stopRecording() async {
+    if (!_isRecording || _cameraController == null) return;
+
+    try {
+      final XFile videoFile = await _cameraController!.stopVideoRecording();
+      
+      _recordingTimer?.cancel();
+      
+      setState(() {
+        _isRecording = false;
+      });
+      
+      // Navigate to RecordingPreviewView
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => RecordingPreviewView(
+              videoFile: File(videoFile.path),
+              onBack: () => Navigator.of(context).pop(),
+              onUseVideo: () {
+                // Close RecordingPreviewView and navigate to VideoEditView
+                Navigator.of(context).pop(); // Close RecordingPreviewView
+                Navigator.of(context).pop(); // Close CameraView
+                // Navigate to VideoEditView
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => VideoEditView(
+                      videoFile: File(videoFile.path),
+                      onCancel: () => Navigator.of(context).pop(),
+                      onNext: () {
+                        // Handle next step (publishing, etc.)
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                );
               },
+            ),
+          ),
+        );
+      }
+      
+      HapticFeedback.mediumImpact();
+      debugPrint('✅ Recording stopped: ${videoFile.path}');
+    } catch (e) {
+      debugPrint('Error stopping recording: $e');
+      _showErrorDialog('Failed to stop recording');
+    }
+  }
+
+  void _startRecordingTimer() {
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_isRecording) {
+        timer.cancel();
+      }
+    });
+  }
+
+  // Simple gallery picker (TikTok style - video only)
+  Future<void> _pickFromGallery() async {
+    try {
+      final XFile? video = await _imagePicker.pickVideo(source: ImageSource.gallery);
+      
+      if (video != null && mounted) {
+        HapticFeedback.lightImpact();
+        
+        // Navigate to RecordingPreviewView
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => RecordingPreviewView(
+              videoFile: File(video.path),
+              onBack: () => Navigator.of(context).pop(),
+              onUseVideo: () {
+                // Close RecordingPreviewView and navigate to VideoEditView
+                Navigator.of(context).pop(); // Close RecordingPreviewView
+                Navigator.of(context).pop(); // Close CameraView
+                // Navigate to VideoEditView
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => VideoEditView(
+                      videoFile: File(video.path),
+                      onCancel: () => Navigator.of(context).pop(),
+                      onNext: () {
+                        // Handle next step (publishing, etc.)
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error picking video from gallery: $e');
+      _showErrorDialog('Error selecting video');
+    }
+  }
+
+
+  void _toggleGrid() {
+    setState(() {
+      _showGrid = !_showGrid;
+    });
+  }
+
+  void _showErrorDialog(String message) {
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Error'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showPermissionDeniedDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF0E1220),
-        title: const Text(
-          'Camera Access Required',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Please enable camera and microphone access in Settings to use this feature.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              openAppSettings();
-            },
-            child: const Text(
-              'Open Settings',
-              style: TextStyle(color: Color(0xFF9248D2)),
-            ),
-          ),
-        ],
-      ),
-    );
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Handle navigation states
-    if (_navigationState == NavigationState.recordingPreview && _currentVideoFile != null) {
-      return VideoRecordingPreview(
-        videoFile: _currentVideoFile!,
-        onRetake: _onBack,
-        onUseVideo: _onNext,
-      );
-    }
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Camera Preview
-          _buildCameraPreview(),
-
+          // Full-screen, razor-sharp preview layout (no stretch, no blur)
+          _buildFullScreenPreview(),
+          
           // Top Controls
           _buildTopControls(),
-
+          
           // Bottom Controls
           _buildBottomControls(),
-
+          
           // Grid Lines
           if (_showGrid) _buildGridLines(),
         ],
@@ -425,7 +347,8 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
     );
   }
 
-  Widget _buildCameraPreview() {
+  // Full-screen, razor-sharp preview layout (no stretch, no blur)
+  Widget _buildFullScreenPreview() {
     if (!_isInitialized || _cameraController == null) {
       return const Center(
         child: CircularProgressIndicator(
@@ -434,16 +357,23 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
       );
     }
 
+    final screenSize = MediaQuery.of(context).size;
+
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTapDown: _onTapToFocus,
       onScaleUpdate: _onScaleUpdate,
       child: Stack(
         children: [
-          // Camera preview with proper aspect ratio and front camera distortion correction
+          // Truly fullscreen preview - fill entire screen height
           SizedBox.expand(
-            child: AspectRatio(
-              aspectRatio: _cameraController!.value.aspectRatio,
-              child: CameraPreview(_cameraController!),
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: screenSize.width,
+                height: screenSize.height,
+                child: CameraPreview(_cameraController!),
+              ),
             ),
           ),
           // Focus indicator
@@ -499,41 +429,34 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
         children: [
           // Close button
           GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.of(context).pop();
-            },
+            onTap: () => Navigator.of(context).pop(),
             child: Container(
-              width: 40,
-              height: 40,
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(20),
+                shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.close,
                 color: Colors.white,
-                size: 20,
+                size: 24,
               ),
             ),
           ),
-          // Settings button
+          
+          // Grid toggle
           GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              _showSettingsMenu();
-            },
+            onTap: _toggleGrid,
             child: Container(
-              width: 40,
-              height: 40,
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(20),
+                color: _showGrid ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.5),
+                shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.settings,
-                color: Colors.white,
-                size: 20,
+              child: Icon(
+                Icons.grid_on,
+                color: _showGrid ? Colors.white : Colors.white.withValues(alpha: 0.7),
+                size: 24,
               ),
             ),
           ),
@@ -544,72 +467,82 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   Widget _buildBottomControls() {
     return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 32,
+      bottom: MediaQuery.of(context).padding.bottom + 20,
       left: 0,
       right: 0,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Gallery Button - Single tap to open gallery (stories feature)
+          // Gallery button (TikTok style - video only)
           GestureDetector(
             onTap: _pickFromGallery,
             child: Container(
-              width: 50,
-              height: 50,
+              width: 60,
+              height: 60,
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white, width: 2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
               ),
               child: const Icon(
-                Icons.photo_library,
+                Icons.photo_library_outlined,
                 color: Colors.white,
-                size: 24,
+                size: 28,
               ),
             ),
           ),
-          // Record Button - Single tap to start/stop recording
+          
+          // Record button
           GestureDetector(
             onTap: _isRecording ? _stopRecording : _startRecording,
             child: Container(
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
                 color: _isRecording ? Colors.red : Colors.white,
+                shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white,
+                  color: _isRecording ? Colors.red : Colors.white,
                   width: 4,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
-              child: Icon(
-                _isRecording ? Icons.stop : Icons.videocam,
-                color: _isRecording ? Colors.white : Colors.black,
-                size: 32,
+              child: Center(
+                child: _isRecording
+                    ? const Icon(
+                        Icons.stop,
+                        color: Colors.white,
+                        size: 32,
+                      )
+                    : Container(
+                        width: 60,
+                        height: 60,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
               ),
             ),
           ),
-          // Switch Camera
+          
+          // Camera flip button
           GestureDetector(
-            onTap: _switchCamera,
+            onTap: () {
+              // Camera flip functionality can be added here if needed
+              HapticFeedback.lightImpact();
+            },
             child: Container(
-              width: 50,
-              height: 50,
+              width: 60,
+              height: 60,
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(25),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
               ),
               child: const Icon(
-                Icons.flip_camera_ios,
+                Icons.flip_camera_ios_outlined,
                 color: Colors.white,
-                size: 24,
+                size: 28,
               ),
             ),
           ),
@@ -619,10 +552,9 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
   }
 
   Widget _buildGridLines() {
-    return Positioned.fill(
-      child: CustomPaint(
-        painter: GridPainter(),
-      ),
+    return CustomPaint(
+      painter: GridPainter(),
+      size: Size.infinite,
     );
   }
 }
@@ -631,13 +563,13 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final Paint paint = Paint()
       ..color = Colors.white.withValues(alpha: 0.3)
       ..strokeWidth = 1.0;
 
     // Vertical lines
     for (int i = 1; i < 3; i++) {
-      final x = size.width * i / 3;
+      final double x = size.width * i / 3;
       canvas.drawLine(
         Offset(x, 0),
         Offset(x, size.height),
@@ -647,7 +579,7 @@ class GridPainter extends CustomPainter {
 
     // Horizontal lines
     for (int i = 1; i < 3; i++) {
-      final y = size.height * i / 3;
+      final double y = size.height * i / 3;
       canvas.drawLine(
         Offset(0, y),
         Offset(size.width, y),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
@@ -14,9 +15,9 @@ import '../services/error_handler_service.dart';
 import '../services/caching_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/accessibility_service.dart';
-import 'optimized_image.dart';
 import 'instant_response_button.dart';
 import 'lazy_loading_list.dart';
+import 'video_thumbnail_view.dart';
 
 class DiscoverView extends ConsumerStatefulWidget {
   const DiscoverView({super.key});
@@ -474,7 +475,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Search Bar
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: GestureDetector(
                   onTap: () {
                     Navigator.of(context).push(
@@ -522,7 +523,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Trending Creators Section with Lazy Loading
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -550,7 +551,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Categories Section
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -558,7 +559,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     
                     // Categories PageView with proper spacing
                     SizedBox(
-                      height: 420,
+                      height: 320,
                       child: PageView.builder(
                         onPageChanged: (page) {
                           setState(() {
@@ -580,8 +581,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                               physics: const NeverScrollableScrollPhysics(),
                               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 3,
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 24,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 16,
                               ),
                               itemCount: pageCategories.length,
                               itemBuilder: (context, index) {
@@ -651,7 +652,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               // Default view - show resources
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -808,12 +809,26 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
 
   Widget _buildVideoGridWithPagination(String categoryId, DiscoverState discoverState) {
-    // Get current page of videos
-    final categoryVideos = _getCategoryVideos(categoryId);
-    
-    if (categoryVideos.isEmpty) {
-      return _buildEmptyCategoryState(categoryId);
-    }
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _getCategoryVideos(categoryId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+            ),
+          );
+        }
+        
+        if (snapshot.hasError) {
+          return _buildEmptyCategoryState(categoryId);
+        }
+        
+        final categoryVideos = snapshot.data ?? [];
+        
+        if (categoryVideos.isEmpty) {
+          return _buildEmptyCategoryState(categoryId);
+        }
     
     return Column(
       children: [
@@ -862,9 +877,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         ],
       ],
     );
+      },
+    );
   }
 
-  List<Map<String, dynamic>> _getCategoryVideos(String categoryId) {
+  Future<List<Map<String, dynamic>>> _getCategoryVideos(String categoryId) async {
     // Check if we have cached videos for this category
     if (_cachedVideos.containsKey(categoryId)) {
       final cachedVideos = _cachedVideos[categoryId]!;
@@ -873,7 +890,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }
     
     // Generate and cache all videos for this category
-    final allVideos = _generateCategoryVideos(categoryId);
+    final allVideos = await _generateCategoryVideos(categoryId);
     _cachedVideos[categoryId] = allVideos;
     
     // Return first page
@@ -881,268 +898,92 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     return allVideos.sublist(0, endIndex);
   }
 
-  List<Map<String, dynamic>> _generateCategoryVideos(String categoryId) {
-    // This would normally fetch from your data source
-    // For now, return sample data based on category
+  Future<List<Map<String, dynamic>>> _generateCategoryVideos(String categoryId) async {
+    try {
+      // Load real videos from Firestore for this category
+      final query = FirebaseFirestore.instance
+          .collection('videos')
+          .where('status', isEqualTo: 'published')
+          .where('privacy', isEqualTo: 'Everyone')
+          .where('category', isEqualTo: categoryId)
+          .limit(20);
+
+      final snapshot = await query.get();
+      final videos = <Map<String, dynamic>>[];
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final userId = data['userId'] as String?;
+        
+        if (userId == null) continue;
+
+        // Get creator data
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .get();
+        
+        if (!userDoc.exists) continue;
+        
+        final userData = userDoc.data()!;
+        
+        videos.add({
+          'id': doc.id,
+          'title': data['caption'] ?? data['title'] ?? 'Untitled',
+          'creator': userData['displayName'] ?? userData['username'] ?? 'Unknown',
+          'thumbnail': data['thumbnailUrl'] ?? '',
+          'views': '${data['views'] ?? 0}',
+          'duration': '0:00', // TODO: Get actual duration
+          'color': _getCategoryColor(categoryId),
+          'videoUrl': data['videoUrl'] ?? '',
+          'creatorId': userId,
+        });
+      }
+
+      return videos;
+    } catch (e) {
+      debugPrint('Error loading category videos: $e');
+      return [];
+    }
+  }
+
+  int _getCategoryColor(String categoryId) {
+    // Return appropriate color for category
     switch (categoryId) {
       case 'gaming':
-        return [
-          {
-            'id': '1',
-            'title': 'Epic Gaming Moments',
-            'creator': 'GamerPro',
-            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Gaming+1',
-            'views': '1.2K',
-            'duration': '5:30',
-            'color': 0xFFFF6CAB,
-          },
-          {
-            'id': '2',
-            'title': 'New Game Review',
-            'creator': 'GameReviewer',
-            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Gaming+2',
-            'views': '856',
-            'duration': '8:15',
-            'color': 0xFF8E54E9,
-          },
-          {
-            'id': '3',
-            'title': 'Pro Gaming Tips',
-            'creator': 'ProGamer',
-            'thumbnail': 'https://via.placeholder.com/300x533/3D99F7/FFFFFF?text=Gaming+3',
-            'views': '2.1K',
-            'duration': '3:45',
-            'color': 0xFF3D99F7,
-          },
-          {
-            'id': '4',
-            'title': 'Gameplay Highlights',
-            'creator': 'GameHighlights',
-            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Gaming+4',
-            'views': '743',
-            'duration': '6:20',
-            'color': 0xFFFF6CAB,
-          },
-          {
-            'id': '5',
-            'title': 'Speedrun Attempt',
-            'creator': 'SpeedRunner',
-            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Gaming+5',
-            'views': '1.5K',
-            'duration': '12:30',
-            'color': 0xFF8E54E9,
-          },
-          {
-            'id': '6',
-            'title': 'Gaming Setup Tour',
-            'creator': 'SetupGamer',
-            'thumbnail': 'https://via.placeholder.com/300x533/3D99F7/FFFFFF?text=Gaming+6',
-            'views': '934',
-            'duration': '7:15',
-            'color': 0xFF3D99F7,
-          },
-        ];
+        return 0xFFFF6CAB;
       case 'music':
-        return [
-          {
-            'id': '1',
-            'title': 'Live Performance',
-            'creator': 'MusicArtist',
-            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Music+1',
-            'views': '2.1K',
-            'duration': '12:45',
-            'color': 0xFFFF6CAB,
-          },
-          {
-            'id': '2',
-            'title': 'Acoustic Cover',
-            'creator': 'AcousticSinger',
-            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Music+2',
-            'views': '1.8K',
-            'duration': '4:20',
-            'color': 0xFF8E54E9,
-          },
-          {
-            'id': '3',
-            'title': 'Studio Session',
-            'creator': 'StudioMusician',
-            'thumbnail': 'https://via.placeholder.com/300x533/3D99F7/FFFFFF?text=Music+3',
-            'views': '1.2K',
-            'duration': '8:30',
-            'color': 0xFF3D99F7,
-          },
-          {
-            'id': '4',
-            'title': 'Music Tutorial',
-            'creator': 'MusicTeacher',
-            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Music+4',
-            'views': '956',
-            'duration': '15:20',
-            'color': 0xFFFF6CAB,
-          },
-        ];
+        return 0xFF8E54E9;
       case 'art':
-        return [
-          {
-            'id': '1',
-            'title': 'Digital Art Tutorial',
-            'creator': 'ArtCreator',
-            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Art+1',
-            'views': '543',
-            'duration': '15:20',
-            'color': 0xFFFF6CAB,
-          },
-          {
-            'id': '2',
-            'title': 'Speed Painting',
-            'creator': 'SpeedPainter',
-            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Art+2',
-            'views': '1.1K',
-            'duration': '6:45',
-            'color': 0xFF8E54E9,
-          },
-          {
-            'id': '3',
-            'title': 'Art Process',
-            'creator': 'ProcessArtist',
-            'thumbnail': 'https://via.placeholder.com/300x533/3D99F7/FFFFFF?text=Art+3',
-            'views': '789',
-            'duration': '9:30',
-            'color': 0xFF3D99F7,
-          },
-          {
-            'id': '4',
-            'title': 'Sketch Challenge',
-            'creator': 'SketchArtist',
-            'thumbnail': 'https://via.placeholder.com/300x533/FF6CAB/FFFFFF?text=Art+4',
-            'views': '432',
-            'duration': '5:15',
-            'color': 0xFFFF6CAB,
-          },
-          {
-            'id': '5',
-            'title': 'Art Supplies Review',
-            'creator': 'ArtReviewer',
-            'thumbnail': 'https://via.placeholder.com/300x533/8E54E9/FFFFFF?text=Art+5',
-            'views': '678',
-            'duration': '11:20',
-            'color': 0xFF8E54E9,
-          },
-        ];
+        return 0xFF3D99F7;
+      case 'comedy':
+        return 0xFF4CAF50;
+      case 'dance':
+        return 0xFFFF9800;
+      case 'sports':
+        return 0xFF9C27B0;
+      case 'education':
+        return 0xFFE91E63;
+      case 'lifestyle':
+        return 0xFFFF5722;
+      case 'food':
+        return 0xFF2196F3;
+      case 'travel':
+        return 0xFF795548;
+      case 'fashion':
+        return 0xFF607D8B;
       default:
-        return [];
+        return 0xFF6633CC; // Default purple color
     }
   }
 
   Widget _buildVideoGridItem(Map<String, dynamic> video, String categoryId) {
-    return GestureDetector(
+    return CompactVideoThumbnail(
+      videoUrl: video['videoUrl'] ?? video['videoURL'] ?? '',
       onTap: () {
         LoggingService.instance.debug('Tapped video: ${video['title']}', tag: 'DiscoverView');
-        // Navigate to video player or show video details
         _showVideoDetails(video);
       },
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: Color(video['color'] ?? 0xFF6633CC),
-        ),
-        child: Stack(
-          children: [
-            // Thumbnail
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: OptimizedImage(
-                imageUrl: video['thumbnail'],
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.cover,
-                placeholder: Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(video['color'] ?? 0xFF6633CC),
-                        Color(video['color'] ?? 0xFF6633CC).withValues(alpha: 0.8),
-                      ],
-                    ),
-                  ),
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  ),
-                ),
-                errorWidget: Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(video['color'] ?? 0xFF6633CC),
-                        Color(video['color'] ?? 0xFF6633CC).withValues(alpha: 0.8),
-                      ],
-                    ),
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.play_circle_outline,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            
-            // Play icon overlay
-            const Center(
-              child: Icon(
-                Icons.play_circle_outline,
-                color: Colors.white,
-                size: 32,
-              ),
-            ),
-            
-            // View count overlay (bottom-left)
-            Positioned(
-              bottom: 8,
-              left: 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.play_arrow,
-                      color: Colors.white,
-                      size: 12,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      video['views'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-              ),
-            ),
-          ),
-        ],
-        ),
-      ),
     );
   }
 

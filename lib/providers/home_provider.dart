@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_video.dart';
 import '../models/user.dart' as app_user;
-import '../services/video_service.dart';
+import '../services/video_service.dart' as video_service;
 import '../services/user_service.dart';
 import '../services/favorites_service.dart';
 import '../services/following_feed_service.dart';
@@ -19,7 +19,7 @@ import 'video_service_provider.dart';
 enum FeedType { forYou, following }
 
 class HomeViewModel extends StateNotifier<HomeState> {
-  final VideoService _videoService;
+  final video_service.VideoService _videoService;
   final UserService _userService;
   final FavoritesService _favoritesService;
   final FollowingFeedService _followingFeedService;
@@ -27,7 +27,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
   final LikeService _likeService = LikeService();
   
   HomeViewModel({
-    required VideoService videoService,
+    required video_service.VideoService videoService,
     required UserService userService,
     required FavoritesService favoritesService,
     FollowingFeedService? followingFeedService,
@@ -68,6 +68,22 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   // MARK: - Initial Load with Instant Play
   
+  /// Refresh videos when a new video is uploaded
+  Future<void> refreshAfterUpload() async {
+    log('🔄 Refreshing videos after upload...');
+    try {
+      // Refresh VideoService to get latest videos
+      await _videoService.refresh();
+      final updatedVideos = _videoService.getAllVideos();
+      
+      // Update state with fresh videos
+      state = state.copyWith(forYouVideos: updatedVideos);
+      log('✅ Videos refreshed after upload: ${updatedVideos.length} videos');
+    } catch (e) {
+      log('❌ Error refreshing videos after upload: $e');
+    }
+  }
+  
   Future<void> loadVideos() async {
     log('🔄 loadVideos() called - hasLoaded: ${state.hasLoaded}');
     
@@ -105,27 +121,45 @@ class HomeViewModel extends StateNotifier<HomeState> {
   /// Load cached videos for instant display
   Future<void> _loadCachedVideos() async {
     try {
-      log('🚀 Starting instant play - loading cached videos...');
+      log('🚀 Starting instant play - loading real videos from VideoService...');
       
-      // For now, create sample videos immediately to eliminate loading wheel
-      // In production, this would load from cache
-      final sampleVideos = _createSampleVideos();
+      // Load real videos from VideoService instead of sample videos
+      await _videoService.loadAllVideos();
+      final realVideos = _videoService.getAllVideos();
       
-      log('📱 Created ${sampleVideos.length} sample videos for instant display');
+      log('📱 Loaded ${realVideos.length} real videos from VideoService');
       
-      state = state.copyWith(
-        forYouVideos: sampleVideos,
-        followingVideos: sampleVideos.take(1).toList(), // Only 1 for memory optimization
-        isLoading: false,
-      );
+      if (realVideos.isEmpty) {
+        log('⚠️ No real videos found, creating sample videos as fallback');
+        final sampleVideos = _createSampleVideos();
+        state = state.copyWith(
+          forYouVideos: sampleVideos,
+          followingVideos: sampleVideos.take(1).toList(),
+          isLoading: false,
+        );
+      } else {
+        // Use real videos from VideoService
+        state = state.copyWith(
+          forYouVideos: realVideos,
+          followingVideos: realVideos.take(1).toList(), // Only 1 for memory optimization
+          isLoading: false,
+        );
+      }
       
-      log('✅ Loaded cached videos for instant display: ${sampleVideos.length} items');
+      log('✅ Loaded videos for instant display: ${state.forYouVideos.length} items');
       log('🎯 Current state - forYouVideos: ${state.forYouVideos.length}, followingVideos: ${state.followingVideos.length}, isLoading: ${state.isLoading}');
       
       // TIKTOK-STYLE: Start preloading videos immediately for instant playback
       _preloadVideos();
     } catch (e) {
       log('❌ Error loading cached videos: $e');
+      // Fallback to sample videos if real videos fail to load
+      final sampleVideos = _createSampleVideos();
+      state = state.copyWith(
+        forYouVideos: sampleVideos,
+        followingVideos: sampleVideos.take(1).toList(),
+        isLoading: false,
+      );
     }
   }
 
@@ -258,32 +292,11 @@ class HomeViewModel extends StateNotifier<HomeState> {
   /// Fetch fresh videos in background with improved error handling
   Future<void> _fetchFreshVideosInBackground() async {
     try {
-      log('🔄 Fetching fresh videos...');
+      log('🔄 Fetching fresh videos in background...');
       
-      // Store current sample videos as fallback
-      final currentForYouVideos = state.forYouVideos;
-      final currentFollowingVideos = state.followingVideos;
-      
-      // Try to fetch fresh data with timeout
-      await fetchForYouVideos(reset: true).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          log('⏰ For You videos fetch timeout - keeping sample videos');
-          throw TimeoutException('For You videos fetch timeout', const Duration(seconds: 10));
-        },
-      );
-      
-      // If fresh fetch returned 0 videos, log the issue and keep sample videos
-      if (state.forYouVideos.isEmpty && currentForYouVideos.isNotEmpty) {
-        log('⚠️ Fresh fetch returned 0 videos - this may indicate a data loading issue');
-        log('🔍 Possible causes: Firestore permissions, network issues, or empty database');
-        // FRAME OPTIMIZATION: Use SchedulerBinding to defer state updates
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          state = state.copyWith(forYouVideos: currentForYouVideos);
-        });
-      } else if (state.forYouVideos.isNotEmpty) {
-        log('✅ Fresh For You videos loaded: ${state.forYouVideos.length} videos');
-      }
+      // Don't reload videos here since they're already loaded in _loadCachedVideos
+      // This prevents duplicate videos from being loaded
+      log('✅ Background refresh skipped - videos already loaded in cache');
       
       // Get the current user's following IDs to load their network videos
       try {
@@ -303,21 +316,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
           },
         );
         
-          // If following fetch returned 0 videos, log the issue and keep sample videos
-          if (state.followingVideos.isEmpty && currentFollowingVideos.isNotEmpty) {
+          // Log the result of following videos fetch
+          if (state.followingVideos.isEmpty) {
             log('⚠️ Following fetch returned 0 videos - user may not be following anyone yet');
-          // FRAME OPTIMIZATION: Use SchedulerBinding to defer state updates
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            state = state.copyWith(followingVideos: currentFollowingVideos);
-          });
-          } else if (state.followingVideos.isNotEmpty) {
+          } else {
             log('✅ Fresh Following videos loaded: ${state.followingVideos.length} videos');
           }
       } catch (e) {
-        log('⚠️ Following videos fetch failed: $e - keeping sample videos');
-        if (state.followingVideos.isEmpty && currentFollowingVideos.isNotEmpty) {
-          state = state.copyWith(followingVideos: currentFollowingVideos);
-        }
+        log('⚠️ Following videos fetch failed: $e - keeping current videos');
       }
       
       // Sync like, favorite, and comment states after loading videos (non-blocking)
@@ -433,10 +439,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
       if (state.forYouSlice?.requestId != rid) return;
       state = state.copyWith(
         forYouSlice: state.forYouSlice?.copyWith(
-          items: page.videos,
-          nextCursor: page.lastDocument == null
+          items: page['videos'] as List<HomeVideo>,
+          nextCursor: page['lastDocument'] == null
               ? null
-              : <String, dynamic>{'lastDoc': page.lastDocument},
+              : <String, dynamic>{'lastDoc': page['lastDocument']},
           isLoading: false,
           error: null,
         ),
@@ -508,10 +514,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
         if (state.forYouSlice?.requestId != rid) return;
         state = state.copyWith(
           forYouSlice: state.forYouSlice?.copyWith(
-            items: [...s.items, ...page.videos],
-            nextCursor: page.lastDocument == null
+            items: [...s.items, ...(page['videos'] as List<HomeVideo>)],
+            nextCursor: page['lastDocument'] == null
                 ? null
-                : <String, dynamic>{'lastDoc': page.lastDocument},
+                : <String, dynamic>{'lastDoc': page['lastDocument']},
             isLoading: false,
             error: null,
           ),
@@ -564,13 +570,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
       
       if (reset) {
         state = state.copyWith(
-          forYouVideos: videos.videos,
-          lastForYouDoc: videos.lastDocument,
+          forYouVideos: videos['videos'] as List<HomeVideo>,
+          lastForYouDoc: videos['lastDocument'],
         );
       } else {
         state = state.copyWith(
-          forYouVideos: [...state.forYouVideos, ...videos.videos],
-          lastForYouDoc: videos.lastDocument,
+          forYouVideos: [...state.forYouVideos, ...(videos['videos'] as List<HomeVideo>)],
+          lastForYouDoc: videos['lastDocument'],
         );
       }
     } catch (e) {
@@ -593,13 +599,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
         if (reset) {
           state = state.copyWith(
-            followingVideos: videos.videos,
-            lastFollowingDoc: videos.lastDocument,
+            followingVideos: videos['videos'] as List<HomeVideo>,
+            lastFollowingDoc: videos['lastDocument'],
           );
         } else {
           state = state.copyWith(
-            followingVideos: [...state.followingVideos, ...videos.videos],
-            lastFollowingDoc: videos.lastDocument,
+            followingVideos: [...state.followingVideos, ...(videos['videos'] as List<HomeVideo>)],
+            lastFollowingDoc: videos['lastDocument'],
           );
         }
         return;

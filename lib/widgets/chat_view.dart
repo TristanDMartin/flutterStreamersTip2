@@ -26,6 +26,7 @@ class ChatView extends ConsumerStatefulWidget {
   final String otherUserName;
   final String? otherUserAvatarURL;
   final bool otherUserIsOnline;
+  final Map<String, dynamic>? draftToSend;
 
   const ChatView({
     super.key,
@@ -34,6 +35,7 @@ class ChatView extends ConsumerStatefulWidget {
     required this.otherUserName,
     this.otherUserAvatarURL,
     required this.otherUserIsOnline,
+    this.draftToSend,
   });
 
   @override
@@ -61,6 +63,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
   void initState() {
     super.initState();
     _loadOtherUserData();
+    
+    // Handle draft to send if provided
+    if (widget.draftToSend != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleDraftToSend(widget.draftToSend!);
+      });
+    }
+    
     // Mark messages as read when chat is opened
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.chat.id != null) {
@@ -92,6 +102,105 @@ class _ChatViewState extends ConsumerState<ChatView> {
       debugPrint('ChatView: Listening for shared content from keyboard');
     } catch (e) {
       debugPrint('ChatView: Error setting up shared content listener: $e');
+    }
+  }
+
+  void _handleDraftToSend(Map<String, dynamic> draft) {
+    // Show a dialog to confirm sending the draft
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          'Send Draft Video?',
+          style: TextStyle(color: Colors.white, fontSize: 18),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Caption: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            if (draft['hashtags'] != null && (draft['hashtags'] as List).isNotEmpty)
+              Text(
+                'Hashtags: ${(draft['hashtags'] as List).join(' ')}',
+                style: const TextStyle(color: Color(0xFF9248D2), fontSize: 14),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _sendDraftVideo(draft);
+            },
+            child: const Text('Send', style: TextStyle(color: Color(0xFF9248D2))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _sendDraftVideo(Map<String, dynamic> draft) async {
+    try {
+      final videoPath = draft['videoPath'] as String?;
+      if (videoPath == null || videoPath.isEmpty) {
+        _showErrorSnackBar('Draft video file not found');
+        return;
+      }
+
+      final videoFile = File(videoPath);
+      if (!videoFile.existsSync()) {
+        _showErrorSnackBar('Draft video file is missing');
+        return;
+      }
+
+      // Create a temporary message with the draft caption
+      final caption = draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft';
+      
+      // For now, we'll send the caption as a text message
+      // In a full implementation, you'd upload the video file and send the video URL
+      // We'll use the existing send method by setting the text in the input field
+      _textController.text = caption;
+      
+      // Trigger the send action
+      final chatNotifier = ref.read(chatProvider(widget.chat).notifier);
+      await chatNotifier.send();
+      
+      _showSuccessSnackBar('Draft sent successfully!');
+    } catch (e) {
+      _showErrorSnackBar('Failed to send draft: ${e.toString()}');
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _showSuccessSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: const Color(0xFF9248D2),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 

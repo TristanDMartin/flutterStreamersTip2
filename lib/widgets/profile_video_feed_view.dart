@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 import '../providers/favorites_provider.dart';
-import '../providers/video_service_provider.dart';
-import '../models/user.dart';
 import '../models/home_video.dart';
+import '../services/video_service.dart';
+import '../services/local_draft_service.dart';
 import 'drafts_sheet_view.dart';
 import 'drafts_grid_card_view.dart';
-import 'published_video_card_view.dart';
 import 'player_screen.dart';
+import 'video_thumbnail_view.dart';
+import 'video_edit_view.dart';
+
+// Grid item configuration class
+class GridItem {
+  final double flex;
+  final double spacing;
+
+  const GridItem(this.flex, {required this.spacing});
+}
 
 class ProfileVideoFeedView extends ConsumerStatefulWidget {
   final ProfileVideoFeedType feedType;
@@ -58,26 +68,26 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   Widget _buildUserVideosGrid() {
     return Consumer(
       builder: (context, ref, child) {
-        final videoService = ref.watch(videoServiceProvider);
-        final allVideos = videoService.createSampleVideos();
+        // Watch user videos from centralized VideoService
+        final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
         
-        // Get user's published videos
-        final userVideos = allVideos.where((video) => 
-          video.creator.id == widget.userId && !video.isDraft
-        ).toList();
-        
-        // Get drafts (placeholder for now - should come from drafts service)
-        final drafts = <dynamic>[]; // TODO: Get from drafts service
-        
-        if (userVideos.isEmpty && drafts.isEmpty) {
-          return _buildEmptyState(
-            icon: Icons.videocam_outlined,
-            title: 'No Videos Yet',
-            subtitle: 'Start creating content to see your videos here',
-          );
-        }
+        // Get drafts from LocalDraftService
+        return FutureBuilder<List<Map<String, dynamic>>>(
+          future: LocalDraftService().getAllDrafts(),
+          builder: (context, snapshot) {
+            final drafts = snapshot.data ?? [];
+            
+            if (userVideos.isEmpty && drafts.isEmpty) {
+              return _buildEmptyState(
+                icon: Icons.videocam_outlined,
+                title: 'No Videos Yet',
+                subtitle: 'Start creating content to see your videos here',
+              );
+            }
 
-        return _buildVideoGridWithDrafts(userVideos, drafts);
+            return _buildVideoGridWithDrafts(userVideos, drafts);
+          },
+        );
       },
     );
   }
@@ -115,7 +125,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     return _buildVideoGridContent(taggedVideos);
   }
 
-  Widget _buildVideoGridWithDrafts(List<HomeVideo> videos, List<dynamic> drafts) {
+  Widget _buildVideoGridWithDrafts(List<HomeVideo> videos, List<Map<String, dynamic>> drafts) {
     return RefreshIndicator(
       onRefresh: () async {
         // Refresh data based on feed type
@@ -130,29 +140,30 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         }
       },
       color: const Color(0xFF9248d2),
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
+      child: GridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
           crossAxisSpacing: 16, // 16pt spacing
           mainAxisSpacing: 16,  // 16pt spacing
           childAspectRatio: 110 / 170, // Width: 110, Height: 170
         ),
         itemCount: (drafts.isNotEmpty ? 1 : 0) + videos.length,
-                itemBuilder: (context, index) {
+        itemBuilder: (context, index) {
           // Show drafts card first if there are drafts
           if (drafts.isNotEmpty && index == 0) {
-                    return DraftsGridCardView(
+            return DraftsGridCardView(
               drafts: drafts,
-                      onTap: _showDraftsSheet,
-                    );
+              onTap: _showDraftsSheet,
+            );
           }
           
           // Adjust index for published videos
           final videoIndex = drafts.isNotEmpty ? index - 1 : index;
           if (videoIndex < videos.length) {
             final video = videos[videoIndex];
-                    return PublishedVideoCardView(
-                      video: video,
+            return PublishedVideoThumbnail(
+              videoUrl: video.videoURL,
+              viewCount: video.views,
               onTap: () => _openVideoPlayer(video, videoIndex, videos),
             );
           }
@@ -181,9 +192,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       child: GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          crossAxisSpacing: 16, // 16pt spacing
-          mainAxisSpacing: 16,  // 16pt spacing
-          childAspectRatio: 110 / 170, // Width: 110, Height: 170
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 110 / 170,
         ),
         itemCount: videos.length,
         itemBuilder: (context, index) {
@@ -195,115 +206,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildPublishedVideoCard(Map<String, dynamic> video, int index) {
-    return GestureDetector(
+    return PublishedVideoThumbnail(
+      videoUrl: video['videoUrl'] ?? video['videoURL'] ?? '',
+      viewCount: video['views'] ?? 0,
       onTap: () {
         widget.onVideoTap?.call();
-        // TODO: Navigate to ProfileVideoPlayerView with video data
         _showVideoDetail(video);
       },
-      child: Container(
-        width: 110, // Exact width specification
-        height: 170, // Exact height specification
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16), // 16pt corner radius
-          color: Colors.grey[900],
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25), // Black 25% opacity
-              blurRadius: 10, // 10pt radius
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Stack(
-            children: [
-              // Video thumbnail
-              _buildVideoThumbnailView(video),
-              
-              // View count overlay (ZStack alignment: .bottom)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Color.fromRGBO(0, 0, 0, 0.5), // Black 50% opacity
-                      ],
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(8),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.play_circle_fill, // play.circle.fill
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatViews(video['views'] ?? 0),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const Spacer(),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
-
-  Widget _buildVideoThumbnailView(Map<String, dynamic> video) {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      color: Colors.grey[800],
-      child: video['thumbnailUrl'] != null
-                    ? Image.network(
-              video['thumbnailUrl'],
-                        fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(
-                  Icons.play_circle_outline,
-                          color: Colors.white,
-                  size: 40,
-                );
-              },
-                      )
-                    : const Icon(
-              Icons.play_circle_outline,
-                        color: Colors.white,
-              size: 40,
-            ),
-    );
-  }
-
-
-
-  String _formatViews(int views) {
-    if (views >= 1000000) {
-      return '${(views / 1000000).toStringAsFixed(1)}M';
-    } else if (views >= 1000) {
-      return '${(views / 1000).toStringAsFixed(1)}K';
-    } else {
-      return views.toString();
-    }
-  }
-
 
   Widget _buildEmptyState({
     required IconData icon,
@@ -317,13 +228,13 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           Icon(
             icon,
             size: 80,
-            color: Colors.white.withValues(alpha: 0.5),
+            color: Colors.white.withValues(alpha: 0.3),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           Text(
             title,
-              style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.75),
+            style: const TextStyle(
+              color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.w600,
             ),
@@ -332,7 +243,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           Text(
             subtitle,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 16,
             ),
             textAlign: TextAlign.center,
@@ -343,44 +254,150 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   void _showVideoDetail(Map<String, dynamic> video) {
-    // TODO: Navigate to ProfileVideoPlayerView
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Playing: ${video['title']}'),
-        backgroundColor: const Color(0xFF9248d2),
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(
+          video['title'] ?? 'Video',
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Likes: ${video['likes'] ?? 'N/A'}\nDuration: ${video['duration'] ?? 'N/A'}',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Color(0xFF9248d2))),
+          ),
+        ],
       ),
     );
   }
 
   void _showDraftsSheet() {
-    // Get sample draft data - replace with actual drafts
-    final drafts = _getSampleDrafts();
-    
+    // Get drafts from LocalDraftService
+    LocalDraftService().getAllDrafts().then((drafts) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => DraftsSheetView(
+            drafts: drafts,
+            onDelete: (draft) async {
+              // Delete draft using LocalDraftService
+              final success = await LocalDraftService().deleteDraft(draft['id']);
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Deleted draft: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                // Refresh the UI
+                setState(() {});
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to delete draft'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            onEdit: (draft) {
+              _editDraft(draft);
+            },
+          ),
+        ),
+      );
+    });
+  }
+
+  // Edit draft by navigating to VideoEditView
+  void _editDraft(Map<String, dynamic> draft) {
+    final videoPath = draft['videoPath'] as String?;
+    if (videoPath == null || videoPath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Draft video file not found'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final videoFile = File(videoPath);
+    if (!videoFile.existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Draft video file is missing'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Navigate to VideoEditView for editing
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => DraftsSheetView(
-          drafts: drafts,
-          onDelete: (draft) {
-            // TODO: Implement draft deletion
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Deleted draft: ${draft.caption.isNotEmpty ? draft.caption : 'Untitled Draft'}'),
-                backgroundColor: Colors.red,
-              ),
-            );
+        builder: (context) => VideoEditView(
+          videoFile: videoFile,
+          onCancel: () {
+            Navigator.of(context).pop();
           },
-          onEdit: (draft) {
-            // TODO: Navigate to draft editor
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Editing draft: ${draft.caption.isNotEmpty ? draft.caption : 'Untitled Draft'}'),
-                backgroundColor: const Color(0xFF9248d2),
-              ),
-            );
+          onNext: () {
+            // Navigate to VideoPublishingScreen with draft data
+            _navigateToVideoPublishingScreen(videoFile, draft);
           },
         ),
       ),
     );
+  }
+
+  // Navigate to video publishing screen with draft data
+  void _navigateToVideoPublishingScreen(File videoFile, Map<String, dynamic> draft) {
+    // TODO: Implement navigation to VideoPublishingScreen with existing draft data
+    // This would pass the existing draft data (caption, hashtags, etc.) for editing
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Opening publishing screen for: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}'),
+        backgroundColor: const Color(0xFF9248D2),
+      ),
+    );
+    
+    // For now, just go back to drafts sheet
+    Navigator.of(context).pop();
+  }
+
+  // Helper methods
+  List<Map<String, dynamic>> _getSampleTaggedVideos() {
+    return [
+      {
+        'id': 'tagged1',
+        'title': 'Tagged Video 1',
+        'likes': '2.5K',
+        'duration': '0:45',
+        'thumbnail': 'https://example.com/tagged1.jpg',
+      },
+      {
+        'id': 'tagged2',
+        'title': 'Tagged Video 2',
+        'likes': '1.8K',
+        'duration': '1:20',
+        'thumbnail': 'https://example.com/tagged2.jpg',
+      },
+    ];
+  }
+
+  Map<String, dynamic> _getSampleVideoData(String videoId) {
+    return {
+      'id': videoId,
+      'title': 'Favorite Video',
+      'likes': '1.2K',
+      'duration': '0:30',
+      'thumbnail': 'https://example.com/favorite.jpg',
+    };
   }
 
   void _openVideoPlayer(HomeVideo video, int index, List<HomeVideo> videos) {
@@ -397,101 +414,4 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       ),
     );
   }
-
-  List<HomeVideo> _getSampleDrafts() {
-    const currentUser = User(
-      id: 'current_user',
-      username: 'current_user',
-      displayName: 'Current User',
-      avatarURL: 'https://example.com/avatar.jpg',
-    );
-
-    return [
-      const HomeVideo(
-        id: 'draft_1',
-        creator: currentUser,
-        videoURL: 'https://example.com/draft1.mp4',
-        likes: 0,
-        comments: 0,
-        views: 0,
-        caption: 'My first draft video',
-        isLiked: false,
-        isFavorited: false,
-        isDraft: true,
-        mlScore: 0.0,
-      ),
-      const HomeVideo(
-        id: 'draft_2',
-        creator: currentUser,
-        videoURL: 'https://example.com/draft2.mp4',
-        likes: 0,
-        comments: 0,
-        views: 0,
-        caption: 'Another draft video',
-        isLiked: false,
-        isFavorited: false,
-        isDraft: true,
-        mlScore: 0.0,
-      ),
-    ];
-  }
-
-  // Sample data methods - replace with actual data sources
-  // List<Map<String, dynamic>> _getSampleUserVideos() {
-  //   // Unused method commented out
-  // }
-
-  List<Map<String, dynamic>> _getSampleTaggedVideos() {
-    return [
-      {
-        'id': 'tagged_video_1',
-        'title': 'Collaboration Video',
-        'likes': '5.6K',
-        'duration': '1:45',
-        'thumbnail': 'https://example.com/tagged1.jpg',
-      },
-    ];
-  }
-
-  Map<String, dynamic> _getSampleVideoData(String videoId) {
-    final sampleVideos = {
-      '1': {
-        'id': '1',
-        'title': 'Epic Gaming Moment',
-        'likes': '12.5K',
-        'duration': '0:30',
-        'thumbnail': 'https://example.com/thumb1.jpg',
-      },
-      '2': {
-        'id': '2',
-        'title': 'Digital Art Creation',
-        'likes': '8.9K',
-        'duration': '1:15',
-        'thumbnail': 'https://example.com/thumb2.jpg',
-      },
-      '3': {
-        'id': '3',
-        'title': 'Acoustic Cover',
-        'likes': '15.2K',
-        'duration': '2:30',
-        'thumbnail': 'https://example.com/thumb3.jpg',
-      },
-    };
-    
-    return sampleVideos[videoId] ?? {
-      'id': videoId,
-      'title': 'Sample Video',
-      'likes': '1K',
-      'duration': '1:00',
-      'thumbnail': 'https://example.com/thumb.jpg',
-    };
-  }
-}
-
-// Grid item configuration class
-class GridItem {
-  final double flex;
-  final double spacing;
-
-  const GridItem(this.flex, {required this.spacing});
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../models/user.dart';
@@ -7,7 +8,9 @@ import '../services/chat_service.dart';
 import 'chat_view.dart';
 
 class ChoosePersonView extends ConsumerStatefulWidget {
-  const ChoosePersonView({super.key});
+  final Map<String, dynamic>? selectedDraft;
+  
+  const ChoosePersonView({super.key, this.selectedDraft});
 
   @override
   ConsumerState<ChoosePersonView> createState() => _ChoosePersonViewState();
@@ -102,6 +105,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
               otherUserName: person.displayName,
               otherUserAvatarURL: person.avatarURL,
               otherUserIsOnline: person.onlineStatus == 'online',
+              draftToSend: widget.selectedDraft, // Pass draft if provided
             ),
           ),
         );
@@ -447,4 +451,5 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
       ),
     );
   }
+
 }

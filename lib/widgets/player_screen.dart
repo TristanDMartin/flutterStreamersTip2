@@ -48,10 +48,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     super.dispose();
   }
 
-  void _loadVideos() {
+  Future<void> _loadVideos() async {
     if (widget.mode == PlayerMode.favorites) {
       final videoService = ref.read(videoServiceProvider);
-      _videos = videoService.getVideosByIds(widget.videoIds);
+      _videos = await videoService.getVideosByIds(widget.videoIds);
     } else {
       _videos = widget.videos ?? [];
     }

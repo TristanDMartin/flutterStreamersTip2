@@ -206,32 +206,54 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> with TickerPr
           );
         }
 
-        // Get actual video data for favorites
-        final favoriteVideos = videoService.getVideosByIds(favorites);
+        // Get actual video data for favorites using FutureBuilder
+        return FutureBuilder<List<HomeVideo>>(
+          future: videoService.getVideosByIds(favorites),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248d2)),
+                ),
+              );
+            }
 
-        return SizedBox(
-          height: MediaQuery.of(context).size.height - 200, // Constrain the height
-          child: RefreshIndicator(
-            onRefresh: () async {
-              await ref.read(favoritesProvider.notifier).forceSync();
-            },
-            color: const Color(0xFF9248d2),
-            backgroundColor: Colors.black,
-            child: GridView.builder(
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 110 / 170, // Width / Height ratio
+            if (snapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Error loading favorites: ${snapshot.error}',
+                  style: const TextStyle(color: Colors.red),
+                ),
+              );
+            }
+
+            final favoriteVideos = snapshot.data ?? [];
+
+            return SizedBox(
+              height: MediaQuery.of(context).size.height - 200, // Constrain the height
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await ref.read(favoritesProvider.notifier).forceSync();
+                },
+                color: const Color(0xFF9248d2),
+                backgroundColor: Colors.black,
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 110 / 170, // Width / Height ratio
+                  ),
+                  itemCount: favoriteVideos.length,
+                  itemBuilder: (context, index) {
+                    final video = favoriteVideos[index];
+                    return _buildFavoriteVideoGridCard(video, index);
+                  },
+                ),
               ),
-              itemCount: favoriteVideos.length,
-              itemBuilder: (context, index) {
-                final video = favoriteVideos[index];
-                return _buildFavoriteVideoGridCard(video, index);
-              },
-            ),
-          ),
+            );
+          },
         );
       },
     );

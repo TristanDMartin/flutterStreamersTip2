@@ -190,18 +190,17 @@ class _VideoEditorPlayerState extends State<VideoEditorPlayer> {
               
               // Play/Pause overlay
               if (!_isPlaying)
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    color: Colors.white,
-                    size: 40,
-                  ),
+                Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 60,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
               
               // Progress indicator

@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/home_video.dart';
 import '../widgets/video_player_view_optimized.dart';
 import '../providers/home_provider.dart' as hp;
+import '../services/video_service.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/following_provider.dart';
 import '../services/error_handling_service.dart';
@@ -73,6 +74,7 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
       debugPrint('📋 HomeView: addPostFrameCallback executing');
       _setupFavoritesManager();
       _loadVideos();
+      _initializeVideoService();
     });
   }
 
@@ -86,6 +88,23 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     favoritesNotifier.forceSync();
     
     // Favorites manager setup complete
+  }
+
+  /// Initialize VideoService to load all videos
+  void _initializeVideoService() {
+    try {
+      log('🎬 HomeView: Initializing VideoService...');
+      debugPrint('🎬 HomeView: Initializing VideoService...');
+      
+      final videoService = ref.read(videoServiceProvider.notifier);
+      videoService.loadAllVideos();
+      
+      log('✅ HomeView: VideoService initialized');
+      debugPrint('✅ HomeView: VideoService initialized');
+    } catch (e) {
+      log('❌ HomeView: Error initializing VideoService: $e');
+      debugPrint('❌ HomeView: Error initializing VideoService: $e');
+    }
   }
 
 
@@ -302,6 +321,179 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
     ShareServiceOptimized().shareVideo(video);
   }
 
+  /// Handle pull-to-refresh gesture
+  Future<void> _handlePullToRefresh() async {
+    log('🔄 HomeView: Pull-to-refresh triggered');
+    debugPrint('🔄 HomeView: Pull-to-refresh triggered');
+    
+    try {
+      HapticFeedback.lightImpact();
+      
+      // Refresh videos from VideoService
+      final homeVM = ref.read(hp.homeProvider.notifier);
+      await homeVM.refreshAfterUpload();
+      
+      log('✅ HomeView: Pull-to-refresh completed');
+      debugPrint('✅ HomeView: Pull-to-refresh completed');
+    } catch (e) {
+      log('❌ HomeView: Error during pull-to-refresh: $e');
+      debugPrint('❌ HomeView: Error during pull-to-refresh: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to refresh feed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Handle left swipe gesture to open StreamerCardView
+  void _handleLeftSwipe(DragEndDetails details) {
+    // Check if it's a left swipe (negative velocity)
+    if (details.velocity.pixelsPerSecond.dx < -300) {
+      log('👈 HomeView: Left swipe detected');
+      debugPrint('👈 HomeView: Left swipe detected');
+      
+      try {
+        HapticFeedback.lightImpact();
+        
+        // Get current video and show StreamerCardView
+        final homeState = ref.read(hp.homeProvider);
+        final videos = _feedTab == FeedTab.forYou ? homeState.forYouVideos : homeState.followingVideos;
+        
+        if (_currentIndex < videos.length) {
+          final currentVideo = videos[_currentIndex];
+          _showStreamerCardModal(currentVideo.creator);
+          
+          log('✅ HomeView: StreamerCardView opened for user: ${currentVideo.creator.username}');
+          debugPrint('✅ HomeView: StreamerCardView opened for user: ${currentVideo.creator.username}');
+        }
+      } catch (e) {
+        log('❌ HomeView: Error handling left swipe: $e');
+        debugPrint('❌ HomeView: Error handling left swipe: $e');
+      }
+    }
+  }
+
+  /// Handle swipe up gesture on end-of-feed message to refresh
+  void _handleSwipeUpRefresh(DragEndDetails details) {
+    // Check if it's an upward swipe (negative velocity on Y axis)
+    if (details.velocity.pixelsPerSecond.dy < -300) {
+      log('⬆️ HomeView: Swipe up refresh detected');
+      debugPrint('⬆️ HomeView: Swipe up refresh detected');
+      
+      try {
+        HapticFeedback.lightImpact();
+        _handlePullToRefresh();
+      } catch (e) {
+        log('❌ HomeView: Error handling swipe up refresh: $e');
+        debugPrint('❌ HomeView: Error handling swipe up refresh: $e');
+      }
+    }
+  }
+
+  /// Build end-of-feed message with swipe-up refresh functionality
+  Widget _buildEndOfFeedMessage() {
+    return GestureDetector(
+      onVerticalDragEnd: _handleSwipeUpRefresh,
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Colors.black,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // End of feed icon
+            const Icon(
+              Icons.check_circle_outline,
+              size: 60,
+              color: Color(0xFF9248D2), // Primary purple
+            ),
+            
+            const SizedBox(height: 24),
+            
+            // End of feed title
+            const Text(
+              'You\'ve reached the end!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // End of feed subtitle
+            const Text(
+              'Tap the button below to refresh and discover more videos',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 16,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            
+            const SizedBox(height: 32),
+            
+            // Tap to refresh button
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                _handlePullToRefresh();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF9248D2), // Primary purple
+                      Color(0xFF7768DF), // Secondary purple
+                      Color(0xFF1670DE), // Blue
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(25),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF9248D2).withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.refresh,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Tap to refresh',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   void _showStreamerCardModal(User user) {
     HapticFeedback.lightImpact();
@@ -402,36 +594,51 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
       );
     } else {
         return SizedBox.expand(
-          child: PageView.builder(
-            controller: _pageController,
-            scrollDirection: Axis.vertical, // TikTok-style vertical scrolling
-            itemCount: videos.length,
-            onPageChanged: (index) {
-              if (mounted) {
-                setState(() {
-                  _currentIndex = index;
-                });
-              }
-            },
-            itemBuilder: (context, index) {
-              final video = videos[index];
-              final homeVM = ref.read(hp.homeProvider.notifier);
-              return VideoPlayerViewOptimized(
-                key: ValueKey(video.id),
-                video: video,
-                isCurrentVideo: index == _currentIndex,
-                isFirstVideo: index == 0,
-                homeViewModel: homeVM,
-                showSheet: false,
-                sheetType: '',
-                onShowProfile: () => _showStreamerCardModal(video.creator),
-                onShowComments: () => _openComments(video.id, video.creator.id),
-                onShowShare: () => _shareVideo(video),
-                onShowStreamerCard: () => _showStreamerCardModal(video.creator),
-                isLiked: video.isLiked,
-                isBookmarked: video.isFavorited, // cSpell:ignore Favorited
-              );
-            },
+          child: RefreshIndicator(
+            onRefresh: _handlePullToRefresh,
+            color: const Color(0xFF9248D2),
+            backgroundColor: Colors.black.withValues(alpha: 0.8),
+            strokeWidth: 2.0,
+            displacement: 60.0, // Pull down distance before refresh triggers
+            child: GestureDetector(
+              onHorizontalDragEnd: _handleLeftSwipe,
+              child: PageView.builder(
+                controller: _pageController,
+                scrollDirection: Axis.vertical, // TikTok-style vertical scrolling
+                itemCount: videos.length + 1, // Add 1 for end-of-feed message
+                onPageChanged: (index) {
+                  if (mounted) {
+                    setState(() {
+                      _currentIndex = index;
+                    });
+                  }
+                },
+                itemBuilder: (context, index) {
+                  // Show end-of-feed message when reaching the end
+                  if (index >= videos.length) {
+                    return _buildEndOfFeedMessage();
+                  }
+                  
+                  final video = videos[index];
+                  final homeVM = ref.read(hp.homeProvider.notifier);
+                  return VideoPlayerViewOptimized(
+                    key: ValueKey(video.id),
+                    video: video,
+                    isCurrentVideo: index == _currentIndex,
+                    isFirstVideo: index == 0,
+                    homeViewModel: homeVM,
+                    showSheet: false,
+                    sheetType: '',
+                    onShowProfile: () => _showStreamerCardModal(video.creator),
+                    onShowComments: () => _openComments(video.id, video.creator.id),
+                    onShowShare: () => _shareVideo(video),
+                    onShowStreamerCard: () => _showStreamerCardModal(video.creator),
+                    isLiked: video.isLiked,
+                    isBookmarked: video.isFavorited, // cSpell:ignore Favorited
+                  );
+                },
+              ),
+            ),
           ),
         );
     }

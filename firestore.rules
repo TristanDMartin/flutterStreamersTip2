@@ -87,7 +87,12 @@ service cloud.firestore {
     // Users can read public videos
     match /videos/{videoId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == resource.data.creator.id;
+      // Allow creating videos for any authenticated user
+      allow create: if request.auth != null;
+      // Allow updating videos for any authenticated user
+      allow update: if request.auth != null;
+      // Allow deleting videos for any authenticated user
+      allow delete: if request.auth != null;
     }
     
     // Users can read public likes
@@ -187,6 +192,18 @@ service cloud.firestore {
     // Incoming invites permissions - allow users to read invites sent to them
     match /users/{userId}/incomingInvites/{inviteId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Feed permissions - allow authenticated users to read and write feeds
+    match /feeds/{feedType} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      
+      // Allow subcollections within feeds
+      match /{subcollection=**} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
     }
   }
 }

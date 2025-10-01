@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
+import '../services/video_thumbnail_service.dart';
 
 class VideoThumbnailWidget extends StatefulWidget {
   final String videoUrl;
@@ -45,36 +46,38 @@ class _VideoThumbnailWidgetState extends State<VideoThumbnailWidget> {
   }
 
   Future<void> _generateThumbnail() async {
-    // CRITICAL: Disable thumbnail generation to prevent buffer overflow
     if (!mounted) return;
 
     setState(() {
-      _isLoading = false;
-      _hasError = true; // Force error state to show placeholder
+      _isLoading = true;
+      _hasError = false;
     });
     
-    // DISABLED: Thumbnail generation causes buffer overflow
-    // setState(() {
-    //   _isLoading = true;
-    //   _hasError = false;
-    // });
-    // try {
-    //   final thumbnailData = await VideoThumbnailService.generateThumbnail(widget.videoUrl);
-    //   if (mounted) {
-    //     setState(() {
-    //       _thumbnailData = thumbnailData;
-    //       _isLoading = false;
-    //       _hasError = thumbnailData == null;
-    //     });
-    //   }
-    // } catch (e) {
-    //   if (mounted) {
-    //     setState(() {
-    //       _isLoading = false;
-    //       _hasError = true;
-    //     });
-    //   }
-    // }
+    try {
+      // Use TikTok-quality thumbnail generation with smaller dimensions to prevent buffer overflow
+      final thumbnailData = await VideoThumbnailService.generateCustomThumbnail(
+        widget.videoUrl,
+        maxWidth: widget.width?.toInt() ?? 160, // Smaller dimensions to prevent overflow
+        maxHeight: widget.height?.toInt() ?? 240, // Smaller dimensions to prevent overflow
+        quality: 90, // High quality but not maximum to prevent memory issues
+      );
+      
+      if (mounted) {
+        setState(() {
+          _thumbnailData = thumbnailData;
+          _isLoading = false;
+          _hasError = thumbnailData == null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error generating thumbnail: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
+    }
   }
 
   @override
