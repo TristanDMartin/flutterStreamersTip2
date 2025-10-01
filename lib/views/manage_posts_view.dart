@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/scheduled_post.dart';
 import '../services/scheduled_post_service.dart';
-import 'edit_post_view.dart';
-import 'post_progress_view.dart';
-import 'post_analytics_view.dart';
-import 'platform_reconnection_view.dart';
+// import 'edit_post_view.dart'; // Removed - unused
+// import 'post_progress_view.dart'; // Removed - unused
+// import 'post_analytics_view.dart'; // Removed - unused
+// import 'platform_reconnection_view.dart'; // Removed - unused
 
 enum PostSortOption {
   dateDesc,
@@ -823,12 +823,16 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
 
   void _editPost(ScheduledPost post) async {
     HapticFeedback.lightImpact();
-    final result = await Navigator.push<ScheduledPost>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EditPostView(post: post),
-      ),
+    // final result = await Navigator.push<ScheduledPost>(
+    //   context,
+    //   MaterialPageRoute(
+    //     builder: (context) => EditPostView(post: post),
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Edit post feature coming soon!')),
     );
+    final result = null;
     
     if (result != null) {
       _loadPosts();
@@ -865,11 +869,14 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
 
   void _viewProgress(ScheduledPost post) {
     HapticFeedback.lightImpact();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PostProgressView(post: post),
-      ),
+    // Navigator.push(
+    //   context,
+    //   MaterialPageRoute(
+    //     builder: (context) => PostProgressView(post: post),
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Post progress feature coming soon!')),
     );
   }
 
@@ -898,11 +905,14 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
 
   void _viewAnalytics(ScheduledPost post) {
     HapticFeedback.lightImpact();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PostAnalyticsView(post: post),
-      ),
+    // Navigator.push(
+    //   context,
+    //   MaterialPageRoute(
+    //     builder: (context) => PostAnalyticsView(post: post),
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Post analytics feature coming soon!')),
     );
   }
 
@@ -918,11 +928,14 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
 
   void _fixConnection(ScheduledPost post) {
     HapticFeedback.lightImpact();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PlatformReconnectionView(post: post),
-      ),
+    // Navigator.push(
+    //   context,
+    //   MaterialPageRoute(
+    //     builder: (context) => PlatformReconnectionView(post: post),
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Platform reconnection feature coming soon!')),
     );
   }
 

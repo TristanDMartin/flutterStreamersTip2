@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'choose_person_view.dart';
-import 'invite_friends_view.dart';
-import 'start_group_view.dart';
-import 'draft_selection_view.dart';
+// import 'invite_friends_view.dart'; // Removed - unused
+// import 'start_group_view.dart'; // Removed - unused
+// import 'draft_selection_view.dart'; // Removed - unused
 
 class NewMessageView extends ConsumerStatefulWidget {
   const NewMessageView({super.key});
@@ -315,29 +315,38 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
   }
 
   void _navigateToInviteFriends() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const InviteFriendsView(),
-        fullscreenDialog: true,
-      ),
+    // Navigator.of(context).push(
+    //   MaterialPageRoute(
+    //     builder: (context) => const InviteFriendsView(),
+    //     fullscreenDialog: true,
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Invite friends feature coming soon!')),
     );
   }
 
   void _navigateToStartGroup() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const StartGroupView(),
-        fullscreenDialog: true,
-      ),
+    // Navigator.of(context).push(
+    //   MaterialPageRoute(
+    //     builder: (context) => const StartGroupView(),
+    //     fullscreenDialog: true,
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Start group feature coming soon!')),
     );
   }
 
   void _navigateToDraftSelection() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const DraftSelectionView(),
-        fullscreenDialog: true,
-      ),
+    // Navigator.of(context).push(
+    //   MaterialPageRoute(
+    //     builder: (context) => const DraftSelectionView(),
+    //     fullscreenDialog: true,
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Draft selection feature coming soon!')),
     );
   }
 }

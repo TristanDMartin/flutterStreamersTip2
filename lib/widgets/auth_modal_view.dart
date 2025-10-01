@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
-import '../views/terms_of_service_view.dart';
-import '../views/privacy_policy_view.dart';
-import 'signup_view.dart';
-import 'email_login_view.dart';
+// import '../views/terms_of_service_view.dart'; // Removed - unused
+// import '../views/privacy_policy_view.dart'; // Removed - unused
+// import 'signup_view.dart'; // Removed - unused
+// import 'email_login_view.dart'; // Removed - unused
 
 class AuthModalView extends ConsumerStatefulWidget {
   final VoidCallback? dismiss;
@@ -240,12 +240,15 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           backgroundColor: Colors.white,
           textColor: Colors.black,
           onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => EmailLoginView(
-                  dismiss: () => Navigator.of(context).pop(),
-                ),
-              ),
+            // Navigator.of(context).push(
+            //   MaterialPageRoute(
+            //     builder: (context) => EmailLoginView(
+            //       dismiss: () => Navigator.of(context).pop(),
+            //     ),
+            //   ),
+            // );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Email login feature coming soon!')),
             );
           },
           disabled: authService.shouldShowLoading,
@@ -415,18 +418,24 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   void _showTermsDialog() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const TermsOfServiceView(),
-      ),
+    // Navigator.of(context).push(
+    //   MaterialPageRoute(
+    //     builder: (context) => const TermsOfServiceView(),
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Terms of service coming soon!')),
     );
   }
 
   void _showPrivacyDialog() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const PrivacyPolicyView(),
-      ),
+    // Navigator.of(context).push(
+    //   MaterialPageRoute(
+    //     builder: (context) => const PrivacyPolicyView(),
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Privacy policy coming soon!')),
     );
   }
 
@@ -438,9 +447,14 @@ class _SignupLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextButton(
-      onPressed: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (context) => const SignupView()),
-      ),
+      onPressed: () {
+        // Navigator.of(context).push(
+        //   MaterialPageRoute(builder: (context) => const SignupView()),
+        // );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sign up feature coming soon!')),
+        );
+      },
       child: const Text(
         "Sign up",
         style: TextStyle(

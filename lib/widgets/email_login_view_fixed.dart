@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
-import 'signup_view.dart';
+// import 'signup_view.dart'; // Removed - unused
 
 class EmailLoginView extends ConsumerStatefulWidget {
   final VoidCallback? dismiss;
@@ -289,10 +289,13 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
                         ),
                         GestureDetector(
                           onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const SignupView(),
-                              ),
+                            // Navigator.of(context).push(
+                            //   MaterialPageRoute(
+                            //     builder: (context) => const SignupView(),
+                            //   ),
+                            // );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Sign up feature coming soon!')),
                             );
                           },
                           child: const Text(

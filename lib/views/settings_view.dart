@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'manage_account_view.dart';
+// import 'manage_account_view.dart'; // Removed - unused
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -347,22 +347,21 @@ class _SettingsViewState extends State<SettingsView> {
 
 
   void _navigateToPage(BuildContext context, String pageName) {
-    Widget page;
-    
     switch (pageName) {
       case 'Manage Account':
-        page = const ManageAccountView();
-        break;
+        // page = const ManageAccountView(); // Removed - unused
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Manage account feature coming soon!')),
+        );
+        return;
       default:
-        page = _PlaceholderPage(title: pageName);
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => _PlaceholderPage(title: pageName),
+          ),
+        );
         break;
     }
-    
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => page,
-      ),
-    );
   }
 }
 

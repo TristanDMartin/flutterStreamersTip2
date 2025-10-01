@@ -21,7 +21,7 @@ import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_card_view.dart';
-import '../widgets/share_profile_view.dart';
+// import '../widgets/share_profile_view.dart'; // Removed - unused
 import '../models/user.dart';
 import '../models/streamer_card.dart';
 import '../widgets/tiktok_account_switch_button.dart';
@@ -896,13 +896,16 @@ class _HomeViewState extends ConsumerState<HomeView> with WidgetsBindingObserver
                         };
                         
                         // Navigate to ShareProfileView (same as ProfileView)
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => ShareProfileView(
-                              user: userData,
-                              dismiss: () => Navigator.of(context).pop(),
-                            ),
-                          ),
+                        // Navigator.of(context).push(
+                        //   MaterialPageRoute(
+                        //     builder: (context) => ShareProfileView(
+                        //       user: userData,
+                        //       dismiss: () => Navigator.of(context).pop(),
+                        //     ),
+                        //   ),
+                        // );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Share profile feature coming soon!')),
                         );
                       },
                     ),

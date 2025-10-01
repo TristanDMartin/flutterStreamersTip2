@@ -8,7 +8,7 @@ import '../providers/unread_messages_provider.dart';
 import '../models/trending_creator.dart';
 import 'category_card.dart';
 import 'recommended_content_card.dart';
-import 'search_screen.dart';
+// import 'search_screen.dart'; // Removed - unused
 import 'activity_view.dart';
 import '../services/logging_service.dart';
 import '../services/error_handler_service.dart';
@@ -17,7 +17,7 @@ import '../services/offline_storage_service.dart';
 import '../services/accessibility_service.dart';
 import 'instant_response_button.dart';
 import 'lazy_loading_list.dart';
-import 'video_thumbnail_view.dart';
+// import 'video_thumbnail_view.dart'; // Removed - unused
 
 class DiscoverView extends ConsumerStatefulWidget {
   const DiscoverView({super.key});
@@ -478,10 +478,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: GestureDetector(
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SearchScreen(),
-                      ),
+                    // Navigator.of(context).push(
+                    //   MaterialPageRoute(
+                    //     builder: (_) => const SearchScreen(),
+                    //   ),
+                    // );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Search feature coming soon!')),
                     );
                   },
                   child: Container(
@@ -978,12 +981,30 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   Widget _buildVideoGridItem(Map<String, dynamic> video, String categoryId) {
-    return CompactVideoThumbnail(
-      videoUrl: video['videoUrl'] ?? video['videoURL'] ?? '',
+    // return CompactVideoThumbnail(
+    //   videoUrl: video['videoUrl'] ?? video['videoURL'] ?? '',
+    //   onTap: () {
+    //     LoggingService.instance.debug('Tapped video: ${video['title']}', tag: 'DiscoverView');
+    //     _showVideoDetails(video);
+    //   },
+    return GestureDetector(
       onTap: () {
         LoggingService.instance.debug('Tapped video: ${video['title']}', tag: 'DiscoverView');
         _showVideoDetails(video);
       },
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.grey[800],
+        ),
+        child: const Center(
+          child: Icon(
+            Icons.play_circle_outline,
+            color: Colors.white,
+            size: 40,
+          ),
+        ),
+      ),
     );
   }
 

@@ -12,7 +12,7 @@ import '../services/offline_inbox_service.dart';
 import '../providers/unread_messages_provider.dart';
 import 'chat_view.dart';
 import 'new_message_view.dart';
-import 'draft_creation_view.dart';
+// import 'draft_creation_view.dart'; // Removed - unused
 
 class InboxViewOptimized extends ConsumerStatefulWidget {
   const InboxViewOptimized({super.key});
@@ -1508,9 +1508,13 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     HapticFeedback.lightImpact();
     
     if (mounted) {
-      final result = await Navigator.of(context).push(
-        _createSlideTransition(page: const DraftCreationView()),
+      // final result = await Navigator.of(context).push(
+      //   _createSlideTransition(page: const DraftCreationView()),
+      // );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Draft creation feature coming soon!')),
       );
+      final result = null;
 
       // Refresh data if draft was created
       if (result == true) {
@@ -1593,11 +1597,15 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     
     // Navigate to draft creation view for editing
     if (mounted) {
-      final result = await Navigator.of(context).push(
-        _createSlideTransition(
-          page: DraftCreationView(existingDraft: draft),
-        ),
+      // final result = await Navigator.of(context).push(
+      //   _createSlideTransition(
+      //     page: DraftCreationView(existingDraft: draft),
+      //   ),
+      // );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Draft editing feature coming soon!')),
       );
+      final result = null;
 
       // Refresh data if draft was modified
       if (result == true) {

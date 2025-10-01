@@ -10,9 +10,9 @@ import '../providers/status_provider.dart';
 import '../providers/home_provider.dart';
 import '../services/profile_update_service.dart';
 import '../views/menu_view.dart';
-import 'edit_profile_view.dart';
-import 'share_profile_view.dart';
-import 'profile_back_view.dart';
+// import 'edit_profile_view.dart'; // Removed - unused
+// import 'share_profile_view.dart'; // Removed - unused
+// import 'profile_back_view.dart'; // Removed - unused
 import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
@@ -546,9 +546,24 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   Widget _buildBackView() {
-    return ProfileBackView(
-      user: _currentUserData,
-      onFlip: _flipCard,
+    // return ProfileBackView(
+    //   user: _currentUserData,
+    //   onFlip: _flipCard,
+    // );
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+        ),
+      ),
+      child: const Center(
+        child: Text(
+          'Profile Back View Coming Soon',
+          style: TextStyle(color: Colors.white, fontSize: 18),
+        ),
+      ),
     );
   }
 
@@ -749,17 +764,20 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
               text: 'Edit Profile',
               onPressed: () {
                 HapticFeedback.lightImpact();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => EditProfileView(
-                      user: _currentUserData,
-                      onUserUpdated: (updatedUser) {
-                        // Profile update is handled by ProfileUpdateService
-                        // The service will automatically trigger a rebuild
-                        HapticFeedback.lightImpact();
-                      },
-                    ),
-                  ),
+                // Navigator.of(context).push(
+                //   MaterialPageRoute(
+                //     builder: (context) => EditProfileView(
+                //       user: _currentUserData,
+                //       onUserUpdated: (updatedUser) {
+                //         // Profile update is handled by ProfileUpdateService
+                //         // The service will automatically trigger a rebuild
+                //         HapticFeedback.lightImpact();
+                //       },
+                //     ),
+                //   ),
+                // );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Edit profile feature coming soon!')),
                 );
               },
             ),
@@ -770,13 +788,16 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
               text: 'Share Profile',
               onPressed: () {
                 HapticFeedback.lightImpact();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => ShareProfileView(
-                      user: _currentUserData,
-                      dismiss: () => Navigator.of(context).pop(),
-                    ),
-                  ),
+                // Navigator.of(context).push(
+                //   MaterialPageRoute(
+                //     builder: (context) => ShareProfileView(
+                //       user: _currentUserData,
+                //       dismiss: () => Navigator.of(context).pop(),
+                //     ),
+                //   ),
+                // );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Share profile feature coming soon!')),
                 );
               },
             ),

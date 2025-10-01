@@ -10,7 +10,7 @@ import '../models/user_model.dart' as user_model;
 import '../models/user.dart';
 import '../views/streamer_card_page.dart';
 import 'discover_view.dart';
-import '../widgets/post_detail_view.dart';
+// import '../widgets/post_detail_view.dart'; // Removed - unused
 import 'instant_response_button.dart';
 
 class ActivityView extends ConsumerStatefulWidget {
@@ -1131,10 +1131,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     // Mark notification as read
     _markNotificationAsRead(notification);
     
-    _navigateWithSlideTransition(
-      PostDetailView(notification: notification),
-      const Offset(0.0, 1.0),
-      fullscreenDialog: true,
+    // _navigateWithSlideTransition(
+    //   PostDetailView(notification: notification),
+    //   const Offset(0.0, 1.0),
+    //   fullscreenDialog: true,
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Post detail view coming soon!')),
     );
   }
 

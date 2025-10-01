@@ -5,11 +5,11 @@ import '../providers/favorites_provider.dart';
 import '../models/home_video.dart';
 import '../services/video_service.dart';
 import '../services/local_draft_service.dart';
-import 'drafts_sheet_view.dart';
-import 'drafts_grid_card_view.dart';
+// import 'drafts_sheet_view.dart'; // Removed - unused
+// import 'drafts_grid_card_view.dart'; // Removed - unused
 import 'player_screen.dart';
-import 'video_thumbnail_view.dart';
-import 'video_edit_view.dart';
+// import 'video_thumbnail_view.dart'; // Removed - unused
+// import 'video_edit_view.dart'; // Removed - unused
 
 // Grid item configuration class
 class GridItem {
@@ -151,9 +151,25 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         itemBuilder: (context, index) {
           // Show drafts card first if there are drafts
           if (drafts.isNotEmpty && index == 0) {
-            return DraftsGridCardView(
-              drafts: drafts,
+            // return DraftsGridCardView(
+            //   drafts: drafts,
+            //   onTap: _showDraftsSheet,
+            // );
+            return GestureDetector(
               onTap: _showDraftsSheet,
+              child: Container(
+                margin: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[800],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child: Text(
+                    'Drafts Coming Soon',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
             );
           }
           
@@ -161,10 +177,26 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           final videoIndex = drafts.isNotEmpty ? index - 1 : index;
           if (videoIndex < videos.length) {
             final video = videos[videoIndex];
-            return PublishedVideoThumbnail(
-              videoUrl: video.videoURL,
-              viewCount: video.views,
+            // return PublishedVideoThumbnail(
+            //   videoUrl: video.videoURL,
+            //   viewCount: video.views,
+            //   onTap: () => _openVideoPlayer(video, videoIndex, videos),
+            // );
+            return GestureDetector(
               onTap: () => _openVideoPlayer(video, videoIndex, videos),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey[800],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.play_circle_outline,
+                    color: Colors.white,
+                    size: 40,
+                  ),
+                ),
+              ),
             );
           }
           
@@ -206,13 +238,32 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildPublishedVideoCard(Map<String, dynamic> video, int index) {
-    return PublishedVideoThumbnail(
-      videoUrl: video['videoUrl'] ?? video['videoURL'] ?? '',
-      viewCount: video['views'] ?? 0,
+    // return PublishedVideoThumbnail(
+    //   videoUrl: video['videoUrl'] ?? video['videoURL'] ?? '',
+    //   viewCount: video['views'] ?? 0,
+    //   onTap: () {
+    //     widget.onVideoTap?.call();
+    //     _showVideoDetail(video);
+    //   },
+    // );
+    return GestureDetector(
       onTap: () {
         widget.onVideoTap?.call();
         _showVideoDetail(video);
       },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[800],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: Icon(
+            Icons.play_circle_outline,
+            color: Colors.white,
+            size: 40,
+          ),
+        ),
+      ),
     );
   }
 
@@ -279,36 +330,39 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   void _showDraftsSheet() {
     // Get drafts from LocalDraftService
     LocalDraftService().getAllDrafts().then((drafts) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => DraftsSheetView(
-            drafts: drafts,
-            onDelete: (draft) async {
-              // Delete draft using LocalDraftService
-              final success = await LocalDraftService().deleteDraft(draft['id']);
-              if (success) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Deleted draft: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                // Refresh the UI
-                setState(() {});
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Failed to delete draft'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            onEdit: (draft) {
-              _editDraft(draft);
-            },
-          ),
-        ),
+      // Navigator.of(context).push(
+      //   MaterialPageRoute(
+      //     builder: (context) => DraftsSheetView(
+      //       drafts: drafts,
+      //       onDelete: (draft) async {
+      //         // Delete draft using LocalDraftService
+      //         final success = await LocalDraftService().deleteDraft(draft['id']);
+      //         if (success) {
+      //           ScaffoldMessenger.of(context).showSnackBar(
+      //             SnackBar(
+      //               content: Text('Deleted draft: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}'),
+      //               backgroundColor: Colors.red,
+      //             ),
+      //           );
+      //           // Refresh the UI
+      //           setState(() {});
+      //         } else {
+      //           ScaffoldMessenger.of(context).showSnackBar(
+      //             const SnackBar(
+      //               content: Text('Failed to delete draft'),
+      //               backgroundColor: Colors.red,
+      //             ),
+      //           );
+      //         }
+      //       },
+      //       onEdit: (draft) {
+      //         _editDraft(draft);
+      //       },
+      //     ),
+      //   ),
+      // );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Drafts sheet feature coming soon!')),
       );
     });
   }
@@ -338,19 +392,22 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     }
 
     // Navigate to VideoEditView for editing
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => VideoEditView(
-          videoFile: videoFile,
-          onCancel: () {
-            Navigator.of(context).pop();
-          },
-          onNext: () {
-            // Navigate to VideoPublishingScreen with draft data
-            _navigateToVideoPublishingScreen(videoFile, draft);
-          },
-        ),
-      ),
+    // Navigator.of(context).push(
+    //   MaterialPageRoute(
+    //     builder: (context) => VideoEditView(
+    //       videoFile: videoFile,
+    //       onCancel: () {
+    //         Navigator.of(context).pop();
+    //       },
+    //       onNext: () {
+    //         // Navigate to VideoPublishingScreen with draft data
+    //         _navigateToVideoPublishingScreen(videoFile, draft);
+    //       },
+    //     ),
+    //   ),
+    // );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Video editing feature coming soon!')),
     );
   }
 
