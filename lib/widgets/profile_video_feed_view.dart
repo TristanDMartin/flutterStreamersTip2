@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:io';
 import '../providers/favorites_provider.dart';
 import '../models/home_video.dart';
+import '../models/user.dart';
 import '../services/video_service.dart';
 import '../services/local_draft_service.dart';
-// import 'drafts_sheet_view.dart'; // Removed - unused
-// import 'drafts_grid_card_view.dart'; // Removed - unused
 import 'player_screen.dart';
-// import 'video_thumbnail_view.dart'; // Removed - unused
-// import 'video_edit_view.dart'; // Removed - unused
+import 'tiktok_video_thumbnail.dart';
 
 // Grid item configuration class
 class GridItem {
@@ -23,7 +20,7 @@ class ProfileVideoFeedView extends ConsumerStatefulWidget {
   final ProfileVideoFeedType feedType;
   final String? userId;
   final VoidCallback? onVideoTap;
-  
+
   const ProfileVideoFeedView({
     super.key,
     required this.feedType,
@@ -32,13 +29,14 @@ class ProfileVideoFeedView extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<ProfileVideoFeedView> createState() => _ProfileVideoFeedViewState();
+  ConsumerState<ProfileVideoFeedView> createState() =>
+      _ProfileVideoFeedViewState();
 }
 
 enum ProfileVideoFeedType {
-  videos,    // Tab 0: User's own videos
+  videos, // Tab 0: User's own videos
   favorites, // Tab 1: User's saved videos
-  tagged,    // Tab 2: Videos where user is tagged
+  tagged, // Tab 2: Videos where user is tagged
 }
 
 class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
@@ -49,7 +47,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   Widget _buildGridLayout() {
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 8.0, // Small top padding to separate from tab buttons
+      ),
       child: _buildVideoGrid(),
     );
   }
@@ -70,13 +72,13 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       builder: (context, ref, child) {
         // Watch user videos from centralized VideoService
         final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
-        
+
         // Get drafts from LocalDraftService
         return FutureBuilder<List<Map<String, dynamic>>>(
           future: LocalDraftService().getAllDrafts(),
           builder: (context, snapshot) {
             final drafts = snapshot.data ?? [];
-            
+
             if (userVideos.isEmpty && drafts.isEmpty) {
               return _buildEmptyState(
                 icon: Icons.videocam_outlined,
@@ -105,15 +107,16 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     }
 
     // Convert favorite IDs to video data
-    final favoriteVideos = favorites.map((videoId) => _getSampleVideoData(videoId)).toList();
-    
+    final favoriteVideos =
+        favorites.map((videoId) => _getSampleVideoData(videoId)).toList();
+
     return _buildVideoGridContent(favoriteVideos);
   }
 
   Widget _buildTaggedVideosGrid() {
     // TODO: Replace with actual tagged videos data
     final taggedVideos = _getSampleTaggedVideos();
-    
+
     if (taggedVideos.isEmpty) {
       return _buildEmptyState(
         icon: Icons.person_outline,
@@ -125,7 +128,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     return _buildVideoGridContent(taggedVideos);
   }
 
-  Widget _buildVideoGridWithDrafts(List<HomeVideo> videos, List<Map<String, dynamic>> drafts) {
+  Widget _buildVideoGridWithDrafts(
+      List<HomeVideo> videos, List<Map<String, dynamic>> drafts) {
     return RefreshIndicator(
       onRefresh: () async {
         // Refresh data based on feed type
@@ -143,9 +147,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       child: GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          crossAxisSpacing: 16, // 16pt spacing
-          mainAxisSpacing: 16,  // 16pt spacing
-          childAspectRatio: 110 / 170, // Width: 110, Height: 170
+          crossAxisSpacing: 16, // Tight gutters = 16pt
+          mainAxisSpacing: 16, // Tight gutters = 16pt
+          childAspectRatio: 9 / 16, // Strict 9:16 aspect ratio (portrait)
         ),
         itemCount: (drafts.isNotEmpty ? 1 : 0) + videos.length,
         itemBuilder: (context, index) {
@@ -172,34 +176,17 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
               ),
             );
           }
-          
+
           // Adjust index for published videos
           final videoIndex = drafts.isNotEmpty ? index - 1 : index;
           if (videoIndex < videos.length) {
             final video = videos[videoIndex];
-            // return PublishedVideoThumbnail(
-            //   videoUrl: video.videoURL,
-            //   viewCount: video.views,
-            //   onTap: () => _openVideoPlayer(video, videoIndex, videos),
-            // );
-            return GestureDetector(
+            return TikTokVideoThumbnail(
+              video: video,
               onTap: () => _openVideoPlayer(video, videoIndex, videos),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.play_circle_outline,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
-              ),
             );
           }
-          
+
           return const SizedBox.shrink();
         },
       ),
@@ -224,9 +211,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       child: GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 110 / 170,
+          crossAxisSpacing: 16, // Tight gutters = 16pt
+          mainAxisSpacing: 16, // Tight gutters = 16pt
+          childAspectRatio: 9 / 16, // Strict 9:16 aspect ratio (portrait)
         ),
         itemCount: videos.length,
         itemBuilder: (context, index) {
@@ -238,32 +225,35 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildPublishedVideoCard(Map<String, dynamic> video, int index) {
-    // return PublishedVideoThumbnail(
-    //   videoUrl: video['videoUrl'] ?? video['videoURL'] ?? '',
-    //   viewCount: video['views'] ?? 0,
-    //   onTap: () {
-    //     widget.onVideoTap?.call();
-    //     _showVideoDetail(video);
-    //   },
-    // );
-    return GestureDetector(
+    // Convert Map to HomeVideo for TikTokVideoThumbnail
+    final homeVideo = HomeVideo(
+      id: video['id'] ?? '',
+      creator: User(
+        id: video['creatorId'] ?? '',
+        displayName: video['creatorName'] ?? 'Unknown',
+        username: video['creatorUsername'] ?? 'unknown',
+        avatarURL: video['creatorAvatar'] ?? '',
+        bio: '',
+        followerCount: 0,
+        followingCount: 0,
+      ),
+      videoURL: video['videoUrl'] ?? video['videoURL'] ?? '',
+      thumbnailURL: video['thumbnailUrl'] ?? video['thumbnailURL'],
+      likes: video['likes'] ?? 0,
+      comments: video['comments'] ?? 0,
+      views: video['views'] ?? 0,
+      caption: video['caption'] ?? '',
+      duration: video['duration']?.toDouble() ?? 0.0,
+      categoryId: video['categoryId'] ?? '',
+      createdAt: video['createdAt'],
+    );
+
+    return TikTokVideoThumbnail(
+      video: homeVideo,
       onTap: () {
         widget.onVideoTap?.call();
         _showVideoDetail(video);
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.grey[800],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(
-          child: Icon(
-            Icons.play_circle_outline,
-            color: Colors.white,
-            size: 40,
-          ),
-        ),
-      ),
     );
   }
 
@@ -320,7 +310,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: Color(0xFF9248d2))),
+            child:
+                const Text('Close', style: TextStyle(color: Color(0xFF9248d2))),
           ),
         ],
       ),
@@ -330,101 +321,43 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   void _showDraftsSheet() {
     // Get drafts from LocalDraftService
     LocalDraftService().getAllDrafts().then((drafts) {
-      // Navigator.of(context).push(
-      //   MaterialPageRoute(
-      //     builder: (context) => DraftsSheetView(
-      //       drafts: drafts,
-      //       onDelete: (draft) async {
-      //         // Delete draft using LocalDraftService
-      //         final success = await LocalDraftService().deleteDraft(draft['id']);
-      //         if (success) {
-      //           ScaffoldMessenger.of(context).showSnackBar(
-      //             SnackBar(
-      //               content: Text('Deleted draft: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}'),
-      //               backgroundColor: Colors.red,
-      //             ),
-      //           );
-      //           // Refresh the UI
-      //           setState(() {});
-      //         } else {
-      //           ScaffoldMessenger.of(context).showSnackBar(
-      //             const SnackBar(
-      //               content: Text('Failed to delete draft'),
-      //               backgroundColor: Colors.red,
-      //             ),
-      //           );
-      //         }
-      //       },
-      //       onEdit: (draft) {
-      //         _editDraft(draft);
-      //       },
-      //     ),
-      //   ),
-      // );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Drafts sheet feature coming soon!')),
-      );
+      if (mounted) {
+        // Navigator.of(context).push(
+        //   MaterialPageRoute(
+        //     builder: (context) => DraftsSheetView(
+        //       drafts: drafts,
+        //       onDelete: (draft) async {
+        //         // Delete draft using LocalDraftService
+        //         final success = await LocalDraftService().deleteDraft(draft['id']);
+        //         if (success) {
+        //           ScaffoldMessenger.of(context).showSnackBar(
+        //             SnackBar(
+        //               content: Text('Deleted draft: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}'),
+        //               backgroundColor: Colors.red,
+        //             ),
+        //           );
+        //           // Refresh the UI
+        //           setState(() {});
+        //         } else {
+        //           ScaffoldMessenger.of(context).showSnackBar(
+        //             const SnackBar(
+        //               content: Text('Failed to delete draft'),
+        //               backgroundColor: Colors.red,
+        //             ),
+        //           );
+        //         }
+        //       },
+        //       onEdit: (draft) {
+        //         _editDraft(draft);
+        //       },
+        //     ),
+        //   ),
+        // );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Drafts sheet feature coming soon!')),
+        );
+      }
     });
-  }
-
-  // Edit draft by navigating to VideoEditView
-  void _editDraft(Map<String, dynamic> draft) {
-    final videoPath = draft['videoPath'] as String?;
-    if (videoPath == null || videoPath.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Draft video file not found'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final videoFile = File(videoPath);
-    if (!videoFile.existsSync()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Draft video file is missing'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // Navigate to VideoEditView for editing
-    // Navigator.of(context).push(
-    //   MaterialPageRoute(
-    //     builder: (context) => VideoEditView(
-    //       videoFile: videoFile,
-    //       onCancel: () {
-    //         Navigator.of(context).pop();
-    //       },
-    //       onNext: () {
-    //         // Navigate to VideoPublishingScreen with draft data
-    //         _navigateToVideoPublishingScreen(videoFile, draft);
-    //       },
-    //     ),
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Video editing feature coming soon!')),
-    );
-  }
-
-  // Navigate to video publishing screen with draft data
-  void _navigateToVideoPublishingScreen(File videoFile, Map<String, dynamic> draft) {
-    // TODO: Implement navigation to VideoPublishingScreen with existing draft data
-    // This would pass the existing draft data (caption, hashtags, etc.) for editing
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Opening publishing screen for: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}'),
-        backgroundColor: const Color(0xFF9248D2),
-      ),
-    );
-    
-    // For now, just go back to drafts sheet
-    Navigator.of(context).pop();
   }
 
   // Helper methods
@@ -459,7 +392,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   void _openVideoPlayer(HomeVideo video, int index, List<HomeVideo> videos) {
     final videoIds = videos.map((v) => v.id).toList();
-    
+
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,

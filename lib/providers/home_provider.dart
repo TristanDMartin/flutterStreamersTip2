@@ -122,38 +122,27 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   /// Pause all videos when leaving HomeView
   void pauseAllVideos() {
-    print('🚨 HOMEPROVIDER: pauseAllVideos() called!');
-    log('🚨 HOMEPROVIDER: pauseAllVideos() called!');
-    print('⏸️ Pausing all HomeView videos');
+    log('🚨 HomeProvider: pauseAllVideos() called!');
     log('⏸️ Pausing all HomeView videos');
 
     // Set a flag to indicate videos should be paused
     // The VideoPlayerViewOptimized widgets will check this flag
-    print('🔍 DEBUG: About to set shouldPauseAllVideos=true');
     log('🔍 DEBUG: About to set shouldPauseAllVideos=true');
     state = state.copyWith(shouldPauseAllVideos: true);
-    print(
-        '🔍 DEBUG: Set shouldPauseAllVideos=true, new state: ${state.shouldPauseAllVideos}');
     log('🔍 DEBUG: Set shouldPauseAllVideos=true, new state: ${state.shouldPauseAllVideos}');
 
     // Also try direct pause approach
-    print('🔍 DEBUG: About to call _directPauseAllVideos()');
     log('🔍 DEBUG: About to call _directPauseAllVideos()');
     _directPauseAllVideos();
-    print('🔍 DEBUG: Called _directPauseAllVideos()');
     log('🔍 DEBUG: Called _directPauseAllVideos()');
 
     // ALSO call global controller for immediate response
     try {
       // This will provide immediate pause without waiting for Consumer
-      print('🔊 HomeProvider: Calling GlobalVideoController.pauseAllVideos()');
       log('🔊 HomeProvider: Calling GlobalVideoController.pauseAllVideos()');
       GlobalVideoController.pauseAllVideos();
-      print(
-          '🔊 HomeProvider: GlobalVideoController.pauseAllVideos() completed');
       log('🔊 HomeProvider: GlobalVideoController.pauseAllVideos() completed');
     } catch (e) {
-      print('❌ HomeProvider: Error calling GlobalVideoController: $e');
       log('❌ HomeProvider: Error calling GlobalVideoController: $e');
     }
 
@@ -1149,6 +1138,19 @@ class HomeViewModel extends StateNotifier<HomeState> {
       lastFollowingDoc: null,
     );
     await loadVideos();
+  }
+
+  /// Reset video state to force reinitialization when returning to HomeView
+  void resetVideoState() {
+    log('🔄 HomeProvider: Resetting video state for seamless return');
+
+    // Reset pause/resume flags to allow fresh initialization
+    state = state.copyWith(
+      shouldPauseAllVideos: false,
+      shouldResumeCurrentVideo: false,
+    );
+
+    log('✅ HomeProvider: Video state reset - ready for reinitialization');
   }
 }
 

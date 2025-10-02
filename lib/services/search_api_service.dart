@@ -13,7 +13,8 @@ class SearchApiService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   /// Search users by username, display name, or hashtags
-  Future<List<SearchResult>> searchUsers(String query, {int limit = 20, int offset = 0}) async {
+  Future<List<SearchResult>> searchUsers(String query,
+      {int limit = 20, int offset = 0}) async {
     try {
       if (query.trim().isEmpty) {
         return [];
@@ -31,7 +32,7 @@ class SearchApiService {
       final usernameQuery = await _firestore
           .collection('users')
           .where('username', isGreaterThanOrEqualTo: searchTerm)
-          .where('username', isLessThan: searchTerm + 'z')
+          .where('username', isLessThan: '${searchTerm}z')
           .limit(limit)
           .get();
 
@@ -45,12 +46,13 @@ class SearchApiService {
       final displayNameQuery = await _firestore
           .collection('users')
           .where('displayName', isGreaterThanOrEqualTo: searchTerm)
-          .where('displayName', isLessThan: searchTerm + 'z')
+          .where('displayName', isLessThan: '${searchTerm}z')
           .limit(limit)
           .get();
 
       for (final doc in displayNameQuery.docs) {
-        if (doc.id != currentUserId && !results.any((r) => r.userId == doc.id)) {
+        if (doc.id != currentUserId &&
+            !results.any((r) => r.userId == doc.id)) {
           results.add(_mapUserToSearchResult(doc, 'displayName'));
         }
       }
@@ -63,7 +65,8 @@ class SearchApiService {
           .get();
 
       for (final doc in hashtagQuery.docs) {
-        if (doc.id != currentUserId && !results.any((r) => r.userId == doc.id)) {
+        if (doc.id != currentUserId &&
+            !results.any((r) => r.userId == doc.id)) {
           results.add(_mapUserToSearchResult(doc, 'hashtag'));
         }
       }
@@ -78,16 +81,20 @@ class SearchApiService {
       // Apply pagination
       final paginatedResults = results.skip(offset).take(limit).toList();
 
-      LoggingService.instance.debug('Found ${paginatedResults.length} users for query: "$query"', tag: 'SearchApiService');
+      LoggingService.instance.debug(
+          'Found ${paginatedResults.length} users for query: "$query"',
+          tag: 'SearchApiService');
       return paginatedResults;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error searching users', tag: 'SearchApiService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error searching users',
+          tag: 'SearchApiService', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
 
   /// Search videos by title, description, or hashtags
-  Future<List<SearchResult>> searchVideos(String query, {int limit = 20, int offset = 0}) async {
+  Future<List<SearchResult>> searchVideos(String query,
+      {int limit = 20, int offset = 0}) async {
     try {
       if (query.trim().isEmpty) {
         return [];
@@ -100,7 +107,7 @@ class SearchApiService {
       final titleQuery = await _firestore
           .collection('videos')
           .where('title', isGreaterThanOrEqualTo: searchTerm)
-          .where('title', isLessThan: searchTerm + 'z')
+          .where('title', isLessThan: '${searchTerm}z')
           .where('isPublic', isEqualTo: true)
           .limit(limit)
           .get();
@@ -113,7 +120,7 @@ class SearchApiService {
       final descriptionQuery = await _firestore
           .collection('videos')
           .where('description', isGreaterThanOrEqualTo: searchTerm)
-          .where('description', isLessThan: searchTerm + 'z')
+          .where('description', isLessThan: '${searchTerm}z')
           .where('isPublic', isEqualTo: true)
           .limit(limit)
           .get();
@@ -148,16 +155,20 @@ class SearchApiService {
       // Apply pagination
       final paginatedResults = results.skip(offset).take(limit).toList();
 
-      LoggingService.instance.debug('Found ${paginatedResults.length} videos for query: "$query"', tag: 'SearchApiService');
+      LoggingService.instance.debug(
+          'Found ${paginatedResults.length} videos for query: "$query"',
+          tag: 'SearchApiService');
       return paginatedResults;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error searching videos', tag: 'SearchApiService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error searching videos',
+          tag: 'SearchApiService', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
 
   /// Search hashtags
-  Future<List<SearchResult>> searchHashtags(String query, {int limit = 20, int offset = 0}) async {
+  Future<List<SearchResult>> searchHashtags(String query,
+      {int limit = 20, int offset = 0}) async {
     try {
       if (query.trim().isEmpty) {
         return [];
@@ -222,10 +233,13 @@ class SearchApiService {
       // Apply pagination
       final paginatedResults = results.skip(offset).take(limit).toList();
 
-      LoggingService.instance.debug('Found ${paginatedResults.length} hashtags for query: "$query"', tag: 'SearchApiService');
+      LoggingService.instance.debug(
+          'Found ${paginatedResults.length} hashtags for query: "$query"',
+          tag: 'SearchApiService');
       return paginatedResults;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error searching hashtags', tag: 'SearchApiService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error searching hashtags',
+          tag: 'SearchApiService', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
@@ -271,16 +285,20 @@ class SearchApiService {
       });
 
       final trendingResults = results.take(limit).toList();
-      LoggingService.instance.debug('Found ${trendingResults.length} trending hashtags', tag: 'SearchApiService');
+      LoggingService.instance.debug(
+          'Found ${trendingResults.length} trending hashtags',
+          tag: 'SearchApiService');
       return trendingResults;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error getting trending hashtags', tag: 'SearchApiService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error getting trending hashtags',
+          tag: 'SearchApiService', error: e, stackTrace: stackTrace);
       return [];
     }
   }
 
   /// Map user document to search result
-  SearchResult _mapUserToSearchResult(QueryDocumentSnapshot doc, String matchType) {
+  SearchResult _mapUserToSearchResult(
+      QueryDocumentSnapshot doc, String matchType) {
     final data = doc.data() as Map<String, dynamic>;
     return SearchResult(
       id: doc.id,
@@ -300,7 +318,8 @@ class SearchApiService {
   }
 
   /// Map video document to search result
-  SearchResult _mapVideoToSearchResult(QueryDocumentSnapshot doc, String matchType) {
+  SearchResult _mapVideoToSearchResult(
+      QueryDocumentSnapshot doc, String matchType) {
     final data = doc.data() as Map<String, dynamic>;
     return SearchResult(
       id: doc.id,
@@ -324,25 +343,25 @@ class SearchApiService {
   int _calculateRelevance(SearchResult result, String searchTerm) {
     final title = result.title.toLowerCase();
     final subtitle = result.subtitle.toLowerCase();
-    
+
     int score = 0;
-    
+
     // Exact match gets highest score
     if (title == searchTerm) score += 100;
     if (subtitle == searchTerm) score += 100;
-    
+
     // Starts with search term gets high score
     if (title.startsWith(searchTerm)) score += 50;
     if (subtitle.startsWith(searchTerm)) score += 50;
-    
+
     // Contains search term gets medium score
     if (title.contains(searchTerm)) score += 25;
     if (subtitle.contains(searchTerm)) score += 25;
-    
+
     // Boost score for users with more followers
     final followerCount = result.metadata['followerCount'] as int? ?? 0;
     score += (followerCount / 100).round();
-    
+
     return score;
   }
 
@@ -350,25 +369,25 @@ class SearchApiService {
   int _calculateVideoRelevance(SearchResult result, String searchTerm) {
     final title = result.title.toLowerCase();
     final subtitle = result.subtitle.toLowerCase();
-    
+
     int score = 0;
-    
+
     // Exact match gets highest score
     if (title == searchTerm) score += 100;
     if (subtitle == searchTerm) score += 100;
-    
+
     // Starts with search term gets high score
     if (title.startsWith(searchTerm)) score += 50;
     if (subtitle.startsWith(searchTerm)) score += 50;
-    
+
     // Contains search term gets medium score
     if (title.contains(searchTerm)) score += 25;
     if (subtitle.contains(searchTerm)) score += 25;
-    
+
     // Boost score for videos with more views
     final viewCount = result.metadata['viewCount'] as int? ?? 0;
     score += (viewCount / 1000).round();
-    
+
     return score;
   }
 }

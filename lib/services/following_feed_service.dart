@@ -195,8 +195,10 @@ class FollowingFeedService {
         // visibility filter
         final String visibility = (data['visibility'] ?? 'public').toString();
         if (visibility == 'private') continue;
-        if (visibility == 'connections' && !creatorIdsList.contains(creatorId))
+        if (visibility == 'connections' &&
+            !creatorIdsList.contains(creatorId)) {
           continue;
+        }
 
         // safety filter
         final double safeScore = ((data['safeScore'] ?? 1.0) as num).toDouble();

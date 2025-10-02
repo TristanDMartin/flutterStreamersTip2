@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:video_player/video_player.dart';
 import '../services/logging_service.dart';
 
 class VideoProcessingService {
-  static final VideoProcessingService _instance = VideoProcessingService._internal();
+  static final VideoProcessingService _instance =
+      VideoProcessingService._internal();
   factory VideoProcessingService() => _instance;
   VideoProcessingService._internal();
 
@@ -23,7 +25,8 @@ class VideoProcessingService {
       // In production, use ffmpeg or video_player to get actual duration
       return const Duration(seconds: 60);
     } catch (e) {
-      LoggingService.instance.error('Error getting video duration', tag: 'VideoProcessingService', error: e);
+      LoggingService.instance.error('Error getting video duration',
+          tag: 'VideoProcessingService', error: e);
       return const Duration(seconds: 0);
     }
   }
@@ -38,20 +41,23 @@ class VideoProcessingService {
   }) async {
     try {
       onProgress?.call(0.1);
-      
+
       // Create output file
       final tempDir = await getTemporaryDirectory();
       final outputFile = File('${tempDir.path}/trimmed_$videoId.mp4');
-      
+
       // Simulate video trimming (in production, use FFmpeg)
-      await _simulateVideoProcessing(outputFile, startTime, endTime, onProgress);
-      
+      await _simulateVideoProcessing(
+          outputFile, startTime, endTime, onProgress);
+
       onProgress?.call(1.0);
-      LoggingService.instance.debug('Video trimmed successfully', tag: 'VideoProcessingService');
-      
+      LoggingService.instance
+          .debug('Video trimmed successfully', tag: 'VideoProcessingService');
+
       return outputFile;
     } catch (e) {
-      LoggingService.instance.error('Error trimming video', tag: 'VideoProcessingService', error: e);
+      LoggingService.instance.error('Error trimming video',
+          tag: 'VideoProcessingService', error: e);
       rethrow;
     }
   }
@@ -65,17 +71,18 @@ class VideoProcessingService {
   }) async {
     try {
       onProgress?.call(0.1);
-      
+
       final tempDir = await getTemporaryDirectory();
       final outputFile = File('${tempDir.path}/audio_$videoId.mp4');
-      
+
       // Simulate audio processing
       await _simulateAudioProcessing(outputFile, effects, onProgress);
-      
+
       onProgress?.call(1.0);
       return outputFile;
     } catch (e) {
-      LoggingService.instance.error('Error applying audio effects', tag: 'VideoProcessingService', error: e);
+      LoggingService.instance.error('Error applying audio effects',
+          tag: 'VideoProcessingService', error: e);
       rethrow;
     }
   }
@@ -89,17 +96,18 @@ class VideoProcessingService {
   }) async {
     try {
       onProgress?.call(0.1);
-      
+
       final tempDir = await getTemporaryDirectory();
       final outputFile = File('${tempDir.path}/effects_$videoId.mp4');
-      
+
       // Simulate visual effects processing
       await _simulateVisualProcessing(outputFile, effects, onProgress);
-      
+
       onProgress?.call(1.0);
       return outputFile;
     } catch (e) {
-      LoggingService.instance.error('Error applying visual effects', tag: 'VideoProcessingService', error: e);
+      LoggingService.instance.error('Error applying visual effects',
+          tag: 'VideoProcessingService', error: e);
       rethrow;
     }
   }
@@ -113,17 +121,18 @@ class VideoProcessingService {
   }) async {
     try {
       onProgress?.call(0.1);
-      
+
       final tempDir = await getTemporaryDirectory();
       final outputFile = File('${tempDir.path}/text_$videoId.mp4');
-      
+
       // Simulate text overlay processing
       await _simulateTextProcessing(outputFile, textOverlays, onProgress);
-      
+
       onProgress?.call(1.0);
       return outputFile;
     } catch (e) {
-      LoggingService.instance.error('Error adding text overlay', tag: 'VideoProcessingService', error: e);
+      LoggingService.instance.error('Error adding text overlay',
+          tag: 'VideoProcessingService', error: e);
       rethrow;
     }
   }
@@ -137,16 +146,66 @@ class VideoProcessingService {
     try {
       final tempDir = await getTemporaryDirectory();
       final thumbnailFile = File('${tempDir.path}/thumb_$videoId.jpg');
-      
-      // Create a simple colored thumbnail (in production, extract from video)
+
+      // Create a proper video-style thumbnail
       final image = img.Image(width: 320, height: 240);
-      img.fill(image, color: img.ColorRgb8(100, 100, 200));
-      
+
+      // Create a realistic video thumbnail background
+      for (int y = 0; y < image.height; y++) {
+        for (int x = 0; x < image.width; x++) {
+          // Create a more realistic video-like gradient
+          final normalizedX = x / image.width;
+          final normalizedY = y / image.height;
+
+          // Simulate video content with varying colors
+          final r =
+              (50 + normalizedX * 100 + normalizedY * 50).round().clamp(0, 255);
+          final g =
+              (80 + normalizedX * 80 + normalizedY * 100).round().clamp(0, 255);
+          final b =
+              (120 + normalizedX * 60 + normalizedY * 80).round().clamp(0, 255);
+
+          image.setPixel(x, y, img.ColorRgb8(r, g, b));
+        }
+      }
+
+      // Add a subtle play icon overlay
+      final centerX = image.width ~/ 2;
+      final centerY = image.height ~/ 2;
+      final iconSize = 30;
+
+      // Draw a play triangle with some transparency effect
+      for (int y = centerY - iconSize ~/ 2; y < centerY + iconSize ~/ 2; y++) {
+        for (int x = centerX - iconSize ~/ 2;
+            x < centerX + iconSize ~/ 2;
+            x++) {
+          if (x >= 0 && x < image.width && y >= 0 && y < image.height) {
+            final dx = x - centerX;
+            final dy = y - centerY;
+            // Create a more defined triangle
+            if (dx > -dy && dx < dy && dy > 0 && dx.abs() < iconSize ~/ 2) {
+              image.setPixel(x, y, img.ColorRgb8(255, 255, 255));
+            }
+          }
+        }
+      }
+
+      // Add a subtle border
+      for (int x = 0; x < image.width; x++) {
+        image.setPixel(x, 0, img.ColorRgb8(200, 200, 200));
+        image.setPixel(x, image.height - 1, img.ColorRgb8(200, 200, 200));
+      }
+      for (int y = 0; y < image.height; y++) {
+        image.setPixel(0, y, img.ColorRgb8(200, 200, 200));
+        image.setPixel(image.width - 1, y, img.ColorRgb8(200, 200, 200));
+      }
+
       await thumbnailFile.writeAsBytes(img.encodeJpg(image));
-      
+
       return thumbnailFile;
     } catch (e) {
-      LoggingService.instance.error('Error generating thumbnail', tag: 'VideoProcessingService', error: e);
+      LoggingService.instance.error('Error generating thumbnail',
+          tag: 'VideoProcessingService', error: e);
       rethrow;
     }
   }
@@ -207,47 +266,52 @@ class VideoProcessingService {
         duration: await getVideoDuration(inputFile),
       );
     } catch (e) {
-      LoggingService.instance.error('Error processing video', tag: 'VideoProcessingService', error: e);
+      LoggingService.instance.error('Error processing video',
+          tag: 'VideoProcessingService', error: e);
       rethrow;
     }
   }
 
   // Private helper methods for simulation
-  Future<void> _simulateVideoProcessing(File outputFile, Duration start, Duration end, Function(double)? onProgress) async {
+  Future<void> _simulateVideoProcessing(File outputFile, Duration start,
+      Duration end, Function(double)? onProgress) async {
     // Simulate processing time
     for (int i = 0; i < 10; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
       onProgress?.call(0.1 + (i * 0.08));
     }
-    
+
     // Create a dummy output file
     await outputFile.writeAsString('trimmed_video_content');
   }
 
-  Future<void> _simulateAudioProcessing(File outputFile, AudioEffects effects, Function(double)? onProgress) async {
+  Future<void> _simulateAudioProcessing(File outputFile, AudioEffects effects,
+      Function(double)? onProgress) async {
     for (int i = 0; i < 8; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
       onProgress?.call(0.1 + (i * 0.1));
     }
-    
+
     await outputFile.writeAsString('audio_processed_video');
   }
 
-  Future<void> _simulateVisualProcessing(File outputFile, List<VisualEffect> effects, Function(double)? onProgress) async {
+  Future<void> _simulateVisualProcessing(File outputFile,
+      List<VisualEffect> effects, Function(double)? onProgress) async {
     for (int i = 0; i < 12; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
       onProgress?.call(0.1 + (i * 0.07));
     }
-    
+
     await outputFile.writeAsString('visual_effects_applied');
   }
 
-  Future<void> _simulateTextProcessing(File outputFile, List<TextOverlay> textOverlays, Function(double)? onProgress) async {
+  Future<void> _simulateTextProcessing(File outputFile,
+      List<TextOverlay> textOverlays, Function(double)? onProgress) async {
     for (int i = 0; i < 6; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
       onProgress?.call(0.1 + (i * 0.15));
     }
-    
+
     await outputFile.writeAsString('text_overlay_added');
   }
 }

@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-// import 'recording_preview_view.dart'; // Removed - unused
-// import 'video_edit_view.dart'; // Removed - unused
+import 'video_recording_preview.dart';
+import 'video_edit_view.dart';
 
 class CameraViewOptimized extends StatefulWidget {
   const CameraViewOptimized({super.key});
@@ -220,36 +221,31 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
       // Navigate to RecordingPreviewView
       if (mounted) {
-        // Navigator.of(context).push(
-        //   MaterialPageRoute(
-        //     builder: (context) => RecordingPreviewView(
-        //       videoFile: File(videoFile.path),
-        //       onBack: () => Navigator.of(context).pop(),
-        //       onUseVideo: () {
-        //         // Close RecordingPreviewView and navigate to VideoEditView
-        //         Navigator.of(context).pop(); // Close RecordingPreviewView
-        //         Navigator.of(context).pop(); // Close CameraView
-        //         // Navigate to VideoEditView
-        //         Navigator.of(context).push(
-        //           MaterialPageRoute(
-        //             builder: (context) => VideoEditView(
-        //               videoFile: File(videoFile.path),
-        //               onCancel: () => Navigator.of(context).pop(),
-        //               onNext: () {
-        //                 // Handle next step (publishing, etc.)
-        //                 Navigator.of(context).pop();
-        //               },
-        //             ),
-        //           ),
-        //         );
-        //       },
-        //     ),
-        //   ),
-        // );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content:
-                  Text('Video recording and editing features coming soon!')),
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => VideoRecordingPreview(
+              videoFile: File(videoFile.path),
+              onRetake: () => Navigator.of(context).pop(),
+              onUseVideo: () {
+                // Close VideoRecordingPreview and navigate to VideoEditView
+                Navigator.of(context).pop(); // Close VideoRecordingPreview
+                Navigator.of(context).pop(); // Close CameraView
+                // Navigate to VideoEditView
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => VideoEditView(
+                      videoFile: File(videoFile.path),
+                      onCancel: () => Navigator.of(context).pop(),
+                      onNext: () {
+                        // Handle next step (publishing, etc.)
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         );
       }
 
@@ -278,35 +274,32 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
       if (video != null && mounted) {
         HapticFeedback.lightImpact();
 
-        // Navigate to RecordingPreviewView
-        // Navigator.of(context).push(
-        //   MaterialPageRoute(
-        //     builder: (context) => RecordingPreviewView(
-        //       videoFile: File(video.path),
-        //       onBack: () => Navigator.of(context).pop(),
-        //       onUseVideo: () {
-        //         // Close RecordingPreviewView and navigate to VideoEditView
-        //         Navigator.of(context).pop(); // Close RecordingPreviewView
-        //         Navigator.of(context).pop(); // Close CameraView
-        //         // Navigate to VideoEditView
-        //         Navigator.of(context).push(
-        //           MaterialPageRoute(
-        //             builder: (context) => VideoEditView(
-        //               videoFile: File(video.path),
-        //               onCancel: () => Navigator.of(context).pop(),
-        //               onNext: () {
-        //                 // Handle next step (publishing, etc.)
-        //                 Navigator.of(context).pop();
-        //               },
-        //             ),
-        //           ),
-        //         );
-        //       },
-        //     ),
-        //   ),
-        // );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Video editing features coming soon!')),
+        // Navigate to VideoRecordingPreview
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => VideoRecordingPreview(
+              videoFile: File(video.path),
+              onRetake: () => Navigator.of(context).pop(),
+              onUseVideo: () {
+                // Close VideoRecordingPreview and navigate to VideoEditView
+                Navigator.of(context).pop(); // Close VideoRecordingPreview
+                Navigator.of(context).pop(); // Close CameraView
+                // Navigate to VideoEditView
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => VideoEditView(
+                      videoFile: File(video.path),
+                      onCancel: () => Navigator.of(context).pop(),
+                      onNext: () {
+                        // Handle next step (publishing, etc.)
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         );
       }
     } catch (e) {

@@ -20,6 +20,7 @@ class HomeVideo with _$HomeVideo {
     @Default(false) bool isDraft,
     @Default(0.0) double mlScore,
     @Default('') String categoryId,
+    @Default(0.0) double? duration, // Video duration in seconds
     Timestamp? createdAt, // For sorting by upload date
   }) = _HomeVideo;
 }

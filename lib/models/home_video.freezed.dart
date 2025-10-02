@@ -29,6 +29,8 @@ mixin _$HomeVideo {
   bool get isDraft => throw _privateConstructorUsedError;
   double get mlScore => throw _privateConstructorUsedError;
   String get categoryId => throw _privateConstructorUsedError;
+  double? get duration =>
+      throw _privateConstructorUsedError; // Video duration in seconds
   Timestamp? get createdAt => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
@@ -55,6 +57,7 @@ abstract class $HomeVideoCopyWith<$Res> {
       bool isDraft,
       double mlScore,
       String categoryId,
+      double? duration,
       Timestamp? createdAt});
 }
 
@@ -84,6 +87,7 @@ class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
     Object? isDraft = null,
     Object? mlScore = null,
     Object? categoryId = null,
+    Object? duration = freezed,
     Object? createdAt = freezed,
   }) {
     return _then(_value.copyWith(
@@ -139,6 +143,10 @@ class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
           ? _value.categoryId
           : categoryId // ignore: cast_nullable_to_non_nullable
               as String,
+      duration: freezed == duration
+          ? _value.duration
+          : duration // ignore: cast_nullable_to_non_nullable
+              as double?,
       createdAt: freezed == createdAt
           ? _value.createdAt
           : createdAt // ignore: cast_nullable_to_non_nullable
@@ -169,6 +177,7 @@ abstract class _$$HomeVideoImplCopyWith<$Res>
       bool isDraft,
       double mlScore,
       String categoryId,
+      double? duration,
       Timestamp? createdAt});
 }
 
@@ -196,6 +205,7 @@ class __$$HomeVideoImplCopyWithImpl<$Res>
     Object? isDraft = null,
     Object? mlScore = null,
     Object? categoryId = null,
+    Object? duration = freezed,
     Object? createdAt = freezed,
   }) {
     return _then(_$HomeVideoImpl(
@@ -251,6 +261,10 @@ class __$$HomeVideoImplCopyWithImpl<$Res>
           ? _value.categoryId
           : categoryId // ignore: cast_nullable_to_non_nullable
               as String,
+      duration: freezed == duration
+          ? _value.duration
+          : duration // ignore: cast_nullable_to_non_nullable
+              as double?,
       createdAt: freezed == createdAt
           ? _value.createdAt
           : createdAt // ignore: cast_nullable_to_non_nullable
@@ -276,6 +290,7 @@ class _$HomeVideoImpl implements _HomeVideo {
       this.isDraft = false,
       this.mlScore = 0.0,
       this.categoryId = '',
+      this.duration = 0.0,
       this.createdAt});
 
   @override
@@ -314,11 +329,15 @@ class _$HomeVideoImpl implements _HomeVideo {
   @JsonKey()
   final String categoryId;
   @override
+  @JsonKey()
+  final double? duration;
+// Video duration in seconds
+  @override
   final Timestamp? createdAt;
 
   @override
   String toString() {
-    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, createdAt: $createdAt)';
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt)';
   }
 
   @override
@@ -344,6 +363,8 @@ class _$HomeVideoImpl implements _HomeVideo {
             (identical(other.mlScore, mlScore) || other.mlScore == mlScore) &&
             (identical(other.categoryId, categoryId) ||
                 other.categoryId == categoryId) &&
+            (identical(other.duration, duration) ||
+                other.duration == duration) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt));
   }
@@ -364,6 +385,7 @@ class _$HomeVideoImpl implements _HomeVideo {
       isDraft,
       mlScore,
       categoryId,
+      duration,
       createdAt);
 
   @JsonKey(ignore: true)
@@ -388,6 +410,7 @@ abstract class _HomeVideo implements HomeVideo {
       final bool isDraft,
       final double mlScore,
       final String categoryId,
+      final double? duration,
       final Timestamp? createdAt}) = _$HomeVideoImpl;
 
   @override
@@ -417,6 +440,8 @@ abstract class _HomeVideo implements HomeVideo {
   @override
   String get categoryId;
   @override
+  double? get duration;
+  @override // Video duration in seconds
   Timestamp? get createdAt;
   @override
   @JsonKey(ignore: true)

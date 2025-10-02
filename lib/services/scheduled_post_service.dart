@@ -13,9 +13,9 @@ class ScheduledPostService {
   }
 
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    if (_authToken != null) 'Authorization': 'Bearer $_authToken',
-  };
+        'Content-Type': 'application/json',
+        if (_authToken != null) 'Authorization': 'Bearer $_authToken',
+      };
 
   // Create a new scheduled post
   Future<ScheduledPost> createScheduledPost({
@@ -28,7 +28,8 @@ class ScheduledPostService {
     Map<String, dynamic>? analyticsHints,
   }) async {
     if (_useMockData) {
-      await Future.delayed(const Duration(milliseconds: 800)); // Simulate network delay
+      await Future.delayed(
+          const Duration(milliseconds: 800)); // Simulate network delay
       return ScheduledPost(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         authorId: 'user123',
@@ -78,19 +79,21 @@ class ScheduledPostService {
   }) async {
     if (_useMockData) {
       // Return mock data for development
-      await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
+      await Future.delayed(
+          const Duration(milliseconds: 500)); // Simulate network delay
       return _getMockScheduledPosts(status, platform, searchQuery);
     }
 
     final queryParams = <String, String>{};
-    
+
     if (status != null) queryParams['status'] = status.name;
     if (platform != null) queryParams['platform'] = platform.name;
     if (searchQuery != null) queryParams['search'] = searchQuery;
     if (limit != null) queryParams['limit'] = limit.toString();
     if (offset != null) queryParams['offset'] = offset.toString();
 
-    final uri = Uri.parse('$_baseUrl/posts').replace(queryParameters: queryParams);
+    final uri =
+        Uri.parse('$_baseUrl/posts').replace(queryParameters: queryParams);
     final response = await http.get(uri, headers: _headers);
 
     if (response.statusCode == 200) {
@@ -116,7 +119,8 @@ class ScheduledPostService {
   }
 
   // Update a scheduled post
-  Future<ScheduledPost> updatePost(String postId, {
+  Future<ScheduledPost> updatePost(
+    String postId, {
     String? caption,
     List<String>? tags,
     PostVisibility? visibility,
@@ -125,12 +129,14 @@ class ScheduledPostService {
     PostSchedule? schedule,
   }) async {
     final updateData = <String, dynamic>{};
-    
+
     if (caption != null) updateData['caption'] = caption;
     if (tags != null) updateData['tags'] = tags;
     if (visibility != null) updateData['visibility'] = visibility.name;
-    if (media != null) updateData['media'] = media.map((m) => m.toJson()).toList();
-    if (platforms != null) updateData['platforms'] = platforms.map((p) => p.toJson()).toList();
+    if (media != null)
+      updateData['media'] = media.map((m) => m.toJson()).toList();
+    if (platforms != null)
+      updateData['platforms'] = platforms.map((p) => p.toJson()).toList();
     if (schedule != null) updateData['schedule'] = schedule.toJson();
 
     final response = await http.patch(
@@ -161,7 +167,8 @@ class ScheduledPostService {
   }
 
   // Reschedule a post
-  Future<ScheduledPost> reschedulePost(String postId, PostSchedule newSchedule) async {
+  Future<ScheduledPost> reschedulePost(
+      String postId, PostSchedule newSchedule) async {
     final response = await http.patch(
       Uri.parse('$_baseUrl/posts/$postId/reschedule'),
       headers: _headers,
@@ -178,7 +185,8 @@ class ScheduledPostService {
   // Publish a post immediately
   Future<ScheduledPost> publishNow(String postId) async {
     if (_useMockData) {
-      await Future.delayed(const Duration(milliseconds: 1000)); // Simulate publishing delay
+      await Future.delayed(
+          const Duration(milliseconds: 1000)); // Simulate publishing delay
       // Return a mock published post
       return ScheduledPost(
         id: postId,
@@ -317,15 +325,18 @@ class ScheduledPostService {
     final queryParams = <String, String>{
       'platforms': platforms.map((p) => p.name).join(','),
     };
-    
+
     if (daysAhead != null) queryParams['daysAhead'] = daysAhead.toString();
 
-    final uri = Uri.parse('$_baseUrl/analytics/best-times').replace(queryParameters: queryParams);
+    final uri = Uri.parse('$_baseUrl/analytics/best-times')
+        .replace(queryParameters: queryParams);
     final response = await http.get(uri, headers: _headers);
 
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body)['times'];
-      return data.map((timestamp) => DateTime.fromMillisecondsSinceEpoch(timestamp)).toList();
+      return data
+          .map((timestamp) => DateTime.fromMillisecondsSinceEpoch(timestamp))
+          .toList();
     } else {
       throw Exception('Failed to fetch best posting times: ${response.body}');
     }
@@ -409,7 +420,8 @@ class ScheduledPostService {
   }
 
   // Mock data for development
-  List<ScheduledPost> _getMockScheduledPosts(PostStatus? status, PlatformKey? platform, String? searchQuery) {
+  List<ScheduledPost> _getMockScheduledPosts(
+      PostStatus? status, PlatformKey? platform, String? searchQuery) {
     final mockPosts = [
       ScheduledPost(
         id: '1',
@@ -538,20 +550,25 @@ class ScheduledPostService {
 
     // Apply filters
     var filteredPosts = mockPosts;
-    
+
     if (status != null) {
-      filteredPosts = filteredPosts.where((post) => post.status == status).toList();
+      filteredPosts =
+          filteredPosts.where((post) => post.status == status).toList();
     }
-    
+
     if (platform != null) {
-      filteredPosts = filteredPosts.where((post) => 
-        post.platforms.any((p) => p.key == platform)).toList();
+      filteredPosts = filteredPosts
+          .where((post) => post.platforms.any((p) => p.key == platform.name))
+          .toList();
     }
-    
+
     if (searchQuery != null && searchQuery.isNotEmpty) {
-      filteredPosts = filteredPosts.where((post) => 
-        post.caption.toLowerCase().contains(searchQuery.toLowerCase()) ||
-        post.tags.any((tag) => tag.toLowerCase().contains(searchQuery.toLowerCase()))).toList();
+      filteredPosts = filteredPosts
+          .where((post) =>
+              post.caption.toLowerCase().contains(searchQuery.toLowerCase()) ||
+              post.tags.any((tag) =>
+                  tag.toLowerCase().contains(searchQuery.toLowerCase())))
+          .toList();
     }
 
     return filteredPosts;

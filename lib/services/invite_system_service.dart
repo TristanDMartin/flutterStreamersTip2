@@ -15,7 +15,8 @@ class InviteSystemService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   /// Send SMS invite
-  Future<bool> sendSMSInvite(String phoneNumber, {String? customMessage}) async {
+  Future<bool> sendSMSInvite(String phoneNumber,
+      {String? customMessage}) async {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
@@ -30,21 +31,24 @@ class InviteSystemService {
 
       final inviteCode = await _getOrCreateInviteCode(currentUser.uid);
       final message = customMessage ?? _getDefaultInviteMessage(inviteCode);
-      final smsUri = Uri.parse('sms:$phoneNumber?body=${Uri.encodeComponent(message)}');
+      final smsUri =
+          Uri.parse('sms:$phoneNumber?body=${Uri.encodeComponent(message)}');
 
       if (await canLaunchUrl(smsUri)) {
         await launchUrl(smsUri);
-        
+
         // Log the invite
         await _logInvite(currentUser.uid, phoneNumber, 'sms', inviteCode);
-        
-        LoggingService.instance.debug('SMS invite sent to $phoneNumber', tag: 'InviteSystemService');
+
+        LoggingService.instance.debug('SMS invite sent to $phoneNumber',
+            tag: 'InviteSystemService');
         return true;
       } else {
         throw Exception('Cannot launch SMS app');
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error sending SMS invite', tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error sending SMS invite',
+          tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -59,21 +63,24 @@ class InviteSystemService {
 
       final inviteCode = await _getOrCreateInviteCode(currentUser.uid);
       final message = customMessage ?? _getDefaultInviteMessage(inviteCode);
-      final emailUri = Uri.parse('mailto:$email?subject=${Uri.encodeComponent('Join me on StreamersTip!')}&body=${Uri.encodeComponent(message)}');
+      final emailUri = Uri.parse(
+          'mailto:$email?subject=${Uri.encodeComponent('Join me on StreamersTip!')}&body=${Uri.encodeComponent(message)}');
 
       if (await canLaunchUrl(emailUri)) {
         await launchUrl(emailUri);
-        
+
         // Log the invite
         await _logInvite(currentUser.uid, email, 'email', inviteCode);
-        
-        LoggingService.instance.debug('Email invite sent to $email', tag: 'InviteSystemService');
+
+        LoggingService.instance
+            .debug('Email invite sent to $email', tag: 'InviteSystemService');
         return true;
       } else {
         throw Exception('Cannot launch email app');
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error sending email invite', tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error sending email invite',
+          tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -90,18 +97,22 @@ class InviteSystemService {
       final message = customMessage ?? _getDefaultInviteMessage(inviteCode);
       final shareUrl = _getInviteUrl(inviteCode);
 
-      await Share.share(
-        '$message\n\n$shareUrl',
-        subject: 'Join me on StreamersTip!',
+      await SharePlus.instance.share(
+        ShareParams(
+          text: '$message\n\n$shareUrl',
+          subject: 'Join me on StreamersTip!',
+        ),
       );
 
       // Log the invite
       await _logInvite(currentUser.uid, 'share', 'share', inviteCode);
-      
-      LoggingService.instance.debug('Invite shared via native share', tag: 'InviteSystemService');
+
+      LoggingService.instance
+          .debug('Invite shared via native share', tag: 'InviteSystemService');
       return true;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error sharing invite', tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error sharing invite',
+          tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -110,11 +121,11 @@ class InviteSystemService {
   Future<String> _getOrCreateInviteCode(String userId) async {
     try {
       final userDoc = await _firestore.collection('users').doc(userId).get();
-      
+
       if (userDoc.exists) {
         final data = userDoc.data()!;
         final existingCode = data['inviteCode'] as String?;
-        
+
         if (existingCode != null && existingCode.isNotEmpty) {
           return existingCode;
         }
@@ -122,17 +133,19 @@ class InviteSystemService {
 
       // Generate new invite code
       final inviteCode = _generateInviteCode();
-      
+
       // Save to user document
       await _firestore.collection('users').doc(userId).update({
         'inviteCode': inviteCode,
         'inviteCodeCreatedAt': FieldValue.serverTimestamp(),
       });
 
-      LoggingService.instance.debug('Generated new invite code: $inviteCode', tag: 'InviteSystemService');
+      LoggingService.instance.debug('Generated new invite code: $inviteCode',
+          tag: 'InviteSystemService');
       return inviteCode;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error getting/creating invite code', tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error getting/creating invite code',
+          tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
@@ -155,7 +168,8 @@ class InviteSystemService {
   }
 
   /// Log invite for analytics
-  Future<void> _logInvite(String inviterId, String recipient, String method, String inviteCode) async {
+  Future<void> _logInvite(String inviterId, String recipient, String method,
+      String inviteCode) async {
     try {
       await _firestore.collection('invites').add({
         'inviterId': inviterId,
@@ -166,7 +180,8 @@ class InviteSystemService {
         'status': 'sent',
       });
     } catch (e) {
-      LoggingService.instance.warning('Error logging invite', tag: 'InviteSystemService', error: e);
+      LoggingService.instance.warning('Error logging invite',
+          tag: 'InviteSystemService', error: e);
     }
   }
 
@@ -207,16 +222,19 @@ class InviteSystemService {
       // Award points to inviter
       await _awardInvitePoints(inviterId);
 
-      LoggingService.instance.debug('Processed incoming invite: $inviteCode', tag: 'InviteSystemService');
+      LoggingService.instance.debug('Processed incoming invite: $inviteCode',
+          tag: 'InviteSystemService');
       return true;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error processing incoming invite', tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error processing incoming invite',
+          tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
       return false;
     }
   }
 
   /// Create relationship between inviter and invitee
-  Future<void> _createInviteRelationship(String inviterId, String inviteeId) async {
+  Future<void> _createInviteRelationship(
+      String inviterId, String inviteeId) async {
     try {
       final batch = _firestore.batch();
 
@@ -248,7 +266,8 @@ class InviteSystemService {
 
       await batch.commit();
     } catch (e) {
-      LoggingService.instance.error('Error creating invite relationship', tag: 'InviteSystemService', error: e);
+      LoggingService.instance.error('Error creating invite relationship',
+          tag: 'InviteSystemService', error: e);
     }
   }
 
@@ -256,7 +275,7 @@ class InviteSystemService {
   Future<void> _awardInvitePoints(String inviterId) async {
     try {
       const pointsToAward = 100;
-      
+
       await _firestore.collection('users').doc(inviterId).update({
         'points': FieldValue.increment(pointsToAward),
         'totalInvites': FieldValue.increment(1),
@@ -272,9 +291,12 @@ class InviteSystemService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      LoggingService.instance.debug('Awarded $pointsToAward points to inviter: $inviterId', tag: 'InviteSystemService');
+      LoggingService.instance.debug(
+          'Awarded $pointsToAward points to inviter: $inviterId',
+          tag: 'InviteSystemService');
     } catch (e) {
-      LoggingService.instance.error('Error awarding invite points', tag: 'InviteSystemService', error: e);
+      LoggingService.instance.error('Error awarding invite points',
+          tag: 'InviteSystemService', error: e);
     }
   }
 
@@ -302,7 +324,8 @@ class InviteSystemService {
         inviteCode: userData['inviteCode'] as String? ?? '',
       );
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error getting invite stats', tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error getting invite stats',
+          tag: 'InviteSystemService', error: e, stackTrace: stackTrace);
       return InviteStats(
         totalInvites: 0,
         acceptedInvites: 0,

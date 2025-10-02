@@ -47,6 +47,9 @@ class _HomeViewState extends ConsumerState<HomeView>
   bool _showStreamerCard = false;
   StreamerCard? _currentStreamerCard;
 
+  // SEAMLESS RETURN: Track returns to force video reinitialization
+  int _returnCounter = 0;
+
   // Performance state
   final Map<String, int> _videoEngagementScores = {};
 
@@ -74,6 +77,57 @@ class _HomeViewState extends ConsumerState<HomeView>
       _loadVideos();
       _initializeVideoService();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed) {
+      log('🔄 HomeView: App resumed - reactivating feed');
+
+      // SEAMLESS RETURN: Increment counter to force widget rebuilds
+      _returnCounter++;
+
+      // SEAMLESS RETURN: Reactivate feed when returning from other views
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _reactivateFeed();
+        }
+      });
+    }
+  }
+
+  /// Reactivate the feed when returning from other views (CameraView, etc.)
+  void _reactivateFeed() {
+    try {
+      log('🚀 HomeView: Reactivating feed after return from other view');
+
+      // SEAMLESS RETURN: Reload videos to ensure fresh controllers
+      _loadVideos();
+
+      // Resume current video playback after a brief delay
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          final homeVM = ref.read(hp.homeProvider.notifier);
+          homeVM.resumeCurrentVideo();
+
+          // Ensure the current video is playing
+          final homeState = ref.read(hp.homeProvider);
+          final currentVideos = _feedTab == FeedTab.forYou
+              ? homeState.forYouVideos
+              : homeState.followingVideos;
+
+          if (_currentIndex < currentVideos.length) {
+            _pauseAllOtherVideos(_currentIndex);
+          }
+
+          log('✅ HomeView: Feed reactivated successfully');
+        }
+      });
+    } catch (e) {
+      log('❌ HomeView: Error reactivating feed: $e');
+    }
   }
 
   /// Setup favorites manager - equivalent to Swift's .onAppear
@@ -895,7 +949,7 @@ class _HomeViewState extends ConsumerState<HomeView>
                 final video = videos[index];
                 final homeVM = ref.read(hp.homeProvider.notifier);
                 return VideoPlayerViewOptimized(
-                  key: ValueKey(video.id),
+                  key: ValueKey('${video.id}_return$_returnCounter'),
                   video: video,
                   isCurrentVideo: index == _currentIndex,
                   isFirstVideo: index == 0,

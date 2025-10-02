@@ -4,7 +4,8 @@ import 'package:flutter/services.dart';
 import 'logging_service.dart';
 
 class AccessibilityService {
-  static final AccessibilityService _instance = AccessibilityService._internal();
+  static final AccessibilityService _instance =
+      AccessibilityService._internal();
   factory AccessibilityService() => _instance;
   AccessibilityService._internal();
 
@@ -25,7 +26,8 @@ class AccessibilityService {
   Future<void> initialize(BuildContext context) async {
     try {
       await _updateAccessibilitySettings(context);
-      LoggingService.instance.info('Accessibility service initialized', tag: 'AccessibilityService');
+      LoggingService.instance.info('Accessibility service initialized',
+          tag: 'AccessibilityService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to initialize accessibility service',
@@ -39,11 +41,11 @@ class AccessibilityService {
   Future<void> _updateAccessibilitySettings(BuildContext context) async {
     try {
       final mediaQuery = MediaQuery.of(context);
-      
+
       _isScreenReaderEnabled = mediaQuery.accessibleNavigation;
       _isHighContrastEnabled = mediaQuery.highContrast;
       _isBoldTextEnabled = mediaQuery.boldText;
-      _textScaleFactor = mediaQuery.textScaleFactor;
+      _textScaleFactor = mediaQuery.textScaler.scale(1.0);
       _animationScale = mediaQuery.disableAnimations ? 0.0 : 1.0;
 
       LoggingService.instance.debug(
@@ -70,7 +72,8 @@ class AccessibilityService {
           message,
           TextDirection.ltr,
         );
-        LoggingService.instance.debug('Announced: $message', tag: 'AccessibilityService');
+        LoggingService.instance
+            .debug('Announced: $message', tag: 'AccessibilityService');
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -117,7 +120,8 @@ class AccessibilityService {
   }) {
     try {
       double finalFontSize = fontSize ?? baseStyle.fontSize ?? 14.0;
-      FontWeight finalFontWeight = fontWeight ?? baseStyle.fontWeight ?? FontWeight.normal;
+      FontWeight finalFontWeight =
+          fontWeight ?? baseStyle.fontWeight ?? FontWeight.normal;
 
       // Adjust font size for text scale factor
       finalFontSize = finalFontSize * _textScaleFactor;
@@ -234,12 +238,14 @@ class AccessibilityService {
         button: true,
         enabled: onPressed != null,
         child: GestureDetector(
-          onTap: onPressed != null ? () {
-            if (hapticFeedbackType != null) {
-              provideHapticFeedback(hapticFeedbackType);
-            }
-            onPressed();
-          } : null,
+          onTap: onPressed != null
+              ? () {
+                  if (hapticFeedbackType != null) {
+                    provideHapticFeedback(hapticFeedbackType);
+                  }
+                  onPressed();
+                }
+              : null,
           child: child,
         ),
       );
@@ -340,12 +346,14 @@ class AccessibilityService {
         selected: selected,
         button: onTap != null,
         child: GestureDetector(
-          onTap: onTap != null ? () {
-            if (hapticFeedbackType != null) {
-              provideHapticFeedback(hapticFeedbackType);
-            }
-            onTap();
-          } : null,
+          onTap: onTap != null
+              ? () {
+                  if (hapticFeedbackType != null) {
+                    provideHapticFeedback(hapticFeedbackType);
+                  }
+                  onTap();
+                }
+              : null,
           child: child,
         ),
       );

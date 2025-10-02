@@ -6,39 +6,47 @@ import 'real_user_data_service.dart';
 
 class VideoService extends StateNotifier<List<HomeVideo>> {
   VideoService() : super([]);
-  
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final RealUserDataService _userDataService = RealUserDataService();
-  
+
   /// Load all videos from Firestore and store them in memory
   Future<void> loadAllVideos() async {
     try {
       debugPrint('🎬 VideoService: Loading all videos...');
-      
+
       // Get all videos ordered by creation date (newest first)
       final snapshot = await _firestore
           .collection('videos')
           .orderBy('createdAt', descending: true) // Newest first
           .limit(100) // Reasonable limit
           .get();
-      
+
       final videos = <HomeVideo>[];
-      
+
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        
+
+        debugPrint(
+            '🎬 VideoService: Processing video ${doc.id}: ${data['status']}, userId: ${data['userId']}');
+
         // Filter for published videos only
         if (data['status'] != 'published') {
+          debugPrint(
+              '🎬 VideoService: Skipping video ${doc.id} - status: ${data['status']}');
           continue;
         }
-        
+
         final userId = data['userId'] as String?;
-        if (userId == null) continue;
-        
+        if (userId == null) {
+          debugPrint('🎬 VideoService: Skipping video ${doc.id} - no userId');
+          continue;
+        }
+
         // Get creator data
         final creator = await _userDataService.getUserById(userId);
         if (creator == null) continue;
-        
+
         final video = HomeVideo(
           id: doc.id,
           creator: creator,
@@ -53,10 +61,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           // Store creation date for proper sorting
           createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
         );
-        
+
         videos.add(video);
       }
-      
+
       // Remove duplicates based on video ID
       final uniqueVideos = <String, HomeVideo>{};
       for (final video in videos) {
@@ -64,10 +72,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           uniqueVideos[video.id] = video;
         }
       }
-      
+
       // Convert back to list and sort by creation date (newest first)
       final deduplicatedVideos = uniqueVideos.values.toList();
-      
+
       // Sort by creation date - newest first (most recent uploads at top)
       deduplicatedVideos.sort((a, b) {
         // Sort by creation timestamp - newest first
@@ -75,19 +83,20 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
         return bTime.compareTo(aTime); // Reverse order for newest first
       });
-      
+
       state = deduplicatedVideos;
-      debugPrint('✅ VideoService: Loaded ${deduplicatedVideos.length} unique videos (removed ${videos.length - deduplicatedVideos.length} duplicates)');
+      debugPrint(
+          '✅ VideoService: Loaded ${deduplicatedVideos.length} unique videos (removed ${videos.length - deduplicatedVideos.length} duplicates)');
     } catch (e) {
       debugPrint('❌ VideoService: Error loading videos: $e');
       state = [];
     }
   }
-  
+
   /// Add a new video to the service (called after upload)
   void addVideo(HomeVideo video) {
     final currentVideos = List<HomeVideo>.from(state);
-    
+
     // Check if video already exists to prevent duplicates
     final existingIndex = currentVideos.indexWhere((v) => v.id == video.id);
     if (existingIndex != -1) {
@@ -99,41 +108,42 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       currentVideos.insert(0, video);
       debugPrint('✅ VideoService: Added new video: ${video.caption}');
     }
-    
+
     // Re-sort to maintain newest-first order
     currentVideos.sort((a, b) {
       final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
       final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
       return bTime.compareTo(aTime); // Reverse order for newest first
     });
-    
+
     state = currentVideos;
   }
-  
+
   /// Get videos for a specific user
   List<HomeVideo> getUserVideos(String userId) {
     return state.where((video) => video.creator.id == userId).toList();
   }
-  
+
   /// Get videos for a specific category
   List<HomeVideo> getCategoryVideos(String categoryId) {
     return state.where((video) => video.categoryId == categoryId).toList();
   }
-  
+
   /// Get all videos (for HomeView)
   List<HomeVideo> getAllVideos() {
     return state;
   }
-  
+
   /// Update video stats (likes, views, etc.)
-  void updateVideoStats(String videoId, {
+  void updateVideoStats(
+    String videoId, {
     int? views,
     int? likes,
     int? comments,
   }) {
     final currentVideos = List<HomeVideo>.from(state);
     final index = currentVideos.indexWhere((video) => video.id == videoId);
-    
+
     if (index != -1) {
       final video = currentVideos[index];
       currentVideos[index] = video.copyWith(
@@ -144,7 +154,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       state = currentVideos;
     }
   }
-  
+
   /// Refresh videos from Firestore
   Future<void> refresh() async {
     await loadAllVideos();
@@ -169,19 +179,20 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   }) async {
     try {
       debugPrint('🎬 VideoService: Fetching For You videos...');
-      
+
       // Get all videos from current state and filter for public ones
       final allVideos = state;
-      final forYouVideos = allVideos.where((video) => 
-        !video.isDraft // Only published videos
-      ).toList();
-      
+      final forYouVideos = allVideos
+          .where((video) => !video.isDraft // Only published videos
+              )
+          .toList();
+
       debugPrint('✅ VideoService: Found ${forYouVideos.length} For You videos');
       return {
         'videos': forYouVideos,
         'lastDocument': null, // No pagination for now
       };
-          } catch (e) {
+    } catch (e) {
       debugPrint('❌ VideoService: Error fetching For You videos: $e');
       return {
         'videos': <HomeVideo>[],
@@ -198,14 +209,16 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   }) async {
     try {
       debugPrint('🎬 VideoService: Fetching Following videos...');
-      
+
       // For now, return all videos (this could be enhanced to filter by following relationships)
       final allVideos = state;
-      final followingVideos = allVideos.where((video) => 
-        !video.isDraft // Only published videos
-      ).toList();
-      
-      debugPrint('✅ VideoService: Found ${followingVideos.length} Following videos');
+      final followingVideos = allVideos
+          .where((video) => !video.isDraft // Only published videos
+              )
+          .toList();
+
+      debugPrint(
+          '✅ VideoService: Found ${followingVideos.length} Following videos');
       return {
         'videos': followingVideos,
         'lastDocument': null, // No pagination for now
@@ -223,20 +236,20 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   Future<bool> toggleLike(String videoId) async {
     try {
       debugPrint('🎬 VideoService: Toggling like for video: $videoId');
-      
+
       final currentVideos = List<HomeVideo>.from(state);
       final index = currentVideos.indexWhere((video) => video.id == videoId);
-      
+
       if (index != -1) {
         final video = currentVideos[index];
         final newIsLiked = !video.isLiked;
         final newLikeCount = newIsLiked ? video.likes + 1 : video.likes - 1;
-        
+
         currentVideos[index] = video.copyWith(
           isLiked: newIsLiked,
           likes: newLikeCount,
         );
-        
+
         state = currentVideos;
         debugPrint('✅ VideoService: Like toggled for video: $videoId');
         return newIsLiked;
@@ -252,13 +265,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   Future<List<HomeVideo>> getVideosByIds(List<String> videoIds) async {
     try {
       debugPrint('🎬 VideoService: Getting videos by IDs: $videoIds');
-      
+
       final allVideos = state;
-      final requestedVideos = allVideos.where((video) => 
-        videoIds.contains(video.id)
-      ).toList();
-      
-      debugPrint('✅ VideoService: Found ${requestedVideos.length} videos by IDs');
+      final requestedVideos =
+          allVideos.where((video) => videoIds.contains(video.id)).toList();
+
+      debugPrint(
+          '✅ VideoService: Found ${requestedVideos.length} videos by IDs');
       return requestedVideos;
     } catch (e) {
       debugPrint('❌ VideoService: Error getting videos by IDs: $e');
@@ -268,17 +281,34 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 }
 
 // Provider for VideoService
-final videoServiceProvider = StateNotifierProvider<VideoService, List<HomeVideo>>((ref) {
+final videoServiceProvider =
+    StateNotifierProvider<VideoService, List<HomeVideo>>((ref) {
   return VideoService();
 });
 
 // Helper providers for filtered videos
-final userVideosProvider = Provider.family<List<HomeVideo>, String>((ref, userId) {
+final userVideosProvider =
+    Provider.family<List<HomeVideo>, String>((ref, userId) {
   final allVideos = ref.watch(videoServiceProvider);
-  return allVideos.where((video) => video.creator.id == userId).toList();
+  debugPrint('🎬 userVideosProvider: Looking for userId: $userId');
+  debugPrint('🎬 userVideosProvider: Total videos: ${allVideos.length}');
+
+  final userVideos = allVideos.where((video) {
+    final matches = video.creator.id == userId;
+    if (matches) {
+      debugPrint(
+          '🎬 userVideosProvider: Found matching video: ${video.id} by ${video.creator.displayName}');
+    }
+    return matches;
+  }).toList();
+
+  debugPrint(
+      '🎬 userVideosProvider: Found ${userVideos.length} videos for user $userId');
+  return userVideos;
 });
 
-final categoryVideosProvider = Provider.family<List<HomeVideo>, String>((ref, categoryId) {
+final categoryVideosProvider =
+    Provider.family<List<HomeVideo>, String>((ref, categoryId) {
   final allVideos = ref.watch(videoServiceProvider);
   return allVideos.where((video) => video.categoryId == categoryId).toList();
 });

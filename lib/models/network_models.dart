@@ -1,6 +1,5 @@
-
 /// Network Models for NetworkView
-/// 
+///
 /// This file contains all the models and algorithms needed for the NetworkView
 /// including relationship management, user connections, and network analytics.
 library network_models;
@@ -87,7 +86,8 @@ class UserConnection {
         (e) => e.value == data['relationshipType'],
         orElse: () => RelationshipType.none,
       ),
-      lastInteraction: DateTime.tryParse(data['lastInteraction'] ?? '') ?? DateTime.now(),
+      lastInteraction:
+          DateTime.tryParse(data['lastInteraction'] ?? '') ?? DateTime.now(),
       interactionCount: data['interactionCount'] ?? 0,
       connectionStrength: (data['connectionStrength'] ?? 0.0).toDouble(),
       mutualConnections: List<String>.from(data['mutualConnections'] ?? []),
@@ -156,11 +156,14 @@ class NetworkStats {
       mutualConnections: data['mutualConnections'] ?? 0,
       newConnectionsThisWeek: data['newConnectionsThisWeek'] ?? 0,
       newFollowersThisWeek: data['newFollowersThisWeek'] ?? 0,
-      averageConnectionStrength: (data['averageConnectionStrength'] ?? 0.0).toDouble(),
+      averageConnectionStrength:
+          (data['averageConnectionStrength'] ?? 0.0).toDouble(),
       networkGrowthRate: (data['networkGrowthRate'] ?? 0.0).toDouble(),
       topHashtags: List<String>.from(data['topHashtags'] ?? []),
-      topMutualConnections: List<String>.from(data['topMutualConnections'] ?? []),
-      lastUpdated: DateTime.tryParse(data['lastUpdated'] ?? '') ?? DateTime.now(),
+      topMutualConnections:
+          List<String>.from(data['topMutualConnections'] ?? []),
+      lastUpdated:
+          DateTime.tryParse(data['lastUpdated'] ?? '') ?? DateTime.now(),
     );
   }
 
@@ -194,15 +197,17 @@ class NetworkAlgorithm {
   }) {
     // Base strength from mutual connections (0-0.4)
     final mutualStrength = (mutualConnections / 100).clamp(0.0, 0.4);
-    
+
     // Interaction frequency (0-0.3)
     final interactionStrength = (totalInteractions / 1000).clamp(0.0, 0.3);
-    
+
     // Recency factor (0-0.3)
-    final recencyFactor = (1.0 - (daysSinceLastInteraction / 30)).clamp(0.0, 1.0);
+    final recencyFactor =
+        (1.0 - (daysSinceLastInteraction / 30)).clamp(0.0, 1.0);
     final recencyStrength = recencyFactor * 0.3;
-    
-    return (mutualStrength + interactionStrength + recencyStrength).clamp(0.0, 1.0);
+
+    return (mutualStrength + interactionStrength + recencyStrength)
+        .clamp(0.0, 1.0);
   }
 
   /// Find optimal connection suggestions
@@ -219,7 +224,7 @@ class NetworkAlgorithm {
         .where((id) => !currentSet.contains(id))
         .toSet()
         .toList();
-    
+
     // Score each potential connection
     final scored = allPotential.map((id) {
       final score = _calculateSuggestionScore(
@@ -231,7 +236,7 @@ class NetworkAlgorithm {
       );
       return MapEntry(id, score);
     }).toList();
-    
+
     // Sort by score and return top suggestions
     scored.sort((a, b) => b.value.compareTo(a.value));
     return scored.take(maxSuggestions).map((e) => e.key).toList();
@@ -245,26 +250,27 @@ class NetworkAlgorithm {
     Map<String, int> interactionCounts,
   ) {
     double score = 0.0;
-    
+
     // Mutual connections boost
-    final mutualCount = currentConnections.where((id) => 
-        followers.contains(id) && following.contains(id)).length;
+    final mutualCount = currentConnections
+        .where((id) => followers.contains(id) && following.contains(id))
+        .length;
     score += mutualCount * 0.3;
-    
+
     // Interaction history
     final interactions = interactionCounts[userId] ?? 0;
     score += (interactions / 100).clamp(0.0, 0.4);
-    
+
     // Follower ratio (if they follow you, higher score)
     if (followers.contains(userId)) {
       score += 0.2;
     }
-    
+
     // Following ratio (if you follow them, higher score)
     if (following.contains(userId)) {
       score += 0.1;
     }
-    
+
     return score;
   }
 
@@ -284,16 +290,18 @@ class NetworkAlgorithm {
         }
         return b.lastInteraction.compareTo(a.lastInteraction);
       });
-    
+
     // Take top connections
-    final optimizedConnections = sortedConnections.take(maxConnections).toList();
-    
+    final optimizedConnections =
+        sortedConnections.take(maxConnections).toList();
+
     // Calculate performance metrics
-    final totalStrength = optimizedConnections.fold(0.0, (sum, conn) => sum + conn.connectionStrength);
-    final averageStrength = optimizedConnections.isNotEmpty 
-        ? totalStrength / optimizedConnections.length 
+    final totalStrength = optimizedConnections.fold(
+        0.0, (sum, conn) => sum + conn.connectionStrength);
+    final averageStrength = optimizedConnections.isNotEmpty
+        ? totalStrength / optimizedConnections.length
         : 0.0;
-    
+
     return {
       'optimizedConnections': optimizedConnections,
       'totalStrength': totalStrength,
@@ -310,27 +318,30 @@ class NetworkAlgorithm {
     int thresholdDays = 7,
   }) {
     final anomalies = <String>[];
-    final thresholdDate = DateTime.now().subtract(Duration(days: thresholdDays));
-    
+    final thresholdDate =
+        DateTime.now().subtract(Duration(days: thresholdDays));
+
     for (final connection in connections) {
       // Check for inactive connections
-      if (connection.lastInteraction.isBefore(thresholdDate) && 
+      if (connection.lastInteraction.isBefore(thresholdDate) &&
           connection.connectionStrength > 0.5) {
-        anomalies.add('Inactive high-strength connection: ${connection.displayName}');
+        anomalies.add(
+            'Inactive high-strength connection: ${connection.displayName}');
       }
-      
+
       // Check for low interaction despite high strength
       final interactions = recentInteractions[connection.userId] ?? 0;
       if (connection.connectionStrength > 0.7 && interactions < 5) {
-        anomalies.add('Low interaction despite high strength: ${connection.displayName}');
+        anomalies.add(
+            'Low interaction despite high strength: ${connection.displayName}');
       }
-      
+
       // Check for suspicious activity patterns
       if (connection.followerCount > 10000 && connection.postCount < 10) {
         anomalies.add('Potential fake account: ${connection.displayName}');
       }
     }
-    
+
     return anomalies;
   }
 
@@ -341,8 +352,9 @@ class NetworkAlgorithm {
     required int daysBetween,
   }) {
     if (previousConnections == 0 || daysBetween == 0) return 0.0;
-    
-    final growthRate = (currentConnections - previousConnections) / previousConnections;
+
+    final growthRate =
+        (currentConnections - previousConnections) / previousConnections;
     return (growthRate / daysBetween) * 30; // Monthly growth rate
   }
 
@@ -353,31 +365,36 @@ class NetworkAlgorithm {
   }) {
     final clusters = <String, List<String>>{};
     final processed = <String>{};
-    
+
     for (final connection in connections) {
       if (processed.contains(connection.userId)) continue;
-      
+
       final cluster = <String>[connection.userId];
       final mutuals = mutualConnections[connection.userId] ?? [];
-      
+
       // Find all connections that share mutual connections
       for (final other in connections) {
-        if (other.userId == connection.userId || processed.contains(other.userId)) continue;
-        
+        if (other.userId == connection.userId ||
+            processed.contains(other.userId)) {
+          continue;
+        }
+
         final otherMutuals = mutualConnections[other.userId] ?? [];
-        final sharedMutuals = mutuals.where((id) => otherMutuals.contains(id)).length;
-        
-        if (sharedMutuals >= 3) { // Threshold for cluster membership
+        final sharedMutuals =
+            mutuals.where((id) => otherMutuals.contains(id)).length;
+
+        if (sharedMutuals >= 3) {
+          // Threshold for cluster membership
           cluster.add(other.userId);
         }
       }
-      
+
       if (cluster.length > 1) {
         clusters['cluster_${clusters.length + 1}'] = cluster;
         processed.addAll(cluster);
       }
     }
-    
+
     return clusters;
   }
 }
@@ -410,16 +427,18 @@ class NetworkUtils {
   }) {
     // Connection count score (0-0.3)
     final countScore = (totalConnections / 1000).clamp(0.0, 0.3);
-    
+
     // Strength score (0-0.3)
     final strengthScore = averageStrength * 0.3;
-    
+
     // Activity score (0-0.2)
-    final activityScore = (activeConnections / totalConnections).clamp(0.0, 1.0) * 0.2;
-    
+    final activityScore =
+        (activeConnections / totalConnections).clamp(0.0, 1.0) * 0.2;
+
     // Growth score (0-0.2)
     final growthScore = (growthRate / 10).clamp(0.0, 1.0) * 0.2;
-    
-    return (countScore + strengthScore + activityScore + growthScore).clamp(0.0, 1.0);
+
+    return (countScore + strengthScore + activityScore + growthScore)
+        .clamp(0.0, 1.0);
   }
 }

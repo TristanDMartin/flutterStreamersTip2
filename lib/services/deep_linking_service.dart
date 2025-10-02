@@ -16,13 +16,15 @@ class DeepLinkingService {
   /// Initialize deep linking
   void initialize() {
     // This would typically be called in main.dart
-    LoggingService.instance.debug('Deep linking service initialized', tag: 'DeepLinkingService');
+    LoggingService.instance
+        .debug('Deep linking service initialized', tag: 'DeepLinkingService');
   }
 
   /// Handle incoming deep link
   Future<void> handleDeepLink(String link, BuildContext context) async {
     try {
-      LoggingService.instance.debug('Handling deep link: $link', tag: 'DeepLinkingService');
+      LoggingService.instance
+          .debug('Handling deep link: $link', tag: 'DeepLinkingService');
 
       final uri = Uri.parse(link);
       final path = uri.path;
@@ -38,16 +40,21 @@ class DeepLinkingService {
       } else if (path.startsWith('/hashtag/')) {
         await _handleHashtagLink(path, queryParams, context);
       } else {
-        LoggingService.instance.warning('Unknown deep link pattern: $path', tag: 'DeepLinkingService');
+        LoggingService.instance.warning('Unknown deep link pattern: $path',
+            tag: 'DeepLinkingService');
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error handling deep link', tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
-      _showDeepLinkError(context, 'Failed to open link');
+      LoggingService.instance.error('Error handling deep link',
+          tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
+      if (context.mounted) {
+        _showDeepLinkError(context, 'Failed to open link');
+      }
     }
   }
 
   /// Handle invite deep link
-  Future<void> _handleInviteLink(String path, Map<String, String> queryParams, BuildContext context) async {
+  Future<void> _handleInviteLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
     try {
       final inviteCode = path.split('/invite/')[1];
       if (inviteCode.isEmpty) {
@@ -59,7 +66,7 @@ class DeepLinkingService {
       if (currentUser == null) {
         // Store invite code for later processing after login
         await _storePendingInviteCode(inviteCode);
-        
+
         // Navigate to login with invite code
         if (context.mounted) {
           context.go('/login?invite=$inviteCode');
@@ -69,10 +76,11 @@ class DeepLinkingService {
 
       // Process the invite code
       final success = await _processInviteCode(inviteCode, currentUser.uid);
-      
+
       if (context.mounted) {
         if (success) {
-          _showDeepLinkSuccess(context, 'Welcome! You\'ve joined with an invite code.');
+          _showDeepLinkSuccess(
+              context, 'Welcome! You\'ve joined with an invite code.');
           context.go('/home');
         } else {
           _showDeepLinkError(context, 'Invalid or expired invite code');
@@ -80,7 +88,8 @@ class DeepLinkingService {
         }
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error handling invite link', tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error handling invite link',
+          tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
       if (context.mounted) {
         _showDeepLinkError(context, 'Failed to process invite');
       }
@@ -88,7 +97,8 @@ class DeepLinkingService {
   }
 
   /// Handle user profile deep link
-  Future<void> _handleUserLink(String path, Map<String, String> queryParams, BuildContext context) async {
+  Future<void> _handleUserLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
     try {
       final username = path.split('/user/')[1];
       if (username.isEmpty) {
@@ -107,12 +117,13 @@ class DeepLinkingService {
       }
 
       final userId = userQuery.docs.first.id;
-      
+
       if (context.mounted) {
         context.go('/profile/$userId');
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error handling user link', tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error handling user link',
+          tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
       if (context.mounted) {
         _showDeepLinkError(context, 'User not found');
       }
@@ -120,7 +131,8 @@ class DeepLinkingService {
   }
 
   /// Handle video deep link
-  Future<void> _handleVideoLink(String path, Map<String, String> queryParams, BuildContext context) async {
+  Future<void> _handleVideoLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
     try {
       final videoId = path.split('/video/')[1];
       if (videoId.isEmpty) {
@@ -137,7 +149,8 @@ class DeepLinkingService {
         context.go('/video/$videoId');
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error handling video link', tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error handling video link',
+          tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
       if (context.mounted) {
         _showDeepLinkError(context, 'Video not found');
       }
@@ -145,7 +158,8 @@ class DeepLinkingService {
   }
 
   /// Handle hashtag deep link
-  Future<void> _handleHashtagLink(String path, Map<String, String> queryParams, BuildContext context) async {
+  Future<void> _handleHashtagLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
     try {
       final hashtag = path.split('/hashtag/')[1];
       if (hashtag.isEmpty) {
@@ -156,7 +170,8 @@ class DeepLinkingService {
         context.go('/discover?hashtag=${Uri.encodeComponent(hashtag)}');
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error handling hashtag link', tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error handling hashtag link',
+          tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
       if (context.mounted) {
         _showDeepLinkError(context, 'Hashtag not found');
       }
@@ -195,10 +210,12 @@ class DeepLinkingService {
       // Award points to inviter
       await _awardInvitePoints(inviterId);
 
-      LoggingService.instance.debug('Processed invite code: $inviteCode', tag: 'DeepLinkingService');
+      LoggingService.instance.debug('Processed invite code: $inviteCode',
+          tag: 'DeepLinkingService');
       return true;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error processing invite code', tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error processing invite code',
+          tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -208,14 +225,17 @@ class DeepLinkingService {
     try {
       // Store in local storage or shared preferences
       // This is a simplified version - in production, use proper local storage
-      LoggingService.instance.debug('Stored pending invite code: $inviteCode', tag: 'DeepLinkingService');
+      LoggingService.instance.debug('Stored pending invite code: $inviteCode',
+          tag: 'DeepLinkingService');
     } catch (e) {
-      LoggingService.instance.error('Error storing pending invite code', tag: 'DeepLinkingService', error: e);
+      LoggingService.instance.error('Error storing pending invite code',
+          tag: 'DeepLinkingService', error: e);
     }
   }
 
   /// Create relationship between inviter and invitee
-  Future<void> _createInviteRelationship(String inviterId, String inviteeId) async {
+  Future<void> _createInviteRelationship(
+      String inviterId, String inviteeId) async {
     try {
       final batch = _firestore.batch();
 
@@ -247,7 +267,8 @@ class DeepLinkingService {
 
       await batch.commit();
     } catch (e) {
-      LoggingService.instance.error('Error creating invite relationship', tag: 'DeepLinkingService', error: e);
+      LoggingService.instance.error('Error creating invite relationship',
+          tag: 'DeepLinkingService', error: e);
     }
   }
 
@@ -255,16 +276,19 @@ class DeepLinkingService {
   Future<void> _awardInvitePoints(String inviterId) async {
     try {
       const pointsToAward = 100;
-      
+
       await _firestore.collection('users').doc(inviterId).update({
         'points': FieldValue.increment(pointsToAward),
         'totalInvites': FieldValue.increment(1),
         'lastInviteAwardedAt': FieldValue.serverTimestamp(),
       });
 
-      LoggingService.instance.debug('Awarded $pointsToAward points to inviter: $inviterId', tag: 'DeepLinkingService');
+      LoggingService.instance.debug(
+          'Awarded $pointsToAward points to inviter: $inviterId',
+          tag: 'DeepLinkingService');
     } catch (e) {
-      LoggingService.instance.error('Error awarding invite points', tag: 'DeepLinkingService', error: e);
+      LoggingService.instance.error('Error awarding invite points',
+          tag: 'DeepLinkingService', error: e);
     }
   }
 

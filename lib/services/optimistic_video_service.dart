@@ -5,7 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/optimistic_video.dart';
 
 class OptimisticVideoService extends ChangeNotifier {
-  static final OptimisticVideoService _instance = OptimisticVideoService._internal();
+  static final OptimisticVideoService _instance =
+      OptimisticVideoService._internal();
   factory OptimisticVideoService() => _instance;
   OptimisticVideoService._internal();
 
@@ -17,13 +18,17 @@ class OptimisticVideoService extends ChangeNotifier {
   final Map<String, StreamSubscription> _videoListeners = {};
 
   // Feed refresh triggers
-  final StreamController<String> _feedRefreshController = StreamController<String>.broadcast();
-  final StreamController<List<String>> _categoryRefreshController = StreamController<List<String>>.broadcast();
+  final StreamController<String> _feedRefreshController =
+      StreamController<String>.broadcast();
+  final StreamController<List<String>> _categoryRefreshController =
+      StreamController<List<String>>.broadcast();
 
   // Getters
-  List<OptimisticVideo> get optimisticVideos => _optimisticVideos.values.toList();
+  List<OptimisticVideo> get optimisticVideos =>
+      _optimisticVideos.values.toList();
   Stream<String> get feedRefreshStream => _feedRefreshController.stream;
-  Stream<List<String>> get categoryRefreshStream => _categoryRefreshController.stream;
+  Stream<List<String>> get categoryRefreshStream =>
+      _categoryRefreshController.stream;
 
   /// Create optimistic video placeholder
   Future<OptimisticVideo> createOptimisticVideo({
@@ -71,7 +76,7 @@ class OptimisticVideoService extends ChangeNotifier {
   Future<void> _createPlaceholderDocuments(OptimisticVideo video) async {
     // Create main video document
     await _firestore.collection('videos').doc(video.videoId).set({
-      'ownerId': video.ownerId,
+      'userId': video.ownerId,
       'caption': video.caption,
       'categories': video.categories,
       'createdAt': video.createdAt,
@@ -97,7 +102,7 @@ class OptimisticVideoService extends ChangeNotifier {
 
     // Get privacy setting from metadata
     final privacy = video.metadata?['privacy'] as String? ?? 'Everyone';
-    
+
     // Add to appropriate feeds based on privacy setting
     switch (privacy) {
       case 'Everyone':
@@ -114,7 +119,7 @@ class OptimisticVideoService extends ChangeNotifier {
           'status': 'processing',
           'addedAt': video.createdAt,
         });
-        
+
         // Add to following feed
         await _firestore
             .collection('feeds')
@@ -247,7 +252,7 @@ class OptimisticVideoService extends ChangeNotifier {
           duration: data['duration'] as int?,
           fileSize: data['fileSize'] as int?,
         );
-        
+
         // Remove from optimistic cache after a delay
         Timer(const Duration(seconds: 5), () {
           _optimisticVideos.remove(videoId);
@@ -305,9 +310,11 @@ class OptimisticVideoService extends ChangeNotifier {
   }
 
   /// Get optimistic videos for specific categories
-  List<OptimisticVideo> getOptimisticVideosForCategories(List<String> categories) {
+  List<OptimisticVideo> getOptimisticVideosForCategories(
+      List<String> categories) {
     return _optimisticVideos.values
-        .where((video) => video.categories.any((cat) => categories.contains(cat)))
+        .where(
+            (video) => video.categories.any((cat) => categories.contains(cat)))
         .toList();
   }
 
@@ -330,12 +337,14 @@ class OptimisticVideoService extends ChangeNotifier {
   }
 
   /// Get combined video list (optimistic + regular videos)
-  List<OptimisticVideo> getCombinedVideos(List<Map<String, dynamic>> regularVideos) {
+  List<OptimisticVideo> getCombinedVideos(
+      List<Map<String, dynamic>> regularVideos) {
     final combinedVideos = <OptimisticVideo>[];
 
     // Add regular videos
     for (final videoData in regularVideos) {
-      final videoId = videoData['id'] as String? ?? videoData['videoId'] as String?;
+      final videoId =
+          videoData['id'] as String? ?? videoData['videoId'] as String?;
       if (videoId != null && !_optimisticVideos.containsKey(videoId)) {
         combinedVideos.add(OptimisticVideo.fromJson(videoData));
       }

@@ -6,6 +6,7 @@ import '../services/robust_auth_service.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/custom_bottom_nav.dart';
 import '../widgets/camera_view_optimized.dart';
+import '../widgets/video_player_view_optimized.dart';
 import '../views/network_view.dart';
 import '../widgets/inbox_view_optimized.dart';
 import 'home_view.dart';
@@ -71,7 +72,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       // Notify HomeView to resume current video
       final homeNotifier = ref.read(homeProvider.notifier);
       homeNotifier.resumeCurrentVideo();
-      
+
       log('▶️ MainTabView: Resumed HomeView current video');
       debugPrint('▶️ MainTabView: Resumed HomeView current video');
     } catch (e) {
@@ -85,7 +86,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Initialize clean relationship service
       await CleanRelationshipService().initialize();
-      
+
       final authService = ref.read(robustAuthServiceProvider);
       if (authService.isLoggedIn && authService.currentUser != null) {
         // Initialize ProfileUpdateService for cross-view updates
@@ -96,7 +97,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         } catch (e) {
           log('❌ MainTabView: Error initializing ProfileUpdateService: $e');
         }
-        
+
         // Data sync will be handled by the individual views
         log('🔄 MainTabView: Starting data sync for user: ${authService.currentUser!.displayName}');
       }
@@ -109,25 +110,25 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       _onUploadTapped();
       return;
     }
-    
+
     // Handle the inbox view (index 3) specially - navigate to full screen
     if (index == 3) {
       _onInboxTapped();
       return;
     }
-    
+
     // Handle the profile view (index 4) specially - navigate to full screen
     if (index == 4) {
       _onProfileTapped();
       return;
     }
-    
+
     // Handle Home tab (index 0) - refresh video feed if already on Home
     if (index == 0 && _currentIndex == 0) {
       _refreshHomeView();
       return;
     }
-    
+
     setState(() {
       _currentIndex = index;
     });
@@ -143,42 +144,64 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     log('🚨 CAMERA NAVIGATION: Tap detected!');
     print('🚨 CAMERA NAVIGATION: Tap detected!');
     _pauseAllHomeViewVideos();
-    
+
     log('🚨 CAMERA NAVIGATION: About to call Navigator.push');
     print('🚨 CAMERA NAVIGATION: About to call Navigator.push');
-    // Navigate directly to camera view
-    Navigator.of(context).push(
-      MaterialPageRoute(
+    // AUDIO FIX: Add delay to ensure disposal completes before navigation
+    Future.delayed(const Duration(milliseconds: 200), () {
+      // Navigate directly to camera view
+      Navigator.of(context)
+          .push(
+        MaterialPageRoute(
           builder: (context) => const CameraViewOptimized(),
-      ),
-    );
+        ),
+      )
+          .then((_) {
+        // SEAMLESS RETURN: Reactivate HomeView when returning from CameraView
+        log('🔄 MainTabView: Returned from CameraView - reactivating HomeView');
+        _reactivateHomeView();
+      });
+    });
     log('🚨 CAMERA NAVIGATION: Navigator.push completed');
     print('🚨 CAMERA NAVIGATION: Navigator.push completed');
   }
 
   void _onInboxTapped() {
-    // Pause HomeView videos before navigating to InboxView
+    // AUDIO FIX: Pause HomeView videos before navigating to InboxView
+    log('🚨 INBOX NAVIGATION: Starting aggressive video disposal...');
     _pauseAllHomeViewVideos();
-    
-    // Navigate to inbox view as full screen
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const InboxViewOptimized(),
-        fullscreenDialog: true,
-      ),
-    );
+
+    // AUDIO FIX: Add delay to ensure disposal completes before navigation
+    Future.delayed(const Duration(milliseconds: 200), () {
+      // Navigate to inbox view as full screen
+      Navigator.of(context)
+          .push(
+        MaterialPageRoute(
+          builder: (context) => const InboxViewOptimized(),
+          fullscreenDialog: true,
+        ),
+      )
+          .then((_) {
+        // SEAMLESS RETURN: Reactivate HomeView when returning from InboxView
+        log('🔄 MainTabView: Returned from InboxView - reactivating HomeView');
+        _reactivateHomeView();
+      });
+    });
   }
 
   void _onProfileTapped() {
-    // Pause HomeView videos before navigating to ProfileView
+    // AUDIO FIX: Pause HomeView videos before navigating to ProfileView
+    log('🚨 PROFILE NAVIGATION: Starting aggressive video disposal...');
     _pauseAllHomeViewVideos();
-    
+
     // Navigate to profile view as full screen
     final authService = ref.read(robustAuthServiceProvider);
     if (authService.currentUser != null) {
-      debugPrint("🔍 MainTabView: Creating User object with ID: ${authService.currentUser!.id}");
-      debugPrint("🔍 MainTabView: AuthService currentUser: ${authService.currentUser}");
-      
+      debugPrint(
+          "🔍 MainTabView: Creating User object with ID: ${authService.currentUser!.id}");
+      debugPrint(
+          "🔍 MainTabView: AuthService currentUser: ${authService.currentUser}");
+
       final user = User(
         id: authService.currentUser!.id,
         username: authService.currentUser!.username,
@@ -190,15 +213,25 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         aiSelf: authService.currentUser!.aiSelf,
         calendarEvents: authService.currentUser!.calendarEvents,
       );
-      
+
       debugPrint("🔍 MainTabView: Created User object with ID: ${user.id}");
-      
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => ProfileViewOptimized(user: user, isCurrentUser: true),
-          fullscreenDialog: true,
-        ),
-      );
+
+      // AUDIO FIX: Add delay to ensure disposal completes before navigation
+      Future.delayed(const Duration(milliseconds: 200), () {
+        Navigator.of(context)
+            .push(
+          MaterialPageRoute(
+            builder: (context) =>
+                ProfileViewOptimized(user: user, isCurrentUser: true),
+            fullscreenDialog: true,
+          ),
+        )
+            .then((_) {
+          // SEAMLESS RETURN: Reactivate HomeView when returning from ProfileView
+          log('🔄 MainTabView: Returned from ProfileView - reactivating HomeView');
+          _reactivateHomeView();
+        });
+      });
     }
   }
 
@@ -207,10 +240,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       // Refresh the home provider to reload videos
       final homeNotifier = ref.read(homeProvider.notifier);
       homeNotifier.loadVideos();
-      
+
       log('🔄 MainTabView: Refreshing HomeView video feed');
       debugPrint('🔄 MainTabView: Refreshing HomeView video feed');
-      
+
       // Provide haptic feedback
       HapticFeedback.lightImpact();
     } catch (e) {
@@ -221,37 +254,71 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
   void _pauseAllHomeViewVideos() {
     try {
+      log('🚨 AUDIO FIX: Starting aggressive video disposal...');
+
+      // AGGRESSIVE: Use GlobalVideoController to dispose ALL videos
+      GlobalVideoController.disposeAllVideos();
+
       // Notify HomeView to pause all videos
       final homeNotifier = ref.read(homeProvider.notifier);
       homeNotifier.pauseAllVideos();
-      
-      log('⏸️ MainTabView: Paused all HomeView videos');
-      debugPrint('⏸️ MainTabView: Paused all HomeView videos');
+
+      // DOUBLE AGGRESSIVE: Call disposal again after a short delay to ensure it takes effect
+      Future.delayed(const Duration(milliseconds: 50), () {
+        GlobalVideoController.disposeAllVideos();
+        log('🚨 AUDIO FIX: Double disposal completed');
+      });
+
+      log('⏸️ MainTabView: Paused all HomeView videos with aggressive disposal');
+      debugPrint(
+          '⏸️ MainTabView: Paused all HomeView videos with aggressive disposal');
     } catch (e) {
       log('❌ MainTabView: Error pausing HomeView videos: $e');
       debugPrint('❌ MainTabView: Error pausing HomeView videos: $e');
     }
   }
 
+  /// Reactivate HomeView when returning from other views
+  void _reactivateHomeView() {
+    try {
+      log('🔄 MainTabView: Reactivating HomeView after return from other view');
+
+      // SEAMLESS RETURN: Force video reinitialization
+      final homeNotifier = ref.read(homeProvider.notifier);
+
+      // Reset video state to force reinitialization
+      homeNotifier.resetVideoState();
+
+      // Resume current video playback after brief delay
+      Future.delayed(const Duration(milliseconds: 100), () {
+        homeNotifier.resumeCurrentVideo();
+        log('✅ MainTabView: HomeView reactivated with video reinitialization');
+      });
+    } catch (e) {
+      log('❌ MainTabView: Error reactivating HomeView: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // This allows content to extend behind the bottom navigation
+      extendBody:
+          true, // This allows content to extend behind the bottom navigation
       body: PageView(
         controller: _pageController,
         onPageChanged: (index) {
           setState(() {
             _currentIndex = index;
           });
-          
+
           // Pause videos when leaving HomeView (index 0)
           if (_currentIndex != 0) {
             _pauseAllHomeViewVideos();
           }
         },
         // Disable swipe gestures when on NetworkView (index 1)
-        physics: _currentIndex == 1 
-            ? const NeverScrollableScrollPhysics() 
+        physics: _currentIndex == 1
+            ? const NeverScrollableScrollPhysics()
             : const ClampingScrollPhysics(),
         children: const [
           // Home View
@@ -282,7 +349,8 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
           ),
           // Profile (handled by navigation)
           Center(
-            child: Icon(Icons.account_circle_outlined, size: 80, color: Colors.grey),
+            child: Icon(Icons.account_circle_outlined,
+                size: 80, color: Colors.grey),
           ),
         ],
       ),
