@@ -63,7 +63,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
   }
 
-
   @override
   Widget build(BuildContext context) {
     if (_videos.isEmpty) {
@@ -100,6 +99,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 video: video,
                 isCurrentVideo: _currentIndex == index,
                 isFirstVideo: index == 0,
+                tabId: 'playerScreen', // Generic tab ID for standalone player
                 homeViewModel: ref.read(hp.homeProvider.notifier),
                 showSheet: false,
                 sheetType: '',

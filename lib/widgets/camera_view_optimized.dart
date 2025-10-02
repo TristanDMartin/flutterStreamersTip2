@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -44,31 +43,34 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
     try {
       debugPrint('🎥 Starting camera initialization...');
       _cameras = await availableCameras();
-      
+
       if (_cameras!.isNotEmpty) {
         // Select back camera explicitly for best quality
         final backCamera = _cameras!.firstWhere(
           (camera) => camera.lensDirection == CameraLensDirection.back,
           orElse: () => _cameras!.first,
         );
-        
+
         debugPrint('🎥 Selected camera: ${backCamera.name} (Back Wide)');
-        
+
         _cameraController = CameraController(
           backCamera,
-          ResolutionPreset.max, // Highest available resolution for crisp preview
+          ResolutionPreset
+              .max, // Highest available resolution for crisp preview
           enableAudio: true,
-          imageFormatGroup: ImageFormatGroup.yuv420, // Best preview quality on Android
+          imageFormatGroup:
+              ImageFormatGroup.yuv420, // Best preview quality on Android
         );
-        
+
         await _cameraController!.initialize();
-        
+
         // Lock orientation to portrait for consistent preview
-        await _cameraController!.lockCaptureOrientation(DeviceOrientation.portraitUp);
-        
+        await _cameraController!
+            .lockCaptureOrientation(DeviceOrientation.portraitUp);
+
         // Apply professional camera settings
         await _applyCameraSettings();
-        
+
         if (mounted) {
           setState(() {
             _isInitialized = true;
@@ -84,25 +86,26 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   // Simple, professional camera settings
   Future<void> _applyCameraSettings() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
-    
+    if (_cameraController == null || !_cameraController!.value.isInitialized)
+      return;
+
     try {
       // Set continuous autofocus for sharp preview
       await _cameraController!.setFocusMode(FocusMode.auto);
-      
+
       // Set continuous auto exposure for proper lighting
       await _cameraController!.setExposureMode(ExposureMode.auto);
-      
+
       // Set flash mode
       await _cameraController!.setFlashMode(FlashMode.off);
-      
+
       // Reset zoom to 1.0 for natural view
       try {
         await _cameraController!.setZoomLevel(1.0);
       } catch (e) {
         debugPrint('Zoom reset not available: $e');
       }
-      
+
       debugPrint('✅ Professional camera settings applied');
     } catch (e) {
       debugPrint('Error applying camera settings: $e');
@@ -111,19 +114,20 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   // Clean tap-to-focus implementation
   void _onTapToFocus(TapDownDetails details) async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    if (_cameraController == null || !_cameraController!.value.isInitialized)
+      return;
 
     try {
       final RenderBox renderBox = context.findRenderObject() as RenderBox;
       final Offset localPoint = renderBox.globalToLocal(details.globalPosition);
-      
+
       final double x = localPoint.dx / renderBox.size.width;
       final double y = localPoint.dy / renderBox.size.height;
-      
+
       // Clamp values to valid range
       final double clampedX = x.clamp(0.0, 1.0);
       final double clampedY = y.clamp(0.0, 1.0);
-      
+
       setState(() {
         _focusPoint = localPoint;
         _isFocusing = true;
@@ -135,7 +139,7 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
       } catch (e) {
         debugPrint('Exposure point setting not supported: $e');
       }
-      
+
       // Set focus point
       try {
         await _cameraController!.setFocusPoint(Offset(clampedX, clampedY));
@@ -160,11 +164,12 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   // Simple zoom implementation
   void _onScaleUpdate(ScaleUpdateDetails details) async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    if (_cameraController == null || !_cameraController!.value.isInitialized)
+      return;
 
     try {
       final double newZoom = (_currentZoom * details.scale).clamp(1.0, 4.0);
-      
+
       setState(() {
         _currentZoom = newZoom;
       });
@@ -181,18 +186,19 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   // Simple recording functions
   Future<void> _startRecording() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    if (_cameraController == null || !_cameraController!.value.isInitialized)
+      return;
 
     try {
       await _cameraController!.startVideoRecording();
-      
+
       setState(() {
         _isRecording = true;
       });
-      
+
       _startRecordingTimer();
       HapticFeedback.mediumImpact();
-      
+
       debugPrint('✅ Recording started');
     } catch (e) {
       debugPrint('Error starting recording: $e');
@@ -205,13 +211,13 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
     try {
       final XFile videoFile = await _cameraController!.stopVideoRecording();
-      
+
       _recordingTimer?.cancel();
-      
+
       setState(() {
         _isRecording = false;
       });
-      
+
       // Navigate to RecordingPreviewView
       if (mounted) {
         // Navigator.of(context).push(
@@ -241,10 +247,12 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
         //   ),
         // );
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Video recording and editing features coming soon!')),
+          const SnackBar(
+              content:
+                  Text('Video recording and editing features coming soon!')),
         );
       }
-      
+
       HapticFeedback.mediumImpact();
       debugPrint('✅ Recording stopped: ${videoFile.path}');
     } catch (e) {
@@ -264,11 +272,12 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
   // Simple gallery picker (TikTok style - video only)
   Future<void> _pickFromGallery() async {
     try {
-      final XFile? video = await _imagePicker.pickVideo(source: ImageSource.gallery);
-      
+      final XFile? video =
+          await _imagePicker.pickVideo(source: ImageSource.gallery);
+
       if (video != null && mounted) {
         HapticFeedback.lightImpact();
-        
+
         // Navigate to RecordingPreviewView
         // Navigator.of(context).push(
         //   MaterialPageRoute(
@@ -306,7 +315,6 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
     }
   }
 
-
   void _toggleGrid() {
     setState(() {
       _showGrid = !_showGrid;
@@ -339,13 +347,13 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
         children: [
           // Full-screen, razor-sharp preview layout (no stretch, no blur)
           _buildFullScreenPreview(),
-          
+
           // Top Controls
           _buildTopControls(),
-          
+
           // Bottom Controls
           _buildBottomControls(),
-          
+
           // Grid Lines
           if (_showGrid) _buildGridLines(),
         ],
@@ -405,7 +413,8 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
               top: MediaQuery.of(context).padding.top + 120,
               right: 16,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(16),
@@ -449,19 +458,23 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
               ),
             ),
           ),
-          
+
           // Grid toggle
           GestureDetector(
             onTap: _toggleGrid,
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _showGrid ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.5),
+                color: _showGrid
+                    ? Colors.white.withValues(alpha: 0.2)
+                    : Colors.black.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.grid_on,
-                color: _showGrid ? Colors.white : Colors.white.withValues(alpha: 0.7),
+                color: _showGrid
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.7),
                 size: 24,
               ),
             ),
@@ -488,7 +501,8 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.3), width: 1),
               ),
               child: const Icon(
                 Icons.photo_library_outlined,
@@ -497,7 +511,7 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
               ),
             ),
           ),
-          
+
           // Record button
           GestureDetector(
             onTap: _isRecording ? _stopRecording : _startRecording,
@@ -530,7 +544,7 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
               ),
             ),
           ),
-          
+
           // Camera flip button
           GestureDetector(
             onTap: () {
@@ -543,7 +557,8 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.3), width: 1),
               ),
               child: const Icon(
                 Icons.flip_camera_ios_outlined,
