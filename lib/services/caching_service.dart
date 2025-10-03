@@ -11,7 +11,7 @@ class CachingService {
   CachingService._internal();
 
   SharedPreferences? _prefs;
-  Map<String, dynamic> _memoryCache = {};
+  final Map<String, dynamic> _memoryCache = {};
   static const int _maxMemoryCacheSize = 50;
   static const Duration _defaultCacheExpiry = Duration(hours: 24);
 
@@ -21,13 +21,14 @@ class CachingService {
   }
 
   // Memory Cache Management
-  Future<void> setMemoryCache(String key, dynamic value, {Duration? expiry}) async {
+  Future<void> setMemoryCache(String key, dynamic value,
+      {Duration? expiry}) async {
     try {
       final cacheItem = {
         'value': value,
-        'expiry': expiry != null 
-          ? DateTime.now().add(expiry).millisecondsSinceEpoch 
-          : DateTime.now().add(_defaultCacheExpiry).millisecondsSinceEpoch,
+        'expiry': expiry != null
+            ? DateTime.now().add(expiry).millisecondsSinceEpoch
+            : DateTime.now().add(_defaultCacheExpiry).millisecondsSinceEpoch,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       };
 
@@ -38,8 +39,9 @@ class CachingService {
       }
 
       _memoryCache[key] = cacheItem;
-      
-      LoggingService.instance.debug('Memory cache set: $key', tag: 'CachingService');
+
+      LoggingService.instance
+          .debug('Memory cache set: $key', tag: 'CachingService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to set memory cache',
@@ -78,20 +80,22 @@ class CachingService {
   }
 
   // Persistent Cache Management
-  Future<void> setPersistentCache(String key, dynamic value, {Duration? expiry}) async {
+  Future<void> setPersistentCache(String key, dynamic value,
+      {Duration? expiry}) async {
     try {
       final prefs = await this.prefs;
       final cacheItem = {
         'value': value,
-        'expiry': expiry != null 
-          ? DateTime.now().add(expiry).millisecondsSinceEpoch 
-          : DateTime.now().add(_defaultCacheExpiry).millisecondsSinceEpoch,
+        'expiry': expiry != null
+            ? DateTime.now().add(expiry).millisecondsSinceEpoch
+            : DateTime.now().add(_defaultCacheExpiry).millisecondsSinceEpoch,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       };
 
       await prefs.setString('cache_$key', jsonEncode(cacheItem));
-      
-      LoggingService.instance.debug('Persistent cache set: $key', tag: 'CachingService');
+
+      LoggingService.instance
+          .debug('Persistent cache set: $key', tag: 'CachingService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to set persistent cache',
@@ -110,7 +114,7 @@ class CachingService {
 
       final cacheItem = jsonDecode(cacheString);
       final now = DateTime.now().millisecondsSinceEpoch;
-      
+
       if (now > cacheItem['expiry']) {
         await prefs.remove('cache_$key');
         return null;
@@ -134,7 +138,8 @@ class CachingService {
       for (final key in keys) {
         await prefs.remove(key);
       }
-      LoggingService.instance.info('Persistent cache cleared', tag: 'CachingService');
+      LoggingService.instance
+          .info('Persistent cache cleared', tag: 'CachingService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to clear persistent cache',
@@ -165,22 +170,24 @@ class CachingService {
     }
   }
 
-  Future<void> setFileCache(String key, String content, {Duration? expiry}) async {
+  Future<void> setFileCache(String key, String content,
+      {Duration? expiry}) async {
     try {
       final cacheDir = await getCacheDirectory();
       final file = File('$cacheDir/$key');
-      
+
       final cacheItem = {
         'content': content,
-        'expiry': expiry != null 
-          ? DateTime.now().add(expiry).millisecondsSinceEpoch 
-          : DateTime.now().add(_defaultCacheExpiry).millisecondsSinceEpoch,
+        'expiry': expiry != null
+            ? DateTime.now().add(expiry).millisecondsSinceEpoch
+            : DateTime.now().add(_defaultCacheExpiry).millisecondsSinceEpoch,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       };
 
       await file.writeAsString(jsonEncode(cacheItem));
-      
-      LoggingService.instance.debug('File cache set: $key', tag: 'CachingService');
+
+      LoggingService.instance
+          .debug('File cache set: $key', tag: 'CachingService');
     } catch (e, stackTrace) {
       LoggingService.instance.error(
         'Failed to set file cache',
@@ -195,13 +202,13 @@ class CachingService {
     try {
       final cacheDir = await getCacheDirectory();
       final file = File('$cacheDir/$key');
-      
+
       if (!await file.exists()) return null;
 
       final content = await file.readAsString();
       final cacheItem = jsonDecode(content);
       final now = DateTime.now().millisecondsSinceEpoch;
-      
+
       if (now > cacheItem['expiry']) {
         await file.delete();
         return null;
@@ -243,7 +250,7 @@ class CachingService {
       final hash = md5.convert(utf8.encode(imageUrl)).toString();
       final cacheDir = await getCacheDirectory();
       final imageFile = File('$cacheDir/images/$hash');
-      
+
       if (await imageFile.exists()) {
         return imageFile.path;
       }
@@ -263,15 +270,16 @@ class CachingService {
       final hash = md5.convert(utf8.encode(imageUrl)).toString();
       final cacheDir = await getCacheDirectory();
       final imagesDir = Directory('$cacheDir/images');
-      
+
       if (!await imagesDir.exists()) {
         await imagesDir.create(recursive: true);
       }
 
       final imageFile = File('${imagesDir.path}/$hash');
       await imageFile.writeAsBytes(imageBytes);
-      
-      LoggingService.instance.debug('Image cached: $imageUrl', tag: 'CachingService');
+
+      LoggingService.instance
+          .debug('Image cached: $imageUrl', tag: 'CachingService');
       return imageFile.path;
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -289,7 +297,7 @@ class CachingService {
     try {
       final prefs = await this.prefs;
       final keys = prefs.getKeys().where((key) => key.startsWith('cache_'));
-      
+
       int expiredCount = 0;
       int validCount = 0;
       final now = DateTime.now().millisecondsSinceEpoch;

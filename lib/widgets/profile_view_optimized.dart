@@ -29,21 +29,22 @@ class ProfileViewOptimized extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<ProfileViewOptimized> createState() => _ProfileViewOptimizedState();
+  ConsumerState<ProfileViewOptimized> createState() =>
+      _ProfileViewOptimizedState();
 }
 
-class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized> 
+class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     with TickerProviderStateMixin {
   late AnimationController _segmentedController;
-  
+
   // Stats tracking
   int _followersCount = 0;
   int _followingCount = 0;
   int _postsCount = 0;
-  
+
   // Test flag to show if stats are loading
   bool _statsLoaded = false;
-  
+
   // Stream subscriptions for stats
   StreamSubscription<QuerySnapshot>? _followersSubscription;
   StreamSubscription<QuerySnapshot>? _followingSubscription;
@@ -74,10 +75,10 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       curve: Curves.easeInOut,
     ));
     _profileUpdateService = ProfileUpdateService();
-    
+
     // Listen for profile updates
     _profileUpdateService?.addProfileViewListener(_onProfileUpdated);
-    
+
     // Load stats
     _loadStats();
   }
@@ -87,23 +88,13 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _profileUpdateService?.removeProfileViewListener(_onProfileUpdated);
     _segmentedController.dispose();
     _flipController.dispose();
-    
+
     // Cancel stats subscriptions
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
     _postsSubscription?.cancel();
-    
+
     super.dispose();
-  }
-
-  @override
-  void activate() {
-    super.activate();
-  }
-
-  @override
-  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
   }
 
   void _onProfileUpdated() {
@@ -119,16 +110,16 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     if (widget.user.id.isEmpty) {
       return;
     }
-    
+
     setState(() {
       _statsLoaded = true;
     });
-    
+
     // Cancel existing subscriptions
     _postsSubscription?.cancel();
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
-    
+
     // Load posts count
     _postsSubscription = FirebaseFirestore.instance
         .collection('users')
@@ -223,98 +214,98 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   // List<String> _parseHashtags(dynamic hashtagsData) {
   //   if (hashtagsData == null) return [];
-  //   
+  //
   //   if (hashtagsData is List<dynamic>) {
   //     return hashtagsData.cast<String>();
   //   } else if (hashtagsData is String) {
   //     // Handle comma-separated string like "Badge, chill"
   //     return hashtagsData.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
   //   }
-  //   
+  //
   //   return [];
   // }
 
   void _openStreamerCard() {
     if (kDebugMode) {
-    // print('ProfileView: StreamerCard button tapped');
+      // print('ProfileView: StreamerCard button tapped');
     }
     HapticFeedback.lightImpact();
-    
+
     try {
       // Convert user data to StreamerCard
       // final userData = _currentUserData;
       if (kDebugMode) {
-    // print('ProfileView: User data keys: ${userData.keys}');
+        // print('ProfileView: User data keys: ${userData.keys}');
       }
-    // final streamerCard = StreamerCard(
-    //   id: userData['id'] as String? ?? '',
-    //   displayName: userData['displayName'] as String? ?? '',
-    //   username: userData['username'] as String? ?? '',
-    //   bio: userData['bio'] as String? ?? '',
-    //   avatarURL: userData['avatarUrl'] as String?,
-    //   platforms: (userData['platforms'] as List<dynamic>?)?.map((p) {
-    //     final platformMap = p as Map<String, dynamic>;
-    //     return Platform(
-    //       id: platformMap['id'] as String? ?? '',
-    //       type: _parsePlatformType(platformMap['type'] as String? ?? ''),
-    //       username: platformMap['username'] as String? ?? '',
-    //       followers: (platformMap['followers'] as num?)?.toInt() ?? 0,
-    //       url: platformMap['url'] as String?,
-    //     );
-    //   }).toList() ?? [],
-    //   hashtags: _parseHashtags(userData['hashtags']),
-    //   calendarEvents: (userData['calendarEvents'] as List<dynamic>?)?.map((e) {
-    //     final eventMap = e as Map<String, dynamic>;
-    //     return CalendarEvent(
-    //       id: eventMap['id'] as String? ?? '',
-    //       title: eventMap['title'] as String? ?? '',
-    //       description: eventMap['description'] as String? ?? '',
-    //       date: (eventMap['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    //     );
-    //   }).toList() ?? [],
-    //   onlineStatus: userData['status'] as String? ?? 'offline',
-    // );
-    
+      // final streamerCard = StreamerCard(
+      //   id: userData['id'] as String? ?? '',
+      //   displayName: userData['displayName'] as String? ?? '',
+      //   username: userData['username'] as String? ?? '',
+      //   bio: userData['bio'] as String? ?? '',
+      //   avatarURL: userData['avatarUrl'] as String?,
+      //   platforms: (userData['platforms'] as List<dynamic>?)?.map((p) {
+      //     final platformMap = p as Map<String, dynamic>;
+      //     return Platform(
+      //       id: platformMap['id'] as String? ?? '',
+      //       type: _parsePlatformType(platformMap['type'] as String? ?? ''),
+      //       username: platformMap['username'] as String? ?? '',
+      //       followers: (platformMap['followers'] as num?)?.toInt() ?? 0,
+      //       url: platformMap['url'] as String?,
+      //     );
+      //   }).toList() ?? [],
+      //   hashtags: _parseHashtags(userData['hashtags']),
+      //   calendarEvents: (userData['calendarEvents'] as List<dynamic>?)?.map((e) {
+      //     final eventMap = e as Map<String, dynamic>;
+      //     return CalendarEvent(
+      //       id: eventMap['id'] as String? ?? '',
+      //       title: eventMap['title'] as String? ?? '',
+      //       description: eventMap['description'] as String? ?? '',
+      //       date: (eventMap['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      //     );
+      //   }).toList() ?? [],
+      //   onlineStatus: userData['status'] as String? ?? 'offline',
+      // );
+
       if (kDebugMode) {
-    // print('ProfileView: Navigating to StreamerCardView');
+        // print('ProfileView: Navigating to StreamerCardView');
       }
-      
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => StreamerCardView(
-          userId: widget.user.id,
-          currentUserId: _profileUpdateService?.currentUser?.uid,
-          onDismiss: () => Navigator.of(context).pop(),
-          onFollow: (userId) {
-            // Handle follow action
-            HapticFeedback.lightImpact();
-            if (kDebugMode) {
-    // print('ProfileView: Follow action triggered for user: $userId');
-            }
-            // TODO: Implement follow functionality
-          },
-          onMessage: (userId) {
-            // Handle message action
-            HapticFeedback.lightImpact();
-            if (kDebugMode) {
-    // print('ProfileView: Message action triggered for user: $userId');
-            }
-            // TODO: Implement message functionality
-          },
-          onShare: (userId) {
-            // Handle share action
-            HapticFeedback.lightImpact();
-            if (kDebugMode) {
-    // print('ProfileView: Share action triggered for user: $userId');
-            }
-            // TODO: Implement share functionality
-          },
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => StreamerCardView(
+            userId: widget.user.id,
+            currentUserId: _profileUpdateService?.currentUser?.uid,
+            onDismiss: () => Navigator.of(context).pop(),
+            onFollow: (userId) {
+              // Handle follow action
+              HapticFeedback.lightImpact();
+              if (kDebugMode) {
+                // print('ProfileView: Follow action triggered for user: $userId');
+              }
+              // Follow functionality - placeholder for future implementation
+            },
+            onMessage: (userId) {
+              // Handle message action
+              HapticFeedback.lightImpact();
+              if (kDebugMode) {
+                // print('ProfileView: Message action triggered for user: $userId');
+              }
+              // Message functionality - placeholder for future implementation
+            },
+            onShare: (userId) {
+              // Handle share action
+              HapticFeedback.lightImpact();
+              if (kDebugMode) {
+                // print('ProfileView: Share action triggered for user: $userId');
+              }
+              // Share functionality - placeholder for future implementation
+            },
+          ),
         ),
-      ),
-    );
+      );
     } catch (e) {
       if (kDebugMode) {
-    // print('ProfileView: Error opening StreamerCard: $e');
+        // print('ProfileView: Error opening StreamerCard: $e');
       }
       // Show error to user
       ScaffoldMessenger.of(context).showSnackBar(
@@ -331,34 +322,39 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     try {
       // Check if this is the current user by comparing user IDs
       final currentUserId = _profileUpdateService?.currentUser?.uid;
-      final isCurrentUser = currentUserId != null && currentUserId == widget.user.id;
-      
+      final isCurrentUser =
+          currentUserId != null && currentUserId == widget.user.id;
+
       // If this is the current user, get data from ProfileUpdateService
       if (isCurrentUser && _profileUpdateService?.isDataLoaded == true) {
-        _cachedUserData = _profileUpdateService?.userData ?? widget.user.toMap();
+        _cachedUserData =
+            _profileUpdateService?.userData ?? widget.user.toMap();
         if (kDebugMode) {
-          debugPrint('ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
+          debugPrint(
+              'ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
         }
-        
+
         // Save main user avatar for persistence
-        final avatarUrl = _cachedUserData?['avatarURL'] ?? widget.user.avatarURL;
+        final avatarUrl =
+            _cachedUserData?['avatarURL'] ?? widget.user.avatarURL;
         if (avatarUrl != null && avatarUrl.isNotEmpty) {
           UnifiedAvatarService().saveMainUserAvatar(avatarUrl);
         }
-        
+
         return _cachedUserData!;
       }
       // Otherwise use the widget user data
       _cachedUserData = widget.user.toMap();
       if (kDebugMode) {
-        debugPrint('ProfileView: Using widget user data: ${_cachedUserData?.keys}');
+        debugPrint(
+            'ProfileView: Using widget user data: ${_cachedUserData?.keys}');
       }
-      
+
       // Save main user avatar for persistence if this is the current user
       if (isCurrentUser && widget.user.avatarURL?.isNotEmpty == true) {
         UnifiedAvatarService().saveMainUserAvatar(widget.user.avatarURL!);
       }
-      
+
       return _cachedUserData!;
     } catch (e, stackTrace) {
       if (kDebugMode) {
@@ -403,25 +399,29 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         _loadStats();
       }
     });
-    
+
     // debugPrint('🔧 ProfileView: Building ProfileViewOptimized for user: ${widget.user.id}');
-    
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBody: true,
-      extendBodyBehindAppBar: true, // FIXED: Extend behind status bar for full gradient
-      floatingActionButton: widget.isCurrentUser ? FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const SetupHashtagPermissionsWidget(),
-            ),
-          );
-        },
-        backgroundColor: Colors.orange,
-        child: const Icon(Icons.admin_panel_settings, color: Colors.white),
-      ) : null,
+      extendBodyBehindAppBar:
+          true, // FIXED: Extend behind status bar for full gradient
+      floatingActionButton: widget.isCurrentUser
+          ? FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SetupHashtagPermissionsWidget(),
+                  ),
+                );
+              },
+              backgroundColor: Colors.orange,
+              child:
+                  const Icon(Icons.admin_panel_settings, color: Colors.white),
+            )
+          : null,
       body: AnimatedBuilder(
         animation: _flipAnimation,
         builder: (context, child) {
@@ -460,7 +460,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       ),
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        extendBodyBehindAppBar: true, // FIXED: Extend behind status bar for full gradient
+        extendBodyBehindAppBar:
+            true, // FIXED: Extend behind status bar for full gradient
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -489,7 +490,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
               ),
               onPressed: () {
                 if (kDebugMode) {
-    // print('ProfileView: Card button onPressed called');
+                  // print('ProfileView: Card button onPressed called');
                 }
                 // Show immediate feedback
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -504,7 +505,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             IconButton(
               icon: Icon(
                 Icons.more_horiz,
-                color: Colors.white.withValues(alpha:0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 size: 24,
               ),
               onPressed: () {
@@ -518,7 +519,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             ),
           ],
         ),
-        body: SafeArea( // FIXED: SafeArea around body content only
+        body: SafeArea(
+          // FIXED: SafeArea around body content only
           child: SingleChildScrollView(
             child: Column(
               children: [
@@ -575,19 +577,21 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             ),
           ),
           child: Center(
-          child: Container(
+            child: Container(
               width: 104,
               height: 104,
               decoration: BoxDecoration(
-              shape: BoxShape.circle,
+                shape: BoxShape.circle,
                 color: Colors.black.withValues(alpha: 0.2),
               ),
               child: ClipOval(
-                child: _currentUserData['avatarURL'] != null && _currentUserData['avatarURL'].toString().isNotEmpty
+                child: _currentUserData['avatarURL'] != null &&
+                        _currentUserData['avatarURL'].toString().isNotEmpty
                     ? Image.network(
                         _currentUserData['avatarURL'],
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
                           Icons.person,
                           color: Colors.white,
                           size: 48,
@@ -606,8 +610,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         if (widget.isCurrentUser)
           Consumer(
             builder: (context, ref, child) {
-              final statusAsync = ref.watch(userStatusProvider(_currentUserData['id'] ?? ''));
-              
+              final statusAsync =
+                  ref.watch(userStatusProvider(_currentUserData['id'] ?? ''));
+
               return statusAsync.when(
                 data: (presence) {
                   if (presence.status != UserStatus.offline) {
@@ -623,7 +628,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                           border: Border.all(color: Colors.white, width: 2),
                           boxShadow: [
                             BoxShadow(
-                              color: _getStatusColor(presence.status).withValues(alpha: 0.5),
+                              color: _getStatusColor(presence.status)
+                                  .withValues(alpha: 0.5),
                               blurRadius: 6,
                             ),
                           ],
@@ -658,7 +664,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         Text(
           '@${_currentUserData['username'] ?? 'unknown'}',
           style: TextStyle(
-            color: Colors.white.withValues(alpha:0.75),
+            color: Colors.white.withValues(alpha: 0.75),
             fontSize: 18,
             fontWeight: FontWeight.w600,
             height: 1.0,
@@ -672,7 +678,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     return Consumer(
       builder: (context, ref, child) {
         // Stats row building
-        
+
         // Show loading indicator if stats haven't loaded yet
         if (!_statsLoaded) {
           return Row(
@@ -686,7 +692,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             ],
           );
         }
-        
+
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -700,8 +706,6 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       },
     );
   }
-
-
 
   Widget _buildStatItem(String label, String value) {
     return Column(
@@ -719,7 +723,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha:0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             fontSize: 16,
             fontWeight: FontWeight.w600,
             height: 1.0,
@@ -811,10 +815,10 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       height: 56,
       margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha:0.15),
+          color: Colors.white.withValues(alpha: 0.15),
           width: 1,
         ),
       ),
@@ -830,7 +834,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   Widget _buildTab(String label, int index) {
     final isSelected = _selectedTabIndex == index;
-    
+
     return Expanded(
       child: GestureDetector(
         onTap: () => _onTabSelected(index),
@@ -839,11 +843,13 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
           curve: Curves.easeInOut,
           margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white.withValues(alpha:0.08) : Colors.transparent,
+            color: isSelected
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: isSelected
                 ? Border.all(
-                    color: Colors.white.withValues(alpha:0.25),
+                    color: Colors.white.withValues(alpha: 0.25),
                     width: 1,
                   )
                 : null,
@@ -852,7 +858,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             child: AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.7),
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -926,5 +934,4 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         return const Color(0xFF9C27B0); // Purple
     }
   }
-
 }

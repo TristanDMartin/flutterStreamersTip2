@@ -8,14 +8,17 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// cspell:ignore unmuted unmuting HOMEVIEW
 import '../models/home_video.dart';
 import '../providers/home_provider.dart';
 import '../providers/following_provider.dart';
 import '../services/performance_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/robust_auth_service.dart';
-import '../services/like_service.dart';
+import '../services/enhanced_like_service.dart';
+import '../widgets/enhanced_like_button.dart';
 import '../services/video_performance_service.dart';
+import '../services/audio_enhancement_service.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_share_sheet.dart';
 
@@ -58,7 +61,7 @@ class GlobalVideoController {
   /// SIMPLIFIED: Pause HomeView videos only - used when navigating away from HomeView
   static void disposeAllVideos() {
     _shouldPauseHomeViewVideos = true;
-    log('⏸️ GlobalVideoController: PAUSE HOMVIEW VIDEOS - stopping HomeView audio streams');
+    log('⏸️ GlobalVideoController: PAUSE HOMEVIEW VIDEOS - stopping HomeView audio streams');
     // Reset after a short delay
     Future.delayed(const Duration(milliseconds: 100), () {
       _shouldPauseHomeViewVideos = false;
@@ -132,6 +135,9 @@ class _VideoPlayerViewOptimizedState
   // Track last tap position for floating hearts
   Offset _lastTapPosition = Offset.zero;
 
+  // Key for like button (for floating hearts animation)
+  final GlobalKey _likeButtonKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -189,16 +195,18 @@ class _VideoPlayerViewOptimizedState
     // SIMPLE: React when the page becomes current/non-current
     if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
       if (widget.isCurrentVideo) {
-        // This video is now current - play it
-        _videoPlayerController!.setVolume(1.0);
-        setState(() => _audioUnmuted = true);
+        // This video is now current - play it with TikTok-style audio enhancement
+        _applyAudioEnhancement().then((_) {
+          _videoPlayerController!.setVolume(1.0);
+          setState(() => _audioUnmuted = true);
 
-        _videoPlayerController!.play();
-        setState(() => _isPlaying = true);
+          _videoPlayerController!.play();
+          setState(() => _isPlaying = true);
 
-        log('🔊 Video became current and is now playing: ${widget.video.id}');
-        debugPrint(
-            '🔊 Video became current and is now playing: ${widget.video.id}');
+          log('🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
+          debugPrint(
+              '🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
+        });
       } else {
         // This video is no longer current - pause it immediately
         _videoPlayerController!.pause();
@@ -224,15 +232,18 @@ class _VideoPlayerViewOptimizedState
         break;
       case AppLifecycleState.resumed:
         if (widget.isCurrentVideo) {
-          // Auto-unmute audio when app resumes (instant audio)
-          _videoPlayerController!.setVolume(1.0);
-          setState(() => _audioUnmuted = true);
+          // Auto-unmute audio when app resumes with TikTok-style enhancement
+          _applyAudioEnhancement().then((_) {
+            _videoPlayerController!.setVolume(1.0);
+            setState(() => _audioUnmuted = true);
 
-          _videoPlayerController!.play();
-          setState(() => _isPlaying = true);
+            _videoPlayerController!.play();
+            setState(() => _isPlaying = true);
 
-          log('🔊 Auto-unmuted audio on app resume: ${widget.video.id}');
-          debugPrint('🔊 Auto-unmuted audio on app resume: ${widget.video.id}');
+            log('🔊 Auto-unmuted audio on app resume with enhanced audio: ${widget.video.id}');
+            debugPrint(
+                '🔊 Auto-unmuted audio on app resume with enhanced audio: ${widget.video.id}');
+          });
         }
         break;
       case AppLifecycleState.detached:
@@ -389,6 +400,25 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
+  /// Apply TikTok-style audio enhancement to the current video
+  Future<void> _applyAudioEnhancement() async {
+    try {
+      if (_videoPlayerController == null || !_isInitialized) return;
+
+      // Initialize audio enhancement service
+      final audioEnhancement = AudioEnhancementService();
+      await audioEnhancement.initialize();
+
+      // Apply audio enhancement to the video player
+      await audioEnhancement.enhanceVideoPlayer(_videoPlayerController!);
+
+      log('🔊 AudioEnhancementService: Applied TikTok-style audio enhancement to video: ${widget.video.id}');
+    } catch (e) {
+      log('❌ AudioEnhancementService: Error applying audio enhancement: $e');
+      // Don't fail video playback if audio enhancement fails
+    }
+  }
+
   void _videoErrorListener() {
     if (_videoPlayerController?.value.hasError == true) {
       final error = _videoPlayerController?.value.errorDescription ??
@@ -443,8 +473,11 @@ class _VideoPlayerViewOptimizedState
   Future<void> _togglePlayPause() async {
     if (_videoPlayerController == null || !_isInitialized) return;
 
-    // Unmute audio on first user interaction
+    // Unmute audio on first user interaction with TikTok-style enhancement
     if (!_audioUnmuted) {
+      // Apply audio enhancement before unmuting
+      await _applyAudioEnhancement();
+
       // Try multiple approaches to ensure audio works
       await _videoPlayerController!.setVolume(1.0);
 
@@ -517,12 +550,24 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
-  void _handleLikeChanged() {
-    // Update the video's like state in the parent
-    if (widget.homeViewModel.updateVideoLikeState != null) {
-      widget.homeViewModel.updateVideoLikeState!(widget.video.id);
+  void _handleLikeChanged() async {
+    // Sync the parent state with the enhanced service
+    try {
+      // Use the new sync method to get the correct state from the service
+      await widget.homeViewModel.setVideoLikeStateFromService(widget.video.id);
+
+      // Force a rebuild to ensure UI updates immediately
+      setState(() {
+        // The EnhancedLikeButton will handle its own state updates
+        // This ensures the parent widget also updates
+      });
+    } catch (e) {
+      // Fallback to simple toggle if enhanced service fails
+      if (widget.homeViewModel.updateVideoLikeState != null) {
+        widget.homeViewModel.updateVideoLikeState!(widget.video.id);
+      }
+      setState(() {});
     }
-    setState(() {});
   }
 
   Future<void> _handleFavoriteChanged() async {
@@ -615,12 +660,6 @@ class _VideoPlayerViewOptimizedState
     } catch (error) {
       debugPrint("Error incrementing view count: $error");
     }
-  }
-
-  void _handleLike() {
-    // Handle like button tap
-    HapticFeedback.lightImpact();
-    _handleLikeChanged();
   }
 
   void _handleComment() {
@@ -756,8 +795,8 @@ class _VideoPlayerViewOptimizedState
     // Double tap anywhere on video to like/unlike
     HapticFeedback.lightImpact();
 
-    // Trigger the like button programmatically
-    _triggerLikeButton();
+    // Trigger the enhanced like button programmatically
+    _triggerEnhancedLikeButton();
   }
 
   void _handleDoubleTapDown(TapDownDetails details) {
@@ -765,39 +804,28 @@ class _VideoPlayerViewOptimizedState
     _lastTapPosition = details.globalPosition;
   }
 
-  void _triggerLikeButton() {
-    // Update the video's like state immediately
-    if (widget.homeViewModel.updateVideoLikeState != null) {
-      widget.homeViewModel.updateVideoLikeState!(widget.video.id);
-    }
-
-    // Update local state
-    setState(() {
-      // The OptimizedLikeButton will handle the actual like logic
-      // We just need to trigger the visual update
-    });
-
-    // Trigger the like service directly
-    _performLikeToggle();
+  void _triggerEnhancedLikeButton() {
+    // Trigger the enhanced like service directly for double-tap
+    _performEnhancedLikeToggle();
   }
 
-  Future<void> _performLikeToggle() async {
+  Future<void> _performEnhancedLikeToggle() async {
     try {
-      // Import the LikeService
-      final likeService = LikeService();
+      final enhancedLikeService = EnhancedLikeService();
 
-      // Toggle the like state
-      await likeService.toggleLike(widget.video.id);
+      // Toggle like with enhanced service
+      final result = await enhancedLikeService.toggleLike(widget.video.id,
+          source: 'double-tap');
 
-      // Track engagement
-      likeService.trackLikeEngagement(widget.video.id, !widget.video.isLiked);
+      if (result == LikeResult.success) {
+        // Update parent state
+        _handleLikeChanged();
 
-      // Create floating hearts animation if liking
-      if (!widget.video.isLiked) {
-        _createFloatingHearts();
+        // Create enhanced floating hearts animation
+        _createEnhancedFloatingHearts();
       }
     } catch (e) {
-      // Error toggling like: $e
+      log('❌ Error in enhanced like toggle: $e');
     }
   }
 
@@ -821,18 +849,23 @@ class _VideoPlayerViewOptimizedState
     });
   }
 
-  void _createFloatingHearts() {
-    // Use the actual tap position for floating hearts animation
-    final tapPosition = _lastTapPosition;
+  void _createEnhancedFloatingHearts() {
+    // Use the like button position for enhanced floating hearts
+    final renderBox =
+        _likeButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final origin = renderBox != null
+        ? renderBox.localToGlobal(
+            Offset(renderBox.size.width / 2, renderBox.size.height / 2))
+        : _lastTapPosition;
 
-    // Create multiple hearts with staggered timing
-    for (int i = 0; i < 3; i++) {
-      Future.delayed(Duration(milliseconds: i * 100), () {
-        if (mounted) {
-          _showFloatingHeart(tapPosition);
-        }
-      });
-    }
+    // Create enhanced floating hearts with better animation
+    EnhancedFloatingHearts.createFloatingHearts(
+      context,
+      origin,
+      () {
+        log('💖 Enhanced floating hearts animation completed');
+      },
+    );
   }
 
   /// Build play/pause indicator overlay with TikTok-style animation
@@ -860,23 +893,6 @@ class _VideoPlayerViewOptimizedState
         ),
       ),
     );
-  }
-
-  void _showFloatingHeart(Offset position) {
-    // Show a temporary floating heart overlay
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.transparent,
-      builder: (context) => _FloatingHeartOverlay(position: position),
-    );
-
-    // Remove the overlay after animation
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    });
   }
 
   @override
@@ -970,7 +986,7 @@ class _VideoPlayerViewOptimizedState
             !_isDisposed) {
           _lastGlobalShouldPauseAllVideos = true;
           // IMMEDIATE pause - stops audio instantly
-          print(
+          debugPrint(
               '⏸️ Video paused due to GlobalVideoController: ${widget.video.id}');
           log('⏸️ Video paused due to GlobalVideoController: ${widget.video.id}');
           // CRITICAL: Mute audio first, then pause video
@@ -1075,29 +1091,33 @@ class _VideoPlayerViewOptimizedState
           _lastGlobalShouldResumeCurrentVideo = false;
         }
 
-        return GestureDetector(
-          onTap: _handleTap,
-          onDoubleTap: _handleDoubleTap,
-          onDoubleTapDown: _handleDoubleTapDown,
-          child: Container(
-            width: double.infinity,
-            height: double.infinity,
-            color: Colors.black,
-            child: Stack(
-              children: [
-                // TIKTOK-STYLE: Always show video player, no placeholder delay
-                _buildVideoPlayer(),
+        return Container(
+          width: double.infinity,
+          height: double.infinity,
+          color: Colors.black,
+          child: Stack(
+            children: [
+              // TIKTOK-STYLE: Always show video player, no placeholder delay
+              GestureDetector(
+                onTap: _handleTap,
+                onDoubleTap: _handleDoubleTap,
+                onDoubleTapDown: _handleDoubleTapDown,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: _buildVideoPlayer(),
+                ),
+              ),
 
-                // UI Overlay
-                _buildUIOverlay(),
+              // UI Overlay (positioned above gesture detector)
+              _buildUIOverlay(),
 
-                // Action buttons overlay
-                _buildActionButtons(),
+              // Action buttons overlay (positioned above gesture detector)
+              _buildActionButtons(),
 
-                // Play/Pause indicator overlay
-                if (_showPlayPauseIndicatorOverlay) _buildPlayPauseIndicator(),
-              ],
-            ),
+              // Play/Pause indicator overlay
+              if (_showPlayPauseIndicatorOverlay) _buildPlayPauseIndicator(),
+            ],
           ),
         );
       },
@@ -1345,12 +1365,14 @@ class _VideoPlayerViewOptimizedState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Like button
-          _buildActionButton(
-            icon: widget.isLiked ? Icons.favorite : Icons.favorite_border,
-            count: widget.video.likes.toString(),
-            onTap: _handleLike,
-            isActive: widget.isLiked,
+          // Enhanced Like button with animations
+          EnhancedLikeButton(
+            videoId: widget.video.id,
+            initialLikeCount: widget.video.likes,
+            initialIsLiked: widget.isLiked,
+            onLikeChanged: _handleLikeChanged,
+            iconKey: _likeButtonKey,
+            source: 'button',
           ),
           const SizedBox(height: 16),
 

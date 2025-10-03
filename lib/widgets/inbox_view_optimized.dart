@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/chat.dart' as app_chat;
@@ -21,7 +20,7 @@ class InboxViewOptimized extends ConsumerStatefulWidget {
   ConsumerState<InboxViewOptimized> createState() => _InboxViewOptimizedState();
 }
 
-class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized> 
+class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     with TickerProviderStateMixin {
   late TabController _tabController;
   final InboxServiceOptimized _inboxService = InboxServiceOptimized();
@@ -56,9 +55,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    
+
     _initializeRealTimeUpdates();
-    
+
     // Mark all messages as read when InboxView is opened
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await UnreadMessagesService.markAllVisibleAsRead();
@@ -73,16 +72,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     _searchController.dispose();
     _inboxService.stopRealTimeListeners();
     super.dispose();
-  }
-
-  @override
-  void activate() {
-    super.activate();
-  }
-
-  @override
-  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
   }
 
   void _initializeRealTimeUpdates() async {
@@ -147,19 +136,22 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             bio: data['bio'],
             avatarURL: data['avatarURL'],
             onlineStatus: data['onlineStatus'] ?? 'offline',
-            hashtags: data['hashtags'] is List ? List<String>.from(data['hashtags']) : [],
+            hashtags: data['hashtags'] is List
+                ? List<String>.from(data['hashtags'])
+                : [],
             aiSelf: data['aiSelf'] ?? '',
             postCount: data['postCount'] ?? 0,
             followerCount: data['followerCount'] ?? 0,
             followingCount: data['followingCount'] ?? 0,
             calendarEvents: [],
           );
-          
+
           setState(() {
             _userProfiles[otherUserId] = updatedUser;
           });
-          
-          debugPrint('InboxView: Updated user profile for $otherUserId - displayName: ${updatedUser.displayName}, username: ${updatedUser.username}');
+
+          debugPrint(
+              'InboxView: Updated user profile for $otherUserId - displayName: ${updatedUser.displayName}, username: ${updatedUser.username}');
         }
       });
     }
@@ -169,14 +161,17 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     try {
       // Check if data is stale
       final isStale = await _offlineService.isDataStale();
-      
+
       if (!isStale) {
         // Load cached data
         final cachedChats = await _offlineService.getCachedChats();
         final cachedDrafts = await _offlineService.getCachedDrafts();
-        final cachedUserProfiles = await _offlineService.getCachedUserProfiles();
-        final cachedUnreadCounts = await _offlineService.getCachedUnreadCounts();
-        final cachedOnlineStatus = await _offlineService.getCachedOnlineStatus();
+        final cachedUserProfiles =
+            await _offlineService.getCachedUserProfiles();
+        final cachedUnreadCounts =
+            await _offlineService.getCachedUnreadCounts();
+        final cachedOnlineStatus =
+            await _offlineService.getCachedOnlineStatus();
 
         if (mounted) {
           setState(() {
@@ -204,7 +199,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
     try {
       LoggingService.instance.info('Loading inbox data');
-      
+
       // Load chats and drafts in parallel
       final results = await Future.wait([
         _inboxService.getChats(),
@@ -224,8 +219,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         _filteredDrafts = drafts;
         _isLoading = false;
       });
-      
-      LoggingService.instance.info('Inbox data loaded successfully: ${_chats.length} chats, ${_sharedDrafts.length} drafts');
+
+      LoggingService.instance.info(
+          'Inbox data loaded successfully: ${_chats.length} chats, ${_sharedDrafts.length} drafts');
     } catch (e) {
       LoggingService.instance.error('Error loading inbox data: $e');
       setState(() {
@@ -243,7 +239,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
     // Load user profiles and unread counts in parallel
     final futures = <Future>[];
-    
+
     for (final chat in chats) {
       // Get other user ID
       final otherUserId = chat.participants.firstWhere(
@@ -256,7 +252,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       // Load user profile
       futures.add(_inboxService.getUserProfile(otherUserId).then((user) {
         if (user != null) {
-          debugPrint('InboxView: Loaded user profile - displayName: ${user.displayName}, username: ${user.username}, avatarURL: ${user.avatarURL}');
+          debugPrint(
+              'InboxView: Loaded user profile - displayName: ${user.displayName}, username: ${user.username}, avatarURL: ${user.avatarURL}');
           _userProfiles[otherUserId] = user;
         } else {
           debugPrint('InboxView: Failed to load user profile for $otherUserId');
@@ -264,8 +261,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       }));
 
       // Load unread count
-      futures.add(_inboxService.getUnreadCount(chat.id ?? '').then((count) {
-        _unreadCounts[chat.id ?? ''] = count;
+      futures
+          .add(_inboxService.getUnreadCount(chat.id ?? '').then((unreadCount) {
+        _unreadCounts[chat.id ?? ''] = unreadCount;
       }));
 
       // Load online status
@@ -275,9 +273,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
 
     await Future.wait(futures);
-    
+
     debugPrint('InboxView: Loaded ${_userProfiles.length} user profiles');
-    
+
     // Cache user data offline
     await _offlineService.cacheUserProfiles(_userProfiles);
     await _offlineService.cacheUnreadCounts(_unreadCounts);
@@ -295,32 +293,33 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         _filteredDrafts = _sharedDrafts;
       } else {
         final lowerQuery = query.toLowerCase();
-        
+
         // Enhanced chat filtering with user names
         _filteredChats = _chats.where((chat) {
           final currentUser = _inboxService.auth.currentUser;
           if (currentUser == null) return false;
-          
+
           final otherUserId = chat.participants.firstWhere(
             (id) => id != currentUser.uid,
             orElse: () => chat.participants.first,
           );
-          
+
           final userProfile = _userProfiles[otherUserId];
-          final userName = userProfile?.displayName ?? userProfile?.username ?? '';
+          final userName =
+              userProfile?.displayName ?? userProfile?.username ?? '';
           final lastMessage = chat.lastMessage ?? '';
-          
+
           return userName.toLowerCase().contains(lowerQuery) ||
-                 lastMessage.toLowerCase().contains(lowerQuery) ||
-                 otherUserId.toLowerCase().contains(lowerQuery);
+              lastMessage.toLowerCase().contains(lowerQuery) ||
+              otherUserId.toLowerCase().contains(lowerQuery);
         }).toList();
-        
+
         // Enhanced draft filtering
         _filteredDrafts = _sharedDrafts.where((draft) {
           return draft.draftTitle.toLowerCase().contains(lowerQuery) ||
-                 (draft.message?.toLowerCase().contains(lowerQuery) ?? false) ||
-                 draft.senderName.toLowerCase().contains(lowerQuery) ||
-                 draft.receiverId.toLowerCase().contains(lowerQuery);
+              (draft.message?.toLowerCase().contains(lowerQuery) ?? false) ||
+              draft.senderName.toLowerCase().contains(lowerQuery) ||
+              draft.receiverId.toLowerCase().contains(lowerQuery);
         }).toList();
       }
     });
@@ -375,7 +374,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                   HapticFeedback.lightImpact();
                   Navigator.of(context).pop();
                 },
-                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+                icon: const Icon(Icons.arrow_back_ios_new,
+                    color: Colors.white, size: 20),
                 padding: const EdgeInsets.all(8),
               ),
               const SizedBox(width: 16),
@@ -465,7 +465,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: _selectedItems.length == (_tabController.index == 0 ? _filteredChats.length : _filteredDrafts.length)
+                            onPressed: _selectedItems.length ==
+                                    (_tabController.index == 0
+                                        ? _filteredChats.length
+                                        : _filteredDrafts.length)
                                 ? () {
                                     setState(() {
                                       _selectedItems.clear();
@@ -473,19 +476,26 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                                   }
                                 : _selectAll,
                             icon: Icon(
-                              _selectedItems.length == (_tabController.index == 0 ? _filteredChats.length : _filteredDrafts.length)
+                              _selectedItems.length ==
+                                      (_tabController.index == 0
+                                          ? _filteredChats.length
+                                          : _filteredDrafts.length)
                                   ? Icons.deselect
                                   : Icons.select_all,
                               size: 16,
                             ),
                             label: Text(
-                              _selectedItems.length == (_tabController.index == 0 ? _filteredChats.length : _filteredDrafts.length)
+                              _selectedItems.length ==
+                                      (_tabController.index == 0
+                                          ? _filteredChats.length
+                                          : _filteredDrafts.length)
                                   ? 'Deselect All'
                                   : 'Select All',
                               style: const TextStyle(fontSize: 12),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white.withValues(alpha: 0.1),
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.1),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -510,7 +520,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
                               ),
                             ),
                           ),
@@ -561,7 +572,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         controller: _searchController,
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
-          hintText: _tabController.index == 0 ? 'Search conversations...' : 'Search drafts...',
+          hintText: _tabController.index == 0
+              ? 'Search conversations...'
+              : 'Search drafts...',
           hintStyle: TextStyle(
             color: Colors.white.withValues(alpha: 0.5),
             fontSize: 16,
@@ -590,7 +603,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                   ),
                 )
               : null,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
         ),
         style: const TextStyle(
           color: Colors.white,
@@ -718,32 +732,35 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Widget _buildChatTile(app_chat.Chat chat) {
     final isSelected = _selectedItems.contains(chat.id);
     final currentUser = _inboxService.auth.currentUser;
-    final otherUserId = currentUser != null 
+    final otherUserId = currentUser != null
         ? chat.participants.firstWhere(
             (id) => id != currentUser.uid,
             orElse: () => chat.participants.first,
           )
         : chat.participants.first;
-    
+
     final userProfile = _userProfiles[otherUserId];
-    final participantName = userProfile?.displayName ?? userProfile?.username ?? 'Loading...';
-    final initials = participantName.isNotEmpty && participantName != 'Loading...'
-        ? participantName[0].toUpperCase() 
-        : 'L';
+    final participantName =
+        userProfile?.displayName ?? userProfile?.username ?? 'Loading...';
+    final initials =
+        participantName.isNotEmpty && participantName != 'Loading...'
+            ? participantName[0].toUpperCase()
+            : 'L';
     final unreadCount = _unreadCounts[chat.id ?? ''] ?? 0;
     final isOnline = _onlineStatus[otherUserId] ?? false;
-    
-    debugPrint('InboxView: Building chat tile for $otherUserId - userProfile: ${userProfile != null ? 'loaded' : 'null'}, name: $participantName');
-    
+
+    debugPrint(
+        'InboxView: Building chat tile for $otherUserId - userProfile: ${userProfile != null ? 'loaded' : 'null'}, name: $participantName');
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       decoration: BoxDecoration(
-        color: isSelected 
+        color: isSelected
             ? _primaryColor.withValues(alpha: 0.15)
             : Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isSelected 
+          color: isSelected
               ? _primaryColor.withValues(alpha: 0.5)
               : Colors.white.withValues(alpha: 0.08),
           width: isSelected ? 2 : 1,
@@ -753,7 +770,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: _isSelectionMode 
+          onTap: _isSelectionMode
               ? () => _toggleSelection(chat.id ?? '')
               : () => _openChat(chat),
           onLongPress: () {
@@ -773,7 +790,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       height: 44,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: userProfile?.avatarURL != null 
+                        gradient: userProfile?.avatarURL != null
                             ? null
                             : const LinearGradient(
                                 colors: [_primaryColor, _secondaryColor],
@@ -861,7 +878,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         right: -2,
                         top: -2,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 2),
                           decoration: const BoxDecoration(
                             color: _primaryColor,
                             shape: BoxShape.circle,
@@ -955,16 +973,16 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Widget _buildDraftTile(SharedDraft draft) {
     final isSelected = _selectedItems.contains(draft.id);
     final isUnread = draft.status != SharedDraftStatus.viewed;
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       decoration: BoxDecoration(
-        color: isSelected 
+        color: isSelected
             ? _primaryColor.withValues(alpha: 0.15)
             : Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isSelected 
+          color: isSelected
               ? _primaryColor.withValues(alpha: 0.5)
               : Colors.white.withValues(alpha: 0.08),
           width: isSelected ? 2 : 1,
@@ -974,7 +992,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          onTap: _isSelectionMode 
+          onTap: _isSelectionMode
               ? () => _toggleSelection(draft.id)
               : () => _openDraft(draft),
           onLongPress: () {
@@ -1076,9 +1094,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                           ),
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: isUnread 
+                              color: isUnread
                                   ? _primaryColor.withValues(alpha: 0.2)
                                   : Colors.white.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
@@ -1086,7 +1105,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                             child: Text(
                               isUnread ? 'New' : 'Viewed',
                               style: TextStyle(
-                                color: isUnread 
+                                color: isUnread
                                     ? _primaryColor
                                     : Colors.white.withValues(alpha: 0.6),
                                 fontSize: 10,
@@ -1126,7 +1145,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     );
   }
 
-  Widget _buildEmptyState(String title, IconData icon, String subtitle, String buttonText, VoidCallback onPressed) {
+  Widget _buildEmptyState(String title, IconData icon, String subtitle,
+      String buttonText, VoidCallback onPressed) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
@@ -1219,7 +1239,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -1354,7 +1375,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               onPressed: _loadData,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _primaryColor,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -1373,7 +1395,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       ),
     );
   }
-
 
   void _toggleSelectionMode() {
     setState(() {
@@ -1398,7 +1419,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     setState(() {
       if (_tabController.index == 0) {
         _selectedItems.clear();
-        _selectedItems.addAll(_filteredChats.map((chat) => chat.id ?? '').where((id) => id.isNotEmpty));
+        _selectedItems.addAll(_filteredChats
+            .map((chat) => chat.id ?? '')
+            .where((id) => id.isNotEmpty));
       } else {
         _selectedItems.clear();
         _selectedItems.addAll(_filteredDrafts.map((draft) => draft.id));
@@ -1452,7 +1475,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         _isSelectionMode = false;
       });
 
-      _showSnackBar('${_selectedItems.length} chats marked as read', _primaryColor);
+      _showSnackBar(
+          '${_selectedItems.length} chats marked as read', _primaryColor);
     } catch (e) {
       _showSnackBar('Error marking as read', Colors.red);
     }
@@ -1460,41 +1484,42 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   Future<bool> _showDeleteConfirmation() async {
     return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _backgroundMedium,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          'Delete Items',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'Are you sure you want to delete ${_selectedItems.length} selected items? This action cannot be undone.',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.grey),
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: _backgroundMedium,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+            title: const Text(
+              'Delete Items',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: Text(
+              'Are you sure you want to delete ${_selectedItems.length} selected items? This action cannot be undone.',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
-            ),
-            child: const Text('Delete'),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-        ],
-      ),
-    ) ?? false;
+        ) ??
+        false;
   }
 
   void _createNewMessage() {
@@ -1506,7 +1531,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   void _createNewDraft() async {
     HapticFeedback.lightImpact();
-    
+
     if (mounted) {
       // final result = await Navigator.of(context).push(
       //   _createSlideTransition(page: const DraftCreationView()),
@@ -1525,40 +1550,40 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   void _openChat(app_chat.Chat chat) async {
     HapticFeedback.lightImpact();
-    
+
     // Prevent multiple simultaneous taps
     if (_isNavigating) return;
     _isNavigating = true;
-    
+
     try {
       // Get other user ID
       final currentUser = _inboxService.auth.currentUser;
       if (currentUser == null) return;
-      
+
       final otherUserId = chat.participants.firstWhere(
         (id) => id != currentUser.uid,
         orElse: () => chat.participants.first,
       );
-      
+
       debugPrint('InboxView: Opening chat with user: $otherUserId');
-      
+
       // Mark messages as read when opening chat (non-blocking)
       _inboxService.markAsRead(chat.id ?? '').catchError((error) {
         debugPrint('InboxView: Error marking as read: $error');
       });
-      
+
       // Update unread count
       if (mounted) {
         setState(() {
           _unreadCounts[chat.id ?? ''] = 0;
         });
       }
-      
+
       // Force refresh the unread messages provider
       ref.invalidate(unreadMessagesProvider);
-      
+
       final userProfile = _userProfiles[otherUserId];
-      
+
       if (mounted) {
         // Use a simpler navigation without complex transitions
         Navigator.of(context).push(
@@ -1566,7 +1591,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             builder: (context) => ChatView(
               chat: chat,
               otherUserId: otherUserId,
-              otherUserName: userProfile?.displayName ?? userProfile?.username ?? 'User',
+              otherUserName:
+                  userProfile?.displayName ?? userProfile?.username ?? 'User',
               otherUserAvatarURL: userProfile?.avatarURL,
               otherUserIsOnline: _onlineStatus[otherUserId] ?? false,
             ),
@@ -1591,10 +1617,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   void _openDraft(SharedDraft draft) async {
     HapticFeedback.lightImpact();
-    
+
     // Mark draft as viewed
     await _inboxService.markAsRead(draft.id);
-    
+
     // Navigate to draft creation view for editing
     if (mounted) {
       // final result = await Navigator.of(context).push(
@@ -1619,8 +1645,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     if (currentUser == null) return const SizedBox.shrink();
 
     // Check if the last message was sent by current user
-    final isLastMessageFromCurrentUser = chat.participants.contains(currentUser.uid);
-    
+    final isLastMessageFromCurrentUser =
+        chat.participants.contains(currentUser.uid);
+
     if (!isLastMessageFromCurrentUser) {
       return const SizedBox.shrink();
     }
@@ -1645,7 +1672,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
-    
+
     if (difference.inDays > 0) {
       return '${difference.inDays}d';
     } else if (difference.inHours > 0) {
@@ -1668,7 +1695,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const end = Offset.zero;
         const curve = Curves.easeInOut;
-        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var tween =
+            Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
         var offsetAnimation = animation.drive(tween);
         return SlideTransition(position: offsetAnimation, child: child);
       },
@@ -1690,5 +1718,4 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       ),
     );
   }
-
 }

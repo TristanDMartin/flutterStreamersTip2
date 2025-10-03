@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/following_service.dart';
 
@@ -37,26 +38,27 @@ class FollowingState {
 
 class FollowingNotifier extends StateNotifier<FollowingState> {
   FollowingNotifier() : super(const FollowingState()) {
-    print('🔵 FollowingNotifier: Constructor called - initializing...');
+    debugPrint('🔵 FollowingNotifier: Constructor called - initializing...');
     loadFollowingList();
   }
 
   /// Load the list of users being followed and followers
   Future<void> loadFollowingList() async {
-    print('🔵 FollowingNotifier: loadFollowingList() called');
+    debugPrint('🔵 FollowingNotifier: loadFollowingList() called');
     state = state.copyWith(isLoading: true, error: null);
-    
+
     try {
       final followingUsers = await FollowingService.getFollowingList();
       final followersUsers = await FollowingService.getFollowersList();
-      print('🔵 FollowingNotifier: Loaded ${followingUsers.length} following, ${followersUsers.length} followers');
+      debugPrint(
+          '🔵 FollowingNotifier: Loaded ${followingUsers.length} following, ${followersUsers.length} followers');
       state = state.copyWith(
         followingList: followingUsers.map((user) => user.id).toList(),
         followersList: followersUsers.map((user) => user.id).toList(),
         isLoading: false,
       );
     } catch (e) {
-      print('🔵 FollowingNotifier: Error loading follow lists: $e');
+      debugPrint('🔵 FollowingNotifier: Error loading follow lists: $e');
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
@@ -66,17 +68,17 @@ class FollowingNotifier extends StateNotifier<FollowingState> {
 
   /// Follow a user
   Future<bool> followUser(String userId) async {
-    print('🔵 FollowingNotifier: followUser($userId) called');
+    debugPrint('🔵 FollowingNotifier: followUser($userId) called');
     try {
       final success = await FollowingService.followUser(userId);
-      print('🔵 FollowingNotifier: followUser result: $success');
+      debugPrint('🔵 FollowingNotifier: followUser result: $success');
       if (success) {
         // Reload the following list
         await loadFollowingList();
       }
       return success;
     } catch (e) {
-      print('🔵 FollowingNotifier: Error in followUser: $e');
+      debugPrint('🔵 FollowingNotifier: Error in followUser: $e');
       state = state.copyWith(error: e.toString());
       return false;
     }
@@ -144,7 +146,7 @@ class FollowingNotifier extends StateNotifier<FollowingState> {
   FollowRelationship getFollowRelationship(String userId) {
     final isFollowing = state.followingList.contains(userId);
     final isFollowedBy = state.followersList.contains(userId);
-    
+
     if (isFollowing && isFollowedBy) {
       return FollowRelationship.connected;
     } else if (isFollowing) {
@@ -160,6 +162,7 @@ class FollowingNotifier extends StateNotifier<FollowingState> {
   }
 }
 
-final followingProvider = StateNotifierProvider<FollowingNotifier, FollowingState>((ref) {
+final followingProvider =
+    StateNotifierProvider<FollowingNotifier, FollowingState>((ref) {
   return FollowingNotifier();
 });

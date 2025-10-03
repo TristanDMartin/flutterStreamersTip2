@@ -22,7 +22,6 @@ import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_card_view.dart';
-// import '../widgets/share_profile_view.dart'; // Removed - unused
 import '../models/user.dart';
 import '../models/streamer_card.dart';
 import '../widgets/tiktok_account_switch_button.dart';
@@ -162,27 +161,15 @@ class _HomeViewState extends ConsumerState<HomeView>
   /// Load videos from VideoService based on current feed tab
   Future<void> _loadVideos() async {
     try {
-      log('🚀 HomeView: _loadVideos() called');
-      debugPrint('🚀 HomeView: _loadVideos() called');
-
       final homeVM = ref.read(hp.homeProvider.notifier);
-      log('📱 HomeView: Got homeVM notifier');
-      debugPrint('📱 HomeView: Got homeVM notifier');
 
       // Use the new instant play loadVideos method
       await homeVM.loadVideos();
 
       // Prewarm the first video for instant play (TikTok style)
       await _prewarmFirstVideo();
-
-      log('✅ HomeView: Videos loaded successfully');
-      debugPrint('✅ HomeView: Videos loaded successfully');
     } catch (e) {
-      log('❌ HomeView: Error in _loadVideos: $e');
-      debugPrint('❌ HomeView: Error in _loadVideos: $e');
-      final error =
-          ErrorHandlingService().handleError(e, context: 'load_videos');
-      debugPrint('❌ HomeView: Error loading videos: ${error.message}');
+      ErrorHandlingService().handleError(e, context: 'load_videos');
     }
   }
 
@@ -263,12 +250,6 @@ class _HomeViewState extends ConsumerState<HomeView>
       debugPrint('❌ Error prewarming first video: $e');
     }
   }
-
-  // @override
-  // void didChangeAppLifecycleState(AppLifecycleState state) {
-  //   super.didChangeAppLifecycleState(state);
-  //   // VideoPlayerView handles lifecycle management
-  // }
 
   @override
   void dispose() {
@@ -732,22 +713,12 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _pauseAllHomeViewVideos() {
-    log('🚨 PAUSE METHOD: _pauseAllHomeViewVideos() called!');
-    log('🚨 PAUSE METHOD: _pauseAllHomeViewVideos() called!');
-    log('🔍 HomeView._pauseAllHomeViewVideos(): Starting pause process');
-    log('🔍 HomeView._pauseAllHomeViewVideos(): Starting pause process');
+    log('⏸️ HomeView: Pausing all videos before navigation');
     try {
-      log('🔍 HomeView._pauseAllHomeViewVideos(): About to get homeNotifier');
-      log('🔍 HomeView._pauseAllHomeViewVideos(): About to get homeNotifier');
       // Notify HomeView to pause all videos
       final homeNotifier = ref.read(hp.homeProvider.notifier);
-      log('🔍 HomeView._pauseAllHomeViewVideos(): Got homeNotifier, calling pauseAllVideos()');
-      log('🔍 HomeView._pauseAllHomeViewVideos(): Got homeNotifier, calling pauseAllVideos()');
       homeNotifier.pauseAllVideos();
-      log('🔍 HomeView._pauseAllHomeViewVideos(): Called pauseAllVideos() successfully');
-      log('🔍 HomeView._pauseAllHomeViewVideos(): Called pauseAllVideos() successfully');
-
-      log('⏸️ HomeView: Paused all videos before navigation');
+      log('✅ HomeView: All videos paused successfully');
     } catch (e) {
       log('❌ HomeView: Error pausing videos: $e');
     }
@@ -1201,24 +1172,6 @@ class _HomeViewState extends ConsumerState<HomeView>
                       return;
                     }
 
-                    // Create user data map for ShareProfileView (commented out for now)
-                    // final userData = {
-                    //   'id': currentStreamer.id,
-                    //   'displayName': currentStreamer.displayName,
-                    //   'username': currentStreamer.username,
-                    //   'photoURL': currentStreamer.avatarURL,
-                    //   'bio': currentStreamer.bio,
-                    // };
-
-                    // Navigate to ShareProfileView (same as ProfileView)
-                    // Navigator.of(context).push(
-                    //   MaterialPageRoute(
-                    //     builder: (context) => ShareProfileView(
-                    //       user: userData,
-                    //       dismiss: () => Navigator.of(context).pop(),
-                    //     ),
-                    //   ),
-                    // );
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                           content: Text('Share profile feature coming soon!')),
@@ -1340,34 +1293,15 @@ class _HomeViewState extends ConsumerState<HomeView>
           InkResponse(
             onTap: () {
               HapticFeedback.lightImpact();
-              log('🚨 DISCOVER NAVIGATION: Tap detected!');
-              log('🚨 DISCOVER NAVIGATION: Tap detected!');
+              log('🔍 HomeView: Navigating to DiscoverView');
+
               // Pause HomeView videos before navigating to DiscoverView
-              log('🔍 HomeView: About to navigate to DiscoverView - calling _pauseAllHomeViewVideos()');
-              log('🔍 HomeView: About to navigate to DiscoverView - calling _pauseAllHomeViewVideos()');
-              try {
-                _pauseAllHomeViewVideos();
-                log('🔍 HomeView: Called _pauseAllHomeViewVideos() - now navigating to DiscoverView');
-                log('🔍 HomeView: Called _pauseAllHomeViewVideos() - now navigating to DiscoverView');
-              } catch (e) {
-                log('❌ HomeView: Error calling _pauseAllHomeViewVideos(): $e');
-                log('❌ HomeView: Error calling _pauseAllHomeViewVideos(): $e');
-              }
+              _pauseAllHomeViewVideos();
 
-              // DIRECT TEST: Try to pause video immediately
-              try {
-                final homeState = ref.read(hp.homeProvider);
-                log('🔍 HomeView: Direct test - Current home state shouldPauseAllVideos: ${homeState.shouldPauseAllVideos}');
-              } catch (e) {
-                log('❌ HomeView: Direct test error: $e');
-              }
-
-              log('🚨 DISCOVER NAVIGATION: About to call Navigator.push');
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const DiscoverView()),
               );
-              log('🚨 DISCOVER NAVIGATION: Navigator.push completed');
             },
             radius: 24, // keeps 44x44 tap target
             child: Container(

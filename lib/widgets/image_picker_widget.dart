@@ -6,7 +6,7 @@ import 'package:camera/camera.dart';
 class ImagePickerWidget extends StatefulWidget {
   final Function(File) onImageSelected;
   final VoidCallback? onCancel;
-  
+
   const ImagePickerWidget({
     super.key,
     required this.onImageSelected,
@@ -23,37 +23,39 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   Future<void> _pickImageFromGallery() async {
     if (_isPicking) return; // Prevent multiple simultaneous picks
-    
+
     setState(() {
       _isPicking = true;
     });
-    
+
     try {
       debugPrint('📱 ImagePickerWidget: Opening gallery picker');
-      print('📱 ImagePickerWidget: Opening gallery picker (print)');
-      
+
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 85,
       );
-      
+
       if (image != null) {
-        debugPrint('✅ ImagePickerWidget: Image selected from gallery: ${image.path}');
-        
+        debugPrint(
+            '✅ ImagePickerWidget: Image selected from gallery: ${image.path}');
+
         // Validate the selected file
         final file = File(image.path);
         if (await file.exists()) {
           final fileSize = await file.length();
-          debugPrint('📁 ImagePickerWidget: File size: ${fileSize} bytes');
-          
-          if (fileSize > 10 * 1024 * 1024) { // 10MB limit
+          debugPrint('📁 ImagePickerWidget: File size: $fileSize bytes');
+
+          if (fileSize > 10 * 1024 * 1024) {
+            // 10MB limit
             debugPrint('❌ ImagePickerWidget: File too large');
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Image file is too large. Please choose a smaller image (max 10MB).'),
+                  content: Text(
+                      'Image file is too large. Please choose a smaller image (max 10MB).'),
                   backgroundColor: Colors.red,
                 ),
               );
@@ -61,12 +63,11 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
             widget.onCancel?.call();
             return;
           }
-          
-          print('✅ ImagePickerWidget: Calling onImageSelected callback');
+
+          debugPrint('✅ ImagePickerWidget: Calling onImageSelected callback');
           widget.onImageSelected(file);
         } else {
           debugPrint('❌ ImagePickerWidget: Selected file does not exist');
-          print('❌ ImagePickerWidget: Selected file does not exist (print)');
           widget.onCancel?.call();
         }
       } else {
@@ -75,17 +76,18 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       }
     } catch (e) {
       debugPrint('❌ ImagePickerWidget: Error picking image from gallery: $e');
-      
+
       if (mounted) {
         String errorMessage = 'Failed to pick image';
         if (e.toString().contains('Permission denied')) {
-          errorMessage = 'Permission denied. Please allow access to photos in settings.';
+          errorMessage =
+              'Permission denied. Please allow access to photos in settings.';
         } else if (e.toString().contains('User cancelled')) {
           errorMessage = 'Image selection cancelled.';
         } else {
           errorMessage = 'Failed to pick image: ${e.toString()}';
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -93,7 +95,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
           ),
         );
       }
-      
+
       widget.onCancel?.call();
     } finally {
       if (mounted) {
@@ -106,18 +108,18 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
   Future<void> _pickImageFromCamera() async {
     if (_isPicking) return; // Prevent multiple simultaneous picks
-    
+
     setState(() {
       _isPicking = true;
     });
-    
+
     try {
       // Get available cameras
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         throw Exception('No cameras available');
       }
-      
+
       // Navigate to custom camera screen
       if (!mounted) return;
       final result = await Navigator.push(
@@ -134,7 +136,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
           ),
         ),
       );
-      
+
       // If no result (user cancelled), call onCancel
       if (result == null) {
         widget.onCancel?.call();
@@ -189,7 +191,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                 ],
               ),
             ),
-            
+
             // Options
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -202,9 +204,9 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                     subtitle: 'Select a photo from your gallery',
                     onTap: _pickImageFromGallery,
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // Camera option
                   _buildOption(
                     icon: Icons.camera_alt,
@@ -212,7 +214,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                     subtitle: 'Take a new photo with camera',
                     onTap: _pickImageFromCamera,
                   ),
-                  
+
                   const SizedBox(height: 20),
                 ],
               ),
@@ -328,7 +330,7 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
         _isInitialized = true;
       });
     } catch (e) {
-    // print('❌ Error initializing camera: $e');
+      // print('❌ Error initializing camera: $e');
       widget.onCancel();
     }
   }
@@ -347,7 +349,7 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
         Navigator.pop(context);
       }
     } catch (e) {
-    // print('❌ Error capturing photo: $e');
+      // print('❌ Error capturing photo: $e');
       setState(() {
         _isCapturing = false;
       });
@@ -387,7 +389,8 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
             right: 0,
             child: SafeArea(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     // Close button
@@ -443,7 +446,8 @@ class _CustomCameraScreenState extends State<CustomCameraScreen> {
             right: 0,
             child: SafeArea(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [

@@ -27,14 +27,17 @@ class StreamerShareSheet extends ConsumerWidget {
 
   // Validate input parameters
   bool get _isValidUserId => userId.isNotEmpty && userId.length > 3;
-  String get _sanitizedUserId => userId.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
-  String get _profileUrl => 'https://streamerstip.app/profile/$_sanitizedUserId';
+  String get _sanitizedUserId =>
+      userId.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+  String get _profileUrl =>
+      'https://streamerstip.app/profile/$_sanitizedUserId';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Validate input parameters
     if (!_isValidUserId) {
-      LoggingService.instance.error('Invalid userId provided to ShareSheet', tag: 'ShareSheet');
+      LoggingService.instance
+          .error('Invalid userId provided to ShareSheet', tag: 'ShareSheet');
       return _buildErrorState(context, 'Invalid user ID');
     }
 
@@ -123,7 +126,8 @@ class StreamerShareSheet extends ConsumerWidget {
                 }
                 onDismiss?.call();
               } catch (e) {
-                LoggingService.instance.error('Error closing ShareSheet', tag: 'ShareSheet', error: e);
+                LoggingService.instance.error('Error closing ShareSheet',
+                    tag: 'ShareSheet', error: e);
                 // Fallback: try to pop again
                 if (Navigator.of(context).canPop()) {
                   Navigator.of(context).pop();
@@ -168,8 +172,10 @@ class StreamerShareSheet extends ConsumerWidget {
         itemBuilder: (context, index) {
           final contact = limitedConnections[index];
           return _buildContactItem(
-            context, 
-            contact.displayName.isNotEmpty ? contact.displayName : contact.username,
+            context,
+            contact.displayName.isNotEmpty
+                ? contact.displayName
+                : contact.username,
             contact.avatarURL,
           );
         },
@@ -177,7 +183,8 @@ class StreamerShareSheet extends ConsumerWidget {
     );
   }
 
-  Widget _buildContactItem(BuildContext context, String name, String? avatarUrl) {
+  Widget _buildContactItem(
+      BuildContext context, String name, String? avatarUrl) {
     return InstantResponseButton(
       onPressed: () {
         HapticFeedback.selectionClick();
@@ -216,7 +223,8 @@ class StreamerShareSheet extends ConsumerWidget {
                         width: 56,
                         height: 56,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(name),
+                        errorBuilder: (context, error, stackTrace) =>
+                            _buildInitialsAvatar(name),
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) return child;
                           return _buildInitialsAvatar(name);
@@ -268,22 +276,32 @@ class StreamerShareSheet extends ConsumerWidget {
   Widget _buildPrimaryActions(BuildContext context) {
     final actions = [
       {'platform': 'link', 'label': 'Copy link', 'color': Colors.blue},
-      {'platform': 'instagram', 'label': 'Instagram Direct', 'color': const Color(0xFFE4405F)}, // Instagram pink
+      {
+        'platform': 'instagram',
+        'label': 'Instagram Direct',
+        'color': const Color(0xFFE4405F)
+      }, // Instagram pink
       {'platform': 'sms', 'label': 'SMS', 'color': Colors.green},
-      {'platform': 'whatsapp', 'label': 'WhatsApp', 'color': const Color(0xFF25D366)}, // WhatsApp green
+      {
+        'platform': 'whatsapp',
+        'label': 'WhatsApp',
+        'color': const Color(0xFF25D366)
+      }, // WhatsApp green
       {'platform': 'status', 'label': 'Status', 'color': Colors.green},
       {'platform': 'twitter', 'label': 'X', 'color': Colors.black},
     ];
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: actions.map((action) => _buildBrandActionButton(
-        context,
-        platform: action['platform'] as String,
-        label: action['label'] as String,
-        color: action['color'] as Color,
-        isPrimary: true,
-      )).toList(),
+      children: actions
+          .map((action) => _buildBrandActionButton(
+                context,
+                platform: action['platform'] as String,
+                label: action['label'] as String,
+                color: action['color'] as Color,
+                isPrimary: true,
+              ))
+          .toList(),
     );
   }
 
@@ -296,13 +314,15 @@ class StreamerShareSheet extends ConsumerWidget {
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: actions.map((action) => _buildActionButton(
-        context,
-        icon: action['icon'] as IconData,
-        label: action['label'] as String,
-        color: Colors.white,
-        isPrimary: false,
-      )).toList(),
+      children: actions
+          .map((action) => _buildActionButton(
+                context,
+                icon: action['icon'] as IconData,
+                label: action['label'] as String,
+                color: Colors.white,
+                isPrimary: false,
+              ))
+          .toList(),
     );
   }
 
@@ -316,7 +336,7 @@ class StreamerShareSheet extends ConsumerWidget {
     // Determine button width based on label length
     final isLongLabel = label.length > 8; // "Instagram Direct" is 15 chars
     final buttonWidth = isLongLabel ? 80.0 : 64.0;
-    
+
     return InstantResponseButton(
       onPressed: () => _handleAction(context, label),
       hapticType: HapticFeedbackType.selectionClick,
@@ -357,10 +377,11 @@ class StreamerShareSheet extends ConsumerWidget {
               child: Text(
                 label,
                 style: TextStyle(
-                  color: isPrimary 
-                      ? Colors.white 
+                  color: isPrimary
+                      ? Colors.white
                       : Colors.white.withValues(alpha: 0.7),
-                  fontSize: isLongLabel ? 10 : 11, // Smaller font for longer labels
+                  fontSize:
+                      isLongLabel ? 10 : 11, // Smaller font for longer labels
                   fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,
@@ -384,7 +405,7 @@ class StreamerShareSheet extends ConsumerWidget {
     // Determine button width based on label length
     final isLongLabel = label.length > 8; // "Instagram Direct" is 15 chars
     final buttonWidth = isLongLabel ? 80.0 : 64.0;
-    
+
     return InstantResponseButton(
       onPressed: () => _handleAction(context, label),
       hapticType: HapticFeedbackType.selectionClick,
@@ -414,16 +435,20 @@ class StreamerShareSheet extends ConsumerWidget {
                 ],
               ),
               child: Center(
-                child: platform == 'link' 
+                child: platform == 'link'
                     ? Icon(
                         Icons.link,
-                        color: isPrimary ? color : Colors.white.withValues(alpha: 0.7),
+                        color: isPrimary
+                            ? color
+                            : Colors.white.withValues(alpha: 0.7),
                         size: 24,
                       )
                     : BrandIcon(
                         platformType: platform,
                         size: 24,
-                        color: isPrimary ? color : Colors.white.withValues(alpha: 0.7),
+                        color: isPrimary
+                            ? color
+                            : Colors.white.withValues(alpha: 0.7),
                       ),
               ),
             ),
@@ -433,10 +458,11 @@ class StreamerShareSheet extends ConsumerWidget {
               child: Text(
                 label,
                 style: TextStyle(
-                  color: isPrimary 
-                      ? Colors.white 
+                  color: isPrimary
+                      ? Colors.white
                       : Colors.white.withValues(alpha: 0.7),
-                  fontSize: isLongLabel ? 10 : 11, // Smaller font for longer labels
+                  fontSize:
+                      isLongLabel ? 10 : 11, // Smaller font for longer labels
                   fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,
@@ -487,11 +513,13 @@ class StreamerShareSheet extends ConsumerWidget {
           await _openMessage(context);
           break;
         default:
-          LoggingService.instance.warning('Unknown share action: $action', tag: 'ShareSheet');
+          LoggingService.instance
+              .warning('Unknown share action: $action', tag: 'ShareSheet');
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Failed to handle share action: $action', tag: 'ShareSheet', error: e, stackTrace: stackTrace);
-      
+      LoggingService.instance.error('Failed to handle share action: $action',
+          tag: 'ShareSheet', error: e, stackTrace: stackTrace);
+
       // Track failed action
       AnalyticsService.instance.trackEvent('share_action_failed', parameters: {
         'user_id': _sanitizedUserId,
@@ -529,12 +557,14 @@ class StreamerShareSheet extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop(),
               hapticType: HapticFeedbackType.lightImpact,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text('Close', style: TextStyle(color: Colors.white)),
+                child:
+                    const Text('Close', style: TextStyle(color: Colors.white)),
               ),
             ),
           ],
@@ -545,16 +575,17 @@ class StreamerShareSheet extends ConsumerWidget {
 
   Future<void> _copyLink(BuildContext context) async {
     try {
-      LoggingService.instance.debug('Copying profile link: $_profileUrl', tag: 'ShareSheet');
-      
+      LoggingService.instance
+          .debug('Copying profile link: $_profileUrl', tag: 'ShareSheet');
+
       await Clipboard.setData(ClipboardData(text: _profileUrl));
-      
+
       // Track analytics
       AnalyticsService.instance.trackEvent('share_link_copied', parameters: {
         'user_id': _sanitizedUserId,
         'platform': 'clipboard',
       });
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -566,8 +597,12 @@ class StreamerShareSheet extends ConsumerWidget {
         );
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Failed to copy link', tag: 'ShareSheet', error: e, stackTrace: stackTrace);
-      ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
+      LoggingService.instance.error('Failed to copy link',
+          tag: 'ShareSheet', error: e, stackTrace: stackTrace);
+      if (context.mounted) {
+        ErrorHandlerService.instance
+            .handleError(e, stackTrace, context: context);
+      }
     }
   }
 
@@ -619,7 +654,8 @@ class StreamerShareSheet extends ConsumerWidget {
     await _launchUrlWithFallback(
       context: context,
       primaryUrl: 'twitter://post?message=${Uri.encodeComponent(message)}',
-      fallbackUrl: 'https://twitter.com/intent/tweet?text=${Uri.encodeComponent(message)}',
+      fallbackUrl:
+          'https://twitter.com/intent/tweet?text=${Uri.encodeComponent(message)}',
       platform: 'twitter',
       errorMessage: 'X/Twitter not available',
     );
@@ -636,29 +672,34 @@ class StreamerShareSheet extends ConsumerWidget {
     try {
       // Check connectivity first
       final connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult == ConnectivityResult.none) {
-        _showErrorSnackbar(context, 'No internet connection');
+      if (connectivityResult.contains(ConnectivityResult.none)) {
+        if (context.mounted) {
+          _showErrorSnackbar(context, 'No internet connection');
+        }
         return;
       }
 
       final uri = Uri.parse(primaryUrl);
-      
+
       // Try primary URL first
       if (await canLaunchUrl(uri)) {
-        LoggingService.instance.debug('Launching $platform: $primaryUrl', tag: 'ShareSheet');
-        
+        LoggingService.instance
+            .debug('Launching $platform: $primaryUrl', tag: 'ShareSheet');
+
         await launchUrl(
           uri,
           mode: LaunchMode.externalApplication,
         ).timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            throw TimeoutException('URL launch timeout', const Duration(seconds: 10));
+            throw TimeoutException(
+                'URL launch timeout', const Duration(seconds: 10));
           },
         );
 
         // Track successful launch
-        AnalyticsService.instance.trackEvent('share_platform_opened', parameters: {
+        AnalyticsService.instance
+            .trackEvent('share_platform_opened', parameters: {
           'user_id': _sanitizedUserId,
           'platform': platform,
           'method': 'primary',
@@ -674,20 +715,24 @@ class StreamerShareSheet extends ConsumerWidget {
       if (fallbackUrl != null) {
         final fallbackUri = Uri.parse(fallbackUrl);
         if (await canLaunchUrl(fallbackUri)) {
-          LoggingService.instance.debug('Launching $platform fallback: $fallbackUrl', tag: 'ShareSheet');
-          
+          LoggingService.instance.debug(
+              'Launching $platform fallback: $fallbackUrl',
+              tag: 'ShareSheet');
+
           await launchUrl(
             fallbackUri,
             mode: LaunchMode.externalApplication,
           ).timeout(
             const Duration(seconds: 10),
             onTimeout: () {
-              throw TimeoutException('Fallback URL launch timeout', const Duration(seconds: 10));
+              throw TimeoutException(
+                  'Fallback URL launch timeout', const Duration(seconds: 10));
             },
           );
 
           // Track successful fallback launch
-          AnalyticsService.instance.trackEvent('share_platform_opened', parameters: {
+          AnalyticsService.instance
+              .trackEvent('share_platform_opened', parameters: {
             'user_id': _sanitizedUserId,
             'platform': platform,
             'method': 'fallback',
@@ -704,16 +749,16 @@ class StreamerShareSheet extends ConsumerWidget {
       if (context.mounted) {
         _showErrorSnackbar(context, errorMessage);
       }
-
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Failed to launch $platform', tag: 'ShareSheet', error: e, stackTrace: stackTrace);
-      
+      LoggingService.instance.error('Failed to launch $platform',
+          tag: 'ShareSheet', error: e, stackTrace: stackTrace);
+
       if (context.mounted) {
-        ErrorHandlerService.instance.handleError(e, stackTrace, context: context);
+        ErrorHandlerService.instance
+            .handleError(e, stackTrace, context: context);
       }
     }
   }
-
 
   Future<void> _showReportDialog(BuildContext context) async {
     showDialog(
@@ -778,7 +823,8 @@ class StreamerShareSheet extends ConsumerWidget {
                       child: InstantResponseButton(
                         onPressed: () {
                           Navigator.of(context).pop();
-                          _showSuccessSnackbar(context, 'User reported successfully');
+                          _showSuccessSnackbar(
+                              context, 'User reported successfully');
                         },
                         hapticType: HapticFeedbackType.mediumImpact,
                         child: Container(
@@ -872,7 +918,8 @@ class StreamerShareSheet extends ConsumerWidget {
                       child: InstantResponseButton(
                         onPressed: () {
                           Navigator.of(context).pop();
-                          _showSuccessSnackbar(context, 'User blocked successfully');
+                          _showSuccessSnackbar(
+                              context, 'User blocked successfully');
                         },
                         hapticType: HapticFeedbackType.mediumImpact,
                         child: Container(
@@ -909,8 +956,8 @@ class StreamerShareSheet extends ConsumerWidget {
     _showSuccessSnackbar(context, 'Opening message...');
   }
 
-
-  Future<void> _showContactAction(BuildContext context, String contactName) async {
+  Future<void> _showContactAction(
+      BuildContext context, String contactName) async {
     Navigator.of(context).pop();
     _showSuccessSnackbar(context, 'Sending to $contactName...');
   }

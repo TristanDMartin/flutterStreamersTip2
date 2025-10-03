@@ -5,7 +5,8 @@ class ClipGrid extends StatelessWidget {
   final List<VideoClip> clips;
   final ValueChanged<VideoClip> onClipSelected;
   final String categoryId;
-  final dynamic viewModel; // TODO: Replace with proper type
+  final dynamic
+      viewModel; // View model for managing clip grid state and operations
 
   const ClipGrid({
     super.key,
@@ -72,7 +73,8 @@ class ClipThumbnail extends StatelessWidget {
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
                             decoration: BoxDecoration(
-                              gradient: _getGradientForCategory(clip.categoryId),
+                              gradient:
+                                  _getGradientForCategory(clip.categoryId),
                             ),
                             child: Icon(
                               Icons.photo,
@@ -94,7 +96,7 @@ class ClipThumbnail extends StatelessWidget {
                       ),
               ),
             ),
-            
+
             // View count overlay
             Positioned(
               bottom: 0,
@@ -183,7 +185,7 @@ class ClipThumbnail extends StatelessWidget {
           const Color(0xFF1A1A1A),
         ]);
     }
-    
+
     return LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,

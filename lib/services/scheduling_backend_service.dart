@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/scheduled_post.dart';
 
@@ -7,7 +8,8 @@ class SchedulingBackendService {
   static const String _baseUrl = 'https://your-backend-endpoint.com/api';
   String? _authToken;
   Timer? _pollingTimer;
-  final StreamController<ScheduledPost> _postStatusController = StreamController<ScheduledPost>.broadcast();
+  final StreamController<ScheduledPost> _postStatusController =
+      StreamController<ScheduledPost>.broadcast();
 
   Stream<ScheduledPost> get postStatusStream => _postStatusController.stream;
 
@@ -16,9 +18,9 @@ class SchedulingBackendService {
   }
 
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    if (_authToken != null) 'Authorization': 'Bearer $_authToken',
-  };
+        'Content-Type': 'application/json',
+        if (_authToken != null) 'Authorization': 'Bearer $_authToken',
+      };
 
   // Start polling for post status updates
   void startPolling() {
@@ -51,7 +53,7 @@ class SchedulingBackendService {
       }
     } catch (e) {
       // Handle polling errors silently to avoid disrupting the app
-      print('Polling error: $e');
+      debugPrint('Polling error: $e');
     }
   }
 
@@ -243,10 +245,11 @@ class SchedulingBackendService {
     final queryParams = <String, String>{
       'platforms': platforms.map((p) => p.name).join(','),
     };
-    
+
     if (daysAhead != null) queryParams['daysAhead'] = daysAhead.toString();
 
-    final uri = Uri.parse('$_baseUrl/analytics/best-times').replace(queryParameters: queryParams);
+    final uri = Uri.parse('$_baseUrl/analytics/best-times')
+        .replace(queryParameters: queryParams);
     final response = await http.get(uri, headers: _headers);
 
     if (response.statusCode == 200) {
@@ -320,7 +323,8 @@ class SchedulingBackendService {
     final queryParams = <String, String>{};
     if (daysToKeep != null) queryParams['daysToKeep'] = daysToKeep.toString();
 
-    final uri = Uri.parse('$_baseUrl/cleanup').replace(queryParameters: queryParams);
+    final uri =
+        Uri.parse('$_baseUrl/cleanup').replace(queryParameters: queryParams);
     final response = await http.post(uri, headers: _headers);
 
     if (response.statusCode != 200) {

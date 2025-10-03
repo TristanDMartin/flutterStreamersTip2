@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../models/user.dart';
@@ -9,7 +8,7 @@ import 'chat_view.dart';
 
 class ChoosePersonView extends ConsumerStatefulWidget {
   final Map<String, dynamic>? selectedDraft;
-  
+
   const ChoosePersonView({super.key, this.selectedDraft});
 
   @override
@@ -51,8 +50,9 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
         _error = null;
       });
 
-      final connections = await ConnectionService.shared.getConnections(currentUser.uid);
-      
+      final connections =
+          await ConnectionService.shared.getConnections(currentUser.uid);
+
       setState(() {
         _connections = connections.cast<User>();
         _isLoading = false;
@@ -69,11 +69,11 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
     if (_searchQuery.isEmpty) {
       return _connections;
     }
-    
+
     return _connections.where((user) {
       final searchLower = _searchQuery.toLowerCase();
       return user.displayName.toLowerCase().contains(searchLower) ||
-             user.username.toLowerCase().contains(searchLower);
+          user.username.toLowerCase().contains(searchLower);
     }).toList();
   }
 
@@ -91,10 +91,10 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
       // Create or fetch chat using ChatService
       final chatService = ChatService.shared;
       final chat = await chatService.fetchOrCreateChat(person.id);
-      
+
       // Close loading dialog
       if (mounted) Navigator.of(context).pop();
-      
+
       if (chat != null && mounted) {
         // Navigate to chat view
         Navigator.of(context).pushReplacement(
@@ -113,7 +113,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
     } catch (e) {
       // Close loading dialog
       if (mounted) Navigator.of(context).pop();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -141,12 +141,12 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
             children: [
               // Header
               _buildHeader(),
-              
+
               // Search Bar
               _buildSearchBar(),
-              
+
               const Divider(color: Colors.white24, height: 1),
-              
+
               // Content
               Expanded(
                 child: _buildContent(),
@@ -197,9 +197,9 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: Colors.white.withValues(alpha:0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         border: Border.all(
-          color: Colors.white.withValues(alpha:0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           width: 1,
         ),
       ),
@@ -207,7 +207,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
         children: [
           Icon(
             Icons.search,
-            color: Colors.white.withValues(alpha:0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -239,7 +239,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
               },
               icon: Icon(
                 Icons.close,
-                color: Colors.white.withValues(alpha:0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 size: 20,
               ),
             ),
@@ -286,16 +286,16 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
           children: [
             Icon(
               _searchQuery.isNotEmpty ? Icons.search_off : Icons.people_outline,
-              color: Colors.white.withValues(alpha:0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
             Text(
-              _searchQuery.isNotEmpty 
+              _searchQuery.isNotEmpty
                   ? 'No connections found for "$_searchQuery"'
                   : 'No connections yet',
               style: TextStyle(
-                color: Colors.white.withValues(alpha:0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 16,
               ),
               textAlign: TextAlign.center,
@@ -305,7 +305,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
               Text(
                 'Connect with friends to start messaging',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha:0.5),
+                  color: Colors.white.withValues(alpha: 0.5),
                   fontSize: 14,
                 ),
                 textAlign: TextAlign.center,
@@ -342,12 +342,12 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.white.withValues(alpha:0.1),
-                  Colors.white.withValues(alpha:0.05),
+                  Colors.white.withValues(alpha: 0.1),
+                  Colors.white.withValues(alpha: 0.05),
                 ],
               ),
               border: Border.all(
-                color: Colors.white.withValues(alpha:0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 width: 1,
               ),
             ),
@@ -362,7 +362,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.white.withValues(alpha:0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           width: 2,
                         ),
                       ),
@@ -373,20 +373,21 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Container(
-                                    color: Colors.grey.withValues(alpha:0.3),
+                                    color: Colors.grey.withValues(alpha: 0.3),
                                     child: Icon(
                                       Icons.person,
-                                      color: Colors.white.withValues(alpha:0.6),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.6),
                                       size: 24,
                                     ),
                                   );
                                 },
                               )
                             : Container(
-                                color: Colors.grey.withValues(alpha:0.3),
+                                color: Colors.grey.withValues(alpha: 0.3),
                                 child: Icon(
                                   Icons.person,
-                                  color: Colors.white.withValues(alpha:0.6),
+                                  color: Colors.white.withValues(alpha: 0.6),
                                   size: 24,
                                 ),
                               ),
@@ -431,7 +432,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                       Text(
                         '@${connection.username}',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha:0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 14,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -441,7 +442,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                 ),
                 Icon(
                   Icons.chevron_right,
-                  color: Colors.white.withValues(alpha:0.5),
+                  color: Colors.white.withValues(alpha: 0.5),
                   size: 24,
                 ),
               ],
@@ -451,5 +452,4 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
       ),
     );
   }
-
 }

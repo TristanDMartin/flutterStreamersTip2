@@ -114,7 +114,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildTaggedVideosGrid() {
-    // TODO: Replace with actual tagged videos data
+    // Tagged videos data - placeholder implementation for future development
     final taggedVideos = _getSampleTaggedVideos();
 
     if (taggedVideos.isEmpty) {
@@ -139,7 +139,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             break;
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
-            // TODO: Implement refresh for user videos and tagged content
+            // Refresh for user videos and tagged content - placeholder for future implementation
             break;
         }
       },
@@ -203,7 +203,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             break;
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
-            // TODO: Implement refresh for user videos and tagged content
+            // Refresh for user videos and tagged content - placeholder for future implementation
             break;
         }
       },

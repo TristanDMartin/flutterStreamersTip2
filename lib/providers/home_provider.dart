@@ -14,6 +14,7 @@ import '../services/following_feed_service.dart';
 import '../services/comments_service.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/like_service.dart';
+import '../services/enhanced_like_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
 import '../widgets/video_player_view_optimized.dart';
@@ -1049,6 +1050,32 @@ class HomeViewModel extends StateNotifier<HomeState> {
         likes: video.isLiked ? video.likes - 1 : video.likes + 1,
       );
     });
+  }
+
+  /// Set video like state from enhanced service (for proper sync)
+  Future<void> setVideoLikeStateFromService(String videoId) async {
+    try {
+      final enhancedLikeService = EnhancedLikeService();
+      final isLiked = await enhancedLikeService.isVideoLiked(videoId);
+      final likeCount = await enhancedLikeService.getLikeCount(videoId);
+
+      // Update like state in both feeds with correct values
+      _updateVideoInFeed(state.forYouVideos, videoId, (video) {
+        return video.copyWith(
+          isLiked: isLiked,
+          likes: likeCount,
+        );
+      });
+
+      _updateVideoInFeed(state.followingVideos, videoId, (video) {
+        return video.copyWith(
+          isLiked: isLiked,
+          likes: likeCount,
+        );
+      });
+    } catch (e) {
+      log('Error syncing like state from service: $e');
+    }
   }
 
   Future<void> _updateVideoFavoriteState(String videoId) async {

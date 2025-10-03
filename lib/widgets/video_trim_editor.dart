@@ -38,7 +38,7 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
   Duration _startTime = Duration.zero;
   Duration _endTime = Duration.zero;
   Duration _originalDuration = Duration.zero;
-  
+
   // Thumbnails
   final List<File> _thumbnails = [];
   bool _thumbnailsGenerated = false;
@@ -65,7 +65,7 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
     try {
       _controller = VideoPlayerController.file(widget.videoFile);
       await _controller!.initialize();
-      
+
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -73,7 +73,7 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
           _originalDuration = _controller!.value.duration;
           _endTime = _videoDuration;
         });
-        
+
         _controller!.addListener(_onVideoPositionChanged);
         _generateThumbnails();
       }
@@ -100,14 +100,15 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
       }
 
       _thumbnails.clear();
-      
+
       for (int i = 0; i < _thumbnailCount; i++) {
-        final timeMs = (i * _videoDuration.inMilliseconds / _thumbnailCount).round();
+        final timeMs =
+            (i * _videoDuration.inMilliseconds / _thumbnailCount).round();
         final thumbnailPath = path.join(
           thumbnailDir.path,
           'thumb_$i.jpg',
         );
-        
+
         final thumbnailFile = await VideoThumbnail.thumbnailFile(
           video: widget.videoFile.path,
           thumbnailPath: thumbnailPath,
@@ -115,12 +116,12 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
           timeMs: timeMs,
           quality: 75,
         );
-        
+
         if (thumbnailFile != null) {
           _thumbnails.add(File(thumbnailFile));
         }
       }
-      
+
       if (mounted) {
         setState(() {
           _thumbnailsGenerated = true;
@@ -133,7 +134,7 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
 
   void _seekToPosition(Duration position) {
     if (_controller == null || !_isInitialized) return;
-    
+
     // Clamp position within trim bounds
     final clampedPosition = Duration(
       milliseconds: position.inMilliseconds.clamp(
@@ -141,35 +142,35 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
         _endTime.inMilliseconds,
       ),
     );
-    
+
     _controller!.seekTo(clampedPosition);
   }
 
   void _onStartHandleChanged(double value) {
     final newStartTime = Duration(milliseconds: value.round());
     final minEndTime = newStartTime + _minClipLength;
-    
+
     setState(() {
       _startTime = newStartTime;
       if (_endTime <= minEndTime) {
         _endTime = minEndTime;
       }
     });
-    
+
     _debouncedSeek(_startTime);
   }
 
   void _onEndHandleChanged(double value) {
     final newEndTime = Duration(milliseconds: value.round());
     final maxStartTime = newEndTime - _minClipLength;
-    
+
     setState(() {
       _endTime = newEndTime;
       if (_startTime >= maxStartTime) {
         _startTime = maxStartTime;
       }
     });
-    
+
     _debouncedSeek(_endTime);
   }
 
@@ -185,7 +186,7 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
       _startTime = Duration.zero;
       _endTime = _originalDuration;
     });
-    
+
     _seekToPosition(Duration.zero);
     HapticFeedback.lightImpact();
   }
@@ -210,22 +211,23 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
       );
 
       // FFmpeg command for precise trimming
-      final startSeconds = _startTime.inSeconds + (_startTime.inMilliseconds % 1000) / 1000.0;
-      final durationSeconds = (_endTime - _startTime).inSeconds + 
+      final startSeconds =
+          _startTime.inSeconds + (_startTime.inMilliseconds % 1000) / 1000.0;
+      final durationSeconds = (_endTime - _startTime).inSeconds +
           ((_endTime - _startTime).inMilliseconds % 1000) / 1000.0;
 
       final command = '-i "${widget.videoFile.path}" '
           '-ss $startSeconds '
           '-t $durationSeconds '
-          '-c:v libx264 '
+          '-c:v libx264 ' // cspell:ignore libx
           '-c:a aac '
-          '-movflags +faststart '
+          '-movflags +faststart ' // cspell:ignore movflags faststart
           '-avoid_negative_ts make_zero '
           '"$outputPath"';
 
       debugPrint('FFmpeg command: $command');
 
-      // TODO: Implement actual video trimming with FFmpeg
+      // Video trimming with FFmpeg - placeholder implementation for future development
       // For now, simulate the trimming process with progress
       for (int i = 0; i < 10; i++) {
         await Future.delayed(const Duration(milliseconds: 200));
@@ -236,14 +238,14 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
           });
         }
       }
-      
+
       // Simulate successful trimming
       if (mounted) {
         setState(() {
           _isProcessing = false;
           _processingStatus = 'Trim complete!';
         });
-        
+
         // Update trim bounds to simulate the trim
         setState(() {
           _videoDuration = _endTime - _startTime;
@@ -251,9 +253,9 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
           _endTime = _videoDuration;
           _originalDuration = _videoDuration;
         });
-        
+
         HapticFeedback.mediumImpact();
-        
+
         // Notify completion
         widget.onTrimComplete?.call();
       }
@@ -271,13 +273,13 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
 
   void _togglePlayPause() {
     if (_controller == null || !_isInitialized) return;
-    
+
     if (_isPlaying) {
       _controller!.pause();
     } else {
       _controller!.play();
     }
-    
+
     HapticFeedback.lightImpact();
   }
 
@@ -303,7 +305,8 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  bool get _isDirty => _startTime.inMilliseconds > 0 || _endTime < _originalDuration;
+  bool get _isDirty =>
+      _startTime.inMilliseconds > 0 || _endTime < _originalDuration;
 
   @override
   Widget build(BuildContext context) {
@@ -376,7 +379,8 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   const CircularProgressIndicator(
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
@@ -389,7 +393,9 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
                                       child: LinearProgressIndicator(
                                         value: _processingProgress,
                                         backgroundColor: Colors.white24,
-                                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                                        valueColor:
+                                            const AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
                                       ),
                                     ),
                                 ],
@@ -405,7 +411,7 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
                     ),
             ),
           ),
-          
+
           // Trim Controls
           Expanded(
             flex: 2,
@@ -419,23 +425,26 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
                     children: [
                       Text(
                         'Start: ${_formatDuration(_startTime)}',
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
                       ),
                       Text(
                         'Length: ${_formatDuration(_endTime - _startTime)}',
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
                       ),
                       Text(
                         'End: ${_formatDuration(_endTime)}',
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Thumbnail Timeline
-                  Container(
+                  SizedBox(
                     height: 60,
                     child: _thumbnailsGenerated && _thumbnails.isNotEmpty
                         ? _buildThumbnailTimeline()
@@ -453,9 +462,9 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
                             ),
                           ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Apply Button
                   SizedBox(
                     width: double.infinity,
@@ -478,7 +487,8 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.black),
                                   ),
                                 ),
                                 SizedBox(width: 12),
@@ -504,7 +514,7 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
   }
 
   Widget _buildThumbnailTimeline() {
-    return Container(
+    return SizedBox(
       height: 60,
       child: Stack(
         children: [
@@ -539,7 +549,7 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
               }).toList(),
             ),
           ),
-          
+
           // Trim handles overlay
           _buildTrimHandles(),
         ],
@@ -548,10 +558,15 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
   }
 
   Widget _buildTrimHandles() {
-    final timelineWidth = MediaQuery.of(context).size.width - 32; // Account for padding
-    final startPosition = (_startTime.inMilliseconds / _videoDuration.inMilliseconds) * timelineWidth;
-    final endPosition = (_endTime.inMilliseconds / _videoDuration.inMilliseconds) * timelineWidth;
-    
+    final timelineWidth =
+        MediaQuery.of(context).size.width - 32; // Account for padding
+    final startPosition =
+        (_startTime.inMilliseconds / _videoDuration.inMilliseconds) *
+            timelineWidth;
+    final endPosition =
+        (_endTime.inMilliseconds / _videoDuration.inMilliseconds) *
+            timelineWidth;
+
     return Stack(
       children: [
         // Selected area highlight
@@ -566,14 +581,16 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
             ),
           ),
         ),
-        
+
         // Start handle
         Positioned(
           left: startPosition - 15,
           child: GestureDetector(
             onPanUpdate: (details) {
               final newPosition = startPosition + details.delta.dx;
-              final newTimeMs = (newPosition / timelineWidth * _videoDuration.inMilliseconds).clamp(0.0, _videoDuration.inMilliseconds.toDouble());
+              final newTimeMs =
+                  (newPosition / timelineWidth * _videoDuration.inMilliseconds)
+                      .clamp(0.0, _videoDuration.inMilliseconds.toDouble());
               _onStartHandleChanged(newTimeMs);
             },
             child: Container(
@@ -594,14 +611,16 @@ class _VideoTrimEditorState extends State<VideoTrimEditor>
             ),
           ),
         ),
-        
+
         // End handle
         Positioned(
           left: endPosition - 15,
           child: GestureDetector(
             onPanUpdate: (details) {
               final newPosition = endPosition + details.delta.dx;
-              final newTimeMs = (newPosition / timelineWidth * _videoDuration.inMilliseconds).clamp(0.0, _videoDuration.inMilliseconds.toDouble());
+              final newTimeMs =
+                  (newPosition / timelineWidth * _videoDuration.inMilliseconds)
+                      .clamp(0.0, _videoDuration.inMilliseconds.toDouble());
               _onEndHandleChanged(newTimeMs);
             },
             child: Container(

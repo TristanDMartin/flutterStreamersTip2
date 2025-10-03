@@ -1,24 +1,26 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../models/chat.dart';
 
 class ChatService {
   static final ChatService _instance = ChatService._internal();
   static ChatService get shared => _instance;
-  
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  
+
   ChatService._internal();
 
   Future<Chat?> fetchOrCreateChat(String otherUID) async {
     final me = _auth.currentUser?.uid;
     if (me == null) {
-      print("❌ ChatService: No current user signed in");
+      debugPrint("❌ ChatService: No current user signed in");
       return null;
     }
 
-    print("💬 ChatService: fetchOrCreateChat called with otherUID: $otherUID, currentUser: $me");
+    debugPrint(
+        "💬 ChatService: fetchOrCreateChat called with otherUID: $otherUID, currentUser: $me");
 
     try {
       // Query for existing chats
@@ -27,20 +29,23 @@ class ChatService {
           .where("participants", arrayContains: me)
           .get();
 
-      print("💬 ChatService: Found ${querySnapshot.docs.length} existing chats");
+      debugPrint(
+          "💬 ChatService: Found ${querySnapshot.docs.length} existing chats");
 
       // Check if there's an existing chat with the other user
       for (final doc in querySnapshot.docs) {
-        final participants = List<String>.from(doc.data()["participants"] ?? []);
-        print("💬 ChatService: Checking chat ${doc.id} with participants: $participants");
+        final participants =
+            List<String>.from(doc.data()["participants"] ?? []);
+        debugPrint(
+            "💬 ChatService: Checking chat ${doc.id} with participants: $participants");
         if (participants.contains(otherUID)) {
-          print("💬 ChatService: Found existing chat with user $otherUID");
+          debugPrint("💬 ChatService: Found existing chat with user $otherUID");
           final chat = Chat.fromJson(doc.data());
           return chat.copyWith(id: doc.id);
         }
       }
 
-      print("💬 ChatService: No existing chat found, creating new chat");
+      debugPrint("💬 ChatService: No existing chat found, creating new chat");
       // No existing chat, create new
       final data = {
         "participants": [me, otherUID],
@@ -50,20 +55,21 @@ class ChatService {
       };
 
       final docRef = await _firestore.collection("chats").add(data);
-      print("💬 ChatService: Created new chat with ID: ${docRef.id}");
-      
+      debugPrint("💬 ChatService: Created new chat with ID: ${docRef.id}");
+
       // Fetch the created document
       final snapshot = await docRef.get();
       if (snapshot.exists) {
-        print("💬 ChatService: Successfully fetched created chat document");
+        debugPrint(
+            "💬 ChatService: Successfully fetched created chat document");
         final chat = Chat.fromJson(snapshot.data()!);
         return chat.copyWith(id: snapshot.id);
       }
 
-      print("❌ ChatService: Created chat document doesn't exist");
+      debugPrint("❌ ChatService: Created chat document doesn't exist");
       return null;
     } catch (e) {
-      print("❌ ChatService: Error in fetchOrCreateChat: $e");
+      debugPrint("❌ ChatService: Error in fetchOrCreateChat: $e");
       return null;
     }
   }
@@ -76,7 +82,7 @@ class ChatService {
   }) async {
     final me = _auth.currentUser?.uid;
     if (me == null) {
-    // print("No current user signed in");
+      // print("No current user signed in");
       return;
     }
 
@@ -103,7 +109,8 @@ class ChatService {
 
       // Check if there's an existing chat with the other user
       for (final doc in querySnapshot.docs) {
-        final participants = List<String>.from(doc.data()["participants"] ?? []);
+        final participants =
+            List<String>.from(doc.data()["participants"] ?? []);
         if (participants.contains(otherUID)) {
           final chat = Chat.fromJson(doc.data());
           final realChat = chat.copyWith(id: doc.id);
@@ -121,7 +128,7 @@ class ChatService {
       };
 
       final docRef = await _firestore.collection("chats").add(data);
-      
+
       // Fetch the created document
       final snapshot = await docRef.get();
       if (snapshot.exists) {
@@ -130,7 +137,7 @@ class ChatService {
         onRealChatFetched(realChat);
       }
     } catch (e) {
-    // print("Error in createPlaceholderAndFetchChat: $e");
+      // print("Error in createPlaceholderAndFetchChat: $e");
     }
   }
 
@@ -146,7 +153,7 @@ class ChatService {
   }
 
   // Additional methods for chat management
-  
+
   Future<void> updateLastMessage(String chatId, String message) async {
     try {
       await _firestore.collection("chats").doc(chatId).update({
@@ -154,7 +161,7 @@ class ChatService {
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
     } catch (e) {
-    // print("Error updating last message: $e");
+      // print("Error updating last message: $e");
     }
   }
 
@@ -164,7 +171,7 @@ class ChatService {
         "lastReadTimestamp": FieldValue.serverTimestamp(),
       });
     } catch (e) {
-    // print("Error marking chat as read: $e");
+      // print("Error marking chat as read: $e");
     }
   }
 
@@ -184,7 +191,7 @@ class ChatService {
         return chat.copyWith(id: doc.id);
       }).toList();
     } catch (e) {
-    // print("Error getting user chats: $e");
+      // print("Error getting user chats: $e");
       return [];
     }
   }
@@ -193,7 +200,7 @@ class ChatService {
     try {
       await _firestore.collection("chats").doc(chatId).delete();
     } catch (e) {
-    // print("Error deleting chat: $e");
+      // print("Error deleting chat: $e");
     }
   }
 
@@ -206,9 +213,9 @@ class ChatService {
         batch.delete(chatRef);
       }
       await batch.commit();
-    // print("✅ Deleted ${chatIds.length} chats");
+      // print("✅ Deleted ${chatIds.length} chats");
     } catch (e) {
-    // print("Error deleting multiple chats: $e");
+      // print("Error deleting multiple chats: $e");
       rethrow;
     }
   }
@@ -219,7 +226,7 @@ class ChatService {
         "mutedBy": FieldValue.arrayUnion([userId]),
       });
     } catch (e) {
-    // print("Error muting chat: $e");
+      // print("Error muting chat: $e");
       rethrow;
     }
   }
@@ -230,7 +237,7 @@ class ChatService {
         "mutedBy": FieldValue.arrayRemove([userId]),
       });
     } catch (e) {
-    // print("Error unmuting chat: $e");
+      // print("Error unmuting chat: $e");
       rethrow;
     }
   }
@@ -245,9 +252,9 @@ class ChatService {
         });
       }
       await batch.commit();
-    // print("✅ Muted ${chatIds.length} chats");
+      // print("✅ Muted ${chatIds.length} chats");
     } catch (e) {
-    // print("Error muting multiple chats: $e");
+      // print("Error muting multiple chats: $e");
       rethrow;
     }
   }
@@ -258,7 +265,7 @@ class ChatService {
         "archivedBy": FieldValue.arrayUnion([userId]),
       });
     } catch (e) {
-    // print("Error archiving chat: $e");
+      // print("Error archiving chat: $e");
       rethrow;
     }
   }
@@ -273,15 +280,15 @@ class ChatService {
         });
       }
       await batch.commit();
-    // print("✅ Archived ${chatIds.length} chats");
+      // print("✅ Archived ${chatIds.length} chats");
     } catch (e) {
-    // print("Error archiving multiple chats: $e");
+      // print("Error archiving multiple chats: $e");
       rethrow;
     }
   }
 
   // Group chat methods
-  
+
   Future<Chat?> createGroupChat({
     required String groupName,
     required List<String> participantIds,
@@ -303,7 +310,7 @@ class ChatService {
       };
 
       final docRef = await _firestore.collection("chats").add(data);
-      
+
       // Fetch the created document
       final snapshot = await docRef.get();
       if (snapshot.exists) {
@@ -313,28 +320,30 @@ class ChatService {
 
       return null;
     } catch (e) {
-    // print("Error creating group chat: $e");
+      // print("Error creating group chat: $e");
       return null;
     }
   }
 
-  Future<void> addParticipantToGroup(String chatId, String participantId) async {
+  Future<void> addParticipantToGroup(
+      String chatId, String participantId) async {
     try {
       await _firestore.collection("chats").doc(chatId).update({
         "participants": FieldValue.arrayUnion([participantId]),
       });
     } catch (e) {
-    // print("Error adding participant to group: $e");
+      // print("Error adding participant to group: $e");
     }
   }
 
-  Future<void> removeParticipantFromGroup(String chatId, String participantId) async {
+  Future<void> removeParticipantFromGroup(
+      String chatId, String participantId) async {
     try {
       await _firestore.collection("chats").doc(chatId).update({
         "participants": FieldValue.arrayRemove([participantId]),
       });
     } catch (e) {
-    // print("Error removing participant from group: $e");
+      // print("Error removing participant from group: $e");
     }
   }
 
@@ -347,12 +356,12 @@ class ChatService {
       final updates = <String, dynamic>{};
       if (groupName != null) updates["groupName"] = groupName;
       if (groupAvatarURL != null) updates["groupAvatarURL"] = groupAvatarURL;
-      
+
       if (updates.isNotEmpty) {
         await _firestore.collection("chats").doc(chatId).update(updates);
       }
     } catch (e) {
-    // print("Error updating group info: $e");
+      // print("Error updating group info: $e");
     }
   }
 
@@ -360,7 +369,7 @@ class ChatService {
   Future<void> createSampleChats() async {
     final me = _auth.currentUser?.uid;
     if (me == null) {
-    // print("No current user signed in");
+      // print("No current user signed in");
       return;
     }
 
@@ -392,11 +401,11 @@ class ChatService {
           'onlineStatus': 'busy',
         },
       ];
-      
+
       for (final userData in sampleUsers) {
         final userId = userData['id']!;
         final userRef = _firestore.collection('users').doc(userId);
-        
+
         await userRef.set({
           'id': userId,
           'username': userData['username']!,
@@ -444,7 +453,8 @@ class ChatService {
 
         bool chatExists = false;
         for (final doc in existingChats.docs) {
-          final participants = List<String>.from(doc.data()['participants'] ?? []);
+          final participants =
+              List<String>.from(doc.data()['participants'] ?? []);
           final chatParticipants = chatData['participants'] as List<String>;
           if (participants.contains(chatParticipants[1])) {
             chatExists = true;
@@ -459,27 +469,30 @@ class ChatService {
             'lastTimestamp': chatData['lastTimestamp'],
             'chatType': chatData['chatType'],
           });
-          
+
           // Add some sample messages to the chat
-          await _addSampleMessages(chatRef.id, chatData['participants'] as List<String>);
+          await _addSampleMessages(
+              chatRef.id, chatData['participants'] as List<String>);
         }
       }
 
-    // print('✅ Created sample chats for testing');
+      // print('✅ Created sample chats for testing');
     } catch (e) {
-    // print('❌ Error creating sample chats: $e');
+      // print('❌ Error creating sample chats: $e');
     }
   }
 
   /// Adds sample messages to a chat for testing
-  Future<void> _addSampleMessages(String chatId, List<String> participants) async {
+  Future<void> _addSampleMessages(
+      String chatId, List<String> participants) async {
     try {
       final currentUser = _auth.currentUser?.uid;
       if (currentUser == null) return;
-      
-      final otherUserId = participants.firstWhere((id) => id != currentUser, orElse: () => '');
+
+      final otherUserId =
+          participants.firstWhere((id) => id != currentUser, orElse: () => '');
       if (otherUserId.isEmpty) return;
-      
+
       // Sample conversation
       final sampleMessages = [
         {
@@ -513,7 +526,7 @@ class ChatService {
           'timestamp': DateTime.now().subtract(const Duration(minutes: 6)),
         },
       ];
-      
+
       for (final messageData in sampleMessages) {
         await _firestore
             .collection('chats')
@@ -527,13 +540,15 @@ class ChatService {
           'timestamp': messageData['timestamp'],
           'chatId': chatId,
           'recipients': [messageData['to']], // Recipient needs to read this
-          'readBy': [messageData['from']], // Sender has "read" their own message
+          'readBy': [
+            messageData['from']
+          ], // Sender has "read" their own message
         });
       }
-      
-    // print('✅ Added sample messages to chat $chatId');
+
+      // print('✅ Added sample messages to chat $chatId');
     } catch (e) {
-    // print('❌ Error adding sample messages: $e');
+      // print('❌ Error adding sample messages: $e');
     }
   }
 }

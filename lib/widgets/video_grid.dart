@@ -41,7 +41,8 @@ class VideoGrid extends StatelessWidget {
       id: video.id,
       title: video.caption,
       creator: video.creator.displayName,
-      thumbnailURL: (video.thumbnailURL ?? '').isNotEmpty ? video.thumbnailURL : null,
+      thumbnailURL:
+          (video.thumbnailURL ?? '').isNotEmpty ? video.thumbnailURL : null,
       videoURL: video.videoURL,
       views: video.views,
       likes: video.likes,
@@ -88,7 +89,8 @@ class VideoThumbnail extends StatelessWidget {
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
                             decoration: BoxDecoration(
-                              gradient: _getGradientForCategory(video.categoryId),
+                              gradient:
+                                  _getGradientForCategory(video.categoryId),
                             ),
                             child: Icon(
                               Icons.photo,
@@ -110,7 +112,7 @@ class VideoThumbnail extends StatelessWidget {
                       ),
               ),
             ),
-            
+
             // View count overlay
             Positioned(
               bottom: 0,
@@ -137,7 +139,7 @@ class VideoThumbnail extends StatelessWidget {
                     ),
                     SizedBox(width: 4),
                     Text(
-                      '0', // TODO: Add views to HomeVideo model
+                      '0', // Views placeholder - HomeVideo model views field to be implemented
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 10,
@@ -199,7 +201,7 @@ class VideoThumbnail extends StatelessWidget {
           const Color(0xFF1A1A1A),
         ]);
     }
-    
+
     return LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,

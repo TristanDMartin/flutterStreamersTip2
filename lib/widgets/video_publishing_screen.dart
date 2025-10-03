@@ -36,7 +36,8 @@ class VideoPublishingScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<VideoPublishingScreen> createState() => _VideoPublishingScreenState();
+  ConsumerState<VideoPublishingScreen> createState() =>
+      _VideoPublishingScreenState();
 }
 
 // Category data structure
@@ -141,14 +142,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       color: Color(0xFF9C27B0), // Purple
     ),
     VideoCategory(
-      id: 'roleplay',
-      name: 'Roleplay',
+      id: 'roleplay', // cspell:ignore roleplay
+      name: 'Roleplay', // cspell:ignore Roleplay
       emoji: '🎭',
       icon: Icons.theater_comedy,
       color: Color(0xFFFFEB3B), // Yellow
     ),
   ];
-  
+
   // Publishing state
   String _caption = '';
   List<String> _hashtags = [];
@@ -162,10 +163,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   PostSchedule? _schedule;
   final VideoUploadService _uploadService = VideoUploadService();
   final VideoModerationService _moderationService = VideoModerationService();
-  final EnhancedErrorHandlingService _errorHandler = EnhancedErrorHandlingService();
+  final EnhancedErrorHandlingService _errorHandler =
+      EnhancedErrorHandlingService();
   final VideoWatermarkService _watermarkService = VideoWatermarkService();
-  final OptimisticVideoService _optimisticVideoService = OptimisticVideoService();
-  
+  final OptimisticVideoService _optimisticVideoService =
+      OptimisticVideoService();
+
   // Text controllers
   late TextEditingController _captionController;
 
@@ -174,10 +177,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     super.initState();
     _caption = widget.caption;
     _hashtags = List.from(widget.hashtags);
-    
+
     // Initialize text controller with the caption
     _captionController = TextEditingController(text: _caption);
-    
+
     _initializeVideo();
   }
 
@@ -201,7 +204,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   /// Add hashtag to caption text
   void _addHashtagToCaption(String hashtag) {
     final currentText = _captionController.text;
-    
+
     // Check if hashtag is already in the caption
     if (!currentText.contains(hashtag)) {
       String newText;
@@ -210,12 +213,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       } else if (currentText.endsWith(' ')) {
         newText = currentText + hashtag;
       } else {
-        newText = currentText + ' ' + hashtag;
+        newText = '$currentText $hashtag';
       }
-      
+
       _captionController.text = newText;
       _caption = newText;
-      
+
       // Move cursor to end
       _captionController.selection = TextSelection.fromPosition(
         TextPosition(offset: newText.length),
@@ -227,19 +230,19 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   void _removeHashtagFromCaption(String hashtag) {
     final currentText = _captionController.text;
     String newText = currentText;
-    
+
     // Remove the hashtag from the text
     newText = newText.replaceAll('$hashtag ', '');
-    newText = newText.replaceAll('$hashtag', '');
+    newText = newText.replaceAll(hashtag, '');
     newText = newText.replaceAll(' $hashtag', '');
-    
+
     // Clean up any double spaces
     newText = newText.replaceAll('  ', ' ');
     newText = newText.trim();
-    
+
     _captionController.text = newText;
     _caption = newText;
-    
+
     // Move cursor to end
     _captionController.selection = TextSelection.fromPosition(
       TextPosition(offset: newText.length),
@@ -271,58 +274,58 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           ),
         ),
         child: Column(
-        children: [
-          // Header
-          _buildHeader(),
-          
-          // Video Player Area (matching Edit Video layout)
-          Expanded(
-            flex: 3,
-            child: _buildVideoPreview(),
-          ),
-          
-          // Content
-          Expanded(
-            flex: 4,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 20),
-              child: Column(
-                children: [
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Category Selection
-                  _buildCategorySection(),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Caption Section
-                  _buildCaptionSection(),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Privacy Settings
-                  _buildPrivacySection(),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Cross-Platform Sharing
-                  _buildSharingSection(),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Schedule Post
-                  _buildSchedulePostSection(),
-                  
-                  const SizedBox(height: 120), // Space for bottom buttons with safe area
-                ],
+          children: [
+            // Header
+            _buildHeader(),
+
+            // Video Player Area (matching Edit Video layout)
+            Expanded(
+              flex: 3,
+              child: _buildVideoPreview(),
+            ),
+
+            // Content
+            Expanded(
+              flex: 4,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 20),
+
+                    // Category Selection
+                    _buildCategorySection(),
+
+                    const SizedBox(height: 20),
+
+                    // Caption Section
+                    _buildCaptionSection(),
+
+                    const SizedBox(height: 20),
+
+                    // Privacy Settings
+                    _buildPrivacySection(),
+
+                    const SizedBox(height: 20),
+
+                    // Cross-Platform Sharing
+                    _buildSharingSection(),
+
+                    const SizedBox(height: 20),
+
+                    // Schedule Post
+                    _buildSchedulePostSection(),
+
+                    const SizedBox(
+                        height: 120), // Space for bottom buttons with safe area
+                  ],
+                ),
               ),
             ),
-          ),
-          
-          // Bottom Actions
-          _buildBottomActions(),
-        ],
+
+            // Bottom Actions
+            _buildBottomActions(),
+          ],
         ),
       ),
     );
@@ -450,7 +453,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                 const CircularProgressIndicator(
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
-              
+
               // Play/Pause overlay
               if (!_isPlaying)
                 Container(
@@ -466,13 +469,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     size: 40,
                   ),
                 ),
-              
+
               // Upload Progress
               if (_isUploading)
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha:0.7),
+                      color: Colors.black.withValues(alpha: 0.7),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
@@ -481,7 +484,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                         children: [
                           CircularProgressIndicator(
                             value: _uploadProgress,
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFF9248D2)),
                           ),
                           const SizedBox(height: 16),
                           Text(
@@ -591,7 +595,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -624,14 +628,16 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             ),
             decoration: InputDecoration(
               hintText: 'Write a caption...',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -639,7 +645,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               ),
               contentPadding: const EdgeInsets.all(16),
               filled: true,
-              fillColor: Colors.white.withValues(alpha:0.03),
+              fillColor: Colors.white.withValues(alpha: 0.03),
             ),
           ),
           const SizedBox(height: 12),
@@ -664,7 +670,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -687,13 +693,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     );
   }
 
-
   Widget _buildSharingSection() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -710,11 +715,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           const SizedBox(height: 16),
           Row(
             children: [
-              _buildPlatformOption('Instagram', Icons.camera_alt, _selectedPlatforms.contains('Instagram')),
+              _buildPlatformOption('Instagram', Icons.camera_alt,
+                  _selectedPlatforms.contains('Instagram')),
               const SizedBox(width: 12),
-              _buildPlatformOption('TikTok', Icons.music_note, _selectedPlatforms.contains('TikTok')),
+              _buildPlatformOption('TikTok', Icons.music_note,
+                  _selectedPlatforms.contains('TikTok')),
               const SizedBox(width: 12),
-              _buildPlatformOption('YouTube', Icons.play_circle, _selectedPlatforms.contains('YouTube')),
+              _buildPlatformOption('YouTube', Icons.play_circle,
+                  _selectedPlatforms.contains('YouTube')),
             ],
           ),
           if (_selectedPlatforms.isNotEmpty) ...[
@@ -722,10 +730,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF9248D2).withValues(alpha:0.1),
+                color: const Color(0xFF9248D2).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: const Color(0xFF9248D2).withValues(alpha:0.3),
+                  color: const Color(0xFF9248D2).withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
@@ -740,7 +748,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     child: Text(
                       'Watermark will be added to your video for cross-platform sharing',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha:0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -757,7 +765,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
   Widget _buildSchedulePostSection() {
     // Convert selected platforms to PlatformKey enum
-    final List<PlatformKey> selectedPlatformKeys = _selectedPlatforms.map((platform) {
+    final List<PlatformKey> selectedPlatformKeys =
+        _selectedPlatforms.map((platform) {
       switch (platform) {
         case 'Instagram':
           return PlatformKey.instagram;
@@ -777,7 +786,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         type: MediaType.video,
         src: widget.videoFile.path,
         aspectRatio: 9.0 / 16.0, // Default aspect ratio for vertical videos
-        durationMs: 30000, // Default 30 seconds, should be calculated from actual video
+        durationMs:
+            30000, // Default 30 seconds, should be calculated from actual video
       ),
     ];
 
@@ -841,10 +851,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             const SizedBox(width: 16),
             Expanded(
               child: GestureDetector(
-                onTap: (_isUploading || _isModerating) ? null : () {
-                  HapticFeedback.lightImpact();
-                  _publishVideo();
-                },
+                onTap: (_isUploading || _isModerating)
+                    ? null
+                    : () {
+                        HapticFeedback.lightImpact();
+                        _publishVideo();
+                      },
                 child: Container(
                   height: 56,
                   decoration: BoxDecoration(
@@ -855,15 +867,20 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
                           ),
-                    color: (_isUploading || _isModerating) ? Colors.grey.withValues(alpha: 0.3) : null,
+                    color: (_isUploading || _isModerating)
+                        ? Colors.grey.withValues(alpha: 0.3)
+                        : null,
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: (_isUploading || _isModerating) ? null : [
-                      BoxShadow(
-                        color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    boxShadow: (_isUploading || _isModerating)
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: const Color(0xFF9248D2)
+                                  .withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                   ),
                   child: Center(
                     child: _isModerating
@@ -875,7 +892,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                                 height: 16,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
                               ),
                               SizedBox(width: 8),
@@ -895,7 +913,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
                               )
                             : Text(
@@ -930,8 +949,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           final cleaned = hashtag.replaceAll('#', '');
           final currentUser = FirebaseAuth.instance.currentUser;
           final hashtagService = HashtagLockService();
-          final validation = await hashtagService.validateHashtag(cleaned, currentUser?.uid);
-          
+          final validation =
+              await hashtagService.validateHashtag(cleaned, currentUser?.uid);
+
           if (validation.isValid) {
             setState(() {
               _hashtags.add(hashtag);
@@ -956,12 +976,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         decoration: BoxDecoration(
           color: _hashtags.contains(hashtag)
               ? const Color(0xFF9248D2)
-              : Colors.white.withValues(alpha:0.1),
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: _hashtags.contains(hashtag)
                 ? const Color(0xFF9248D2)
-                : Colors.white.withValues(alpha:0.3),
+                : Colors.white.withValues(alpha: 0.3),
           ),
         ),
         child: Text(
@@ -990,7 +1010,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.3),
+                  color: isSelected
+                      ? const Color(0xFF9248D2)
+                      : Colors.white.withValues(alpha: 0.3),
                   width: 2,
                 ),
               ),
@@ -1020,7 +1042,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -1032,7 +1054,6 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       ),
     );
   }
-
 
   Widget _buildPlatformOption(String platform, IconData icon, bool isSelected) {
     return GestureDetector(
@@ -1048,10 +1069,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.1),
+          color: isSelected
+              ? const Color(0xFF9248D2)
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.3),
+            color: isSelected
+                ? const Color(0xFF9248D2)
+                : Colors.white.withValues(alpha: 0.3),
           ),
         ),
         child: Row(
@@ -1085,7 +1110,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
     try {
       // 1. Run content moderation
-    // print('🔍 Running content moderation...');
+      // print('🔍 Running content moderation...');
       final moderationResult = await _moderationService.moderateVideo(
         videoFile: widget.videoFile,
         caption: _caption,
@@ -1112,12 +1137,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
       // 2. Generate video ID and create optimistic video
       final videoId = _generateVideoId();
-    // print('🎬 Creating optimistic video: $videoId');
+      // print('🎬 Creating optimistic video: $videoId');
 
       // Apply watermark if cross-platform sharing is selected
       File videoFileToUpload = widget.videoFile;
       if (_watermarkService.shouldApplyWatermark(_selectedPlatforms)) {
-    // print('🎬 Applying watermark for cross-platform sharing...');
+        // print('🎬 Applying watermark for cross-platform sharing...');
         final watermarkedFile = await _watermarkService.addWatermarkToVideo(
           videoFile: widget.videoFile,
           selectedPlatforms: _selectedPlatforms,
@@ -1139,7 +1164,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           'privacy': _selectedPrivacy,
           'allowComments': _allowComments,
           'cross_platform_sharing': _selectedPlatforms.toList(),
-          'watermark_applied': _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+          'watermark_applied':
+              _watermarkService.shouldApplyWatermark(_selectedPlatforms),
           'moderation_confidence': moderationResult.confidence,
           'moderation_checked_at': DateTime.now().toIso8601String(),
           'duration': 0, // Will be calculated during processing
@@ -1163,7 +1189,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           additionalMetadata: {
             'category': _selectedCategory,
             'cross_platform_sharing': _selectedPlatforms.toList(),
-            'watermark_applied': _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+            'watermark_applied':
+                _watermarkService.shouldApplyWatermark(_selectedPlatforms),
             'moderation_confidence': moderationResult.confidence,
             'moderation_checked_at': DateTime.now().toIso8601String(),
             'duration': 0,
@@ -1175,27 +1202,28 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           _isUploading = false;
         });
 
-          if (uploadResult.success) {
-            // Add video to centralized VideoService for immediate display
-            await _addVideoToService(uploadResult);
-            
-            // Show success message
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Video published successfully! 🎉'),
-                  backgroundColor: Color(0xFF9248D2),
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            }
-            // Navigate back to main tab view (which shows HomeView by default)
-            if (mounted) {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            }
-          } else {
+        if (uploadResult.success) {
+          // Add video to centralized VideoService for immediate display
+          await _addVideoToService(uploadResult);
+
+          // Show success message
           if (mounted) {
-            _showUploadErrorDialog(uploadResult.error ?? 'Failed to publish video');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Video published successfully! 🎉'),
+                backgroundColor: Color(0xFF9248D2),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          // Navigate back to main tab view (which shows HomeView by default)
+          if (mounted) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          }
+        } else {
+          if (mounted) {
+            _showUploadErrorDialog(
+                uploadResult.error ?? 'Failed to publish video');
           }
         }
       } catch (e) {
@@ -1206,13 +1234,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           _showUploadErrorDialog('Failed to publish video: ${e.toString()}');
         }
       }
-
     } catch (e) {
       setState(() {
         _isModerating = false;
       });
 
-    // print('❌ Error publishing video: $e');
+      // print('❌ Error publishing video: $e');
       _errorHandler.handleUploadError(
         operation: 'video_publishing',
         error: e,
@@ -1226,10 +1253,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   String _generateRandomString(int length) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     final random = Random();
     return String.fromCharCodes(
-      Iterable.generate(length, (_) => chars.codeUnitAt(random.nextInt(chars.length))),
+      Iterable.generate(
+          length, (_) => chars.codeUnitAt(random.nextInt(chars.length))),
     );
   }
 
@@ -1260,9 +1289,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha:0.1),
+                color: Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.withValues(alpha:0.3)),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
               ),
               child: Text(
                 result.reason ?? 'Inappropriate content detected',
@@ -1277,12 +1306,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               ),
               const SizedBox(height: 4),
               ...result.violations.map((violation) => Padding(
-                padding: const EdgeInsets.only(left: 8, top: 2),
-                child: Text(
-                  '• ${violation.replaceAll('_', ' ').toUpperCase()}',
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
-              )),
+                    padding: const EdgeInsets.only(left: 8, top: 2),
+                    child: Text(
+                      '• ${violation.replaceAll('_', ' ').toUpperCase()}',
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  )),
             ],
             const SizedBox(height: 16),
             const Text(
@@ -1374,7 +1403,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         category: _selectedCategory,
         additionalMetadata: {
           'cross_platform_sharing': _selectedPlatforms.toList(),
-          'watermark_applied': _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+          'watermark_applied':
+              _watermarkService.shouldApplyWatermark(_selectedPlatforms),
         },
       );
 
@@ -1413,7 +1443,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           'privacy': _selectedPrivacy,
         },
         isRecoverable: true,
-        suggestedActions: ['Try again', 'Check your connection', 'Restart the app'],
+        suggestedActions: [
+          'Try again',
+          'Check your connection',
+          'Restart the app'
+        ],
       );
 
       setState(() {
@@ -1451,12 +1485,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       // Add to VideoService for immediate display
       final videoService = ref.read(videoServiceProvider.notifier);
       videoService.addVideo(video);
-      
+
       // Refresh HomeView to show the new video immediately
       final homeProviderNotifier = ref.read(homeProvider.notifier);
       await homeProviderNotifier.refreshAfterUpload();
-      
-      debugPrint('✅ Video added to VideoService and HomeView refreshed: ${video.caption}');
+
+      debugPrint(
+          '✅ Video added to VideoService and HomeView refreshed: ${video.caption}');
     } catch (e) {
       debugPrint('❌ Error adding video to VideoService: $e');
     }

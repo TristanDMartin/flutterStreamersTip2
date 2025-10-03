@@ -46,7 +46,8 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
 
       // Add current account if it's not already in the list
       if (currentUserId != null) {
-        final currentAccountExists = accounts.any((account) => account['id'] == currentUserId);
+        final currentAccountExists =
+            accounts.any((account) => account['id'] == currentUserId);
         if (!currentAccountExists) {
           accounts.insert(0, {
             'id': currentUserId,
@@ -112,7 +113,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
             ),
           ),
           const SizedBox(height: 24),
-          
+
           // Title
           const Text(
             'Switch Account',
@@ -131,7 +132,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
             ),
           ),
           const SizedBox(height: 24),
-          
+
           // Loading or Accounts List
           if (_isLoading)
             const Center(
@@ -141,9 +142,9 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
             )
           else
             _buildAccountsList(),
-          
+
           const SizedBox(height: 24),
-          
+
           // Error Message
           if (_errorMessage != null) ...[
             Container(
@@ -168,7 +169,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
             ),
             const SizedBox(height: 16),
           ],
-          
+
           // Action Buttons
           _buildActionButtons(),
         ],
@@ -215,13 +216,15 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
     }
 
     return Column(
-      children: _availableAccounts.map((account) => _buildAccountItem(account)).toList(),
+      children: _availableAccounts
+          .map((account) => _buildAccountItem(account))
+          .toList(),
     );
   }
 
   Widget _buildAccountItem(Map<String, dynamic> account) {
     final isCurrent = account['isCurrent'] == true;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -234,12 +237,12 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isCurrent 
+                  color: isCurrent
                       ? const Color(0xFF9248D2).withValues(alpha: 0.2)
                       : Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isCurrent 
+                    color: isCurrent
                         ? const Color(0xFF9248D2)
                         : Colors.white.withValues(alpha: 0.1),
                     width: isCurrent ? 2 : 1,
@@ -259,7 +262,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
                           : null,
                     ),
                     const SizedBox(width: 16),
-                    
+
                     // Account Info
                     Expanded(
                       child: Column(
@@ -268,7 +271,9 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
                           Text(
                             account['displayName'] ?? 'Unknown User',
                             style: TextStyle(
-                              color: isCurrent ? const Color(0xFF9248D2) : Colors.white,
+                              color: isCurrent
+                                  ? const Color(0xFF9248D2)
+                                  : Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -277,8 +282,9 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
                           Text(
                             account['email'] ?? 'No email',
                             style: TextStyle(
-                              color: isCurrent 
-                                  ? const Color(0xFF9248D2).withValues(alpha: 0.7)
+                              color: isCurrent
+                                  ? const Color(0xFF9248D2)
+                                      .withValues(alpha: 0.7)
                                   : Colors.white.withValues(alpha: 0.7),
                               fontSize: 14,
                             ),
@@ -286,11 +292,12 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
                         ],
                       ),
                     ),
-                    
+
                     // Current indicator or switch button
                     if (isCurrent)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFF9248D2),
                           borderRadius: BorderRadius.circular(12),
@@ -315,7 +322,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
               ),
             ),
           ),
-          
+
           // Remove button (only for non-current accounts)
           if (!isCurrent) ...[
             const SizedBox(width: 8),
@@ -416,39 +423,39 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
     });
 
     try {
-        // Show loading dialog
-        if (context.mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => Center(
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+      // Show loading dialog
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Center(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+                ),
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
-                  borderRadius: BorderRadius.all(Radius.circular(16)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Switching to ${account['displayName']}...',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Switching to ${account['displayName']}...',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
               ),
             ),
-          );
-        }
+          ),
+        );
+      }
 
       // For now, we'll show a message that account switching requires re-authentication
       // In a full implementation, you would:
@@ -456,8 +463,9 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
       // 2. Sign out current user
       // 3. Sign in with the selected account credentials
       // 4. Update the saved accounts list
-      
-      await Future.delayed(const Duration(seconds: 2)); // Simulate switching time
+
+      await Future.delayed(
+          const Duration(seconds: 2)); // Simulate switching time
 
       // Update last used time for this account
       await _updateAccountLastUsed(account['id']);
@@ -465,10 +473,11 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
         Navigator.of(context).pop(); // Close switch account modal
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Account switching requires re-authentication. Please sign in with ${account['displayName']}'),
+            content: Text(
+                'Account switching requires re-authentication. Please sign in with ${account['displayName']}'),
             backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
             action: SnackBarAction(
@@ -480,7 +489,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
         );
       }
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
         setState(() {
           _errorMessage = 'Failed to switch account: ${e.toString()}';
@@ -495,7 +504,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
       final prefs = await SharedPreferences.getInstance();
       final savedAccountsJson = prefs.getString('saved_accounts') ?? '[]';
       final List<dynamic> savedAccounts = json.decode(savedAccountsJson);
-      
+
       // Update last used time for the account
       for (var account in savedAccounts) {
         if (account['id'] == accountId) {
@@ -503,7 +512,7 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
           break;
         }
       }
-      
+
       await prefs.setString('saved_accounts', json.encode(savedAccounts));
     } catch (e) {
       // Handle error silently
@@ -635,18 +644,20 @@ class _SwitchAccountModalState extends ConsumerState<SwitchAccountModal> {
         final prefs = await SharedPreferences.getInstance();
         final savedAccountsJson = prefs.getString('saved_accounts') ?? '[]';
         final List<dynamic> savedAccounts = json.decode(savedAccountsJson);
-        
-        savedAccounts.removeWhere((savedAccount) => savedAccount['id'] == account['id']);
-        
+
+        savedAccounts
+            .removeWhere((savedAccount) => savedAccount['id'] == account['id']);
+
         await prefs.setString('saved_accounts', json.encode(savedAccounts));
-        
+
         // Reload accounts
         await _loadAvailableAccounts();
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('${account['displayName']} removed from saved accounts'),
+              content:
+                  Text('${account['displayName']} removed from saved accounts'),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
             ),

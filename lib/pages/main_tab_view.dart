@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/custom_bottom_nav.dart';
-import '../widgets/camera_view_optimized.dart';
+import '../widgets/tiktok_camera_view.dart';
 import '../widgets/video_player_view_optimized.dart';
 import '../views/network_view.dart';
 import '../widgets/inbox_view_optimized.dart';
@@ -142,18 +142,17 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   void _onUploadTapped() {
     // Pause HomeView videos before navigating to CameraView
     log('🚨 CAMERA NAVIGATION: Tap detected!');
-    print('🚨 CAMERA NAVIGATION: Tap detected!');
     _pauseAllHomeViewVideos();
 
     log('🚨 CAMERA NAVIGATION: About to call Navigator.push');
-    print('🚨 CAMERA NAVIGATION: About to call Navigator.push');
     // AUDIO FIX: Add delay to ensure disposal completes before navigation
     Future.delayed(const Duration(milliseconds: 200), () {
-      // Navigate directly to camera view
+      if (!mounted) return;
+      // Navigate directly to TikTok-quality camera view
       Navigator.of(context)
           .push(
         MaterialPageRoute(
-          builder: (context) => const CameraViewOptimized(),
+          builder: (context) => const TikTokCameraView(),
         ),
       )
           .then((_) {
@@ -163,7 +162,6 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       });
     });
     log('🚨 CAMERA NAVIGATION: Navigator.push completed');
-    print('🚨 CAMERA NAVIGATION: Navigator.push completed');
   }
 
   void _onInboxTapped() {
@@ -173,6 +171,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
     // AUDIO FIX: Add delay to ensure disposal completes before navigation
     Future.delayed(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
       // Navigate to inbox view as full screen
       Navigator.of(context)
           .push(
@@ -218,6 +217,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
       // AUDIO FIX: Add delay to ensure disposal completes before navigation
       Future.delayed(const Duration(milliseconds: 200), () {
+        if (!mounted) return;
         Navigator.of(context)
             .push(
           MaterialPageRoute(

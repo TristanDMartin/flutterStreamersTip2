@@ -87,8 +87,9 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   // Simple, professional camera settings
   Future<void> _applyCameraSettings() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized)
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
+    }
 
     try {
       // Set continuous autofocus for sharp preview
@@ -115,8 +116,9 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   // Clean tap-to-focus implementation
   void _onTapToFocus(TapDownDetails details) async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized)
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
+    }
 
     try {
       final RenderBox renderBox = context.findRenderObject() as RenderBox;
@@ -165,8 +167,9 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   // Simple zoom implementation
   void _onScaleUpdate(ScaleUpdateDetails details) async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized)
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
+    }
 
     try {
       final double newZoom = (_currentZoom * details.scale).clamp(1.0, 4.0);
@@ -187,8 +190,9 @@ class _CameraViewOptimizedState extends State<CameraViewOptimized> {
 
   // Simple recording functions
   Future<void> _startRecording() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized)
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
+    }
 
     try {
       await _cameraController!.startVideoRecording();

@@ -45,55 +45,65 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     try {
       // ProfileBackView displays the user data passed to it directly
       // No need to fetch from Firestore again
-      debugPrint("🔍 ProfileBackView: Building with user data: ${_currentUserData['username']}");
-      
+      debugPrint(
+          "🔍 ProfileBackView: Building with user data: ${_currentUserData['username']}");
+
       // Extract platforms and events from the user data
       List<CalendarEvent> events = [];
       List<Map<String, dynamic>> platforms = [];
-      
+
       // Load calendar events from user data
       if (_currentUserData['calendarEvents'] != null) {
         final eventsData = _currentUserData['calendarEvents'];
         if (eventsData is List<dynamic>) {
-          events = eventsData.map((eventData) {
-            final eventMap = eventData as Map<String, dynamic>?;
-            if (eventMap != null && 
-                eventMap['id'] != null && 
-                eventMap['title'] != null && 
-                eventMap['description'] != null && 
-                eventMap['date'] != null) {
-              return CalendarEvent(
-                id: eventMap['id'] as String,
-                title: eventMap['title'] as String,
-                description: eventMap['description'] as String,
-                date: (eventMap['date'] as Timestamp).toDate(),
-              );
-            }
-            return null;
-          }).where((event) => event != null).cast<CalendarEvent>().toList();
+          events = eventsData
+              .map((eventData) {
+                final eventMap = eventData as Map<String, dynamic>?;
+                if (eventMap != null &&
+                    eventMap['id'] != null &&
+                    eventMap['title'] != null &&
+                    eventMap['description'] != null &&
+                    eventMap['date'] != null) {
+                  return CalendarEvent(
+                    id: eventMap['id'] as String,
+                    title: eventMap['title'] as String,
+                    description: eventMap['description'] as String,
+                    date: (eventMap['date'] as Timestamp).toDate(),
+                  );
+                }
+                return null;
+              })
+              .where((event) => event != null)
+              .cast<CalendarEvent>()
+              .toList();
         }
       }
-      
+
       // Load platforms from user data
       if (_currentUserData['platforms'] != null) {
         final platformsData = _currentUserData['platforms'];
         if (platformsData is List<dynamic>) {
-          platforms = platformsData.map((platformData) {
-            final platformMap = platformData as Map<String, dynamic>?;
-            if (platformMap != null) {
-              return {
-                'id': platformMap['id']?.toString() ?? '',
-                'type': platformMap['type']?.toString() ?? '',
-                'username': platformMap['username']?.toString() ?? '',
-                'followers': (platformMap['followers'] as num?)?.toInt() ?? 0,
-                'url': platformMap['url']?.toString(),
-              };
-            }
-            return null;
-          }).where((platform) => platform != null).cast<Map<String, dynamic>>().toList();
+          platforms = platformsData
+              .map((platformData) {
+                final platformMap = platformData as Map<String, dynamic>?;
+                if (platformMap != null) {
+                  return {
+                    'id': platformMap['id']?.toString() ?? '',
+                    'type': platformMap['type']?.toString() ?? '',
+                    'username': platformMap['username']?.toString() ?? '',
+                    'followers':
+                        (platformMap['followers'] as num?)?.toInt() ?? 0,
+                    'url': platformMap['url']?.toString(),
+                  };
+                }
+                return null;
+              })
+              .where((platform) => platform != null)
+              .cast<Map<String, dynamic>>()
+              .toList();
         }
       }
-      
+
       return _buildContent(events, platforms);
     } catch (e, stackTrace) {
       debugPrint("❌ ProfileBackView: Error building widget: $e");
@@ -102,7 +112,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       return _buildErrorState(e);
     }
   }
-
 
   Widget _buildErrorState(Object? error) {
     return Container(
@@ -139,7 +148,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               Text(
                 'Please try again later',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha:0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 16,
                 ),
               ),
@@ -155,8 +164,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     );
   }
 
-
-  Widget _buildContent(List<CalendarEvent> events, List<Map<String, dynamic>> platforms) {
+  Widget _buildContent(
+      List<CalendarEvent> events, List<Map<String, dynamic>> platforms) {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -176,14 +185,28 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
               SliverToBoxAdapter(child: _buildTags()),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              SliverToBoxAdapter(child: _buildSectionHeader('Bio', isBioExpanded, () => setState(() => isBioExpanded = !isBioExpanded))),
+              SliverToBoxAdapter(
+                  child: _buildSectionHeader('Bio', isBioExpanded,
+                      () => setState(() => isBioExpanded = !isBioExpanded))),
               if (isBioExpanded) SliverToBoxAdapter(child: _buildBioBody()),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              SliverToBoxAdapter(child: _buildSectionHeader('Platforms', isPlatformsExpanded, () => setState(() => isPlatformsExpanded = !isPlatformsExpanded))),
-              if (isPlatformsExpanded) SliverToBoxAdapter(child: _buildPlatforms(platforms)),
+              SliverToBoxAdapter(
+                  child: _buildSectionHeader(
+                      'Platforms',
+                      isPlatformsExpanded,
+                      () => setState(
+                          () => isPlatformsExpanded = !isPlatformsExpanded))),
+              if (isPlatformsExpanded)
+                SliverToBoxAdapter(child: _buildPlatforms(platforms)),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              SliverToBoxAdapter(child: _buildSectionHeader('Calendar', isCalendarExpanded, () => setState(() => isCalendarExpanded = !isCalendarExpanded))),
-              if (isCalendarExpanded) SliverToBoxAdapter(child: _buildCalendar(events)),
+              SliverToBoxAdapter(
+                  child: _buildSectionHeader(
+                      'Calendar',
+                      isCalendarExpanded,
+                      () => setState(
+                          () => isCalendarExpanded = !isCalendarExpanded))),
+              if (isCalendarExpanded)
+                SliverToBoxAdapter(child: _buildCalendar(events)),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
             ],
           ),
@@ -248,24 +271,28 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget _buildTags() {
     final hashtagsData = _currentUserData['hashtags'];
     List<String> tags = [];
-    
+
     if (hashtagsData != null) {
       if (hashtagsData is List) {
         // If it's already a list, convert it
         tags = List<String>.from(hashtagsData);
       } else if (hashtagsData is String) {
         // If it's a string, split by comma and trim whitespace
-        tags = hashtagsData.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
+        tags = hashtagsData
+            .split(',')
+            .map((tag) => tag.trim())
+            .where((tag) => tag.isNotEmpty)
+            .toList();
       }
     }
-    
+
     if (tags.isEmpty) return const SizedBox.shrink();
-    
+
     // Set first hashtag as selected if none is selected
     if (_selectedHashtag == null && tags.isNotEmpty) {
       _selectedHashtag = tags.first;
     }
-    
+
     return SizedBox(
       height: 42,
       child: ListView.separated(
@@ -274,7 +301,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         itemBuilder: (context, index) {
           final String tag = tags[index];
           final bool isSelected = _selectedHashtag == tag;
-          
+
           return GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
@@ -287,7 +314,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               decoration: BoxDecoration(
                 gradient: isSelected
                     ? const LinearGradient(
-                        colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match Add to Calendar button
+                        colors: [
+                          Color(0xFF955CFF),
+                          Color(0xFF3D99F7)
+                        ], // Match Add to Calendar button
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       )
@@ -295,25 +325,26 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 color: isSelected ? null : Colors.white.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isSelected 
-                      ? Colors.white.withValues(alpha: 0.3)
-                      : Colors.white.withValues(alpha: 0.15), 
-                  width: 1
-                ),
-                boxShadow: isSelected ? [
-                  BoxShadow(
-                    color: const Color(0xFF955CFF).withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ] : null,
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.3)
+                        : Colors.white.withValues(alpha: 0.15),
+                    width: 1),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFF955CFF).withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
               ),
               alignment: Alignment.center,
               child: Text(
                 '#$tag',
                 style: const TextStyle(
-                  color: Colors.white, 
-                  fontSize: 16, 
+                  color: Colors.white,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -342,7 +373,11 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               ),
             ),
             const Spacer(),
-            Icon(expanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right, color: Colors.white.withValues(alpha: 0.9)),
+            Icon(
+                expanded
+                    ? Icons.keyboard_arrow_down
+                    : Icons.keyboard_arrow_right,
+                color: Colors.white.withValues(alpha: 0.9)),
           ],
         ),
       ),
@@ -356,7 +391,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Text(
         bio,
-        style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 16, fontWeight: FontWeight.w600),
+        style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.75),
+            fontSize: 16,
+            fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -375,7 +413,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         ),
       );
     }
-    
+
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Column(
@@ -406,12 +444,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               meta: _formatDate(e.date),
               onDelete: () async {
                 debugPrint('🗑️ Deleting calendar event: ${e.title}');
-                final List<CalendarEvent> updatedEvents = events.where((x) => x.id != e.id).toList();
-                
+                final List<CalendarEvent> updatedEvents =
+                    events.where((x) => x.id != e.id).toList();
+
                 try {
                   final authService = ref.read(robustAuthServiceProvider);
                   await authService.updateUserCalendarEvents(updatedEvents);
-                  debugPrint('✅ Calendar event deleted successfully - StreamBuilder will auto-update');
+                  debugPrint(
+                      '✅ Calendar event deleted successfully - StreamBuilder will auto-update');
                 } catch (error) {
                   debugPrint('❌ Error deleting calendar event: $error');
                 }
@@ -480,7 +520,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     String description = '';
     DateTime when = DateTime.now();
     bool isValid = false;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -495,8 +535,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.8),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(20)),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2), width: 1),
                 ),
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -534,7 +576,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // Title field (required)
                     TextField(
                       onChanged: (v) {
@@ -547,14 +589,17 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         labelText: 'Title *',
                         labelStyle: const TextStyle(color: Colors.white70),
                         hintText: 'Event title',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                        enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white30)),
-                        focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white70)),
+                        hintStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5)),
+                        enabledBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white30)),
+                        focusedBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white70)),
                       ),
                       style: const TextStyle(color: Colors.white),
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Description field (optional)
                     TextField(
                       onChanged: (v) => description = v,
@@ -563,14 +608,17 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         labelText: 'Description',
                         labelStyle: const TextStyle(color: Colors.white70),
                         hintText: 'Event description (optional)',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                        enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white30)),
-                        focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white70)),
+                        hintStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5)),
+                        enabledBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white30)),
+                        focusedBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white70)),
                       ),
                       style: const TextStyle(color: Colors.white),
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Date & Time picker
                     Row(
                       children: [
@@ -581,19 +629,20 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         const Spacer(),
                         TextButton(
                           onPressed: () async {
+                            final currentContext = context;
                             final DateTime? picked = await showDatePicker(
-                              context: context,
+                              context: currentContext,
                               initialDate: when,
                               firstDate: DateTime.now(),
                               lastDate: DateTime(2100),
                             );
                             if (picked != null) {
-                              final currentContext = context;
+                              if (!mounted) return;
                               final TimeOfDay? tod = await showTimePicker(
                                 context: currentContext,
                                 initialTime: TimeOfDay.fromDateTime(when),
                               );
-                              if (tod != null && currentContext.mounted) {
+                              if (tod != null && mounted) {
                                 setModalState(() {
                                   when = DateTime(
                                     picked.year,
@@ -618,14 +667,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                       ],
                     ),
                     const SizedBox(height: 24),
-                    
+
                     // Save button
                     SizedBox(
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: isValid 
+                          backgroundColor: isValid
                               ? const Color(0xFF3D99F7)
                               : Colors.grey.withValues(alpha: 0.3),
                           foregroundColor: Colors.white,
@@ -636,50 +685,63 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         onPressed: isValid
                             ? () async {
                                 final navigator = Navigator.of(context);
-                                final scaffoldMessenger = ScaffoldMessenger.of(context);
-                                
+                                final scaffoldMessenger =
+                                    ScaffoldMessenger.of(context);
+
                                 debugPrint('📅 Creating new calendar event...');
                                 debugPrint('📅 Title: ${title.trim()}');
-                                debugPrint('📅 Description: ${description.trim()}');
+                                debugPrint(
+                                    '📅 Description: ${description.trim()}');
                                 debugPrint('📅 Date: $when');
-                                
+
                                 // Create event object with your exact spec
                                 final CalendarEvent ev = CalendarEvent.create(
                                   title: title.trim(),
                                   description: description.trim(),
                                   date: when,
                                 );
-                                debugPrint('📅 Created event with ID: ${ev.id}');
-                                
+                                debugPrint(
+                                    '📅 Created event with ID: ${ev.id}');
+
                                 // Get current events and add new one
-                                final authService = ref.read(robustAuthServiceProvider);
+                                final authService =
+                                    ref.read(robustAuthServiceProvider);
                                 final currentUser = authService.currentUser;
                                 if (currentUser != null) {
-                                  final List<CalendarEvent> next = [...currentUser.calendarEvents, ev];
-                                  debugPrint('📅 Total events after adding: ${next.length}');
-                                  
+                                  final List<CalendarEvent> next = [
+                                    ...currentUser.calendarEvents,
+                                    ev
+                                  ];
+                                  debugPrint(
+                                      '📅 Total events after adding: ${next.length}');
+
                                   try {
                                     // Persist to backend via AuthenticationService
-                                    await authService.updateUserCalendarEvents(next);
-                                    debugPrint('📅 Successfully saved to Firestore - StreamBuilder will auto-update');
-                                    
+                                    await authService
+                                        .updateUserCalendarEvents(next);
+                                    debugPrint(
+                                        '📅 Successfully saved to Firestore - StreamBuilder will auto-update');
+
                                     // Dismiss sheet
                                     navigator.pop();
-                                    
+
                                     // Show success toast (optional)
                                     scaffoldMessenger.showSnackBar(
                                       const SnackBar(
-                                        content: Text('Event added to your profile'),
+                                        content:
+                                            Text('Event added to your profile'),
                                         backgroundColor: Color(0xFF3D99F7),
                                         duration: Duration(seconds: 2),
                                       ),
                                     );
                                   } catch (e) {
-                                    debugPrint('❌ Error saving calendar event: $e');
+                                    debugPrint(
+                                        '❌ Error saving calendar event: $e');
                                     // Show error with retry option
                                     scaffoldMessenger.showSnackBar(
                                       SnackBar(
-                                        content: Text('Failed to save event: $e'),
+                                        content:
+                                            Text('Failed to save event: $e'),
                                         backgroundColor: Colors.red,
                                         action: SnackBarAction(
                                           label: 'Retry',
@@ -715,16 +777,29 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
   String _formatDate(DateTime date) {
     // Format date as "MMM d" (e.g., "Sep 2")
-    final List<String> months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    final List<String> months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     final String dateString = '${months[date.month - 1]} ${date.day}';
-    
+
     // Format time as "h:mm a" (e.g., "5:10 PM")
     final int hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
     final String minute = date.minute.toString().padLeft(2, '0');
     // cspell:ignore ampm
     final String ampm = date.hour >= 12 ? 'PM' : 'AM';
     final String timeString = '$hour:$minute $ampm';
-    
+
     return '$dateString · $timeString';
   }
 
@@ -732,31 +807,35 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     final url = platform['url'];
     final platformType = platform['type'] ?? '';
     final username = platform['username'] ?? '';
-    
-    debugPrint('🔍 Platform data: type=$platformType, username=$username, url=$url');
-    
+
+    debugPrint(
+        '🔍 Platform data: type=$platformType, username=$username, url=$url');
+
     if (url != null && url.isNotEmpty) {
       try {
         // Ensure URL has proper protocol
         String finalUrl = url;
-        if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+        if (!finalUrl.startsWith('http://') &&
+            !finalUrl.startsWith('https://')) {
           finalUrl = 'https://$finalUrl';
         }
-        
+
         debugPrint('🔍 Final URL to launch: $finalUrl');
         final uri = Uri.parse(finalUrl);
-        
+
         // Try different launch modes
         bool canLaunch = await canLaunchUrl(uri);
         debugPrint('🔍 Can launch URL: $canLaunch');
-        
+
         if (canLaunch) {
           await launchUrl(
             uri,
             mode: LaunchMode.externalApplication,
           );
-          debugPrint('🔗 Successfully opened ${_getPlatformDisplayName(platformType)}: $finalUrl');
-          _showSuccessSnackBar('Opening ${_getPlatformDisplayName(platformType)}...');
+          debugPrint(
+              '🔗 Successfully opened ${_getPlatformDisplayName(platformType)}: $finalUrl');
+          _showSuccessSnackBar(
+              'Opening ${_getPlatformDisplayName(platformType)}...');
         } else {
           // Try with platform default mode
           try {
@@ -764,8 +843,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               uri,
               mode: LaunchMode.platformDefault,
             );
-            debugPrint('🔗 Successfully opened with platform default: $finalUrl');
-            _showSuccessSnackBar('Opening ${_getPlatformDisplayName(platformType)}...');
+            debugPrint(
+                '🔗 Successfully opened with platform default: $finalUrl');
+            _showSuccessSnackBar(
+                'Opening ${_getPlatformDisplayName(platformType)}...');
           } catch (e) {
             debugPrint('❌ Cannot launch URL in any mode: $finalUrl, error: $e');
             _showErrorSnackBar('Cannot open this link');
@@ -821,7 +902,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
   String? _constructPlatformUrl(String platformType, String username) {
     final cleanUsername = username.replaceAll('@', '');
-    
+
     switch (platformType.toLowerCase()) {
       case 'twitch':
         return 'https://twitch.tv/$cleanUsername';
@@ -890,7 +971,12 @@ class _SmallAvatar extends StatelessWidget {
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: SweepGradient(
-          colors: [Color(0xFFFF6CAB), Color(0xFF8E54E9), Color(0xFF3D99F7), Color(0xFFFF6CAB)],
+          colors: [
+            Color(0xFFFF6CAB),
+            Color(0xFF8E54E9),
+            Color(0xFF3D99F7),
+            Color(0xFFFF6CAB)
+          ],
         ),
       ),
       child: Center(
@@ -915,7 +1001,7 @@ class _SmallAvatar extends StatelessWidget {
 class _ClickablePlatformRow extends StatelessWidget {
   final Map<String, dynamic> platform;
   final VoidCallback onTap;
-  
+
   const _ClickablePlatformRow({
     required this.platform,
     required this.onTap,
@@ -953,7 +1039,7 @@ class _ClickablePlatformRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final platformType = platform['type'] ?? '';
     final username = platform['username'] ?? '';
-    
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -974,9 +1060,7 @@ class _ClickablePlatformRow extends StatelessWidget {
                 platformType: platformType,
                 size: 40,
               ),
-              
               const SizedBox(width: 16),
-              
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -992,7 +1076,6 @@ class _ClickablePlatformRow extends StatelessWidget {
                   ],
                 ),
               ),
-              
               Text(
                 '@$username',
                 style: TextStyle(
@@ -1000,9 +1083,7 @@ class _ClickablePlatformRow extends StatelessWidget {
                   fontSize: 14,
                 ),
               ),
-              
               const SizedBox(width: 8),
-              
               const Icon(
                 Icons.chevron_right,
                 color: Colors.white,
@@ -1016,14 +1097,16 @@ class _ClickablePlatformRow extends StatelessWidget {
   }
 }
 
-
-
 class _CalendarCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final String meta;
   final VoidCallback onDelete;
-  const _CalendarCard({required this.title, required this.subtitle, required this.meta, required this.onDelete});
+  const _CalendarCard(
+      {required this.title,
+      required this.subtitle,
+      required this.meta,
+      required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -1033,30 +1116,43 @@ class _CalendarCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.calendar_today_outlined, color: Colors.white, size: 22),
+          const Icon(Icons.calendar_today_outlined,
+              color: Colors.white, size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+                Text(title,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(subtitle, style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(subtitle,
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.65),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                Text(meta, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
+                Text(meta,
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 14)),
               ],
             ),
           ),
-          IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline, color: Colors.redAccent)),
+          IconButton(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent)),
         ],
       ),
     );
   }
 }
-
-

@@ -1,10 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import '../models/scheduled_post.dart';
 
 class SchedulingNotificationService {
-  static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _notifications =
+      FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
 
   // Initialize the notification service
@@ -14,13 +16,15 @@ class SchedulingNotificationService {
     // Initialize timezone data
     tz.initializeTimeZones();
 
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
+    const AndroidInitializationSettings androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const DarwinInitializationSettings iosSettings =
+        DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
-    
+
     const InitializationSettings settings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
@@ -40,7 +44,7 @@ class SchedulingNotificationService {
     if (payload != null) {
       // Handle navigation based on payload
       // This would typically involve navigating to the ManagePostsView
-      print('Notification tapped: $payload');
+      debugPrint('Notification tapped: $payload');
     }
   }
 
@@ -52,7 +56,8 @@ class SchedulingNotificationService {
   }) async {
     await initialize();
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
       'scheduled_posts',
       'Scheduled Posts',
       channelDescription: 'Notifications for scheduled posts',
@@ -92,7 +97,8 @@ class SchedulingNotificationService {
     final notificationTime = scheduledAt.subtract(const Duration(minutes: 10));
     if (notificationTime.isBefore(DateTime.now())) return;
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
       'pre_publish',
       'Pre-Publish Reminders',
       channelDescription: 'Notifications before posts are published',
@@ -119,7 +125,8 @@ class SchedulingNotificationService {
       tz.TZDateTime.from(notificationTime, tz.local),
       details,
       payload: 'pre_publish:$postId',
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 
@@ -136,7 +143,8 @@ class SchedulingNotificationService {
         .map((p) => _getPlatformName(p.key))
         .join(', ');
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
       'post_published',
       'Post Published',
       channelDescription: 'Notifications when posts are published',
@@ -178,7 +186,8 @@ class SchedulingNotificationService {
         .map((p) => _getPlatformName(p.key))
         .join(', ');
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
       'post_failed',
       'Post Failed',
       channelDescription: 'Notifications when posts fail to publish',
@@ -214,10 +223,12 @@ class SchedulingNotificationService {
   }) async {
     await initialize();
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
       'reauth_required',
       'Re-authentication Required',
-      channelDescription: 'Notifications when platform re-authentication is needed',
+      channelDescription:
+          'Notifications when platform re-authentication is needed',
       importance: Importance.high,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
@@ -246,7 +257,7 @@ class SchedulingNotificationService {
   // Cancel all notifications for a specific post
   static Future<void> cancelPostNotifications(String postId) async {
     await initialize();
-    
+
     await _notifications.cancel(postId.hashCode);
     await _notifications.cancel(postId.hashCode + 1000);
     await _notifications.cancel(postId.hashCode + 2000);
@@ -261,7 +272,8 @@ class SchedulingNotificationService {
   }
 
   // Get pending notifications
-  static Future<List<PendingNotificationRequest>> getPendingNotifications() async {
+  static Future<List<PendingNotificationRequest>>
+      getPendingNotifications() async {
     await initialize();
     return await _notifications.pendingNotificationRequests();
   }
@@ -276,7 +288,8 @@ class SchedulingNotificationService {
   }) async {
     await initialize();
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
       'custom',
       'Custom Notifications',
       channelDescription: 'Custom scheduled notifications',
@@ -303,7 +316,8 @@ class SchedulingNotificationService {
       tz.TZDateTime.from(scheduledAt, tz.local),
       details,
       payload: payload,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 
@@ -316,7 +330,7 @@ class SchedulingNotificationService {
   static String _formatDateTime(DateTime dateTime) {
     final now = DateTime.now();
     final difference = dateTime.difference(now);
-    
+
     if (difference.inDays > 0) {
       return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'}';
     } else if (difference.inHours > 0) {

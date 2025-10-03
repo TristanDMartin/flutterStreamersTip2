@@ -24,16 +24,17 @@ class AudioEditor extends StatefulWidget {
 class _AudioEditorState extends State<AudioEditor>
     with TickerProviderStateMixin {
   late AudioEffects _audioEffects;
-  
+
   // Animation controllers
   late AnimationController _waveformController;
   late AnimationController _fadeController;
-  
+
   // Audio track data (simulated)
-  final List<double> _waveformData = List.generate(100, (index) => 
-    math.sin(index * 0.1) * (math.Random().nextDouble() * 0.5) + 0.5
-  );
-  
+  final List<double> _waveformData = List.generate(
+      100,
+      (index) =>
+          math.sin(index * 0.1) * (math.Random().nextDouble() * 0.5) + 0.5);
+
   // Available audio tracks
   final List<AudioTrack> _availableTracks = [
     AudioTrack(
@@ -62,12 +63,12 @@ class _AudioEditorState extends State<AudioEditor>
   void initState() {
     super.initState();
     _audioEffects = widget.audioEffects;
-    
+
     _waveformController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -210,7 +211,7 @@ class _AudioEditorState extends State<AudioEditor>
               child: _buildWaveformVisualization(),
             ),
           ),
-          
+
           // Audio controls
           Container(
             padding: const EdgeInsets.all(16),
@@ -237,7 +238,9 @@ class _AudioEditorState extends State<AudioEditor>
                       animation: _waveformController,
                       builder: (context, child) {
                         return Icon(
-                          _waveformController.isAnimating ? Icons.pause : Icons.play_arrow,
+                          _waveformController.isAnimating
+                              ? Icons.pause
+                              : Icons.play_arrow,
                           color: Colors.white,
                           size: 24,
                         );
@@ -245,9 +248,9 @@ class _AudioEditorState extends State<AudioEditor>
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(width: 16),
-                
+
                 // Current time
                 Expanded(
                   child: Text(
@@ -258,7 +261,7 @@ class _AudioEditorState extends State<AudioEditor>
                     ),
                   ),
                 ),
-                
+
                 // Volume indicator
                 Icon(
                   _audioEffects.isMuted ? Icons.volume_off : Icons.volume_up,
@@ -300,19 +303,19 @@ class _AudioEditorState extends State<AudioEditor>
           // Volume control
           _buildVolumeControl(),
           const SizedBox(height: 24),
-          
+
           // Mute toggle
           _buildMuteToggle(),
           const SizedBox(height: 24),
-          
+
           // Fade controls
           _buildFadeControls(),
           const SizedBox(height: 24),
-          
+
           // Audio tracks
           _buildAudioTracks(),
           const SizedBox(height: 24),
-          
+
           // Audio effects
           _buildAudioEffects(),
         ],
@@ -380,7 +383,7 @@ class _AudioEditorState extends State<AudioEditor>
         const Spacer(),
         Switch(
           value: _audioEffects.isMuted,
-          activeColor: const Color(0xFF9248D2),
+          activeThumbColor: const Color(0xFF9248D2),
           onChanged: (value) {
             setState(() {
               _audioEffects = AudioEffects(
@@ -411,7 +414,7 @@ class _AudioEditorState extends State<AudioEditor>
           ),
         ),
         const SizedBox(height: 16),
-        
+
         // Fade In
         Row(
           children: [
@@ -447,9 +450,9 @@ class _AudioEditorState extends State<AudioEditor>
             _updateAudioEffects();
           },
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Fade Out
         Row(
           children: [
@@ -512,12 +515,12 @@ class _AudioEditorState extends State<AudioEditor>
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: track.isSelected 
+        color: track.isSelected
             ? const Color(0xFF9248D2).withValues(alpha: 0.3)
             : Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: track.isSelected 
+          color: track.isSelected
               ? const Color(0xFF9248D2)
               : Colors.white.withValues(alpha: 0.2),
           width: 1,
@@ -526,7 +529,9 @@ class _AudioEditorState extends State<AudioEditor>
       child: Row(
         children: [
           Icon(
-            track.isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+            track.isSelected
+                ? Icons.radio_button_checked
+                : Icons.radio_button_unchecked,
             color: track.isSelected ? const Color(0xFF9248D2) : Colors.white,
             size: 20,
           ),
@@ -538,7 +543,9 @@ class _AudioEditorState extends State<AudioEditor>
                 Text(
                   track.name,
                   style: TextStyle(
-                    color: track.isSelected ? const Color(0xFF9248D2) : Colors.white,
+                    color: track.isSelected
+                        ? const Color(0xFF9248D2)
+                        : Colors.white,
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                   ),
@@ -657,23 +664,23 @@ class _AudioEditorState extends State<AudioEditor>
             ),
             const SizedBox(height: 20),
             ..._availableTracks.map((track) => ListTile(
-              leading: Icon(
-                Icons.music_note,
-                color: Colors.white,
-              ),
-              title: Text(
-                track.name,
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                _formatDuration(track.duration),
-                style: const TextStyle(color: Colors.white70),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                // Add track logic would go here
-              },
-            )),
+                  leading: Icon(
+                    Icons.music_note,
+                    color: Colors.white,
+                  ),
+                  title: Text(
+                    track.name,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Text(
+                    _formatDuration(track.duration),
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    // Add track logic would go here
+                  },
+                )),
           ],
         ),
       ),
@@ -723,7 +730,8 @@ class WaveformPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final fillPaint = Paint()
-      ..color = (isMuted ? Colors.grey : const Color(0xFF9248D2)).withValues(alpha: 0.3)
+      ..color = (isMuted ? Colors.grey : const Color(0xFF9248D2))
+          .withValues(alpha: 0.3)
       ..style = PaintingStyle.fill;
 
     final path = Path();
@@ -774,7 +782,7 @@ class WaveformPainter extends CustomPainter {
       final progressPaint = Paint()
         ..color = Colors.white
         ..strokeWidth = 3.0;
-      
+
       canvas.drawLine(
         Offset(progressX, 0),
         Offset(progressX, size.height),

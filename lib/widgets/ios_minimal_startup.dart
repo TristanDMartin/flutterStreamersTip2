@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 
 class IOSMinimalStartup extends StatefulWidget {
   final Widget child;
-  
+
   const IOSMinimalStartup({
     super.key,
     required this.child,
@@ -21,7 +21,7 @@ class _IOSMinimalStartupState extends State<IOSMinimalStartup> {
   void initState() {
     super.initState();
     _isIOS = defaultTargetPlatform == TargetPlatform.iOS;
-    
+
     if (_isIOS) {
       // Delayed initialization for iOS to prevent white screen
       Future.delayed(const Duration(milliseconds: 500), () {
@@ -42,7 +42,7 @@ class _IOSMinimalStartupState extends State<IOSMinimalStartup> {
     if (_isIOS && !_isInitialized) {
       return _buildIOSLoadingScreen();
     }
-    
+
     return widget.child;
   }
 
@@ -69,7 +69,7 @@ class _IOSMinimalStartupState extends State<IOSMinimalStartup> {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 15,
                       offset: const Offset(0, 6),
                     ),
@@ -100,7 +100,7 @@ class _IOSMinimalStartupState extends State<IOSMinimalStartup> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // App Name
               const Text(
                 'StreamersTip',
@@ -112,31 +112,31 @@ class _IOSMinimalStartupState extends State<IOSMinimalStartup> {
                 ),
               ),
               const SizedBox(height: 6),
-              
+
               // Tagline
               Text(
                 'Connect • Create • Share',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   letterSpacing: 0.3,
                 ),
               ),
               const SizedBox(height: 30),
-              
+
               // Loading Indicator
               const CircularProgressIndicator(
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 strokeWidth: 3,
               ),
               const SizedBox(height: 16),
-              
+
               // Loading Text
               Text(
                 'Loading...',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 class UserService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -10,12 +11,12 @@ class UserService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-        print(
+        debugPrint(
             '🔍 UserService: No current user - returning empty following list');
         return [];
       }
 
-      print(
+      debugPrint(
           '🔍 UserService: Getting following IDs for user: ${currentUser.uid}');
 
       // Try multiple connection systems to find following relationships
@@ -34,11 +35,11 @@ class UserService {
           final peerId = data['peerId'] ?? doc.id;
           if (peerId.isNotEmpty) {
             followingIds.add(peerId);
-            print('🔍 UserService: Found connection: $peerId');
+            debugPrint('🔍 UserService: Found connection: $peerId');
           }
         }
       } catch (e) {
-        print('⚠️ UserService: Error fetching connections: $e');
+        debugPrint('⚠️ UserService: Error fetching connections: $e');
       }
 
       // Method 2: Check follows collection (follows/{followerId}_{followedId})
@@ -53,11 +54,12 @@ class UserService {
           final followedId = data['followedId'] ?? '';
           if (followedId.isNotEmpty) {
             followingIds.add(followedId);
-            print('🔍 UserService: Found follow relationship: $followedId');
+            debugPrint(
+                '🔍 UserService: Found follow relationship: $followedId');
           }
         }
       } catch (e) {
-        print('⚠️ UserService: Error fetching follows: $e');
+        debugPrint('⚠️ UserService: Error fetching follows: $e');
       }
 
       // Method 3: Check relationships collection (relationships/{relationshipId})
@@ -72,18 +74,19 @@ class UserService {
           final followingId = data['followingId'] ?? '';
           if (followingId.isNotEmpty) {
             followingIds.add(followingId);
-            print('🔍 UserService: Found relationship: $followingId');
+            debugPrint('🔍 UserService: Found relationship: $followingId');
           }
         }
       } catch (e) {
-        print('⚠️ UserService: Error fetching relationships: $e');
+        debugPrint('⚠️ UserService: Error fetching relationships: $e');
       }
 
       final result = followingIds.toList();
-      print('✅ UserService: Found ${result.length} following users: $result');
+      debugPrint(
+          '✅ UserService: Found ${result.length} following users: $result');
       return result;
     } catch (e) {
-      print('❌ UserService: Error getting following IDs: $e');
+      debugPrint('❌ UserService: Error getting following IDs: $e');
       return [];
     }
   }

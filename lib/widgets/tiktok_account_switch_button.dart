@@ -32,111 +32,113 @@ class TikTokAccountSwitchButton extends ConsumerWidget {
     }
 
     return InstantResponseButton(
-          onPressed: () => _showAccountSwitcher(context),
-          hapticType: HapticFeedbackType.lightImpact,
-          showRippleEffect: false,
-          child: Container(
-            padding: padding ?? const EdgeInsets.all(8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+      onPressed: () => _showAccountSwitcher(context),
+      hapticType: HapticFeedbackType.lightImpact,
+      showRippleEffect: false,
+      child: Container(
+        padding: padding ?? const EdgeInsets.all(8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Avatar with switching indicator
+            Stack(
               children: [
-                // Avatar with switching indicator
-                Stack(
-                  children: [
-                    Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF6633CC), Color(0xFF1A1A4D)],
-                        ),
-                      ),
-                      child: currentAccount?.photoUrl != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(size / 2),
-                              child: Image.network(
-                                currentAccount!.photoUrl!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(currentAccount),
-                              ),
-                            )
-                          : _buildAvatarFallback(currentAccount),
-                    ),
-                    
-                    // Switching indicator
-                    if (accountSwitcher.isSwitching)
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.black.withOpacity(0.3),
-                          ),
-                          child: const Center(
-                            child: SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    
-                    // Multiple accounts indicator
-                    if (hasMultipleAccounts && !accountSwitcher.isSwitching)
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.black, width: 1),
-                          ),
-                          child: const Icon(
-                            Icons.swap_horiz,
-                            size: 8,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                
-                // Label
-                if (showLabel && currentAccount != null) ...[
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: size + 16,
-                    child: Text(
-                      currentAccount.displayName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                Container(
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6633CC), Color(0xFF1A1A4D)],
                     ),
                   ),
-                ],
+                  child: currentAccount?.photoUrl != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(size / 2),
+                          child: Image.network(
+                            currentAccount!.photoUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildAvatarFallback(currentAccount),
+                          ),
+                        )
+                      : _buildAvatarFallback(currentAccount),
+                ),
+
+                // Switching indicator
+                if (accountSwitcher.isSwitching)
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withValues(alpha: 0.3),
+                      ),
+                      child: const Center(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Multiple accounts indicator
+                if (hasMultipleAccounts && !accountSwitcher.isSwitching)
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black, width: 1),
+                      ),
+                      child: const Icon(
+                        Icons.swap_horiz,
+                        size: 8,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
               ],
             ),
-          ),
-        );
+
+            // Label
+            if (showLabel && currentAccount != null) ...[
+              const SizedBox(height: 4),
+              SizedBox(
+                width: size + 16,
+                child: Text(
+                  currentAccount.displayName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildAvatarFallback(SavedAccount? account) {
-    final initial = account?.displayName.isNotEmpty == true 
-        ? account!.displayName[0].toUpperCase() 
+    final initial = account?.displayName.isNotEmpty == true
+        ? account!.displayName[0].toUpperCase()
         : '?';
-    
+
     return Center(
       child: Text(
         initial,
@@ -151,7 +153,7 @@ class TikTokAccountSwitchButton extends ConsumerWidget {
 
   void _showAccountSwitcher(BuildContext context) {
     HapticFeedback.lightImpact();
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -207,7 +209,7 @@ class TikTokAccountSwitchIcon extends ConsumerWidget {
 
   void _showAccountSwitcher(BuildContext context) {
     HapticFeedback.lightImpact();
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,

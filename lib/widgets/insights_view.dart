@@ -25,7 +25,7 @@ class InsightsView extends ConsumerStatefulWidget {
   ConsumerState<InsightsView> createState() => _InsightsViewState();
 }
 
-class _InsightsViewState extends ConsumerState<InsightsView> 
+class _InsightsViewState extends ConsumerState<InsightsView>
     with TickerProviderStateMixin {
   late TabController _tabController;
   late InsightsData _insightsData;
@@ -36,7 +36,8 @@ class _InsightsViewState extends ConsumerState<InsightsView>
   @override
   void initState() {
     super.initState();
-    debugPrint('🔍 InsightsView initState called for videoId: ${widget.videoId}');
+    debugPrint(
+        '🔍 InsightsView initState called for videoId: ${widget.videoId}');
     _tabController = TabController(length: 3, vsync: this);
     _loadInsightsData();
   }
@@ -48,23 +49,13 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     super.dispose();
   }
 
-  @override
-  void activate() {
-    super.activate();
-  }
-
-  @override
-  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
-  }
-
   Future<void> _loadInsightsData() async {
     final videoId = _selectedVideo?.id ?? widget.videoId;
     final insightsService = ref.read(insightsFirebaseServiceProvider);
-    
+
     try {
       final insights = await insightsService.getVideoInsights(videoId);
-      
+
       if (mounted) {
         setState(() {
           if (insights != null) {
@@ -198,14 +189,14 @@ class _InsightsViewState extends ConsumerState<InsightsView>
       _selectedVideo = video;
       _isLoading = true;
     });
-    
+
     // Cancel previous subscription
     _insightsSubscription?.cancel();
-    
+
     // Check if video is too new for insights
     final now = DateTime.now();
     final hoursSinceUpload = now.difference(video.createdAt).inHours;
-    
+
     if (hoursSinceUpload < 24) {
       // Don't load insights data for videos that are too new
       setState(() {
@@ -214,16 +205,17 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     } else {
       // Start real-time listening for insights updates
       _startRealTimeInsights(video.id);
-      
+
       // Also load initial data
       _loadInsightsData();
     }
   }
-  
+
   void _startRealTimeInsights(String videoId) {
     final insightsService = ref.read(insightsFirebaseServiceProvider);
-    
-    _insightsSubscription = insightsService.listenToVideoInsights(videoId).listen(
+
+    _insightsSubscription =
+        insightsService.listenToVideoInsights(videoId).listen(
       (insights) {
         if (mounted && insights != null) {
           setState(() {
@@ -310,9 +302,9 @@ class _InsightsViewState extends ConsumerState<InsightsView>
               ),
             ),
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           // Title
           Expanded(
             child: Column(
@@ -340,7 +332,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
               ],
             ),
           ),
-          
+
           // Share button
           GestureDetector(
             onTap: () {
@@ -422,10 +414,10 @@ class _InsightsViewState extends ConsumerState<InsightsView>
   }
 
   Widget _buildDataCollectingState() {
-    final remainingHours = _selectedVideo != null 
+    final remainingHours = _selectedVideo != null
         ? 24 - DateTime.now().difference(_selectedVideo!.createdAt).inHours
         : 24;
-    
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -484,7 +476,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    remainingHours > 1 
+                    remainingHours > 1
                         ? 'Estimated time remaining: ${remainingHours.toInt()} hours'
                         : 'Estimated time remaining: ${(remainingHours * 60).toInt()} minutes',
                     style: const TextStyle(
@@ -573,7 +565,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
   }
 
   void _shareInsights() {
-    // TODO: Implement sharing insights functionality
+    // Sharing insights functionality - placeholder for future implementation
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Sharing insights...'),
@@ -581,5 +573,4 @@ class _InsightsViewState extends ConsumerState<InsightsView>
       ),
     );
   }
-
 }

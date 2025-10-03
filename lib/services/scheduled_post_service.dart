@@ -133,10 +133,12 @@ class ScheduledPostService {
     if (caption != null) updateData['caption'] = caption;
     if (tags != null) updateData['tags'] = tags;
     if (visibility != null) updateData['visibility'] = visibility.name;
-    if (media != null)
+    if (media != null) {
       updateData['media'] = media.map((m) => m.toJson()).toList();
-    if (platforms != null)
+    }
+    if (platforms != null) {
       updateData['platforms'] = platforms.map((p) => p.toJson()).toList();
+    }
     if (schedule != null) updateData['schedule'] = schedule.toJson();
 
     final response = await http.patch(
@@ -471,7 +473,7 @@ class ScheduledPostService {
         authorId: 'user123',
         status: PostStatus.publishing,
         caption: 'Behind the scenes content coming up! 📸',
-        tags: ['behindthescenes', 'exclusive'],
+        tags: ['behind_the_scenes', 'exclusive'],
         visibility: PostVisibility.public,
         createdAt: DateTime.now().subtract(const Duration(hours: 6)),
         updatedAt: DateTime.now().subtract(const Duration(minutes: 30)),

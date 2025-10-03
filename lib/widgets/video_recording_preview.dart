@@ -40,26 +40,27 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
       if (!await widget.videoFile.exists()) {
         throw Exception('Video file does not exist');
       }
-      
+
       final fileSize = await widget.videoFile.length();
       if (fileSize == 0) {
         throw Exception('Video file is empty');
       }
-      
+
       _controller = VideoPlayerController.file(widget.videoFile);
-      
+
       // Add error listener
       _controller.addListener(_onVideoPlayerError);
-      
+
       await _controller.initialize();
-      
+
       if (mounted) {
         setState(() {
           _isInitialized = true;
           _videoDuration = _controller.value.duration;
-          _isReady = _controller.value.isInitialized && _controller.value.duration.inMilliseconds > 0;
+          _isReady = _controller.value.isInitialized &&
+              _controller.value.duration.inMilliseconds > 0;
         });
-        
+
         // Validate video
         _validateVideo();
       }
@@ -85,15 +86,16 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
 
   void _validateVideo() {
     if (_videoDuration == null) return;
-    
+
     final durationSeconds = _videoDuration!.inSeconds;
-    
+
     if (durationSeconds < 1) {
       setState(() {
         _errorMessage = 'Video too short (minimum 1 second)';
         _isReady = false;
       });
-    } else if (durationSeconds > 300) { // 5 minutes max
+    } else if (durationSeconds > 300) {
+      // 5 minutes max
       setState(() {
         _errorMessage = 'Video too long (maximum 5 minutes)';
         _isReady = false;
@@ -125,17 +127,17 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
 
   Future<void> _handleConfirm() async {
     if (!_isReady || _isSubmitting) return;
-    
+
     HapticFeedback.lightImpact();
     setState(() {
       _isSubmitting = true;
     });
-    
+
     // Freeze preview frame
     if (_isPlaying) {
       _controller.pause();
     }
-    
+
     // Navigate to next screen with video data
     widget.onUseVideo();
   }
@@ -144,13 +146,6 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
     final shouldDiscard = await _showDiscardDialog();
     if (shouldDiscard == true) {
       widget.onRetake();
-    }
-  }
-
-  Future<void> _handleBack() async {
-    final shouldDiscard = await _showDiscardDialog();
-    if (shouldDiscard == true && mounted) {
-      Navigator.of(context).pop();
     }
   }
 
@@ -240,7 +235,8 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF9248D2),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
                         ),
                         child: const Text('Retry'),
                       ),
@@ -272,18 +268,10 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
             Center(
               child: GestureDetector(
                 onTap: _togglePlayPause,
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.white,
-                    size: 40,
-                  ),
+                child: Icon(
+                  _isPlaying ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white,
+                  size: 60,
                 ),
               ),
             ),
@@ -297,38 +285,15 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
       top: MediaQuery.of(context).padding.top + 16,
       left: 16,
       right: 16,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Back button
-          GestureDetector(
-            onTap: _handleBack,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(
-                Icons.arrow_back_ios,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
+      child: const Center(
+        child: Text(
+          'Preview',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
           ),
-          // Title
-          const Text(
-            'Preview',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          // Placeholder for balance
-          const SizedBox(width: 40),
-        ],
+        ),
       ),
     );
   }
@@ -366,10 +331,10 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
                 ),
               ),
             ),
-            
+
             // Center: Spacer for visual balance
             const Expanded(child: SizedBox()),
-            
+
             // Right: Confirm button
             GestureDetector(
               onTap: _isReady && !_isSubmitting ? _handleConfirm : null,
@@ -393,7 +358,8 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
                   boxShadow: _isReady && !_isSubmitting
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF9248D2).withValues(alpha: 0.3),
+                            color:
+                                const Color(0xFF9248D2).withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -406,7 +372,8 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
                         height: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : Icon(
@@ -422,4 +389,3 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
     );
   }
 }
-

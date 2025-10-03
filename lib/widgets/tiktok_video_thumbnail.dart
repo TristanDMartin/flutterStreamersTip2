@@ -26,9 +26,17 @@ class TikTokVideoThumbnail extends StatelessWidget {
         (screenWidth - 32 - 32) / 3; // 16px edge padding + 16px gutters
     final tileHeight = tileWidth * (16 / 9); // 9:16 aspect ratio
 
-    // Debug: Show video data
+    // Enhanced diagnostic logging
+    debugPrint('🎬 TikTokVideoThumbnail build: Video ${video.id}');
     debugPrint(
-        '🎬 TikTokVideoThumbnail build: Video ${video.id} - thumbnailURL: ${video.thumbnailURL}, videoURL: ${video.videoURL}');
+        '🎬 TikTokVideoThumbnail: thumbnailURL = "${video.thumbnailURL}"');
+    debugPrint('🎬 TikTokVideoThumbnail: videoURL = "${video.videoURL}"');
+    debugPrint(
+        '🎬 TikTokVideoThumbnail: hasThumbnailURL = ${video.thumbnailURL != null && video.thumbnailURL!.isNotEmpty}');
+    debugPrint(
+        '🎬 TikTokVideoThumbnail: hasVideoURL = ${video.videoURL.isNotEmpty}');
+    debugPrint(
+        '🎬 TikTokVideoThumbnail: widget size = ${width ?? tileWidth}x${height ?? tileHeight}');
 
     return GestureDetector(
       onTap: onTap,
@@ -39,7 +47,7 @@ class TikTokVideoThumbnail extends StatelessWidget {
           borderRadius: BorderRadius.circular(18), // 16-20px radius
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -74,6 +82,8 @@ class TikTokVideoThumbnail extends StatelessWidget {
   Widget _buildThumbnailImage() {
     // Use the best available thumbnail URL
     final thumbnailUrl = _getBestThumbnailUrl();
+    debugPrint(
+        '🎬 TikTokVideoThumbnail: _getBestThumbnailUrl() returned: "$thumbnailUrl"');
 
     if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
       debugPrint(
@@ -90,6 +100,8 @@ class TikTokVideoThumbnail extends StatelessWidget {
 
     debugPrint(
         '🎬 TikTokVideoThumbnail: Loading image from URL: $thumbnailUrl');
+    debugPrint(
+        '🎬 TikTokVideoThumbnail: CachedNetworkImage cache size: ${(width ?? 200).round()}x${(height ?? 355).round()}');
     return CachedNetworkImage(
       imageUrl: thumbnailUrl,
       fit: BoxFit.cover, // Center-crop to maintain aspect ratio
@@ -101,55 +113,13 @@ class TikTokVideoThumbnail extends StatelessWidget {
       },
       errorWidget: (context, url, error) {
         debugPrint('🎬 TikTokVideoThumbnail: Error loading image $url: $error');
-        return _buildPlaceholder();
+        debugPrint('🎬 TikTokVideoThumbnail: Error type: ${error.runtimeType}');
+        debugPrint(
+            '🎬 TikTokVideoThumbnail: Falling back to generated thumbnail');
+        return _buildGeneratedThumbnail();
       },
       fadeInDuration: const Duration(milliseconds: 200),
       fadeOutDuration: const Duration(milliseconds: 100),
-    );
-  }
-
-  Widget _buildPlaceholder() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.grey[800]!,
-            Colors.grey[900]!,
-          ],
-        ),
-      ),
-      child: const Center(
-        child: Icon(
-          Icons.videocam_outlined,
-          color: Colors.white54,
-          size: 32,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTestImage() {
-    // TEMPORARY: Show a test image to verify the UI is working
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.blue[400]!,
-            Colors.purple[600]!,
-          ],
-        ),
-      ),
-      child: const Center(
-        child: Icon(
-          Icons.play_circle_filled,
-          color: Colors.white,
-          size: 60,
-        ),
-      ),
     );
   }
 
@@ -193,7 +163,7 @@ class TikTokVideoThumbnail extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
+                  color: Colors.black.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -245,8 +215,8 @@ class TikTokVideoThumbnail extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.transparent,
-            Colors.black.withOpacity(0.3),
-            Colors.black.withOpacity(0.6),
+            Colors.black.withValues(alpha: 0.3),
+            Colors.black.withValues(alpha: 0.6),
           ],
           stops: const [0.0, 0.6, 1.0],
         ),
@@ -262,7 +232,7 @@ class TikTokVideoThumbnail extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
@@ -284,7 +254,7 @@ class TikTokVideoThumbnail extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
@@ -305,11 +275,11 @@ class TikTokVideoThumbnail extends StatelessWidget {
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
+          color: Colors.white.withValues(alpha: 0.9),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha: 0.2),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -376,11 +346,11 @@ class TikTokVideoThumbnail extends StatelessWidget {
     } else if (seconds < 3600) {
       final minutes = (seconds / 60).floor();
       final remainingSeconds = (seconds % 60).round();
-      return '${minutes}:${remainingSeconds.toString().padLeft(2, '0')}';
+      return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
     } else {
       final hours = (seconds / 3600).floor();
       final minutes = ((seconds % 3600) / 60).floor();
-      return '${hours}:${minutes.toString().padLeft(2, '0')}';
+      return '$hours:${minutes.toString().padLeft(2, '0')}';
     }
   }
 
@@ -498,7 +468,7 @@ class VideoThumbnailPainter extends CustomPainter {
 
     // Create a video-like pattern with diagonal lines
     for (int i = 0; i < size.width; i += 20) {
-      paint.color = Colors.grey[800]!.withOpacity(0.3);
+      paint.color = Colors.grey[800]!.withValues(alpha: 0.3);
       canvas.drawLine(
         Offset(i.toDouble(), 0),
         Offset(i.toDouble(), size.height),
@@ -509,7 +479,7 @@ class VideoThumbnailPainter extends CustomPainter {
     // Add some random dots to simulate video content
     final random = Random();
     for (int i = 0; i < 50; i++) {
-      paint.color = Colors.grey[600]!.withOpacity(0.4);
+      paint.color = Colors.grey[600]!.withValues(alpha: 0.4);
       final x = random.nextDouble() * size.width;
       final y = random.nextDouble() * size.height;
       canvas.drawCircle(Offset(x, y), 2, paint);

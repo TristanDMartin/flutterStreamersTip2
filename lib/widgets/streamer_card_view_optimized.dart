@@ -26,12 +26,12 @@ class StreamerCardViewOptimized extends StatefulWidget {
   });
 
   @override
-  State<StreamerCardViewOptimized> createState() => _StreamerCardViewOptimizedState();
+  State<StreamerCardViewOptimized> createState() =>
+      _StreamerCardViewOptimizedState();
 }
 
 class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     with TickerProviderStateMixin {
-  
   // Pre-defined gradients for better performance - using your preferred color palette
   static const LinearGradient _mainGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -44,36 +44,33 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       Color(0xFF4897D2), // Lightest blue
     ],
   );
-  
+
   static const LinearGradient _connectedGradient = LinearGradient(
     colors: [Color(0xFF25E5D2), Color(0xFF3D99F7)],
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
-  
 
-  
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
   bool _isFront = true;
-  
+
   // State Management
   String _selectedHashtag = "";
   bool _showBio = true;
   bool _showPlatforms = true;
   bool _showCalendar = true;
   bool _isFollowing = false;
-  bool _isFollowedByStreamer = false;
+  final bool _isFollowedByStreamer = false;
   bool _isConnected = false;
   bool _isCheckingConnection = false;
-  
+
   // Content tabs
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
-  
+
   // Chat UI State
   bool _showChatView = false;
   Map<String, dynamic>? _selectedChat;
-  
 
   @override
   void initState() {
@@ -89,13 +86,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       parent: _flipController,
       curve: Curves.easeInOut,
     ));
-    
+
     // Initialize with first hashtag selected
     if (hashtags.isNotEmpty) {
       _selectedHashtag = hashtags.first;
     }
-    
-    // TEMPORARY: Disable ALL async operations to prevent app backgrounding
+
+    // TEMPORARY: Disable ALL async operations to prevent app backgrounding // cspell:ignore backgrounding
     // _checkConnectionStatus();
     // _loadCalendarEvents();
     // _loadPlatforms();
@@ -105,14 +102,14 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
 
   // Computed Properties
   StreamerCard get displayStreamer => widget.displayStreamer;
-  
+
   List<String> get hashtags => _currentStreamerCard.hashtags;
-  
+
   int get selectedHashtagIndex {
     final index = hashtags.indexOf(_selectedHashtag);
     return index >= 0 ? index : 0;
   }
-  
+
   bool get isOwner {
     final currentUserId = widget.currentUserId ?? '';
     return currentUserId == _currentStreamerCard.id;
@@ -126,16 +123,11 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     super.dispose();
   }
 
-
   /// Get the current streamer card data - simplified for testing
   StreamerCard get _currentStreamerCard {
     // TEMPORARY: Always use widget data to prevent any async issues
     return displayStreamer;
   }
-
-
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -170,10 +162,9 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
               ),
             ),
           ),
-          
+
           // Chat overlay
-          if (_showChatView && _selectedChat != null)
-            _buildChatOverlay(),
+          if (_showChatView && _selectedChat != null) _buildChatOverlay(),
         ],
       ),
     );
@@ -219,14 +210,22 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
               SliverToBoxAdapter(child: _buildTags()),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              SliverToBoxAdapter(child: _buildSectionHeader('Bio', _showBio, () => setState(() => _showBio = !_showBio))),
+              SliverToBoxAdapter(
+                  child: _buildSectionHeader('Bio', _showBio,
+                      () => setState(() => _showBio = !_showBio))),
               if (_showBio) SliverToBoxAdapter(child: _buildBioBody()),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              SliverToBoxAdapter(child: _buildSectionHeader('Platforms', _showPlatforms, () => setState(() => _showPlatforms = !_showPlatforms))),
-              if (_showPlatforms) SliverToBoxAdapter(child: _buildPlatformsBody()),
+              SliverToBoxAdapter(
+                  child: _buildSectionHeader('Platforms', _showPlatforms,
+                      () => setState(() => _showPlatforms = !_showPlatforms))),
+              if (_showPlatforms)
+                SliverToBoxAdapter(child: _buildPlatformsBody()),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              SliverToBoxAdapter(child: _buildSectionHeader('Calendar', _showCalendar, () => setState(() => _showCalendar = !_showCalendar))),
-              if (_showCalendar) SliverToBoxAdapter(child: _buildCalendarBody()),
+              SliverToBoxAdapter(
+                  child: _buildSectionHeader('Calendar', _showCalendar,
+                      () => setState(() => _showCalendar = !_showCalendar))),
+              if (_showCalendar)
+                SliverToBoxAdapter(child: _buildCalendarBody()),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
             ],
           ),
@@ -238,11 +237,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   Widget _buildTopBar() {
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        16, 
-        MediaQuery.of(context).padding.top + 16, 
-        16, 
-        16
-      ),
+          16, MediaQuery.of(context).padding.top + 16, 16, 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -408,7 +403,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildActionButtons() {
-    print('🔵 StreamerCardView: _buildActionButtons called');
+    debugPrint('🔵 StreamerCardView: _buildActionButtons called');
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
@@ -444,10 +439,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         height: 40,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha:0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha:0.2),
+            color: Colors.white.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -474,7 +469,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
           gradient: _getFollowButtonGradient(),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha:0.2),
+            color: Colors.white.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -493,18 +488,21 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildMessageButton() {
-    print('🔵 StreamerCardView: _buildMessageButton called - isOwner: $isOwner, _isCheckingConnection: $_isCheckingConnection, _isConnected: $_isConnected');
-    
+    debugPrint(
+        '🔵 StreamerCardView: _buildMessageButton called - isOwner: $isOwner, _isCheckingConnection: $_isCheckingConnection, _isConnected: $_isConnected');
+
     // ULTRA SIMPLE TEST: Just a basic container with tap
     return GestureDetector(
       onTap: () {
-        print('🔵 ULTRA SIMPLE: Message button tapped!');
-        print('🔵 ULTRA SIMPLE: Current _isCheckingConnection: $_isCheckingConnection');
+        debugPrint('🔵 ULTRA SIMPLE: Message button tapped!');
+        debugPrint(
+            '🔵 ULTRA SIMPLE: Current _isCheckingConnection: $_isCheckingConnection');
         // Show a very obvious visual change
         setState(() {
           _isCheckingConnection = !_isCheckingConnection;
         });
-        print('🔵 ULTRA SIMPLE: After setState _isCheckingConnection: $_isCheckingConnection');
+        debugPrint(
+            '🔵 ULTRA SIMPLE: After setState _isCheckingConnection: $_isCheckingConnection');
       },
       child: Container(
         height: 60, // Make it bigger and more obvious
@@ -532,13 +530,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     // ULTRA SIMPLE TEST: Just a basic container with tap
     return GestureDetector(
       onTap: () {
-        print('🔵 ULTRA SIMPLE: Share button tapped!');
-        print('🔵 ULTRA SIMPLE: Current _showBio: $_showBio');
+        debugPrint('🔵 ULTRA SIMPLE: Share button tapped!');
+        debugPrint('🔵 ULTRA SIMPLE: Current _showBio: $_showBio');
         // Show a very obvious visual change
         setState(() {
           _showBio = !_showBio; // Toggle some state
         });
-        print('🔵 ULTRA SIMPLE: After setState _showBio: $_showBio');
+        debugPrint('🔵 ULTRA SIMPLE: After setState _showBio: $_showBio');
       },
       child: Container(
         height: 60, // Make it bigger and more obvious
@@ -568,10 +566,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       child: Container(
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha:0.1),
+          color: Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha:0.2),
+            color: Colors.white.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -605,14 +603,18 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         height: 32,
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withValues(alpha:0.2) : Colors.transparent,
+          color: isSelected
+              ? Colors.white.withValues(alpha: 0.2)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Center(
           child: Text(
             text,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
+              color: isSelected
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.7),
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
@@ -721,7 +723,12 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: SweepGradient(
-          colors: [Color(0xFFFF6CAB), Color(0xFF8E54E9), Color(0xFF3D99F7), Color(0xFFFF6CAB)],
+          colors: [
+            Color(0xFFFF6CAB),
+            Color(0xFF8E54E9),
+            Color(0xFF3D99F7),
+            Color(0xFFFF6CAB)
+          ],
         ),
       ),
       child: Center(
@@ -733,7 +740,8 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             color: Colors.black.withValues(alpha: 0.2),
           ),
           child: ClipOval(
-            child: displayStreamer.avatarURL != null && displayStreamer.avatarURL!.isNotEmpty
+            child: displayStreamer.avatarURL != null &&
+                    displayStreamer.avatarURL!.isNotEmpty
                 ? Image.network(displayStreamer.avatarURL!, fit: BoxFit.cover)
                 : const Icon(Icons.person, color: Colors.white, size: 28),
           ),
@@ -767,7 +775,9 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                 color: isSelected ? null : Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isSelected ? Colors.transparent : Colors.white.withValues(alpha: 0.2),
+                  color: isSelected
+                      ? Colors.transparent
+                      : Colors.white.withValues(alpha: 0.2),
                   width: 1,
                 ),
               ),
@@ -786,7 +796,8 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     );
   }
 
-  Widget _buildSectionHeader(String title, bool isExpanded, VoidCallback onTap) {
+  Widget _buildSectionHeader(
+      String title, bool isExpanded, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
@@ -805,7 +816,9 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                 ),
               ),
               Icon(
-                isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                isExpanded
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
                 color: Colors.white,
                 size: 24,
               ),
@@ -888,10 +901,10 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             ),
             child: Row(
               children: [
-                  BrandIcon(
-                    platformType: platform.type.name,
-                    size: 40,
-                  ),
+                BrandIcon(
+                  platformType: platform.type.name,
+                  size: 40,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -965,7 +978,8 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.calendar_today_outlined, color: Colors.white, size: 22),
+                const Icon(Icons.calendar_today_outlined,
+                    color: Colors.white, size: 22),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1010,7 +1024,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   String _formatEventDate(DateTime date) {
     final now = DateTime.now();
     final difference = date.difference(now).inDays;
-    
+
     if (difference == 0) {
       return 'Today at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     } else if (difference == 1) {
@@ -1021,18 +1035,6 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       return 'Past event';
     }
   }
-
-
-
-
-
-
-
-
-
-
-
-
 
   Widget _buildChatOverlay() {
     return Container(
@@ -1074,7 +1076,8 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
               child: ChatViewOptimized(
                 chat: app_chat.Chat(
                   id: _selectedChat!['id'],
-                  participants: List<String>.from(_selectedChat!['participants'] ?? []),
+                  participants:
+                      List<String>.from(_selectedChat!['participants'] ?? []),
                   lastMessage: _selectedChat!['lastMessage'] ?? '',
                   lastTimestamp: DateTime.now(),
                   chatType: 'direct',
@@ -1120,7 +1123,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
 
   void _handleFollowButtonTap() {
     HapticFeedback.lightImpact();
-    
+
     if (_isFollowing) {
       _handleUnfollow();
     } else {
@@ -1131,13 +1134,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   void _handleFollow() async {
     try {
       final success = await FollowingService.followUser(displayStreamer.id);
-      
+
       if (success) {
         setState(() {
           _isFollowing = true;
           _isConnected = _isFollowing && _isFollowedByStreamer;
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1151,7 +1154,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         throw Exception('Failed to follow user');
       }
     } catch (e) {
-    // print('Error following streamer: $e');
+      // print('Error following streamer: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1167,13 +1170,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   void _handleUnfollow() async {
     try {
       final success = await FollowingService.unfollowUser(displayStreamer.id);
-      
+
       if (success) {
         setState(() {
           _isFollowing = false;
           _isConnected = false;
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1187,7 +1190,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         throw Exception('Failed to unfollow user');
       }
     } catch (e) {
-    // print('Error unfollowing streamer: $e');
+      // print('Error unfollowing streamer: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1199,9 +1202,6 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       }
     }
   }
-
-
-
 }
 
 // Optimized const widget for empty states

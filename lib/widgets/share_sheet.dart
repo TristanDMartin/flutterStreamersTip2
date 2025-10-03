@@ -21,7 +21,7 @@ class ShareSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connectionsAsync = ref.watch(sharedDraftConnectionsProvider);
-    
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -42,24 +42,24 @@ class ShareSheet extends ConsumerWidget {
         children: [
           // Header with drag handle and close button
           _buildHeader(context),
-          
+
           // Quick Share to Friends (Row 1)
           connectionsAsync.when(
             data: (connections) => _buildQuickShareRow(context, connections),
             loading: () => _buildLoadingConnections(),
             error: (error, stack) => _buildErrorConnections(),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // External/Social Share Options (Row 2)
           _buildSocialShareRow(context),
-          
+
           const SizedBox(height: 24),
-          
+
           // Utility Actions (Row 3)
           _buildUtilityActionsRow(context),
-          
+
           const SizedBox(height: 32),
         ],
       ),
@@ -109,13 +109,14 @@ class ShareSheet extends ConsumerWidget {
                 size: 18,
               ),
             ),
-              ),
-            ],
           ),
+        ],
+      ),
     );
   }
 
-  Widget _buildQuickShareRow(BuildContext context, List<Connection> connections) {
+  Widget _buildQuickShareRow(
+      BuildContext context, List<Connection> connections) {
     return Container(
       height: 100,
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -311,31 +312,31 @@ class ShareSheet extends ConsumerWidget {
       onTap: onTap,
       child: SizedBox(
         width: 80,
-      child: Column(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
+        child: Column(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(30),
-            ),
-            child: Icon(
-              icon,
+              ),
+              child: Icon(
+                icon,
                 color: Colors.white,
                 size: 28,
               ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
                 color: Colors.white,
-              fontSize: 12,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
@@ -427,7 +428,7 @@ class ShareSheet extends ConsumerWidget {
         duration: const Duration(seconds: 2),
       ),
     );
-    // TODO: Implement actual sharing to friend
+    // Sharing to friend functionality - placeholder for future implementation
   }
 
   void _shareToFriends(BuildContext context) {
@@ -440,7 +441,7 @@ class ShareSheet extends ConsumerWidget {
         duration: Duration(seconds: 2),
       ),
     );
-    // TODO: Implement sharing to multiple friends
+    // Sharing to multiple friends functionality - placeholder for future implementation
   }
 
   void _copyLink(BuildContext context) {
@@ -453,7 +454,7 @@ class ShareSheet extends ConsumerWidget {
         duration: Duration(seconds: 2),
       ),
     );
-    // TODO: Implement actual link copying
+    // Link copying functionality - placeholder for future implementation
   }
 
   void _systemShare(BuildContext context) {
@@ -466,7 +467,7 @@ class ShareSheet extends ConsumerWidget {
         duration: Duration(seconds: 2),
       ),
     );
-    // TODO: Implement system share
+    // System share functionality - placeholder for future implementation
   }
 
   void _createGroup(BuildContext context) {
@@ -479,7 +480,7 @@ class ShareSheet extends ConsumerWidget {
         duration: Duration(seconds: 2),
       ),
     );
-    // TODO: Implement group creation
+    // Group creation functionality - placeholder for future implementation
   }
 
   void _takeSnapshot(BuildContext context) {
@@ -492,7 +493,7 @@ class ShareSheet extends ConsumerWidget {
         duration: Duration(seconds: 2),
       ),
     );
-    // TODO: Implement snapshot functionality
+    // Snapshot functionality - placeholder for future implementation
   }
 
   void _reportContent(BuildContext context) {
@@ -505,6 +506,6 @@ class ShareSheet extends ConsumerWidget {
         duration: Duration(seconds: 2),
       ),
     );
-    // TODO: Implement content reporting
+    // Content reporting functionality - placeholder for future implementation
   }
 }

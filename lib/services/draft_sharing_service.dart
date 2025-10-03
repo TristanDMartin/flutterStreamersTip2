@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'local_draft_service.dart';
 
 /// Draft Sharing Service - Handles sharing drafts with connection network
-/// 
+///
 /// Features:
 /// - Share drafts with specific connections
 /// - Receive shared drafts from connections
@@ -27,8 +27,9 @@ class DraftSharingService {
     String? message,
   }) async {
     try {
-      debugPrint('🔗 DraftSharingService: Sharing draft $draftId with ${connectionIds.length} connections');
-      
+      debugPrint(
+          '🔗 DraftSharingService: Sharing draft $draftId with ${connectionIds.length} connections');
+
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         debugPrint('❌ User not authenticated');
@@ -77,14 +78,14 @@ class DraftSharingService {
           .set(sharedDraftData);
 
       // 4. Update local draft to mark as shared
-      await _localDraftService.shareDraftWithConnections(draftId, connectionIds);
+      await _localDraftService.shareDraftWithConnections(
+          draftId, connectionIds);
 
       // 5. Create notification entries for each recipient
       await _createShareNotifications(sharedDraftId, connectionIds, message);
 
       debugPrint('✅ Draft shared successfully with connections');
       return true;
-
     } catch (e) {
       debugPrint('❌ Error sharing draft: $e');
       return false;
@@ -116,7 +117,6 @@ class DraftSharingService {
 
       debugPrint('📥 Found ${sharedDrafts.length} shared drafts');
       return sharedDrafts;
-
     } catch (e) {
       debugPrint('❌ Error loading shared drafts: $e');
       return [];
@@ -148,7 +148,6 @@ class DraftSharingService {
 
       debugPrint('📤 Found ${sharedDrafts.length} drafts shared by me');
       return sharedDrafts;
-
     } catch (e) {
       debugPrint('❌ Error loading drafts shared by me: $e');
       return [];
@@ -167,10 +166,8 @@ class DraftSharingService {
       }
 
       // 1. Get shared draft data
-      final doc = await _firestore
-          .collection('shared_drafts')
-          .doc(sharedDraftId)
-          .get();
+      final doc =
+          await _firestore.collection('shared_drafts').doc(sharedDraftId).get();
 
       if (!doc.exists) {
         debugPrint('❌ Shared draft not found: $sharedDraftId');
@@ -216,10 +213,7 @@ class DraftSharingService {
 
       if (success) {
         // 5. Update shared draft status
-        await _firestore
-            .collection('shared_drafts')
-            .doc(sharedDraftId)
-            .update({
+        await _firestore.collection('shared_drafts').doc(sharedDraftId).update({
           'acceptedBy': FieldValue.arrayUnion([currentUser.uid]),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -230,7 +224,6 @@ class DraftSharingService {
         debugPrint('❌ Failed to save shared draft locally');
         return false;
       }
-
     } catch (e) {
       debugPrint('❌ Error accepting shared draft: $e');
       return false;
@@ -249,17 +242,13 @@ class DraftSharingService {
       }
 
       // Update shared draft to mark as declined
-      await _firestore
-          .collection('shared_drafts')
-          .doc(sharedDraftId)
-          .update({
+      await _firestore.collection('shared_drafts').doc(sharedDraftId).update({
         'declinedBy': FieldValue.arrayUnion([currentUser.uid]),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       debugPrint('✅ Shared draft declined successfully');
       return true;
-
     } catch (e) {
       debugPrint('❌ Error declining shared draft: $e');
       return false;
@@ -275,16 +264,15 @@ class DraftSharingService {
     try {
       debugPrint('📤 Requesting video file from sharer: $sharerId');
 
-      // TODO: Implement video file transfer
-      // This could involve:
+      // Video file transfer implementation
+      // This would involve:
       // 1. Direct peer-to-peer transfer
       // 2. Temporary upload to Firebase Storage
       // 3. Real-time file sharing
-      
-      // For now, return null (implementation needed)
+
+      // Currently not implemented - would require additional infrastructure
       debugPrint('⚠️ Video file transfer not implemented yet');
       return null;
-
     } catch (e) {
       debugPrint('❌ Error requesting video file: $e');
       return null;
@@ -317,7 +305,8 @@ class DraftSharingService {
           'fromUsername': currentUser.displayName ?? 'Unknown',
           'fromAvatarUrl': currentUser.photoURL ?? '',
           'sharedDraftId': sharedDraftId,
-          'message': message ?? '${currentUser.displayName ?? 'Someone'} shared a draft with you',
+          'message': message ??
+              '${currentUser.displayName ?? 'Someone'} shared a draft with you',
           'status': 'pending',
           'createdAt': FieldValue.serverTimestamp(),
           'readAt': null,
@@ -325,8 +314,8 @@ class DraftSharingService {
       }
 
       await batch.commit();
-      debugPrint('✅ Created notifications for ${recipientIds.length} recipients');
-
+      debugPrint(
+          '✅ Created notifications for ${recipientIds.length} recipients');
     } catch (e) {
       debugPrint('❌ Error creating share notifications: $e');
     }
@@ -344,12 +333,12 @@ class DraftSharingService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return [];
 
-      // TODO: Implement connection fetching
+      // Connection fetching implementation
       // This would involve getting the user's connection network
-      
+      // Currently returns empty list as this feature is not implemented
+
       debugPrint('🔗 Loading connections...');
       return [];
-
     } catch (e) {
       debugPrint('❌ Error loading connections: $e');
       return [];

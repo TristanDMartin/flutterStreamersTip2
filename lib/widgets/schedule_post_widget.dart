@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../models/scheduled_post.dart';
 
 class SchedulePostWidget extends StatefulWidget {
@@ -316,7 +315,8 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
           ),
         ),
         const SizedBox(height: 8),
-        ...widget.selectedPlatforms.map((platform) => _buildPlatformOverride(platform)),
+        ...widget.selectedPlatforms
+            .map((platform) => _buildPlatformOverride(platform)),
       ],
     );
   }
@@ -414,17 +414,19 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
       dateStr = '${dateTime.month}/${dateTime.day}/${dateTime.year}';
     }
 
-    final timeStr = '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
     return '$dateStr at $timeStr';
   }
 
   Future<void> _selectDateTime() async {
     final now = DateTime.now();
     final minTime = now.add(const Duration(minutes: 5));
-    
+
     final date = await showDatePicker(
       context: context,
-      initialDate: _selectedDateTime.isBefore(minTime) ? minTime : _selectedDateTime,
+      initialDate:
+          _selectedDateTime.isBefore(minTime) ? minTime : _selectedDateTime,
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
       builder: (context, child) {
@@ -443,6 +445,7 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
     );
 
     if (date != null) {
+      if (!mounted) return;
       final time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
@@ -498,19 +501,19 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
             ),
             const SizedBox(height: 16),
             ...TimezoneInfo.commonTimezones.map((tz) => ListTile(
-              title: Text(
-                tz.displayName,
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text(
-                tz.name,
-                style: const TextStyle(color: Colors.white70),
-              ),
-              trailing: _selectedTimezone.name == tz.name
-                  ? const Icon(Icons.check, color: Color(0xFF9248D2))
-                  : null,
-              onTap: () => Navigator.pop(context, tz),
-            )),
+                  title: Text(
+                    tz.displayName,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Text(
+                    tz.name,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                  trailing: _selectedTimezone.name == tz.name
+                      ? const Icon(Icons.check, color: Color(0xFF9248D2))
+                      : null,
+                  onTap: () => Navigator.pop(context, tz),
+                )),
           ],
         ),
       ),
@@ -526,7 +529,7 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
 
   Future<void> _selectPlatformDateTime(PlatformKey platform) async {
     final currentTime = _platformOverrides[platform.name] ?? _selectedDateTime;
-    
+
     final date = await showDatePicker(
       context: context,
       initialDate: currentTime,
@@ -548,6 +551,7 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
     );
 
     if (date != null) {
+      if (!mounted) return;
       final time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(currentTime),
@@ -591,7 +595,7 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
       14, // 2 PM
       0,
     );
-    
+
     setState(() {
       _selectedDateTime = bestTime;
     });

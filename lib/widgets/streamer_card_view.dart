@@ -131,7 +131,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       await _fetchBookmarkedEventIds();
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ StreamerCardView: Error initializing bookmarks: $e');
+    // debugPrint('❌ StreamerCardView: Error initializing bookmarks: $e');
       }
     }
   }
@@ -139,11 +139,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Future<void> _fetchBookmarkedEventIds() async {
     try {
       if (kDebugMode) {
-    // print('📚 StreamerCardView: Fetching bookmarked event IDs...');
+    // debugPrint('📚 StreamerCardView: Fetching bookmarked event IDs...');
       }
       final bookmarkedIds = await _bookmarkService.fetchBookmarkedEventIds();
       if (kDebugMode) {
-    // print('📚 StreamerCardView: Found ${bookmarkedIds.length} bookmarked events: $bookmarkedIds');
+    // debugPrint('📚 StreamerCardView: Found ${bookmarkedIds.length} bookmarked events: $bookmarkedIds');
       }
       if (mounted) {
         setState(() {
@@ -153,7 +153,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ StreamerCardView: Error fetching bookmarked event IDs: $e');
+    // debugPrint('❌ StreamerCardView: Error fetching bookmarked event IDs: $e');
       }
     }
   }
@@ -288,7 +288,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         });
         
         if (kDebugMode) {
-          print("📊 StreamerCardView: Stats loaded - Posts: $_postsCount, Followers: $_followersCount, Following: $_followingCount");
+          debugPrint("📊 StreamerCardView: Stats loaded - Posts: $_postsCount, Followers: $_followersCount, Following: $_followingCount");
         }
       }
     });
@@ -305,7 +305,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         });
         
         if (kDebugMode) {
-          print("📊 StreamerCardView: Followers count updated from follows collection: $_followersCount");
+          debugPrint("📊 StreamerCardView: Followers count updated from follows collection: $_followersCount");
         }
       }
     });
@@ -322,7 +322,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         });
         
         if (kDebugMode) {
-          print("📊 StreamerCardView: Following count updated from follows collection: $_followingCount");
+          debugPrint("📊 StreamerCardView: Following count updated from follows collection: $_followingCount");
         }
       }
     });
@@ -331,19 +331,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void _checkRelationshipStatus() {
     if (widget.currentUserId == null || widget.currentUserId == widget.userId) {
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Skipping relationship check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+        debugPrint("🔘 StreamerCardView: Skipping relationship check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
       }
       return;
     }
     
     if (kDebugMode) {
-      print("🔘 StreamerCardView: Checking relationship status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+      debugPrint("🔘 StreamerCardView: Checking relationship status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
     }
     
     // First do an initial check to set the current state
     _checkConnectionStatus().then((_) {
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Initial relationship check complete - isFollowing: $_isFollowing, isFollowedByStreamer: $_isFollowedByStreamer, isConnected: $_isConnected");
+        debugPrint("🔘 StreamerCardView: Initial relationship check complete - isFollowing: $_isFollowing, isFollowedByStreamer: $_isFollowedByStreamer, isConnected: $_isConnected");
       }
       
       // Then set up real-time listeners for relationship changes
@@ -357,7 +357,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _followedByRelationshipSubscription?.cancel();
     
     if (kDebugMode) {
-      print("🔘 StreamerCardView: Setting up relationship listeners");
+      debugPrint("🔘 StreamerCardView: Setting up relationship listeners");
     }
     
     // Listen for changes in current user's following list
@@ -375,13 +375,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         });
         
         if (kDebugMode) {
-          print("🔄 StreamerCardView: Following listener updated - wasFollowing: $wasFollowing, isFollowing: $_isFollowing, docs count: ${snapshot.docs.length}");
-          print("🔄 StreamerCardView: Connection state after following update - isConnected: $_isConnected");
+          debugPrint("🔄 StreamerCardView: Following listener updated - wasFollowing: $wasFollowing, isFollowing: $_isFollowing, docs count: ${snapshot.docs.length}");
+          debugPrint("🔄 StreamerCardView: Connection state after following update - isConnected: $_isConnected");
         }
       }
     }, onError: (error) {
       if (kDebugMode) {
-        print("❌ StreamerCardView: Error in following relationship listener: $error");
+        debugPrint("❌ StreamerCardView: Error in following relationship listener: $error");
       }
     });
 
@@ -400,13 +400,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         });
         
         if (kDebugMode) {
-          print("🔄 StreamerCardView: Followed by streamer listener updated - wasFollowedByStreamer: $wasFollowedByStreamer, isFollowedByStreamer: $_isFollowedByStreamer, docs count: ${snapshot.docs.length}");
-          print("🔄 StreamerCardView: Connection state after followed by update - isConnected: $_isConnected");
+          debugPrint("🔄 StreamerCardView: Followed by streamer listener updated - wasFollowedByStreamer: $wasFollowedByStreamer, isFollowedByStreamer: $_isFollowedByStreamer, docs count: ${snapshot.docs.length}");
+          debugPrint("🔄 StreamerCardView: Connection state after followed by update - isConnected: $_isConnected");
         }
       }
     }, onError: (error) {
       if (kDebugMode) {
-        print("❌ StreamerCardView: Error in followed by relationship listener: $error");
+        debugPrint("❌ StreamerCardView: Error in followed by relationship listener: $error");
       }
     });
   }
@@ -416,8 +416,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _isConnected = _isFollowing && _isFollowedByStreamer;
     
     if (kDebugMode && previousConnected != _isConnected) {
-      print("🔄 StreamerCardView: Connection status changed from $previousConnected to $_isConnected");
-      print("🔄 StreamerCardView: _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+      debugPrint("🔄 StreamerCardView: Connection status changed from $previousConnected to $_isConnected");
+      debugPrint("🔄 StreamerCardView: _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
     }
   }
 
@@ -469,27 +469,18 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     super.dispose();
   }
 
-  @override
-  void activate() {
-    super.activate();
-  }
-
-  @override
-  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
-  }
 
   // MARK: - Connection Status
   Future<void> _checkConnectionStatus() async {
     if (widget.currentUserId == null || widget.currentUserId == widget.userId) {
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Skipping connection check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+        debugPrint("🔘 StreamerCardView: Skipping connection check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
       }
       return;
     }
 
     if (kDebugMode) {
-      print("🔘 StreamerCardView: Checking connection status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+      debugPrint("🔘 StreamerCardView: Checking connection status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
     }
 
     try {
@@ -503,7 +494,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       final isConnected = isFollowing && isFollowedByStreamer;
       
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Connection check results - isFollowing: $isFollowing, isFollowedByStreamer: $isFollowedByStreamer, isConnected: $isConnected");
+        debugPrint("🔘 StreamerCardView: Connection check results - isFollowing: $isFollowing, isFollowedByStreamer: $isFollowedByStreamer, isConnected: $isConnected");
       }
       
       if (mounted) {
@@ -515,7 +506,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (e) {
       if (kDebugMode) {
-        print("❌ StreamerCardView: Error checking connection status: $e");
+        debugPrint("❌ StreamerCardView: Error checking connection status: $e");
       }
       if (mounted) {
         setState(() {
@@ -533,7 +524,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return await _followsService.isFollowing(userId);
     } catch (e) {
       if (kDebugMode) {
-        print('❌ StreamerCardView: Error checking follow status: $e');
+        debugPrint('❌ StreamerCardView: Error checking follow status: $e');
       }
       return false;
     }
@@ -545,7 +536,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return await _followsService.isFollowedBy(userId);
     } catch (e) {
       if (kDebugMode) {
-        print('❌ StreamerCardView: Error checking followed by status: $e');
+        debugPrint('❌ StreamerCardView: Error checking followed by status: $e');
       }
       return false;
     }
@@ -560,18 +551,18 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     final isBookmarked = _bookmarkedEventIds.contains(event.id);
     
     if (kDebugMode) {
-    // print('🔖 StreamerCardView: Toggling bookmark for event: ${event.id}');
-    // print('🔖 StreamerCardView: Currently bookmarked: $isBookmarked');
-    // print('🔖 StreamerCardView: Event title: ${event.title}');
-    // print('🔖 StreamerCardView: Event date: ${event.date}');
-    // print('🔖 StreamerCardView: Creator ID: ${widget.userId}');
+    // debugPrint('🔖 StreamerCardView: Toggling bookmark for event: ${event.id}');
+    // debugPrint('🔖 StreamerCardView: Currently bookmarked: $isBookmarked');
+    // debugPrint('🔖 StreamerCardView: Event title: ${event.title}');
+    // debugPrint('🔖 StreamerCardView: Event date: ${event.date}');
+    // debugPrint('🔖 StreamerCardView: Creator ID: ${widget.userId}');
     }
     
     // Check if user is authenticated
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       if (kDebugMode) {
-    // print('❌ StreamerCardView: No authenticated user');
+    // debugPrint('❌ StreamerCardView: No authenticated user');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -586,7 +577,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
     
     if (kDebugMode) {
-    // print('✅ StreamerCardView: User authenticated: ${currentUser.uid}');
+    // debugPrint('✅ StreamerCardView: User authenticated: ${currentUser.uid}');
     }
     
     // Optimistic UI update
@@ -648,11 +639,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       setState(() {});
       
       if (kDebugMode) {
-    // print('❌ StreamerCardView: Error toggling bookmark: $e');
-    // print('❌ StreamerCardView: Error type: ${e.runtimeType}');
+    // debugPrint('❌ StreamerCardView: Error toggling bookmark: $e');
+    // debugPrint('❌ StreamerCardView: Error type: ${e.runtimeType}');
         if (e is FirebaseException) {
-    // print('❌ StreamerCardView: Firebase error code: ${e.code}');
-    // print('❌ StreamerCardView: Firebase error message: ${e.message}');
+    // debugPrint('❌ StreamerCardView: Firebase error code: ${e.code}');
+    // debugPrint('❌ StreamerCardView: Firebase error message: ${e.message}');
         }
       }
       
@@ -689,7 +680,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              // TODO: Implement actual event deletion
+              // Event deletion functionality - placeholder for future implementation
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Event deleted'),
@@ -1169,7 +1160,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   VoidCallback? _getMessageButtonAction() {
     if (kDebugMode) {
-      print("💬 StreamerCardView: _getMessageButtonAction - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+      debugPrint("💬 StreamerCardView: _getMessageButtonAction - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
     }
     if (_isConnected) return _handleMessage; // Only enabled when connected (mutual follow)
     return null; // Disabled when not connected
@@ -1181,10 +1172,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // MARK: - Follow Button Action Handler (Real-time Updates)
   void _handleFollowButtonTap() {
     if (kDebugMode) {
-      print("🔘 Follow button tapped for user: ${widget.userId}");
-      print("🔘 Current follow state: $_isFollowing");
-      print("🔘 Is followed by other: $_isFollowedByStreamer");
-      print("🔘 Is connected: $_isConnected");
+      debugPrint("🔘 Follow button tapped for user: ${widget.userId}");
+      debugPrint("🔘 Current follow state: $_isFollowing");
+      debugPrint("🔘 Is followed by other: $_isFollowedByStreamer");
+      debugPrint("🔘 Is connected: $_isConnected");
     }
     
     HapticFeedback.lightImpact();
@@ -1220,8 +1211,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
     
     if (kDebugMode) {
-      print("🔘 StreamerCardView: Following user: ${widget.userId}");
-      print("🔘 StreamerCardView: Current user ID: ${widget.currentUserId}");
+      debugPrint("🔘 StreamerCardView: Following user: ${widget.userId}");
+      debugPrint("🔘 StreamerCardView: Current user ID: ${widget.currentUserId}");
     }
     
     // Store original state for rollback
@@ -1247,12 +1238,12 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
         
         if (kDebugMode) {
-          print("🔘 StreamerCardView: Parent follow callback completed successfully");
+          debugPrint("🔘 StreamerCardView: Parent follow callback completed successfully");
         }
         return; // Exit early if parent handles it successfully
       } catch (e) {
         if (kDebugMode) {
-          print("🔘 StreamerCardView: Parent follow callback failed: $e");
+          debugPrint("🔘 StreamerCardView: Parent follow callback failed: $e");
         }
         
         // For demo content, simulate successful follow
@@ -1280,7 +1271,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     // Fallback: Handle follow ourselves if no parent callback or it failed
     try {
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Starting Firebase follow operation using FollowsService");
+        debugPrint("🔘 StreamerCardView: Starting Firebase follow operation using FollowsService");
       }
       
       // Use FollowsService to follow the user (this updates the 'follows' collection)
@@ -1291,7 +1282,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       
       if (kDebugMode) {
-        print("✅ StreamerCardView: Successfully followed user via FollowsService");
+        debugPrint("✅ StreamerCardView: Successfully followed user via FollowsService");
       }
       
       // Create follow notification
@@ -1315,11 +1306,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       
       if (kDebugMode) {
-        print("✅ Successfully followed user: ${widget.userId}");
+        debugPrint("✅ Successfully followed user: ${widget.userId}");
       }
     } catch (error) {
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Error following user: $error");
+        debugPrint("🔘 StreamerCardView: Error following user: $error");
       }
       
       // Rollback optimistic update
@@ -1357,8 +1348,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (_isUnfollowingOperation) return; // Prevent multiple simultaneous operations
     
     if (kDebugMode) {
-      print("🔘 StreamerCardView: Unfollowing user: ${widget.userId}");
-      print("🔘 StreamerCardView: Current state - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
+      debugPrint("🔘 StreamerCardView: Unfollowing user: ${widget.userId}");
+      debugPrint("🔘 StreamerCardView: Current state - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
     }
     
     // Store original state for rollback
@@ -1372,7 +1363,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     });
     
     if (kDebugMode) {
-      print("🔘 StreamerCardView: After optimistic update - _isFollowing: $_isFollowing, _isConnected: $_isConnected");
+      debugPrint("🔘 StreamerCardView: After optimistic update - _isFollowing: $_isFollowing, _isConnected: $_isConnected");
     }
     
     try {
@@ -1384,22 +1375,22 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       
       if (kDebugMode) {
-        print("✅ StreamerCardView: Successfully unfollowed user via FollowsService");
+        debugPrint("✅ StreamerCardView: Successfully unfollowed user via FollowsService");
       }
       
       // Remove follow notification
       await _removeFollowNotification();
       
       if (kDebugMode) {
-        print("✅ Successfully unfollowed user: ${widget.userId}");
-        print("🔘 StreamerCardView: Final state after unfollow - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
+        debugPrint("✅ Successfully unfollowed user: ${widget.userId}");
+        debugPrint("🔘 StreamerCardView: Final state after unfollow - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
       }
       
       // Navigate to appropriate tab in NetworkView
       _navigateToAppropriateTab();
     } catch (error) {
       if (kDebugMode) {
-    // print("❌ Error unfollowing user: $error");
+    // debugPrint("❌ Error unfollowing user: $error");
       }
       
       // Rollback optimistic update
@@ -1433,7 +1424,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   void _handleMessage() {
     if (kDebugMode) {
-      print("💬 StreamerCardView: _handleMessage called - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+      debugPrint("💬 StreamerCardView: _handleMessage called - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
     }
     
     HapticFeedback.lightImpact();
@@ -1441,7 +1432,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     // Check if users are connected (mutual follow)
     if (!_isConnected) {
       if (kDebugMode) {
-        print("💬 StreamerCardView: Users are not connected, showing error message");
+        debugPrint("💬 StreamerCardView: Users are not connected, showing error message");
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1456,7 +1447,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
     
     if (kDebugMode) {
-      print("💬 StreamerCardView: Users are connected, proceeding with message");
+      debugPrint("💬 StreamerCardView: Users are connected, proceeding with message");
     }
     
     // Call the parent callback first
@@ -1473,9 +1464,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       final currentUser = FirebaseAuth.instance.currentUser;
       
       if (kDebugMode) {
-        print("💬 StreamerCardView: Starting chat navigation for user: ${widget.userId}");
-        print("💬 StreamerCardView: Current user: ${currentUser?.uid}");
-        print("💬 StreamerCardView: User data: $_userData");
+        debugPrint("💬 StreamerCardView: Starting chat navigation for user: ${widget.userId}");
+        debugPrint("💬 StreamerCardView: Current user: ${currentUser?.uid}");
+        debugPrint("💬 StreamerCardView: User data: $_userData");
       }
       
       if (currentUser == null) {
@@ -1508,7 +1499,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       final chat = await chatService.fetchOrCreateChat(widget.userId);
       
       if (kDebugMode) {
-        print("💬 StreamerCardView: Chat created/fetched: $chat");
+        debugPrint("💬 StreamerCardView: Chat created/fetched: $chat");
       }
       
       // Hide loading indicator
@@ -1523,10 +1514,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         final otherUserIsOnline = _userData?['isOnline'] ?? _userData?['onlineStatus'] == 'online' ?? false;
         
         if (kDebugMode) {
-          print("💬 StreamerCardView: Navigating to chat with:");
-          print("💬 StreamerCardView: - Name: $otherUserName");
-          print("💬 StreamerCardView: - Avatar: $otherUserAvatarURL");
-          print("💬 StreamerCardView: - Online: $otherUserIsOnline");
+          debugPrint("💬 StreamerCardView: Navigating to chat with:");
+          debugPrint("💬 StreamerCardView: - Name: $otherUserName");
+          debugPrint("💬 StreamerCardView: - Avatar: $otherUserAvatarURL");
+          debugPrint("💬 StreamerCardView: - Online: $otherUserIsOnline");
         }
         
         // Navigate to chat view
@@ -1553,7 +1544,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
         
         if (kDebugMode) {
-          print("💬 StreamerCardView: Failed to create/fetch chat - chat is null");
+          debugPrint("💬 StreamerCardView: Failed to create/fetch chat - chat is null");
         }
       }
     } catch (e) {
@@ -1573,7 +1564,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       
       if (kDebugMode) {
-        print("💬 StreamerCardView: Error starting conversation: $e");
+        debugPrint("💬 StreamerCardView: Error starting conversation: $e");
       }
     }
   }
@@ -1586,25 +1577,25 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       // Both users follow each other - go to Connections tab
       widget.onNavigateToTab!('connections');
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Navigating to Connections tab (mutual follow)");
+        debugPrint("🔘 StreamerCardView: Navigating to Connections tab (mutual follow)");
       }
     } else if (_isFollowing) {
       // Current user follows the other user - go to Following tab
       widget.onNavigateToTab!('following');
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Navigating to Following tab");
+        debugPrint("🔘 StreamerCardView: Navigating to Following tab");
       }
     } else if (_isFollowedByStreamer) {
       // Other user follows current user - go to Followers tab
       widget.onNavigateToTab!('followers');
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Navigating to Followers tab");
+        debugPrint("🔘 StreamerCardView: Navigating to Followers tab");
       }
     } else {
       // No relationship - go to Following tab (where they'll be added)
       widget.onNavigateToTab!('following');
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Navigating to Following tab (new follow)");
+        debugPrint("🔘 StreamerCardView: Navigating to Following tab (new follow)");
       }
     }
   }
@@ -1669,7 +1660,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
     } catch (e) {
       if (kDebugMode) {
-    // print("❌ Error navigating to player screen: $e");
+    // debugPrint("❌ Error navigating to player screen: $e");
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1696,7 +1687,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Future<void> _createFollowNotification() async {
     try {
       if (kDebugMode) {
-        print("🔘 StreamerCardView: Creating follow notification");
+        debugPrint("🔘 StreamerCardView: Creating follow notification");
       }
       
       final notificationDoc = await FirebaseFirestore.instance
@@ -1705,17 +1696,17 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         'userId': widget.userId,
         'type': 'follow',
         'fromUserId': widget.currentUserId!,
-        'fromUserName': 'Current User', // TODO: Get actual user name
+        'fromUserName': 'Current User', // User name placeholder - actual name retrieval to be implemented
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
       });
       
       if (kDebugMode) {
-        print("✅ StreamerCardView: Successfully created follow notification: ${notificationDoc.id}");
+        debugPrint("✅ StreamerCardView: Successfully created follow notification: ${notificationDoc.id}");
       }
     } catch (error) {
       if (kDebugMode) {
-        print("❌ StreamerCardView: Error creating follow notification: $error");
+        debugPrint("❌ StreamerCardView: Error creating follow notification: $error");
       }
       // Don't throw here - notification is not critical for follow operation
     }
@@ -1735,7 +1726,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (error) {
       if (kDebugMode) {
-    // print("❌ Error removing follow notification: $error");
+    // debugPrint("❌ Error removing follow notification: $error");
       }
       // Don't throw here - notification cleanup is not critical
     }
@@ -2403,7 +2394,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
       } catch (e) {
         if (kDebugMode) {
-    // print('Error loading platforms: $e');
+    // debugPrint('Error loading platforms: $e');
         }
         setState(() {
           _platforms = [];
@@ -2433,7 +2424,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   );
                 } catch (e) {
                   if (kDebugMode) {
-    // print('Error creating CalendarEvent: $e');
+    // debugPrint('Error creating CalendarEvent: $e');
                   }
                   return null;
                 }
@@ -2449,7 +2440,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
       } catch (e) {
         if (kDebugMode) {
-    // print('Error loading calendar events: $e');
+    // debugPrint('Error loading calendar events: $e');
         }
         setState(() {
           _calendarEvents = [];

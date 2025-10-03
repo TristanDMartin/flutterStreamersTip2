@@ -30,7 +30,8 @@ class ManagePostsView extends StatefulWidget {
   State<ManagePostsView> createState() => _ManagePostsViewState();
 }
 
-class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderStateMixin {
+class _ManagePostsViewState extends State<ManagePostsView>
+    with TickerProviderStateMixin {
   final ScheduledPostService _postService = ScheduledPostService();
   List<ScheduledPost> _posts = [];
   bool _isLoading = true;
@@ -38,14 +39,14 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
   PlatformKey? _filterPlatform;
   String _searchQuery = '';
   late TabController _tabController;
-  
+
   // Bulk operations
   Set<String> _selectedPosts = {};
   bool _isSelectionMode = false;
-  
+
   // Sorting
-  PostSortOption _sortOption = PostSortOption.dateDesc;
-  
+  final PostSortOption _sortOption = PostSortOption.dateDesc;
+
   // Real-time updates
   bool _isRealTimeEnabled = true;
   int _refreshInterval = 30; // seconds
@@ -88,9 +89,9 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
         platform: _filterPlatform,
         searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
       );
-      
+
       final sortedPosts = _sortPosts(posts);
-      
+
       setState(() {
         _posts = sortedPosts;
         _isLoading = false;
@@ -100,15 +101,17 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
       setState(() {
         _isLoading = false;
       });
-      
+
       if (_retryCount < _maxRetries) {
         _retryCount++;
-        _showErrorSnackBar('Failed to load posts. Retrying... ($_retryCount/$_maxRetries)');
+        _showErrorSnackBar(
+            'Failed to load posts. Retrying... ($_retryCount/$_maxRetries)');
         Future.delayed(Duration(seconds: _retryCount * 2), () {
           if (mounted) _loadPosts();
         });
       } else {
-        _showErrorSnackBar('Failed to load posts after $_maxRetries attempts: $e');
+        _showErrorSnackBar(
+            'Failed to load posts after $_maxRetries attempts: $e');
       }
     }
   }
@@ -116,20 +119,26 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
   List<ScheduledPost> _sortPosts(List<ScheduledPost> posts) {
     switch (_sortOption) {
       case PostSortOption.dateDesc:
-        posts.sort((a, b) => (b.schedule?.scheduledAtUtc ?? DateTime(1970)).compareTo(a.schedule?.scheduledAtUtc ?? DateTime(1970)));
+        posts.sort((a, b) => (b.schedule?.scheduledAtUtc ?? DateTime(1970))
+            .compareTo(a.schedule?.scheduledAtUtc ?? DateTime(1970)));
         break;
       case PostSortOption.dateAsc:
-        posts.sort((a, b) => (a.schedule?.scheduledAtUtc ?? DateTime(1970)).compareTo(b.schedule?.scheduledAtUtc ?? DateTime(1970)));
+        posts.sort((a, b) => (a.schedule?.scheduledAtUtc ?? DateTime(1970))
+            .compareTo(b.schedule?.scheduledAtUtc ?? DateTime(1970)));
         break;
       case PostSortOption.status:
         posts.sort((a, b) => a.status.index.compareTo(b.status.index));
         break;
       case PostSortOption.platform:
-        posts.sort((a, b) => a.platforms.first.key.compareTo(b.platforms.first.key));
+        posts.sort(
+            (a, b) => a.platforms.first.key.compareTo(b.platforms.first.key));
         break;
       case PostSortOption.engagement:
         // Mock engagement sorting - in real app, this would use analytics data
-        posts.sort((a, b) => b.analyticsHints['engagement']?.compareTo(a.analyticsHints['engagement'] ?? 0) ?? 0);
+        posts.sort((a, b) =>
+            b.analyticsHints['engagement']
+                ?.compareTo(a.analyticsHints['engagement'] ?? 0) ??
+            0);
         break;
     }
     return posts;
@@ -150,61 +159,62 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
         child: Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Manage Posts',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: const Text(
+              'Manage Posts',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            actions: [
+              if (_isSelectionMode) ...[
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: _exitSelectionMode,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed:
+                      _selectedPosts.isNotEmpty ? _showBulkActionDialog : null,
+                ),
+              ] else ...[
+                IconButton(
+                  icon: const Icon(Icons.search, color: Colors.white),
+                  onPressed: _showSearchDialog,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.sort, color: Colors.white),
+                  onPressed: _showSortDialog,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.filter_list, color: Colors.white),
+                  onPressed: _showFilterDialog,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  onPressed: _showMoreOptionsDialog,
+                ),
+              ],
+            ],
+            bottom: TabBar(
+              controller: _tabController,
+              indicatorColor: const Color(0xFF9248D2),
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              tabs: const [
+                Tab(text: 'Scheduled'),
+                Tab(text: 'Publishing'),
+                Tab(text: 'Published'),
+              ],
+            ),
           ),
-        ),
-        actions: [
-          if (_isSelectionMode) ...[
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: _exitSelectionMode,
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: _selectedPosts.isNotEmpty ? _showBulkActionDialog : null,
-            ),
-          ] else ...[
-            IconButton(
-              icon: const Icon(Icons.search, color: Colors.white),
-              onPressed: _showSearchDialog,
-            ),
-            IconButton(
-              icon: const Icon(Icons.sort, color: Colors.white),
-              onPressed: _showSortDialog,
-            ),
-            IconButton(
-              icon: const Icon(Icons.filter_list, color: Colors.white),
-              onPressed: _showFilterDialog,
-            ),
-            IconButton(
-              icon: const Icon(Icons.more_vert, color: Colors.white),
-              onPressed: _showMoreOptionsDialog,
-            ),
-          ],
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: const Color(0xFF9248D2),
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          tabs: const [
-            Tab(text: 'Scheduled'),
-            Tab(text: 'Publishing'),
-            Tab(text: 'Published'),
-          ],
-        ),
-      ),
           body: TabBarView(
             controller: _tabController,
             children: [
@@ -219,8 +229,9 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
   }
 
   Widget _buildPostsList(PostStatus status) {
-    final filteredPosts = _posts.where((post) => post.status == status).toList();
-    
+    final filteredPosts =
+        _posts.where((post) => post.status == status).toList();
+
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(
@@ -269,19 +280,19 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
 
   Widget _buildPostCard(ScheduledPost post) {
     final isSelected = _selectedPosts.contains(post.id);
-    
+
     return GestureDetector(
       onTap: _isSelectionMode ? () => _togglePostSelection(post.id) : null,
       onLongPress: () => _enterSelectionMode(post.id),
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          color: isSelected 
+          color: isSelected
               ? const Color(0xFF9248D2).withValues(alpha: 0.1)
               : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected 
+            color: isSelected
                 ? const Color(0xFF9248D2)
                 : Colors.white.withValues(alpha: 0.1),
             width: isSelected ? 2 : 1,
@@ -315,7 +326,8 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
           _buildStatusChip(post.status),
           const Spacer(),
           Text(
-            _formatScheduleTime(post.schedule?.scheduledAtUtc ?? DateTime.now()),
+            _formatScheduleTime(
+                post.schedule?.scheduledAtUtc ?? DateTime.now()),
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 12,
@@ -350,20 +362,24 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
             Wrap(
               spacing: 4,
               runSpacing: 4,
-              children: post.tags.take(3).map((tag) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF9248D2).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '#$tag',
-                  style: const TextStyle(
-                    color: Color(0xFF9248D2),
-                    fontSize: 10,
-                  ),
-                ),
-              )).toList(),
+              children: post.tags
+                  .take(3)
+                  .map((tag) => Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF9248D2).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '#$tag',
+                          style: const TextStyle(
+                            color: Color(0xFF9248D2),
+                            fontSize: 10,
+                          ),
+                        ),
+                      ))
+                  .toList(),
             ),
           ],
           const SizedBox(height: 12),
@@ -404,17 +420,19 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
 
   Widget _buildPlatformStatuses(ScheduledPost post) {
     return Row(
-      children: post.platforms.map((platform) => Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: _buildPlatformStatus(platform),
-      )).toList(),
+      children: post.platforms
+          .map((platform) => Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _buildPlatformStatus(platform),
+              ))
+          .toList(),
     );
   }
 
   Widget _buildPlatformStatus(PlatformConfig platform) {
     final status = platform.status ?? PlatformStatus.pending;
     final color = _getPlatformStatusColor(status);
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -540,7 +558,7 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
   Widget _buildStatusChip(PostStatus status) {
     final color = _getStatusColor(status);
     final text = _getStatusText(status);
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -675,7 +693,7 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
   String _formatScheduleTime(DateTime dateTime) {
     final now = DateTime.now();
     final difference = dateTime.difference(now);
-    
+
     if (difference.inDays > 0) {
       return '${difference.inDays}d';
     } else if (difference.inHours > 0) {
@@ -761,15 +779,17 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
-              children: PostStatus.values.map((status) => FilterChip(
-                label: Text(_getStatusText(status)),
-                selected: _filterStatus == status,
-                onSelected: (selected) {
-                  setState(() {
-                    _filterStatus = selected ? status : null;
-                  });
-                },
-              )).toList(),
+              children: PostStatus.values
+                  .map((status) => FilterChip(
+                        label: Text(_getStatusText(status)),
+                        selected: _filterStatus == status,
+                        onSelected: (selected) {
+                          setState(() {
+                            _filterStatus = selected ? status : null;
+                          });
+                        },
+                      ))
+                  .toList(),
             ),
             const SizedBox(height: 16),
             // Platform filter
@@ -780,15 +800,17 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
-              children: PlatformKey.values.map((platform) => FilterChip(
-                label: Text(_getPlatformName(platform)),
-                selected: _filterPlatform == platform,
-                onSelected: (selected) {
-                  setState(() {
-                    _filterPlatform = selected ? platform : null;
-                  });
-                },
-              )).toList(),
+              children: PlatformKey.values
+                  .map((platform) => FilterChip(
+                        label: Text(_getPlatformName(platform)),
+                        selected: _filterPlatform == platform,
+                        onSelected: (selected) {
+                          setState(() {
+                            _filterPlatform = selected ? platform : null;
+                          });
+                        },
+                      ))
+                  .toList(),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -833,7 +855,7 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
       const SnackBar(content: Text('Edit post feature coming soon!')),
     );
     final result = null;
-    
+
     if (result != null) {
       _loadPosts();
       _showSuccessSnackBar('Post updated successfully');
@@ -855,7 +877,7 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
       'Cancel Post',
       'Are you sure you want to cancel this scheduled post?',
     );
-    
+
     if (confirmed) {
       try {
         await _postService.cancelPost(post.id);
@@ -882,17 +904,18 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
 
   void _viewPost(ScheduledPost post) async {
     HapticFeedback.lightImpact();
-    
+
     // Find published platform URLs
     final publishedPlatforms = post.platforms
-        .where((p) => p.status == PlatformStatus.published && p.payload?['url'] != null)
+        .where((p) =>
+            p.status == PlatformStatus.published && p.payload?['url'] != null)
         .toList();
-    
+
     if (publishedPlatforms.isEmpty) {
       _showInfoSnackBar('No published URLs available');
       return;
     }
-    
+
     if (publishedPlatforms.length == 1) {
       // Single platform - open directly
       final url = publishedPlatforms.first.payload!['url']!;
@@ -935,7 +958,8 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
     //   ),
     // );
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Platform reconnection feature coming soon!')),
+      const SnackBar(
+          content: Text('Platform reconnection feature coming soon!')),
     );
   }
 
@@ -1037,10 +1061,14 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
               ),
             ),
             const SizedBox(height: 16),
-            _buildBulkActionTile('Publish Now', Icons.publish, BulkAction.publish),
-            _buildBulkActionTile('Cancel Posts', Icons.cancel, BulkAction.cancel),
-            _buildBulkActionTile('Delete Posts', Icons.delete, BulkAction.delete),
-            _buildBulkActionTile('Export Data', Icons.download, BulkAction.export),
+            _buildBulkActionTile(
+                'Publish Now', Icons.publish, BulkAction.publish),
+            _buildBulkActionTile(
+                'Cancel Posts', Icons.cancel, BulkAction.cancel),
+            _buildBulkActionTile(
+                'Delete Posts', Icons.delete, BulkAction.delete),
+            _buildBulkActionTile(
+                'Export Data', Icons.download, BulkAction.export),
           ],
         ),
       ),
@@ -1059,8 +1087,9 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
   }
 
   void _performBulkAction(BulkAction action) async {
-    final selectedPosts = _posts.where((post) => _selectedPosts.contains(post.id)).toList();
-    
+    final selectedPosts =
+        _posts.where((post) => _selectedPosts.contains(post.id)).toList();
+
     switch (action) {
       case BulkAction.publish:
         await _bulkPublish(selectedPosts);
@@ -1183,19 +1212,13 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
               ),
             ),
             const SizedBox(height: 16),
-            ...PostSortOption.values.map((option) => RadioListTile<PostSortOption>(
-              title: Text(_getSortOptionLabel(option), style: const TextStyle(color: Colors.white)),
-              value: option,
-              groupValue: _sortOption,
-              onChanged: (value) {
-                setState(() {
-                  _sortOption = value!;
-                });
-                _loadPosts();
-                Navigator.pop(context);
-              },
-              activeColor: const Color(0xFF9248D2),
-            )),
+            ...PostSortOption.values
+                .map((option) => RadioListTile<PostSortOption>(
+                      title: Text(_getSortOptionLabel(option),
+                          style: const TextStyle(color: Colors.white)),
+                      value: option,
+                      activeColor: const Color(0xFF9248D2),
+                    )),
           ],
         ),
       ),
@@ -1241,7 +1264,8 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.download, color: Colors.white70),
-              title: const Text('Export All Posts', style: TextStyle(color: Colors.white)),
+              title: const Text('Export All Posts',
+                  style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 _exportAllPosts();
@@ -1253,7 +1277,9 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
                 color: Colors.white70,
               ),
               title: Text(
-                _isRealTimeEnabled ? 'Pause Auto-Refresh' : 'Enable Auto-Refresh',
+                _isRealTimeEnabled
+                    ? 'Pause Auto-Refresh'
+                    : 'Enable Auto-Refresh',
                 style: const TextStyle(color: Colors.white),
               ),
               onTap: () {
@@ -1268,7 +1294,8 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
             ),
             ListTile(
               leading: const Icon(Icons.settings, color: Colors.white70),
-              title: const Text('Refresh Settings', style: TextStyle(color: Colors.white)),
+              title: const Text('Refresh Settings',
+                  style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 _showRefreshSettingsDialog();
@@ -1291,11 +1318,13 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Refresh Settings', style: TextStyle(color: Colors.white)),
+        title: const Text('Refresh Settings',
+            style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Refresh Interval: $_refreshInterval seconds', style: const TextStyle(color: Colors.white70)),
+            Text('Refresh Interval: $_refreshInterval seconds',
+                style: const TextStyle(color: Colors.white70)),
             Slider(
               value: _refreshInterval.toDouble(),
               min: 10,
@@ -1352,19 +1381,19 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
             ),
             const SizedBox(height: 16),
             ...platforms.map((platform) => ListTile(
-              leading: Icon(
-                _getPlatformIconFromString(platform.key),
-                color: _getPlatformColorFromString(platform.key),
-              ),
-              title: Text(
-                _getPlatformNameFromString(platform.key),
-                style: const TextStyle(color: Colors.white),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _launchUrl(platform.payload!['url']!);
-              },
-            )),
+                  leading: Icon(
+                    _getPlatformIconFromString(platform.key),
+                    color: _getPlatformColorFromString(platform.key),
+                  ),
+                  title: Text(
+                    _getPlatformNameFromString(platform.key),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _launchUrl(platform.payload!['url']!);
+                  },
+                )),
           ],
         ),
       ),
@@ -1440,5 +1469,4 @@ class _ManagePostsViewState extends State<ManagePostsView> with TickerProviderSt
         return platform;
     }
   }
-
 }

@@ -24,11 +24,11 @@ class AdvancedVideoEditor extends StatefulWidget {
 class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
     with TickerProviderStateMixin {
   late VideoEditSettings _settings;
-  
+
   // Animation controllers
   late AnimationController _previewController;
   late AnimationController _rotationController;
-  
+
   // Video preview state
   double _previewScale = 1.0;
   double _previewRotation = 0.0;
@@ -52,12 +52,12 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
       quality: VideoQuality.high,
       resolution: VideoResolution.original,
     );
-    
+
     _previewController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    
+
     _rotationController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
@@ -205,9 +205,12 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
                   return Transform(
                     alignment: Alignment.center,
                     transform: Matrix4.identity()
-                      ..scale(_previewScale)
-                      ..rotateZ(_previewRotation + _rotationController.value * 2 * math.pi)
-                      ..scale(_isFlippedHorizontal ? -1.0 : 1.0, _isFlippedVertical ? -1.0 : 1.0),
+                      ..scaleByDouble(
+                          _previewScale, _previewScale, _previewScale, 1.0)
+                      ..rotateZ(_previewRotation +
+                          _rotationController.value * 2 * math.pi)
+                      ..scaleByDouble(_isFlippedHorizontal ? -1.0 : 1.0,
+                          _isFlippedVertical ? -1.0 : 1.0, 1.0, 1.0),
                     child: Container(
                       width: 200,
                       height: 300,
@@ -227,10 +230,10 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
                 },
               ),
             ),
-            
+
             // Crop overlay
             _buildCropOverlay(),
-            
+
             // Play button
             Center(
               child: GestureDetector(
@@ -253,7 +256,9 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
                     animation: _previewController,
                     builder: (context, child) {
                       return Icon(
-                        _previewController.isAnimating ? Icons.pause : Icons.play_arrow,
+                        _previewController.isAnimating
+                            ? Icons.pause
+                            : Icons.play_arrow,
                         color: Colors.white,
                         size: 30,
                       );
@@ -288,23 +293,23 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
             // Speed control
             _buildSpeedControl(),
             const SizedBox(height: 24),
-            
+
             // Rotation control
             _buildRotationControl(),
             const SizedBox(height: 24),
-            
+
             // Flip controls
             _buildFlipControls(),
             const SizedBox(height: 24),
-            
+
             // Crop controls
             _buildCropControls(),
             const SizedBox(height: 24),
-            
+
             // Quality settings
             _buildQualitySettings(),
             const SizedBox(height: 24),
-            
+
             // Resolution settings
             _buildResolutionSettings(),
           ],
@@ -352,9 +357,15 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('0.25x', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
-            Text('1.0x', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
-            Text('4.0x', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+            Text('0.25x',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+            Text('1.0x',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+            Text('4.0x',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
           ],
         ),
       ],
@@ -465,7 +476,9 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
         Row(
           children: [
             Expanded(
-              child: _buildFlipButton('Horizontal', Icons.flip, _settings.isFlippedHorizontal, (value) {
+              child: _buildFlipButton(
+                  'Horizontal', Icons.flip, _settings.isFlippedHorizontal,
+                  (value) {
                 setState(() {
                   _settings = _settings.copyWith(isFlippedHorizontal: value);
                   _isFlippedHorizontal = value;
@@ -475,7 +488,8 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _buildFlipButton('Vertical', Icons.flip, _settings.isFlippedVertical, (value) {
+              child: _buildFlipButton(
+                  'Vertical', Icons.flip, _settings.isFlippedVertical, (value) {
                 setState(() {
                   _settings = _settings.copyWith(isFlippedVertical: value);
                   _isFlippedVertical = value;
@@ -489,7 +503,8 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
     );
   }
 
-  Widget _buildFlipButton(String label, IconData icon, bool isActive, Function(bool) onChanged) {
+  Widget _buildFlipButton(
+      String label, IconData icon, bool isActive, Function(bool) onChanged) {
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -498,12 +513,12 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isActive 
+          color: isActive
               ? const Color(0xFF9248D2).withValues(alpha: 0.3)
               : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isActive 
+            color: isActive
                 ? const Color(0xFF9248D2)
                 : Colors.white.withValues(alpha: 0.2),
             width: 1,
@@ -547,11 +562,11 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
         Row(
           children: [
             Expanded(
-              child: _buildCropButton('16:9', 16/9),
+              child: _buildCropButton('16:9', 16 / 9),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _buildCropButton('4:3', 4/3),
+              child: _buildCropButton('4:3', 4 / 3),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -563,11 +578,11 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
         Row(
           children: [
             Expanded(
-              child: _buildCropButton('9:16', 9/16),
+              child: _buildCropButton('9:16', 9 / 16),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _buildCropButton('3:4', 3/4),
+              child: _buildCropButton('3:4', 3 / 4),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -618,17 +633,19 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<VideoQuality>(
-          value: _settings.quality,
+          initialValue: _settings.quality,
           dropdownColor: const Color(0xFF1C135D),
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -671,17 +688,19 @@ class _AdvancedVideoEditorState extends State<AdvancedVideoEditor>
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<VideoResolution>(
-          value: _settings.resolution,
+          initialValue: _settings.resolution,
           dropdownColor: const Color(0xFF1C135D),
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -810,7 +829,8 @@ class CropOverlayPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
 
-    // Calculate crop rectangle
+    // Calculate crop rectangle (Left, Top, Width, Height)
+    // cspell:ignore LTWH
     final cropRect = Rect.fromLTWH(
       cropSettings.x * size.width,
       cropSettings.y * size.height,
@@ -820,7 +840,8 @@ class CropOverlayPainter extends CustomPainter {
 
     // Draw overlay outside crop area
     final overlayPath = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..addRect(Rect.fromLTWH(0, 0, size.width,
+          size.height)) // Full screen rect // cspell:ignore LTWH
       ..addRect(cropRect)
       ..fillType = PathFillType.evenOdd;
 

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/foundation.dart';
 import 'online_status_indicator.dart';
 
 class TrendingCreatorRing extends ConsumerStatefulWidget {
@@ -20,10 +19,11 @@ class TrendingCreatorRing extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<TrendingCreatorRing> createState() => _TrendingCreatorRingState();
+  ConsumerState<TrendingCreatorRing> createState() =>
+      _TrendingCreatorRingState();
 }
 
-class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing> 
+class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -49,16 +49,6 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
   void dispose() {
     _animationController.dispose();
     super.dispose();
-  }
-
-  @override
-  void activate() {
-    super.activate();
-  }
-
-  @override
-  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
   }
 
   void _handleTapDown(TapDownDetails details) {
@@ -90,7 +80,7 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
   @override
   Widget build(BuildContext context) {
     const size = 84.0;
-    
+
     return GestureDetector(
       onTapDown: _handleTapDown,
       onTapUp: _handleTapUp,
@@ -136,12 +126,13 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
                           Color(0xFFFF6CAB), // Pink
                           Color(0xFF8E54E9), // Purple
                           Color(0xFF3D99F7), // Blue
-                          Color(0xFFFF6CAB), // Pink (back to start for smooth transition)
+                          Color(
+                              0xFFFF6CAB), // Pink (back to start for smooth transition)
                         ],
                       ),
                     ),
                   ),
-                  
+
                   // White gap
                   Container(
                     width: size - 6,
@@ -151,7 +142,7 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
                       color: Colors.white.withValues(alpha: 0.95),
                     ),
                   ),
-                  
+
                   // Avatar
                   Container(
                     width: size - 12,
@@ -167,7 +158,8 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
                               },
                             )
                           : null,
-                      color: Colors.black.withValues(alpha: 0.2), // Matches ProfileView styling
+                      color: Colors.black.withValues(
+                          alpha: 0.2), // Matches ProfileView styling
                     ),
                     child: widget.imageUrl == null
                         ? const Icon(
@@ -177,7 +169,7 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
                           )
                         : null,
                   ),
-                  
+
                   // Dynamic online status indicator
                   if (widget.userId != null)
                     OnlineStatusIndicator(
@@ -200,5 +192,4 @@ class _TrendingCreatorRingState extends ConsumerState<TrendingCreatorRing>
       ),
     );
   }
-
 }

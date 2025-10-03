@@ -400,7 +400,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
               _textController.text = _textController.text + emoji;
               _inputFocusNode.requestFocus();
             },
-            child: Container(
+            child: SizedBox(
               width: 40,
               height: 40,
               child: Center(

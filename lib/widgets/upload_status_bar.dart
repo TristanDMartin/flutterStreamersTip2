@@ -42,11 +42,11 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF9248D2).withValues(alpha:0.3),
+          color: const Color(0xFF9248D2).withValues(alpha: 0.3),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -61,11 +61,12 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
             child: CircularProgressIndicator(
               value: _uploadStatusManager.currentProgress,
               strokeWidth: 2,
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
             ),
           ),
           const SizedBox(width: 12),
-          
+
           // Status message
           Expanded(
             child: Text(
@@ -77,15 +78,16 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
               ),
             ),
           ),
-          
+
           // Tap to view button
           if (_uploadStatusManager.currentJobId != null)
             GestureDetector(
               onTap: () => _showUploadDetails(context, _uploadStatusManager),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF9248D2).withValues(alpha:0.2),
+                  color: const Color(0xFF9248D2).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: const Text(
@@ -103,7 +105,8 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
     );
   }
 
-  void _showUploadDetails(BuildContext context, UploadStatusManager uploadStatusManager) {
+  void _showUploadDetails(
+      BuildContext context, UploadStatusManager uploadStatusManager) {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
@@ -141,15 +144,16 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
               ],
             ),
             const SizedBox(height: 20),
-            
+
             // Progress bar
             LinearProgressIndicator(
               value: uploadStatusManager.currentProgress,
-              backgroundColor: Colors.white.withValues(alpha:0.1),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
             ),
             const SizedBox(height: 12),
-            
+
             // Status text
             Text(
               uploadStatusManager.currentStatusMessage,
@@ -159,7 +163,7 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
               ),
             ),
             const SizedBox(height: 20),
-            
+
             // Action buttons
             Row(
               children: [
@@ -167,7 +171,8 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
                   child: OutlinedButton(
                     onPressed: () {
                       if (uploadStatusManager.currentJobId != null) {
-                        uploadStatusManager.cancelUpload(uploadStatusManager.currentJobId!);
+                        uploadStatusManager
+                            .cancelUpload(uploadStatusManager.currentJobId!);
                         Navigator.pop(context);
                       }
                     },
@@ -187,7 +192,7 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () {
-                      // TODO: Implement retry functionality
+                      // Retry functionality - placeholder for future implementation
                       Navigator.pop(context);
                     },
                     style: ElevatedButton.styleFrom(

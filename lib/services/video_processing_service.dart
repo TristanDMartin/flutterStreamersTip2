@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:video_player/video_player.dart';
 import '../services/logging_service.dart';
 
 class VideoProcessingService {
@@ -144,11 +143,30 @@ class VideoProcessingService {
     required String videoId,
   }) async {
     try {
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Starting thumbnail generation for video $videoId',
+          tag: 'VideoProcessingService');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Video file path: ${videoFile.path}',
+          tag: 'VideoProcessingService');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Video file exists: ${await videoFile.exists()}',
+          tag: 'VideoProcessingService');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Video file size: ${await videoFile.length()} bytes',
+          tag: 'VideoProcessingService');
+
       final tempDir = await getTemporaryDirectory();
       final thumbnailFile = File('${tempDir.path}/thumb_$videoId.jpg');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Thumbnail will be saved to: ${thumbnailFile.path}',
+          tag: 'VideoProcessingService');
 
       // Create a proper video-style thumbnail
       final image = img.Image(width: 320, height: 240);
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Created image canvas ${image.width}x${image.height}',
+          tag: 'VideoProcessingService');
 
       // Create a realistic video thumbnail background
       for (int y = 0; y < image.height; y++) {
@@ -201,6 +219,12 @@ class VideoProcessingService {
       }
 
       await thumbnailFile.writeAsBytes(img.encodeJpg(image));
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Thumbnail saved successfully. File size: ${await thumbnailFile.length()} bytes',
+          tag: 'VideoProcessingService');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Thumbnail file exists: ${await thumbnailFile.exists()}',
+          tag: 'VideoProcessingService');
 
       return thumbnailFile;
     } catch (e) {
@@ -255,9 +279,23 @@ class VideoProcessingService {
       );
 
       // Upload thumbnail to Firebase Storage
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Uploading thumbnail to Firebase Storage',
+          tag: 'VideoProcessingService');
       final thumbnailRef = _storage.ref().child('thumbnails/$videoId.jpg');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Thumbnail storage path: thumbnails/$videoId.jpg',
+          tag: 'VideoProcessingService');
+
       await thumbnailRef.putFile(thumbnail);
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Thumbnail uploaded successfully',
+          tag: 'VideoProcessingService');
+
       final thumbnailUrl = await thumbnailRef.getDownloadURL();
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Thumbnail download URL: $thumbnailUrl',
+          tag: 'VideoProcessingService');
 
       return VideoProcessingResult(
         videoFile: inputFile,

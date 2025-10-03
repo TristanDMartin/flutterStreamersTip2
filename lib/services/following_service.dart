@@ -1,8 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'follows_service.dart';
 import '../models/user_model.dart' as user_model;
 
 /// FollowingService - Wrapper around FollowsService for backward compatibility
-/// 
+///
 /// This service maintains the same API as before but now uses the correct
 /// data model implemented in FollowsService.
 class FollowingService {
@@ -11,10 +12,10 @@ class FollowingService {
   /// Follow a user using the new FollowsService
   static Future<bool> followUser(String userId) async {
     try {
-      print('FollowingService: Following user $userId');
+      debugPrint('FollowingService: Following user $userId');
       return await _followsService.followUser(userId);
     } catch (e) {
-      print('FollowingService: Error following user: $e');
+      debugPrint('FollowingService: Error following user: $e');
       return false;
     }
   }
@@ -22,10 +23,10 @@ class FollowingService {
   /// Unfollow a user using the new FollowsService
   static Future<bool> unfollowUser(String userId) async {
     try {
-      print('FollowingService: Unfollowing user $userId');
+      debugPrint('FollowingService: Unfollowing user $userId');
       return await _followsService.unfollowUser(userId);
     } catch (e) {
-      print('FollowingService: Error unfollowing user: $e');
+      debugPrint('FollowingService: Error unfollowing user: $e');
       return false;
     }
   }
@@ -35,7 +36,7 @@ class FollowingService {
     try {
       return await _followsService.isFollowing(userId);
     } catch (e) {
-      print('FollowingService: Error checking follow status: $e');
+      debugPrint('FollowingService: Error checking follow status: $e');
       return false;
     }
   }
@@ -45,7 +46,7 @@ class FollowingService {
     try {
       return await _followsService.isFollowedBy(userId);
     } catch (e) {
-      print('FollowingService: Error checking follow status: $e');
+      debugPrint('FollowingService: Error checking follow status: $e');
       return false;
     }
   }
@@ -55,7 +56,7 @@ class FollowingService {
     try {
       return await _followsService.isMutualFollow(userId);
     } catch (e) {
-      print('FollowingService: Error checking mutual follow: $e');
+      debugPrint('FollowingService: Error checking mutual follow: $e');
       return false;
     }
   }
@@ -65,7 +66,7 @@ class FollowingService {
     try {
       return await _followsService.getUsersForTab('following');
     } catch (e) {
-      print('FollowingService: Error getting following list: $e');
+      debugPrint('FollowingService: Error getting following list: $e');
       return [];
     }
   }
@@ -75,7 +76,7 @@ class FollowingService {
     try {
       return await _followsService.getUsersForTab('followers');
     } catch (e) {
-      print('FollowingService: Error getting followers list: $e');
+      debugPrint('FollowingService: Error getting followers list: $e');
       return [];
     }
   }
@@ -85,7 +86,7 @@ class FollowingService {
     try {
       return await _followsService.getUsersForTab('connections');
     } catch (e) {
-      print('FollowingService: Error getting connections list: $e');
+      debugPrint('FollowingService: Error getting connections list: $e');
       return [];
     }
   }
@@ -100,7 +101,7 @@ class FollowingService {
         return await followUser(userId);
       }
     } catch (e) {
-      print('FollowingService: Error toggling follow: $e');
+      debugPrint('FollowingService: Error toggling follow: $e');
       return false;
     }
   }

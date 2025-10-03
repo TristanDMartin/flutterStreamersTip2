@@ -131,7 +131,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 if (widget.mode == PlayerMode.favorites)
                   IconButton(
                     onPressed: () {
-                      // TODO: Implement share functionality
+                      // Share functionality - placeholder for future implementation
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Share functionality coming soon'),

@@ -18,7 +18,6 @@ class ShareSheetOptimized extends StatefulWidget {
 }
 
 class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -39,10 +38,10 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
+
           // Header
           _buildHeader(),
-          
+
           // Content
           Expanded(
             child: SingleChildScrollView(
@@ -51,14 +50,14 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
                 children: [
                   // Quick Actions
                   _buildQuickActions(),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Social Platforms
                   _buildSocialPlatforms(),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // More Options
                   _buildMoreOptions(),
                 ],
@@ -270,19 +269,19 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
   // Action handlers
   Future<void> _shareVideo() async {
     HapticFeedback.lightImpact();
-    
+
     try {
       await ShareServiceOptimized().shareVideo(widget.video);
       widget.onDismiss?.call();
     } catch (e) {
-    // print('Error sharing video: $e');
+      // print('Error sharing video: $e');
     }
   }
 
   Future<void> _copyLink() async {
     HapticFeedback.lightImpact();
     await ShareServiceOptimized().copyLink(widget.video);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -292,24 +291,24 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
         ),
       );
     }
-    
+
     widget.onDismiss?.call();
   }
 
   Future<void> _shareToPlatform(SharePlatform platform) async {
     HapticFeedback.lightImpact();
-    
+
     try {
       await ShareServiceOptimized().shareToPlatform(widget.video, platform);
       widget.onDismiss?.call();
     } catch (e) {
-    // print('Error sharing to platform: $e');
+      // print('Error sharing to platform: $e');
     }
   }
 
   void _downloadVideo() {
     HapticFeedback.lightImpact();
-    // TODO: Implement video download
+    // Video download functionality - placeholder for future implementation
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Download feature coming soon'),
@@ -322,7 +321,7 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
 
   void _generateQRCode() {
     HapticFeedback.lightImpact();
-    // TODO: Implement QR code generation
+    // QR code generation functionality - placeholder for future implementation
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('QR Code feature coming soon'),

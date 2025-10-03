@@ -9,18 +9,19 @@ class TikTokAccountSwitcherModal extends ConsumerStatefulWidget {
   const TikTokAccountSwitcherModal({super.key});
 
   @override
-  ConsumerState<TikTokAccountSwitcherModal> createState() => _TikTokAccountSwitcherModalState();
+  ConsumerState<TikTokAccountSwitcherModal> createState() =>
+      _TikTokAccountSwitcherModalState();
 }
 
-class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitcherModal>
+class _TikTokAccountSwitcherModalState
+    extends ConsumerState<TikTokAccountSwitcherModal>
     with TickerProviderStateMixin {
   late AnimationController _slideController;
   late AnimationController _fadeController;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _fadeAnimation;
-  
-  final TikTokAccountSwitcher _accountSwitcher = TikTokAccountSwitcher();
 
+  final TikTokAccountSwitcher _accountSwitcher = TikTokAccountSwitcher();
 
   @override
   void dispose() {
@@ -48,17 +49,17 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
   @override
   void initState() {
     super.initState();
-    
+
     _slideController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
-    
+
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 1),
       end: Offset.zero,
@@ -66,7 +67,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
       parent: _slideController,
       curve: Curves.easeOutCubic,
     ));
-    
+
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -74,16 +75,18 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
       parent: _fadeController,
       curve: Curves.easeOut,
     ));
-    
+
     // Start animations
     _fadeController.forward();
     _slideController.forward();
-    
+
     // Initialize account switcher and add debug info
     _accountSwitcher.initialize().then((_) {
       debugPrint('🎯 TikTokAccountSwitcher initialized');
-      debugPrint('🎯 Saved accounts count: ${_accountSwitcher.savedAccounts.length}');
-      debugPrint('🎯 Current account: ${_accountSwitcher.currentAccount?.displayName}');
+      debugPrint(
+          '🎯 Saved accounts count: ${_accountSwitcher.savedAccounts.length}');
+      debugPrint(
+          '🎯 Current account: ${_accountSwitcher.currentAccount?.displayName}');
     });
   }
 
@@ -130,7 +133,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
       height: 4,
       margin: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3),
+        color: Colors.white.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(2),
       ),
     );
@@ -157,7 +160,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(
@@ -179,11 +182,11 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
           listenable: _accountSwitcher,
           builder: (context, child) {
             final accounts = _accountSwitcher.savedAccounts;
-            
+
             if (accounts.isEmpty) {
               return _buildEmptyState();
             }
-            
+
             return ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -202,24 +205,27 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
   Widget _buildAccountTile(SavedAccount account) {
     final isCurrent = account.isCurrent;
     final isSwitching = _accountSwitcher.isSwitching;
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: InstantResponseButton(
-        onPressed: isSwitching || isCurrent ? null : () => _switchToAccount(account),
+        onPressed:
+            isSwitching || isCurrent ? null : () => _switchToAccount(account),
         hapticType: HapticFeedbackType.lightImpact,
         showRippleEffect: false,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isCurrent 
-                ? Colors.green.withOpacity(0.1)
-                : Colors.white.withOpacity(0.05),
+            color: isCurrent
+                ? Colors.green.withValues(alpha: 0.1)
+                : Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(16),
-            border: isCurrent 
-                ? Border.all(color: Colors.green.withOpacity(0.3), width: 2)
-                : Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+            border: isCurrent
+                ? Border.all(
+                    color: Colors.green.withValues(alpha: 0.3), width: 2)
+                : Border.all(
+                    color: Colors.white.withValues(alpha: 0.1), width: 1),
           ),
           child: Row(
             children: [
@@ -233,8 +239,14 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
                         colors: isCurrent
-                            ? [Colors.green.withOpacity(0.8), Colors.greenAccent.withOpacity(0.8)]
-                            : [Colors.purple.withOpacity(0.8), Colors.blue.withOpacity(0.8)],
+                            ? [
+                                Colors.green.withValues(alpha: 0.8),
+                                Colors.greenAccent.withValues(alpha: 0.8)
+                              ]
+                            : [
+                                Colors.purple.withValues(alpha: 0.8),
+                                Colors.blue.withValues(alpha: 0.8)
+                              ],
                       ),
                     ),
                     child: account.photoUrl != null
@@ -243,7 +255,8 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
                             child: Image.network(
                               account.photoUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(account),
+                              errorBuilder: (context, error, stackTrace) =>
+                                  _buildAvatarFallback(account),
                             ),
                           )
                         : _buildAvatarFallback(account),
@@ -269,7 +282,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
                 ],
               ),
               const SizedBox(width: 16),
-              
+
               // Account info
               Expanded(
                 child: Column(
@@ -287,24 +300,26 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
                     Text(
                       account.email,
                       style: TextStyle(
-                        color: isCurrent 
-                            ? Colors.green.withOpacity(0.8)
-                            : Colors.white.withOpacity(0.7),
+                        color: isCurrent
+                            ? Colors.green.withValues(alpha: 0.8)
+                            : Colors.white.withValues(alpha: 0.7),
                         fontSize: 14,
                       ),
                     ),
                   ],
                 ),
               ),
-              
+
               // Status indicator
               if (isCurrent) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.2),
+                    color: Colors.green.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.green.withOpacity(0.4)),
+                    border:
+                        Border.all(color: Colors.green.withValues(alpha: 0.4)),
                   ),
                   child: const Text(
                     'Current Account',
@@ -328,12 +343,12 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Icon(
                     Icons.swap_horiz,
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                     size: 16,
                   ),
                 ),
@@ -348,7 +363,9 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
   Widget _buildAvatarFallback(SavedAccount account) {
     return Center(
       child: Text(
-        account.displayName.isNotEmpty ? account.displayName[0].toUpperCase() : '?',
+        account.displayName.isNotEmpty
+            ? account.displayName[0].toUpperCase()
+            : '?',
         style: const TextStyle(
           color: Colors.white,
           fontSize: 20,
@@ -365,14 +382,14 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
         children: [
           Icon(
             Icons.person_add,
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha: 0.5),
             size: 48,
           ),
           const SizedBox(height: 16),
           Text(
             'Add Another Account',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
               fontSize: 16,
               fontWeight: FontWeight.w500,
             ),
@@ -381,7 +398,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
           Text(
             'Sign in with a different Google account to enable instant switching like TikTok',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               fontSize: 14,
             ),
             textAlign: TextAlign.center,
@@ -390,7 +407,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
           ElevatedButton(
             onPressed: _addAccount,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.1),
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
@@ -414,10 +431,10 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
@@ -426,14 +443,14 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
             children: [
               Icon(
                 Icons.add,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
                 'Add Account',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
@@ -447,46 +464,48 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
 
   Future<void> _switchToAccount(SavedAccount account) async {
     HapticFeedback.lightImpact();
-    
+
     // Check if this is the current account
     final currentAccount = _accountSwitcher.currentAccount;
     if (currentAccount != null && currentAccount.uid == account.uid) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ You are already signed in as ${account.displayName}'),
+            content:
+                Text('✅ You are already signed in as ${account.displayName}'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
           ),
         );
-        
+
         // Close modal since we're already on this account
         _closeModal();
       }
       return;
     }
-    
+
     // Clear any previous error state
     final success = await _accountSwitcher.switchToAccount(account);
-    
+
     if (success) {
       // Trigger comprehensive data refresh with WidgetRef for instant UI updates
       await _accountSwitcher.triggerDataRefreshWithRef(ref);
-      
+
       // Show success feedback
       HapticFeedback.mediumImpact();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Switched to ${account.displayName} - All data refreshed!'),
+            content: Text(
+                '✅ Switched to ${account.displayName} - All data refreshed!'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
           ),
         );
-        
+
         // Close modal after successful switch
         _closeModal();
       }
@@ -495,7 +514,8 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('🔄 Switching to ${account.displayName} requires signing in with that account'),
+            content: Text(
+                '🔄 Switching to ${account.displayName} requires signing in with that account'),
             backgroundColor: Colors.blue,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 4),
@@ -507,7 +527,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
           ),
         );
       }
-      
+
       HapticFeedback.heavyImpact();
     }
   }
@@ -515,7 +535,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
   void _showSignInPrompt(SavedAccount account) {
     // Close current modal
     _closeModal();
-    
+
     // Show sign-in prompt with TikTok-style explanation
     showDialog(
       context: context,
@@ -580,7 +600,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
 
   Future<void> _triggerGoogleSignInForAccount(SavedAccount account) async {
     debugPrint('🔄 Starting Google Sign-In for account: ${account.email}');
-    
+
     try {
       // Show loading indicator
       showDialog(
@@ -626,20 +646,21 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
       debugPrint('🔄 Calling performGoogleSignIn...');
       final success = await _accountSwitcher.performGoogleSignIn();
       debugPrint('🔄 Google Sign-In result: $success');
-      
+
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
-        
+
         if (success) {
           debugPrint('✅ Google Sign-In successful, triggering data refresh...');
-          
+
           // Trigger comprehensive data refresh for new account
           await _accountSwitcher.triggerDataRefreshWithRef(ref);
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: const Text('✅ Successfully signed in! Account added for instant switching. All data refreshed!'),
+                content: const Text(
+                    '✅ Successfully signed in! Account added for instant switching. All data refreshed!'),
                 backgroundColor: Colors.green,
                 behavior: SnackBarBehavior.floating,
                 duration: const Duration(seconds: 4),
@@ -648,11 +669,12 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
           }
         } else {
           debugPrint('❌ Google Sign-In failed or was cancelled');
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: const Text('❌ Sign-in was cancelled or failed. Please try again.'),
+                content: const Text(
+                    '❌ Sign-in was cancelled or failed. Please try again.'),
                 backgroundColor: Colors.orange,
                 behavior: SnackBarBehavior.floating,
                 duration: const Duration(seconds: 4),
@@ -668,10 +690,10 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
       }
     } catch (e) {
       debugPrint('❌ Error in _triggerGoogleSignInForAccount: $e');
-      
+
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ Error during sign-in: ${e.toString()}'),
@@ -692,10 +714,10 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
 
   Future<void> _addAccount() async {
     HapticFeedback.lightImpact();
-    
+
     // Close current modal
     _closeModal();
-    
+
     // Show add account dialog
     if (mounted) {
       showDialog(
@@ -715,7 +737,8 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Add a new Google account for instant TikTok-style switching!'),
+              Text(
+                  'Add a new Google account for instant TikTok-style switching!'),
               SizedBox(height: 12),
               Text(
                 'This will allow you to switch between accounts instantly, just like TikTok.',
@@ -778,37 +801,43 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
 
       // Trigger Google Sign-In flow for new account
       final success = await _accountSwitcher.performGoogleSignIn();
-      
+
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
-        
+
         if (success) {
           // Trigger comprehensive data refresh for new account
           await _accountSwitcher.triggerDataRefreshWithRef(ref);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('✅ New account added! You can now switch accounts instantly. All data refreshed!'),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                    '✅ New account added! You can now switch accounts instantly. All data refreshed!'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('❌ Account addition was cancelled. Please try again.'),
-              backgroundColor: Colors.orange,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                    '❌ Account addition was cancelled. Please try again.'),
+                backgroundColor: Colors.orange,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
         }
       }
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ Error: ${e.toString()}'),
@@ -822,7 +851,7 @@ class _TikTokAccountSwitcherModalState extends ConsumerState<TikTokAccountSwitch
 
   void _closeModal() {
     HapticFeedback.lightImpact();
-    
+
     _slideController.reverse().then((_) {
       if (mounted) {
         Navigator.of(context).pop();

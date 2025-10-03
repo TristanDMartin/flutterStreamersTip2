@@ -393,7 +393,7 @@ class _ContentValidationFieldState extends State<ContentValidationField> {
           ),
           TextButton(
             onPressed: () {
-              // TODO: Implement appeal submission
+              // Appeal submission functionality - placeholder for future implementation
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(

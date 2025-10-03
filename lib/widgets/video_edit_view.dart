@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'dart:async';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'video_publishing_screen.dart';
 import 'video_editor_player.dart';
 import 'video_timeline.dart';
@@ -11,8 +12,10 @@ import 'audio_editor.dart';
 import 'advanced_video_editor.dart';
 import '../services/video_processing_service.dart';
 import '../services/logging_service.dart';
+import '../providers/home_provider.dart';
+import 'video_player_view_optimized.dart';
 
-class VideoEditView extends StatefulWidget {
+class VideoEditView extends ConsumerStatefulWidget {
   final File videoFile;
   final VoidCallback? onCancel;
   final VoidCallback? onNext;
@@ -25,10 +28,10 @@ class VideoEditView extends StatefulWidget {
   });
 
   @override
-  State<VideoEditView> createState() => _VideoEditViewState();
+  ConsumerState<VideoEditView> createState() => _VideoEditViewState();
 }
 
-class _VideoEditViewState extends State<VideoEditView>
+class _VideoEditViewState extends ConsumerState<VideoEditView>
     with TickerProviderStateMixin {
   int _selectedTabIndex = 0;
   late AnimationController _tabAnimationController;
@@ -69,6 +72,7 @@ class _VideoEditViewState extends State<VideoEditView>
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
+    _pauseAllHomeViewVideos(); // Stop HomeView audio immediately
     _initializeVideo();
   }
 
@@ -76,6 +80,7 @@ class _VideoEditViewState extends State<VideoEditView>
   void dispose() {
     _tabAnimationController.dispose();
     _progressController.dispose();
+    _reactivateHomeView(); // Resume HomeView when leaving video editor
     super.dispose();
   }
 
@@ -83,7 +88,7 @@ class _VideoEditViewState extends State<VideoEditView>
     try {
       _videoDuration = await _videoService.getVideoDuration(widget.videoFile);
       _endTime = _videoDuration;
-      
+
       _editState = VideoEditState(
         videoId: _videoId,
         originalFile: widget.videoFile,
@@ -93,12 +98,13 @@ class _VideoEditViewState extends State<VideoEditView>
         visualEffects: [],
         textOverlays: [],
       );
-      
+
       if (mounted) {
         setState(() {});
       }
     } catch (e) {
-      LoggingService.instance.error('Error initializing video', tag: 'VideoEditView', error: e);
+      LoggingService.instance
+          .error('Error initializing video', tag: 'VideoEditView', error: e);
     }
   }
 
@@ -140,13 +146,13 @@ class _VideoEditViewState extends State<VideoEditView>
             children: [
               // Top Navigation Bar
               _buildTopBar(),
-              
+
               // Video Player Area
               Expanded(
                 flex: 3,
                 child: _buildVideoPlayer(),
               ),
-              
+
               // Timeline
               if (_videoDuration > Duration.zero)
                 VideoTimeline(
@@ -170,19 +176,19 @@ class _VideoEditViewState extends State<VideoEditView>
                       _isDragging = isDragging;
                     });
                   },
-              ),
-              
+                ),
+
               // Editing Tabs
               _buildEditingTabs(),
-              
+
               // Content Area
               Expanded(
                 flex: 2,
                 child: SingleChildScrollView(
-                child: _buildContentArea(),
+                  child: _buildContentArea(),
                 ),
               ),
-              
+
               // Bottom Action Buttons
               _buildBottomActions(),
             ],
@@ -207,10 +213,10 @@ class _VideoEditViewState extends State<VideoEditView>
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   width: 1,
                 ),
               ),
@@ -221,9 +227,9 @@ class _VideoEditViewState extends State<VideoEditView>
               ),
             ),
           ),
-          
+
           const Spacer(),
-          
+
           // Title
           const Text(
             'Edit Video',
@@ -233,14 +239,14 @@ class _VideoEditViewState extends State<VideoEditView>
               fontWeight: FontWeight.bold,
             ),
           ),
-          
+
           const Spacer(),
-          
+
           // Preview Button
           GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
-              // TODO: Implement preview functionality
+              // Preview functionality - placeholder for future implementation
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -310,7 +316,7 @@ class _VideoEditViewState extends State<VideoEditView>
           final index = entry.key;
           final tab = entry.value;
           final isSelected = index == _selectedTabIndex;
-          
+
           return Expanded(
             child: GestureDetector(
               onTap: () {
@@ -327,36 +333,40 @@ class _VideoEditViewState extends State<VideoEditView>
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  gradient: isSelected 
+                  gradient: isSelected
                       ? const LinearGradient(
                           colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                         )
                       : null,
-                  color: isSelected 
-                      ? null
-                      : Colors.white.withValues(alpha:0.1),
+                  color:
+                      isSelected ? null : Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isSelected 
+                    color: isSelected
                         ? Colors.transparent
-                        : Colors.white.withValues(alpha:0.2),
+                        : Colors.white.withValues(alpha: 0.2),
                     width: 1,
                   ),
-                  boxShadow: isSelected ? [
-                    BoxShadow(
-                      color: const Color(0xFF9248D2).withValues(alpha:0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ] : null,
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color:
+                                const Color(0xFF9248D2).withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Text(
                   tab,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.7),
                     fontSize: 14,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                     letterSpacing: isSelected ? 0.5 : 0.0,
@@ -394,15 +404,15 @@ class _VideoEditViewState extends State<VideoEditView>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-        children: [
-          const Text(
-            'Trim Video',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+            children: [
+              const Text(
+                'Trim Video',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const Spacer(),
               // Undo/Redo buttons
               if (_historyIndex > 0)
@@ -418,7 +428,7 @@ class _VideoEditViewState extends State<VideoEditView>
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Time Display
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -442,13 +452,13 @@ class _VideoEditViewState extends State<VideoEditView>
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 14,
-                  ),
                 ),
-              ],
+              ),
+            ],
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Action Buttons
           Row(
             children: [
@@ -495,39 +505,41 @@ class _VideoEditViewState extends State<VideoEditView>
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Text(
-                      'Apply Trim',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                            'Apply Trim',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
               ),
             ],
           ),
-          
+
           if (_isProcessing) ...[
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
             LinearProgressIndicator(
               value: _processingProgress,
               backgroundColor: Colors.white.withValues(alpha: 0.2),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
             ),
             const SizedBox(height: 8),
-          Text(
+            Text(
               _processingStatus ?? 'Processing...',
-            style: TextStyle(
+              style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 12,
+                fontSize: 12,
+              ),
             ),
-          ),
           ],
         ],
       ),
@@ -543,18 +555,19 @@ class _VideoEditViewState extends State<VideoEditView>
           Row(
             children: [
               const Text(
-            'Audio Settings',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+                'Audio Settings',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const Spacer(),
               GestureDetector(
                 onTap: _openAudioEditor,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
@@ -574,12 +587,12 @@ class _VideoEditViewState extends State<VideoEditView>
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Quick Audio Controls
           _buildQuickAudioControls(),
-          
+
           const SizedBox(height: 16),
-          
+
           // Audio Tracks Preview
           _buildAudioTracksPreview(),
         ],
@@ -618,15 +631,15 @@ class _VideoEditViewState extends State<VideoEditView>
                 },
               ),
             ),
-          Text(
+            Text(
               '${((_editState?.audioEffects.volume ?? 1.0) * 100).round()}%',
               style: const TextStyle(color: Colors.white, fontSize: 14),
             ),
           ],
         ),
-        
+
         const SizedBox(height: 12),
-        
+
         // Mute Toggle
         Row(
           children: [
@@ -639,7 +652,7 @@ class _VideoEditViewState extends State<VideoEditView>
             const Spacer(),
             Switch(
               value: _editState?.audioEffects.isMuted ?? false,
-              activeColor: const Color(0xFF9248D2),
+              activeThumbColor: const Color(0xFF9248D2),
               onChanged: (value) {
                 setState(() {
                   _editState = _editState?.copyWith(
@@ -692,7 +705,7 @@ class _VideoEditViewState extends State<VideoEditView>
             Text(
               _editState!.audioEffects.audioTrack!,
               style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
+            ),
         ],
       ),
     );
@@ -707,18 +720,19 @@ class _VideoEditViewState extends State<VideoEditView>
           Row(
             children: [
               const Text(
-            'Visual Effects',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+                'Visual Effects',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const Spacer(),
               GestureDetector(
                 onTap: _openVisualEffectsEditor,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
@@ -738,12 +752,12 @@ class _VideoEditViewState extends State<VideoEditView>
             ],
           ),
           const SizedBox(height: 8),
-          
+
           // Quick Effects Grid
           _buildQuickEffectsGrid(),
-          
+
           const SizedBox(height: 8),
-          
+
           // Applied Effects Preview
           _buildAppliedEffectsPreview(),
         ],
@@ -774,18 +788,20 @@ class _VideoEditViewState extends State<VideoEditView>
         itemCount: effects.length,
         itemBuilder: (context, index) {
           final effect = effects[index];
-          final isSelected = _editState?.visualEffects.any((e) => e.type == effect['name']) ?? false;
-          
+          final isSelected =
+              _editState?.visualEffects.any((e) => e.type == effect['name']) ??
+                  false;
+
           return GestureDetector(
             onTap: () => _selectEffect(effect['name'] as String),
             child: Container(
               decoration: BoxDecoration(
-                color: isSelected 
+                color: isSelected
                     ? const Color(0xFF9248D2).withValues(alpha: 0.3)
                     : Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isSelected 
+                  color: isSelected
                       ? const Color(0xFF9248D2)
                       : Colors.white.withValues(alpha: 0.2),
                   width: 1,
@@ -803,9 +819,11 @@ class _VideoEditViewState extends State<VideoEditView>
                   Text(
                     effect['name'] as String,
                     style: TextStyle(
-                      color: isSelected ? const Color(0xFF9248D2) : Colors.white,
+                      color:
+                          isSelected ? const Color(0xFF9248D2) : Colors.white,
                       fontSize: 9,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w400,
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 1,
@@ -862,9 +880,9 @@ class _VideoEditViewState extends State<VideoEditView>
           ),
           const SizedBox(height: 2),
           ..._editState!.visualEffects.map((effect) => Text(
-            '• ${effect.type}',
-            style: const TextStyle(color: Colors.white70, fontSize: 9),
-          )),
+                '• ${effect.type}',
+                style: const TextStyle(color: Colors.white70, fontSize: 9),
+              )),
         ],
       ),
     );
@@ -880,17 +898,18 @@ class _VideoEditViewState extends State<VideoEditView>
             children: [
               const Text(
                 'Text Overlays',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const Spacer(),
               GestureDetector(
                 onTap: _openTextOverlayEditor,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
@@ -899,7 +918,7 @@ class _VideoEditViewState extends State<VideoEditView>
                   ),
                   child: const Text(
                     'Advanced',
-            style: TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -910,12 +929,12 @@ class _VideoEditViewState extends State<VideoEditView>
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Quick Add Text
           _buildQuickTextInput(),
-          
+
           const SizedBox(height: 16),
-          
+
           // Text Overlays Preview
           _buildTextOverlaysPreview(),
         ],
@@ -931,7 +950,7 @@ class _VideoEditViewState extends State<VideoEditView>
           'Quick Add Text',
           style: TextStyle(
             color: Colors.white,
-              fontSize: 14,
+            fontSize: 14,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -943,11 +962,13 @@ class _VideoEditViewState extends State<VideoEditView>
             hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -981,9 +1002,9 @@ class _VideoEditViewState extends State<VideoEditView>
                 fontWeight: FontWeight.w600,
               ),
             ),
-            ),
           ),
-        ],
+        ),
+      ],
     );
   }
 
@@ -1029,9 +1050,9 @@ class _VideoEditViewState extends State<VideoEditView>
           ),
           const SizedBox(height: 8),
           ..._editState!.textOverlays.map((overlay) => Text(
-            '• "${overlay.text}" (${overlay.fontSize.round()}px)',
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          )),
+                '• "${overlay.text}" (${overlay.fontSize.round()}px)',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              )),
         ],
       ),
     );
@@ -1052,7 +1073,7 @@ class _VideoEditViewState extends State<VideoEditView>
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Advanced features grid
           GridView.builder(
             shrinkWrap: true,
@@ -1117,32 +1138,31 @@ class _VideoEditViewState extends State<VideoEditView>
   }
 
   List<Map<String, dynamic>> get _advancedFeatures => [
-    {
-      'title': 'Speed Control',
-      'description': 'Slow motion & fast forward',
-      'icon': Icons.speed,
-      'onTap': _openAdvancedVideoEditor,
-    },
-    {
-      'title': 'Rotation',
-      'description': 'Rotate & flip video',
-      'icon': Icons.rotate_right,
-      'onTap': _openAdvancedVideoEditor,
-    },
-    {
-      'title': 'Crop & Resize',
-      'description': 'Crop to different ratios',
-      'icon': Icons.crop,
-      'onTap': _openAdvancedVideoEditor,
-    },
-    {
-      'title': 'Quality',
-      'description': 'Adjust video quality',
-      'icon': Icons.high_quality,
-      'onTap': _openAdvancedVideoEditor,
-    },
-  ];
-
+        {
+          'title': 'Speed Control',
+          'description': 'Slow motion & fast forward',
+          'icon': Icons.speed,
+          'onTap': _openAdvancedVideoEditor,
+        },
+        {
+          'title': 'Rotation',
+          'description': 'Rotate & flip video',
+          'icon': Icons.rotate_right,
+          'onTap': _openAdvancedVideoEditor,
+        },
+        {
+          'title': 'Crop & Resize',
+          'description': 'Crop to different ratios',
+          'icon': Icons.crop,
+          'onTap': _openAdvancedVideoEditor,
+        },
+        {
+          'title': 'Quality',
+          'description': 'Adjust video quality',
+          'icon': Icons.high_quality,
+          'onTap': _openAdvancedVideoEditor,
+        },
+      ];
 
   Widget _buildBottomActions() {
     return Container(
@@ -1175,9 +1195,9 @@ class _VideoEditViewState extends State<VideoEditView>
               ),
             ),
           ),
-          
+
           const SizedBox(width: 12),
-          
+
           // Save Draft Button
           if (_hasUnsavedChanges)
             Expanded(
@@ -1205,9 +1225,9 @@ class _VideoEditViewState extends State<VideoEditView>
                 ),
               ),
             ),
-          
+
           if (_hasUnsavedChanges) const SizedBox(width: 12),
-          
+
           // Next Button
           Expanded(
             child: GestureDetector(
@@ -1253,10 +1273,10 @@ class _VideoEditViewState extends State<VideoEditView>
     if (_historyIndex < _editHistory.length - 1) {
       _editHistory.removeRange(_historyIndex + 1, _editHistory.length);
     }
-    
+
     _editHistory.add(action);
     _historyIndex = _editHistory.length - 1;
-    
+
     // Limit history size
     if (_editHistory.length > 50) {
       _editHistory.removeAt(0);
@@ -1292,7 +1312,7 @@ class _VideoEditViewState extends State<VideoEditView>
       _endTime = _videoDuration;
       _hasUnsavedChanges = true;
     });
-    
+
     _addEditAction(VideoEditAction(
       type: 'reset_trim',
       data: {},
@@ -1302,7 +1322,7 @@ class _VideoEditViewState extends State<VideoEditView>
 
   Future<void> _applyTrim() async {
     if (_isProcessing) return;
-    
+
     setState(() {
       _isProcessing = true;
       _processingProgress = 0.0;
@@ -1333,9 +1353,11 @@ class _VideoEditViewState extends State<VideoEditView>
         endTime: _endTime,
       );
 
-      LoggingService.instance.debug('Video trimmed successfully', tag: 'VideoEditView');
+      LoggingService.instance
+          .debug('Video trimmed successfully', tag: 'VideoEditView');
     } catch (e) {
-      LoggingService.instance.error('Error applying trim', tag: 'VideoEditView', error: e);
+      LoggingService.instance
+          .error('Error applying trim', tag: 'VideoEditView', error: e);
       setState(() {
         _processingStatus = 'Error: ${e.toString()}';
       });
@@ -1346,13 +1368,13 @@ class _VideoEditViewState extends State<VideoEditView>
     }
   }
 
-
   void _selectEffect(String effectName) {
     setState(() {
       if (effectName == 'None') {
         _editState = _editState?.copyWith(visualEffects: []);
       } else {
-        final effects = List<VisualEffect>.from(_editState?.visualEffects ?? []);
+        final effects =
+            List<VisualEffect>.from(_editState?.visualEffects ?? []);
         effects.removeWhere((e) => e.type == effectName);
         effects.add(VisualEffect(
           type: effectName,
@@ -1366,12 +1388,12 @@ class _VideoEditViewState extends State<VideoEditView>
     });
   }
 
-
   void _addTextOverlay() {
     // This would open a text overlay editor
     // For now, just add a placeholder
     setState(() {
-      final textOverlays = List<TextOverlay>.from(_editState?.textOverlays ?? []);
+      final textOverlays =
+          List<TextOverlay>.from(_editState?.textOverlays ?? []);
       textOverlays.add(TextOverlay(
         text: 'Sample Text',
         x: 0.5,
@@ -1490,7 +1512,8 @@ class _VideoEditViewState extends State<VideoEditView>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep Editing', style: TextStyle(color: Colors.white70)),
+            child: const Text('Keep Editing',
+                style: TextStyle(color: Colors.white70)),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
@@ -1502,6 +1525,48 @@ class _VideoEditViewState extends State<VideoEditView>
 
     if (result == true) {
       widget.onCancel?.call();
+    }
+  }
+
+  /// Pause all HomeView videos to prevent audio bleeding
+  void _pauseAllHomeViewVideos() {
+    try {
+      LoggingService.instance.debug(
+          'VideoEditView: Pausing all HomeView videos to prevent audio bleeding');
+
+      // Use GlobalVideoController to pause all videos
+      GlobalVideoController.pauseAllVideos();
+
+      // Also pause through home provider
+      final homeNotifier = ref.read(homeProvider.notifier);
+      homeNotifier.pauseAllVideos();
+
+      LoggingService.instance
+          .debug('VideoEditView: All HomeView videos paused successfully');
+    } catch (e) {
+      LoggingService.instance
+          .error('VideoEditView: Error pausing HomeView videos', error: e);
+    }
+  }
+
+  /// Reactivate HomeView when returning from video editor
+  void _reactivateHomeView() {
+    try {
+      LoggingService.instance
+          .debug('VideoEditView: Reactivating HomeView for seamless return');
+
+      // Use GlobalVideoController to resume videos
+      GlobalVideoController.resumeCurrentVideo();
+
+      // Also resume through home provider
+      final homeNotifier = ref.read(homeProvider.notifier);
+      homeNotifier.resumeCurrentVideo();
+
+      LoggingService.instance
+          .debug('VideoEditView: HomeView reactivated successfully');
+    } catch (e) {
+      LoggingService.instance
+          .error('VideoEditView: Error reactivating HomeView', error: e);
     }
   }
 }

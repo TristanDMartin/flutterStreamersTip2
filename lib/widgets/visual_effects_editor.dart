@@ -24,11 +24,11 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
     with TickerProviderStateMixin {
   late List<VisualEffect> _visualEffects;
   VisualEffect? _selectedEffect;
-  
+
   // Animation controllers
   late AnimationController _previewController;
   late AnimationController _fadeController;
-  
+
   // Available effects with parameters
   final Map<String, Map<String, dynamic>> _availableEffects = {
     'None': {},
@@ -80,12 +80,12 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
   void initState() {
     super.initState();
     _visualEffects = List.from(widget.visualEffects);
-    
+
     _previewController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -101,20 +101,21 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
 
   void _addEffect(String effectType) {
     if (effectType == 'None') return;
-    
-    final parameters = Map<String, dynamic>.from(_availableEffects[effectType] ?? {});
+
+    final parameters =
+        Map<String, dynamic>.from(_availableEffects[effectType] ?? {});
     final newEffect = VisualEffect(
       type: effectType,
       parameters: parameters,
       startTime: Duration.zero,
       endTime: widget.videoDuration,
     );
-    
+
     setState(() {
       _visualEffects.add(newEffect);
       _selectedEffect = newEffect;
     });
-    
+
     _updateEffects();
     _fadeController.forward();
   }
@@ -123,7 +124,7 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
     setState(() {
       _selectedEffect = effect;
     });
-    
+
     _previewController.forward().then((_) {
       _previewController.reset();
     });
@@ -133,22 +134,24 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
     setState(() {
       _visualEffects.remove(effect);
       if (_selectedEffect == effect) {
-        _selectedEffect = _visualEffects.isNotEmpty ? _visualEffects.first : null;
+        _selectedEffect =
+            _visualEffects.isNotEmpty ? _visualEffects.first : null;
       }
     });
-    
+
     _updateEffects();
   }
 
   void _updateEffectParameter(String key, double value) {
     if (_selectedEffect == null) return;
-    
+
     setState(() {
       final index = _visualEffects.indexOf(_selectedEffect!);
       if (index != -1) {
-        final updatedParameters = Map<String, dynamic>.from(_selectedEffect!.parameters);
+        final updatedParameters =
+            Map<String, dynamic>.from(_selectedEffect!.parameters);
         updatedParameters[key] = value;
-        
+
         _visualEffects[index] = VisualEffect(
           type: _selectedEffect!.type,
           parameters: updatedParameters,
@@ -158,7 +161,7 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
         _selectedEffect = _visualEffects[index];
       }
     });
-    
+
     _updateEffects();
   }
 
@@ -299,11 +302,10 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
                 ),
               ),
             ),
-            
+
             // Effect preview overlay
-            if (_selectedEffect != null)
-              _buildEffectPreview(),
-            
+            if (_selectedEffect != null) _buildEffectPreview(),
+
             // Play button
             Center(
               child: GestureDetector(
@@ -326,7 +328,9 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
                     animation: _previewController,
                     builder: (context, child) {
                       return Icon(
-                        _previewController.isAnimating ? Icons.pause : Icons.play_arrow,
+                        _previewController.isAnimating
+                            ? Icons.pause
+                            : Icons.play_arrow,
                         color: Colors.white,
                         size: 30,
                       );
@@ -349,7 +353,8 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
           width: double.infinity,
           height: double.infinity,
           decoration: BoxDecoration(
-            color: _getEffectColor().withValues(alpha: _previewController.value * 0.3),
+            color: _getEffectColor()
+                .withValues(alpha: _previewController.value * 0.3),
           ),
         );
       },
@@ -358,7 +363,7 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
 
   Color _getEffectColor() {
     if (_selectedEffect == null) return Colors.transparent;
-    
+
     switch (_selectedEffect!.type) {
       case 'Vintage':
         return Colors.orange;
@@ -393,7 +398,7 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
           Expanded(
             child: _buildEffectsList(),
           ),
-          
+
           // Selected effect controls
           if (_selectedEffect != null) ...[
             const Divider(color: Colors.white24),
@@ -437,13 +442,13 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
         ),
       );
     }
-    
+
     return ListView.builder(
       itemCount: _visualEffects.length,
       itemBuilder: (context, index) {
         final effect = _visualEffects[index];
         final isSelected = effect == _selectedEffect;
-        
+
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           child: GestureDetector(
@@ -452,12 +457,12 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isSelected 
+                color: isSelected
                     ? const Color(0xFF9248D2).withValues(alpha: 0.3)
                     : Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isSelected 
+                  color: isSelected
                       ? const Color(0xFF9248D2)
                       : Colors.white.withValues(alpha: 0.2),
                   width: 1,
@@ -478,7 +483,9 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
                         Text(
                           effect.type,
                           style: TextStyle(
-                            color: isSelected ? const Color(0xFF9248D2) : Colors.white,
+                            color: isSelected
+                                ? const Color(0xFF9248D2)
+                                : Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
@@ -523,12 +530,12 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
           ),
         ),
         const SizedBox(height: 16),
-        
+
         // Dynamic parameter controls
         ..._buildParameterControls(),
-        
+
         const SizedBox(height: 16),
-        
+
         // Time controls
         _buildTimeControls(),
       ],
@@ -538,12 +545,12 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
   List<Widget> _buildParameterControls() {
     final parameters = _selectedEffect!.parameters;
     final widgets = <Widget>[];
-    
+
     parameters.forEach((key, value) {
       if (value is double) {
         final min = _availableEffects[_selectedEffect!.type]?['min'] ?? 0.0;
         final max = _availableEffects[_selectedEffect!.type]?['max'] ?? 1.0;
-        
+
         widgets.add(
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -572,13 +579,13 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
             ],
           ),
         );
-        
+
         if (widgets.length < parameters.length) {
           widgets.add(const SizedBox(height: 16));
         }
       }
     });
-    
+
     return widgets;
   }
 
@@ -601,7 +608,8 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Start', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const Text('Start',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
                   Text(
                     _formatDuration(_selectedEffect!.startTime),
                     style: const TextStyle(color: Colors.white, fontSize: 14),
@@ -613,7 +621,8 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('End', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const Text('End',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
                   Text(
                     _formatDuration(_selectedEffect!.endTime),
                     style: const TextStyle(color: Colors.white, fontSize: 14),
@@ -733,21 +742,22 @@ class _VisualEffectsEditorState extends State<VisualEffectsEditor>
   String _formatEffectParameters(VisualEffect effect) {
     final params = effect.parameters;
     if (params.isEmpty) return 'Default settings';
-    
+
     final paramStrings = params.entries.map((e) {
       if (e.value is double) {
         return '${_formatParameterName(e.key)}: ${e.value.toStringAsFixed(1)}';
       }
       return '${_formatParameterName(e.key)}: ${e.value}';
     }).toList();
-    
+
     return paramStrings.join(', ');
   }
 
   String _formatParameterName(String key) {
-    return key.split('_').map((word) => 
-      word[0].toUpperCase() + word.substring(1)
-    ).join(' ');
+    return key
+        .split('_')
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .join(' ');
   }
 
   String _formatDuration(Duration duration) {

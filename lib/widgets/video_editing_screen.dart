@@ -32,23 +32,23 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
   bool _isInitialized = false;
   bool _isPlaying = false;
   late TabController _tabController;
-  
+
   // Editing state
   String _selectedFilter = 'none';
   MusicTrack? _selectedMusicTrack;
   bool _hasVoiceover = false;
   String _caption = '';
   final List<String> _hashtags = [];
-  
+
   // Trimming state
   double _trimStart = 0.0;
   double _trimEnd = 1.0;
-  
+
   // Video processing
   final VideoProcessingService _videoProcessor = VideoProcessingService();
   File? _processedVideoFile;
   bool _isProcessing = false;
-  double _processingProgress = 0.0;
+  final double _processingProgress = 0.0;
   String _processingMessage = '';
   StreamSubscription<double>? _progressSubscription;
 
@@ -101,13 +101,13 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
         children: [
           // Header
           _buildHeader(),
-          
+
           // Video Preview
           _buildVideoPreview(),
-          
+
           // Editing Tabs
           _buildEditingTabs(),
-          
+
           // Tab Content
           Expanded(
             child: TabBarView(
@@ -120,7 +120,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               ],
             ),
           ),
-          
+
           // Bottom Actions
           _buildBottomActions(),
         ],
@@ -206,7 +206,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
             ),
-          
+
           // Play/Pause Overlay
           Center(
             child: InstantResponseButton(
@@ -227,24 +227,24 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               ),
             ),
           ),
-          
+
           // Filter Overlay
           if (_selectedFilter != 'none')
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  color: _getFilterColor().withValues(alpha:0.3),
+                  color: _getFilterColor().withValues(alpha: 0.3),
                 ),
               ),
             ),
-          
+
           // Processing Overlay
           if (_isProcessing)
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha:0.7),
+                  color: Colors.black.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
@@ -252,8 +252,11 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       CircularProgressIndicator(
-                        value: _processingProgress > 0 ? _processingProgress : null,
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+                        value: _processingProgress > 0
+                            ? _processingProgress
+                            : null,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            Color(0xFF9248D2)),
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -288,7 +291,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: TabBar(
@@ -298,7 +301,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
           borderRadius: BorderRadius.circular(12),
         ),
         labelColor: Colors.white,
-        unselectedLabelColor: Colors.white.withValues(alpha:0.7),
+        unselectedLabelColor: Colors.white.withValues(alpha: 0.7),
         tabs: const [
           Tab(text: 'Trim'),
           Tab(text: 'Audio'),
@@ -324,35 +327,37 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Video duration info
           if (_isInitialized)
             Text(
               'Duration: ${_controller.value.duration.inSeconds}s',
               style: TextStyle(
-                color: Colors.white.withValues(alpha:0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 14,
               ),
             ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Timeline slider
           Container(
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha:0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: _isInitialized ? _buildTimelineSlider() : const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            ),
+            child: _isInitialized
+                ? _buildTimelineSlider()
+                : const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Trim controls
           Row(
             children: [
@@ -364,7 +369,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha:0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
@@ -378,14 +383,15 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               const SizedBox(width: 12),
               Expanded(
                 child: InstantResponseButton(
-                  onPressed: (_isInitialized && !_isProcessing) ? _applyTrim : null,
+                  onPressed:
+                      (_isInitialized && !_isProcessing) ? _applyTrim : null,
                   hapticType: HapticFeedbackType.mediumImpact,
                   scaleOnPress: 0.95,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: (_isInitialized && !_isProcessing) 
-                          ? const Color(0xFF9248D2) 
+                      color: (_isInitialized && !_isProcessing)
+                          ? const Color(0xFF9248D2)
                           : Colors.grey,
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -398,7 +404,8 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                                 height: 16,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
                               ),
                               SizedBox(width: 8),
@@ -418,12 +425,12 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               ),
             ],
           ),
-          
+
           const SizedBox(height: 8),
           Text(
             'Start: ${(_trimStart * (_controller.value.duration.inMilliseconds / 1000)).toStringAsFixed(1)}s | End: ${(_trimEnd * (_controller.value.duration.inMilliseconds / 1000)).toStringAsFixed(1)}s',
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.7),
+              color: Colors.white.withValues(alpha: 0.7),
               fontSize: 12,
             ),
           ),
@@ -437,66 +444,66 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       children: [
         // Audio Options Header
         Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Audio & Music',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Original Audio
-          _buildAudioOption(
-            icon: Icons.music_note,
-            title: 'Original Audio',
-            subtitle: 'Keep original video audio',
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Audio & Music',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Original Audio
+              _buildAudioOption(
+                icon: Icons.music_note,
+                title: 'Original Audio',
+                subtitle: 'Keep original video audio',
                 isSelected: _selectedMusicTrack == null && !_hasVoiceover,
                 onTap: () => setState(() {
                   _selectedMusicTrack = null;
                   _hasVoiceover = false;
                 }),
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Music Library
-          _buildAudioOption(
-            icon: Icons.library_music,
-            title: 'Music Library',
-                subtitle: _selectedMusicTrack != null 
+              ),
+
+              const SizedBox(height: 12),
+
+              // Music Library
+              _buildAudioOption(
+                icon: Icons.library_music,
+                title: 'Music Library',
+                subtitle: _selectedMusicTrack != null
                     ? '${_selectedMusicTrack!.title} - ${_selectedMusicTrack!.artist}'
                     : 'Choose from free music library',
                 isSelected: _selectedMusicTrack != null,
                 onTap: () {
                   // This will be handled by the music selection widget below
                 },
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Voiceover
-          _buildAudioOption(
-            icon: Icons.mic,
-            title: 'Record Voiceover',
-            subtitle: 'Add your own voice',
-            isSelected: _hasVoiceover,
+              ),
+
+              const SizedBox(height: 12),
+
+              // Voiceover
+              _buildAudioOption(
+                icon: Icons.mic,
+                title: 'Record Voiceover',
+                subtitle: 'Add your own voice',
+                isSelected: _hasVoiceover,
                 onTap: () => setState(() {
                   _hasVoiceover = !_hasVoiceover;
                   if (_hasVoiceover) {
                     _selectedMusicTrack = null;
                   }
                 }),
+              ),
+            ],
           ),
-        ],
-      ),
         ),
-        
+
         // Music Selection Widget
         if (_selectedMusicTrack != null || _selectedMusicTrack == null)
           Expanded(
@@ -540,7 +547,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Filter Grid
           GridView.builder(
             shrinkWrap: true,
@@ -554,20 +561,33 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             itemCount: 9,
             itemBuilder: (context, index) {
               final filters = [
-                'None', 'Vintage', 'B&W', 'Sepia', 'Cool', 'Warm', 'Bright', 'Dark', 'Blur'
+                'None',
+                'Vintage',
+                'B&W',
+                'Sepia',
+                'Cool',
+                'Warm',
+                'Bright',
+                'Dark',
+                'Blur'
               ];
-              final isSelected = _selectedFilter == filters[index].toLowerCase();
-              
+              final isSelected =
+                  _selectedFilter == filters[index].toLowerCase();
+
               return InstantResponseButton(
                 onPressed: () => _applyFilter(filters[index].toLowerCase()),
                 hapticType: HapticFeedbackType.selectionClick,
                 scaleOnPress: 0.95,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.1),
+                    color: isSelected
+                        ? const Color(0xFF9248D2)
+                        : Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: isSelected ? const Color(0xFF9248D2) : Colors.transparent,
+                      color: isSelected
+                          ? const Color(0xFF9248D2)
+                          : Colors.transparent,
                       width: 2,
                     ),
                   ),
@@ -607,14 +627,14 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected 
+          color: isSelected
               ? const Color(0xFF9248D2)
-              : Colors.white.withValues(alpha:0.1),
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected 
+            color: isSelected
                 ? const Color(0xFF9248D2)
-                : Colors.white.withValues(alpha:0.3),
+                : Colors.white.withValues(alpha: 0.3),
           ),
         ),
         child: Text(
@@ -644,21 +664,23 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             ),
           ),
           const SizedBox(height: 16),
-          
+
           // Caption Input
           TextField(
             onChanged: (value) => setState(() => _caption = value),
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: 'Add a caption...',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -666,14 +688,14 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Text Overlay
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha:0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
@@ -682,9 +704,9 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               textAlign: TextAlign.center,
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Hashtags
           const Text(
             'Hashtags',
@@ -695,23 +717,25 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             ),
           ),
           const SizedBox(height: 8),
-          
+
           // Hashtag input
           TextField(
             onChanged: (value) async {
               // Extract hashtags from text
               final hashtagRegex = RegExp(r'#\w+');
               final matches = hashtagRegex.allMatches(value);
-              final extractedHashtags = matches.map((match) => match.group(0)!).toList();
-              
+              final extractedHashtags =
+                  matches.map((match) => match.group(0)!).toList();
+
               // Validate each hashtag
               final currentUser = FirebaseAuth.instance.currentUser;
               final hashtagService = HashtagLockService();
               final validHashtags = <String>[];
-              
+
               for (final hashtag in extractedHashtags) {
                 final cleaned = hashtag.replaceAll('#', '');
-                final validation = await hashtagService.validateHashtag(cleaned, currentUser?.uid);
+                final validation = await hashtagService.validateHashtag(
+                    cleaned, currentUser?.uid);
                 if (validation.isValid) {
                   validHashtags.add(hashtag);
                 } else {
@@ -719,7 +743,8 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('${validation.errorMessage} for #$cleaned'),
+                        content:
+                            Text('${validation.errorMessage} for #$cleaned'),
                         backgroundColor: Colors.red,
                         duration: const Duration(seconds: 2),
                       ),
@@ -727,7 +752,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                   }
                 }
               }
-              
+
               setState(() {
                 _hashtags.clear();
                 _hashtags.addAll(validHashtags);
@@ -736,14 +761,16 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: 'Add hashtags (e.g., #gaming #fun #viral)',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
               border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderRadius: BorderRadius.circular(8),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -751,9 +778,9 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               ),
             ),
           ),
-          
+
           const SizedBox(height: 12),
-          
+
           // Hashtag suggestions
           if (_hashtags.isNotEmpty) ...[
             const Text(
@@ -767,26 +794,29 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _hashtags.map((hashtag) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF9248D2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  hashtag,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              )).toList(),
+              children: _hashtags
+                  .map((hashtag) => Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF9248D2),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          hashtag,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ))
+                  .toList(),
             ),
           ],
-          
+
           const SizedBox(height: 16),
-          
+
           // Popular hashtag suggestions
           const Text(
             'Popular Hashtags:',
@@ -827,7 +857,9 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF9248D2) : Colors.white.withValues(alpha:0.1),
+          color: isSelected
+              ? const Color(0xFF9248D2)
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? const Color(0xFF9248D2) : Colors.transparent,
@@ -853,7 +885,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -881,7 +913,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               child: Container(
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(25),
                 ),
                 child: const Center(
@@ -989,15 +1021,15 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               ),
             ),
           ),
-          
+
           // Timeline track
           Expanded(
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 activeTrackColor: const Color(0xFF9248D2),
-                inactiveTrackColor: Colors.white.withValues(alpha:0.3),
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
                 thumbColor: const Color(0xFF9248D2),
-                overlayColor: const Color(0xFF9248D2).withValues(alpha:0.2),
+                overlayColor: const Color(0xFF9248D2).withValues(alpha: 0.2),
                 trackHeight: 4,
               ),
               child: RangeSlider(
@@ -1013,7 +1045,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
               ),
             ),
           ),
-          
+
           // End handle
           Container(
             width: 20,
@@ -1044,41 +1076,43 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
 
   Future<void> _applyTrim() async {
     if (!_isInitialized) return;
-    
+
     setState(() {
       _isProcessing = true;
       _processingMessage = 'Trimming video...';
     });
-    
+
     try {
       final startTime = Duration(
-        milliseconds: (_trimStart * _controller.value.duration.inMilliseconds).round(),
+        milliseconds:
+            (_trimStart * _controller.value.duration.inMilliseconds).round(),
       );
       final endTime = Duration(
-        milliseconds: (_trimEnd * _controller.value.duration.inMilliseconds).round(),
+        milliseconds:
+            (_trimEnd * _controller.value.duration.inMilliseconds).round(),
       );
-      
+
       final result = await _videoProcessor.trimVideo(
         inputFile: widget.videoFile,
         videoId: 'trim_${DateTime.now().millisecondsSinceEpoch}',
         startTime: startTime,
         endTime: endTime,
       );
-      
+
       _processedVideoFile = result;
-      
+
       // Update video controller to show trimmed video
       await _controller.dispose();
       _controller = VideoPlayerController.file(_processedVideoFile!);
       await _controller.initialize();
-      
+
       if (mounted) {
         setState(() {
           _isInitialized = true;
           _isProcessing = false;
         });
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1094,7 +1128,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       setState(() {
         _isProcessing = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1107,12 +1141,11 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
     }
   }
 
-
   Future<void> _applyFilter(String filterName) async {
     setState(() {
       _selectedFilter = filterName;
     });
-    
+
     if (filterName == 'none') {
       // Reset to original video
       if (_processedVideoFile != null) {
@@ -1127,37 +1160,37 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       }
       return;
     }
-    
+
     setState(() {
       _isProcessing = true;
       _processingMessage = 'Applying filter...';
     });
-    
+
     try {
       // Filter selection removed - not available in current service
-      
+
       final inputFile = _processedVideoFile ?? widget.videoFile;
       // Filter application removed - not available in current service
       final result = inputFile;
-      
+
       _processedVideoFile = result;
-      
+
       // Update video controller to show filtered video
       await _controller.dispose();
       _controller = VideoPlayerController.file(_processedVideoFile!);
       await _controller.initialize();
-      
+
       if (mounted) {
         setState(() {
           _isInitialized = true;
           _isProcessing = false;
         });
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${filterName} filter applied successfully!'),
+            content: Text('$filterName filter applied successfully!'),
             backgroundColor: const Color(0xFF9248D2),
             duration: const Duration(seconds: 2),
           ),
@@ -1167,7 +1200,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
       setState(() {
         _isProcessing = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1183,7 +1216,7 @@ class _VideoEditingScreenState extends State<VideoEditingScreen>
   void _proceedToPublishing() {
     // Use processed video if available, otherwise use original
     final videoFileToUse = _processedVideoFile ?? widget.videoFile;
-    
+
     // Navigate to publishing screen
     Navigator.of(context).push(
       MaterialPageRoute(

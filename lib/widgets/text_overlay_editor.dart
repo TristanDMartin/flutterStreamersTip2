@@ -25,15 +25,15 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
   late List<TextOverlay> _textOverlays;
   TextOverlay? _selectedOverlay;
   bool _isDragging = false;
-  
+
   // Text editing controllers
   late TextEditingController _textController;
   late TextEditingController _fontSizeController;
-  
+
   // Animation controllers
   late AnimationController _fadeController;
   late AnimationController _scaleController;
-  
+
   // Available fonts
   final List<String> _availableFonts = [
     'Arial',
@@ -45,7 +45,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
     'Impact',
     'Comic Sans MS',
   ];
-  
+
   // Available colors
   final List<Color> _availableColors = [
     Colors.white,
@@ -61,7 +61,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
     Colors.amber,
     Colors.indigo,
   ];
-  
+
   // Animation types
   final List<String> _animationTypes = [
     'None',
@@ -80,12 +80,12 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
     _textOverlays = List.from(widget.textOverlays);
     _textController = TextEditingController();
     _fontSizeController = TextEditingController(text: '24');
-    
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
+
     _scaleController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
@@ -113,12 +113,12 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
       endTime: widget.videoDuration,
       alignment: TextAlignment.center,
     );
-    
+
     setState(() {
       _textOverlays.add(newOverlay);
       _selectedOverlay = newOverlay;
     });
-    
+
     _updateTextOverlays();
     _fadeController.forward();
   }
@@ -129,7 +129,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
       _textController.text = overlay.text;
       _fontSizeController.text = overlay.fontSize.toString();
     });
-    
+
     _scaleController.forward().then((_) {
       _scaleController.reset();
     });
@@ -137,7 +137,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
 
   void _updateSelectedOverlay() {
     if (_selectedOverlay == null) return;
-    
+
     final index = _textOverlays.indexOf(_selectedOverlay!);
     if (index != -1) {
       setState(() {
@@ -154,19 +154,19 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
         );
         _selectedOverlay = _textOverlays[index];
       });
-      
+
       _updateTextOverlays();
     }
   }
 
   void _deleteSelectedOverlay() {
     if (_selectedOverlay == null) return;
-    
+
     setState(() {
       _textOverlays.remove(_selectedOverlay);
       _selectedOverlay = _textOverlays.isNotEmpty ? _textOverlays.first : null;
     });
-    
+
     _updateTextOverlays();
   }
 
@@ -304,7 +304,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
                 ),
               ),
             ),
-            
+
             // Text overlays
             ..._textOverlays.map((overlay) => _buildTextOverlay(overlay)),
           ],
@@ -315,7 +315,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
 
   Widget _buildTextOverlay(TextOverlay overlay) {
     final isSelected = overlay == _selectedOverlay;
-    
+
     return Positioned(
       left: overlay.x * (MediaQuery.of(context).size.width * 0.6 - 32),
       top: overlay.y * (MediaQuery.of(context).size.height * 0.6 - 32),
@@ -329,9 +329,15 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
         onPanUpdate: (details) {
           if (_isDragging) {
             setState(() {
-              final newX = (overlay.x + (details.delta.dx / (MediaQuery.of(context).size.width * 0.6))).clamp(0.0, 1.0);
-              final newY = (overlay.y + (details.delta.dy / (MediaQuery.of(context).size.height * 0.6))).clamp(0.0, 1.0);
-              
+              final newX = (overlay.x +
+                      (details.delta.dx /
+                          (MediaQuery.of(context).size.width * 0.6)))
+                  .clamp(0.0, 1.0);
+              final newY = (overlay.y +
+                      (details.delta.dy /
+                          (MediaQuery.of(context).size.height * 0.6)))
+                  .clamp(0.0, 1.0);
+
               final index = _textOverlays.indexOf(overlay);
               if (index != -1) {
                 _textOverlays[index] = TextOverlay(
@@ -362,11 +368,11 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: isSelected 
+              color: isSelected
                   ? const Color(0xFF9248D2).withValues(alpha: 0.8)
                   : Colors.black.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(4),
-              border: isSelected 
+              border: isSelected
                   ? Border.all(color: const Color(0xFF9248D2), width: 2)
                   : null,
             ),
@@ -389,7 +395,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
     if (_selectedOverlay == null) {
       return _buildEmptyState();
     }
-    
+
     return Container(
       margin: const EdgeInsets.all(16),
       child: Column(
@@ -398,27 +404,27 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
           // Text input
           _buildTextInput(),
           const SizedBox(height: 16),
-          
+
           // Font selection
           _buildFontSelection(),
           const SizedBox(height: 16),
-          
+
           // Font size
           _buildFontSizeSlider(),
           const SizedBox(height: 16),
-          
+
           // Color picker
           _buildColorPicker(),
           const SizedBox(height: 16),
-          
+
           // Animation options
           _buildAnimationOptions(),
           const SizedBox(height: 16),
-          
+
           // Time controls
           _buildTimeControls(),
           const SizedBox(height: 16),
-          
+
           // Action buttons
           _buildActionButtons(),
         ],
@@ -482,11 +488,13 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
             hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -513,17 +521,19 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _selectedOverlay?.fontFamily ?? 'Arial',
+          initialValue: _selectedOverlay?.fontFamily ?? 'Arial',
           dropdownColor: const Color(0xFF1C135D),
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -634,7 +644,8 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
           spacing: 8,
           runSpacing: 8,
           children: _availableColors.map((color) {
-            final isSelected = _parseColor(_selectedOverlay?.color ?? '#FFFFFF') == color;
+            final isSelected =
+                _parseColor(_selectedOverlay?.color ?? '#FFFFFF') == color;
             return GestureDetector(
               onTap: () {
                 if (_selectedOverlay != null) {
@@ -664,9 +675,10 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
                 decoration: BoxDecoration(
                   color: color,
                   shape: BoxShape.circle,
-                  border: isSelected 
+                  border: isSelected
                       ? Border.all(color: Colors.white, width: 3)
-                      : Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                      : Border.all(
+                          color: Colors.white.withValues(alpha: 0.3), width: 1),
                 ),
               ),
             );
@@ -690,17 +702,19 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: 'None',
+          initialValue: 'None',
           dropdownColor: const Color(0xFF1C135D),
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.3)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -740,10 +754,13 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Start Time', style: TextStyle(color: Colors.white70)),
+                  const Text('Start Time',
+                      style: TextStyle(color: Colors.white70)),
                   Text(
-                    _formatDuration(_selectedOverlay?.startTime ?? Duration.zero),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    _formatDuration(
+                        _selectedOverlay?.startTime ?? Duration.zero),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -752,10 +769,12 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('End Time', style: TextStyle(color: Colors.white70)),
+                  const Text('End Time',
+                      style: TextStyle(color: Colors.white70)),
                   Text(
                     _formatDuration(_selectedOverlay?.endTime ?? Duration.zero),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -831,7 +850,7 @@ class _TextOverlayEditorState extends State<TextOverlayEditor>
   }
 
   String _colorToHex(Color color) {
-    return '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
+    return '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
   }
 
   String _formatDuration(Duration duration) {

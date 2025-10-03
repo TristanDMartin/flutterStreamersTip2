@@ -55,7 +55,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     _checkNameChangeEligibility();
   }
 
-  /// Check if user can change their name (7-day cooldown)
+  /// Check if user can change their name (7-day cooldown) // cspell:ignore cooldown
   void _checkNameChangeEligibility() {
     final lastChange = _user['lastNameChangeDate'];
     if (lastChange != null) {
@@ -255,6 +255,7 @@ class _EditProfileViewState extends State<EditProfileView> {
       final fileSize = await imageFile.length();
       debugPrint('📁 EditProfileView: File size: $fileSize bytes');
 
+      if (!mounted) return;
       final authService =
           ProviderScope.containerOf(context).read(authServiceProvider);
       debugPrint(
@@ -404,7 +405,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   void _showEditField(EditableField field) {
     // Check if user can change their name
     if (field == EditableField.name && !_canChangeName) {
-      _showNameChangeCooldownDialog();
+      _showNameChangeCooldownDialog(); // cspell:ignore cooldown
       return;
     }
 
@@ -428,7 +429,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     );
   }
 
-  /// Show dialog explaining name change cooldown
+  /// Show dialog explaining name change cooldown // cspell:ignore cooldown
   void _showNameChangeCooldownDialog() {
     if (_lastNameChangeDate == null) return;
 
@@ -439,7 +440,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Name Change Cooldown'),
+        title: const Text('Name Change Cooldown'), // cspell:ignore cooldown
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
