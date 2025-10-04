@@ -8,6 +8,7 @@ import '../models/user.dart' as app_user;
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
 import '../services/profile_update_service.dart';
+import '../services/post_counter_service.dart';
 import '../views/menu_view.dart';
 import 'edit_profile_view.dart';
 import 'share_profile_view.dart';
@@ -15,6 +16,7 @@ import 'profile_back_view.dart';
 import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
+import '../services/global_post_count_fix.dart';
 import 'setup_hashtag_permissions_widget.dart';
 import 'tiktok_account_switch_button.dart';
 
@@ -48,7 +50,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   // Stream subscriptions for stats
   StreamSubscription<QuerySnapshot>? _followersSubscription;
   StreamSubscription<QuerySnapshot>? _followingSubscription;
-  StreamSubscription<QuerySnapshot>? _postsSubscription;
+  StreamSubscription<int>? _postsSubscription;
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
@@ -81,6 +83,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
     // Load stats
     _loadStats();
+
+    // Fix post count for any user if needed (global fix)
+    _fixUserPostCountIfNeeded();
   }
 
   @override
@@ -106,6 +111,38 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     }
   }
 
+  /// Fix post count for any user using the global fix service
+  Future<void> _fixUserPostCountIfNeeded() async {
+    try {
+      if (kDebugMode) {
+        debugPrint(
+            '🌍 PROFILE: Auto-fixing post count for user ${widget.user.id}');
+      }
+
+      final globalFix = GlobalPostCountFix();
+      final success = await globalFix.fixUserPostCount(widget.user.id);
+
+      if (success) {
+        if (kDebugMode) {
+          debugPrint(
+              '🌍 PROFILE: Successfully fixed post count for user ${widget.user.id}');
+        }
+        // Refresh stats to show updated count
+        _loadStats();
+      } else {
+        if (kDebugMode) {
+          debugPrint(
+              '🌍 PROFILE: Failed to fix post count for user ${widget.user.id}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '🌍 PROFILE: Error fixing post count for user ${widget.user.id}: $e');
+      }
+    }
+  }
+
   void _loadStats() {
     if (widget.user.id.isEmpty) {
       return;
@@ -120,23 +157,21 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
 
-    // Load posts count
-    _postsSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.user.id)
-        .collection('videos')
-        .where('status', isEqualTo: 'published')
-        .snapshots()
-        .listen(
-      (snapshot) {
+    // Load posts count using PostCounterService for real-time updates
+    final postCounterService = PostCounterService();
+    _postsSubscription =
+        postCounterService.watchPostCount(widget.user.id).listen(
+      (postCount) {
         if (mounted) {
           setState(() {
-            _postsCount = snapshot.docs.length;
+            _postsCount = postCount;
           });
         }
       },
       onError: (error) {
-        // Handle error silently in production
+        if (kDebugMode) {
+          debugPrint('❌ ProfileView: Error watching post count: $error');
+        }
       },
     );
 
@@ -553,6 +588,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         const SizedBox(height: 24),
         _buildStatsRow(),
         const SizedBox(height: 24),
+        // Post count fix is handled by the simple button below in stats row
         _buildPrimaryButtonsRow(),
       ],
     );

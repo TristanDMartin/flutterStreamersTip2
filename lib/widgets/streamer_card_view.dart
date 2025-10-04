@@ -26,7 +26,8 @@ class StreamerCardView extends ConsumerStatefulWidget {
   final Function(String userId)? onFollow;
   final Function(String userId)? onMessage;
   final Function(String userId)? onShare;
-  final Function(String tabName)? onNavigateToTab; // New callback for tab navigation
+  final Function(String tabName)?
+      onNavigateToTab; // New callback for tab navigation
 
   const StreamerCardView({
     super.key,
@@ -43,13 +44,13 @@ class StreamerCardView extends ConsumerStatefulWidget {
   ConsumerState<StreamerCardView> createState() => _StreamerCardViewState();
 }
 
-class _StreamerCardViewState extends ConsumerState<StreamerCardView> 
+class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     with TickerProviderStateMixin {
   late AnimationController _flipController;
   final FollowsService _followsService = FollowsService();
   late Animation<double> _flipAnimation;
   bool _isFront = true;
-  
+
   // MARK: - State Management
   String _selectedHashtag = "";
   bool _showBio = true;
@@ -58,39 +59,39 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   final Set<String> _bookmarkedEventIds = {};
   List<Map<String, dynamic>> _platforms = [];
   List<CalendarEvent> _calendarEvents = [];
-  
+
   // Gradient for selected hashtag
   final LinearGradient _selectedHashtagGradient = const LinearGradient(
     colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileBackView
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
-  
+
   // Bookmark service
   late final EnhancedBookmarkService _bookmarkService;
-  
+
   // Real-time data
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
   String? _error;
-  
+
   // Relationship states (matching the exact algorithm)
   bool _isFollowing = false;
   bool _isFollowedByStreamer = false;
   bool _isConnected = false;
-  
+
   // Stats
   int _postsCount = 0;
   int _followersCount = 0;
   int _followingCount = 0;
-  
+
   // Tab management
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
-  
+
   // Chat UI State
   bool _showChatView = false;
   Map<String, dynamic>? _selectedChat;
-  
+
   // Firestore listeners for proper cleanup
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
   StreamSubscription<DocumentSnapshot>? _userStatsSubscription;
@@ -98,7 +99,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   StreamSubscription<QuerySnapshot>? _followingSubscription;
   StreamSubscription<QuerySnapshot>? _followingRelationshipSubscription;
   StreamSubscription<QuerySnapshot>? _followedByRelationshipSubscription;
-  
+
   // Loading states for async operations
   bool _isFollowingOperation = false;
   bool _isUnfollowingOperation = false;
@@ -119,7 +120,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       parent: _flipController,
       curve: Curves.easeInOut,
     ));
-    
+
     // Load user data first, then relationship status will be checked when user data loads
     _loadUserData();
   }
@@ -131,7 +132,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       await _fetchBookmarkedEventIds();
     } catch (e) {
       if (kDebugMode) {
-    // debugPrint('❌ StreamerCardView: Error initializing bookmarks: $e');
+        // debugPrint('❌ StreamerCardView: Error initializing bookmarks: $e');
       }
     }
   }
@@ -139,11 +140,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Future<void> _fetchBookmarkedEventIds() async {
     try {
       if (kDebugMode) {
-    // debugPrint('📚 StreamerCardView: Fetching bookmarked event IDs...');
+        // debugPrint('📚 StreamerCardView: Fetching bookmarked event IDs...');
       }
       final bookmarkedIds = await _bookmarkService.fetchBookmarkedEventIds();
       if (kDebugMode) {
-    // debugPrint('📚 StreamerCardView: Found ${bookmarkedIds.length} bookmarked events: $bookmarkedIds');
+        // debugPrint('📚 StreamerCardView: Found ${bookmarkedIds.length} bookmarked events: $bookmarkedIds');
       }
       if (mounted) {
         setState(() {
@@ -153,7 +154,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
     } catch (e) {
       if (kDebugMode) {
-    // debugPrint('❌ StreamerCardView: Error fetching bookmarked event IDs: $e');
+        // debugPrint('❌ StreamerCardView: Error fetching bookmarked event IDs: $e');
       }
     }
   }
@@ -161,7 +162,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void _loadUserData() {
     // Cancel existing subscription if any
     _userDataSubscription?.cancel();
-    
+
     _userDataSubscription = FirebaseFirestore.instance
         .collection('users')
         .doc(widget.userId)
@@ -199,13 +200,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         'username': 'streamer1',
         'displayName': 'Streamer One',
         'avatarURL': 'https://i.pravatar.cc/200?img=1',
-        'bio': 'Professional gamer and content creator. Love sharing amazing gaming moments! 🎮',
+        'bio':
+            'Professional gamer and content creator. Love sharing amazing gaming moments! 🎮',
         'hashtags': ['gaming', 'streaming', 'esports'],
         'onlineStatus': 'online',
         'postCount': 42,
         'followerCount': 1250,
         'followingCount': 89,
-        'aiSelf': 'Passionate gamer who loves creating content and connecting with the community.',
+        'aiSelf':
+            'Passionate gamer who loves creating content and connecting with the community.',
         'platforms': [
           {'type': 'twitch', 'username': 'streamer1', 'followers': 1250},
           {'type': 'youtube', 'username': 'streamer1', 'followers': 890},
@@ -215,7 +218,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             'id': 'event1',
             'title': 'Gaming Stream',
             'description': 'Playing the latest games with viewers',
-            'date': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+            'date':
+                DateTime.now().add(const Duration(days: 1)).toIso8601String(),
           },
         ],
       },
@@ -224,13 +228,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         'username': 'streamer2',
         'displayName': 'Streamer Two',
         'avatarURL': 'https://i.pravatar.cc/200?img=2',
-        'bio': 'Creative content creator sharing cool tricks and entertaining moments! 🔥',
+        'bio':
+            'Creative content creator sharing cool tricks and entertaining moments! 🔥',
         'hashtags': ['entertainment', 'tricks', 'fun'],
         'onlineStatus': 'online',
         'postCount': 28,
         'followerCount': 890,
         'followingCount': 156,
-        'aiSelf': 'Creative entertainer who loves sharing fun and engaging content.',
+        'aiSelf':
+            'Creative entertainer who loves sharing fun and engaging content.',
         'platforms': [
           {'type': 'tiktok', 'username': 'streamer2', 'followers': 890},
           {'type': 'instagram', 'username': 'streamer2', 'followers': 456},
@@ -240,7 +246,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             'id': 'event2',
             'title': 'Trick Tutorial',
             'description': 'Teaching cool tricks to followers',
-            'date': DateTime.now().add(const Duration(days: 2)).toIso8601String(),
+            'date':
+                DateTime.now().add(const Duration(days: 2)).toIso8601String(),
           },
         ],
       },
@@ -267,12 +274,12 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   void _loadStats() {
     if (_userData == null) return;
-    
+
     // Cancel existing subscriptions
     _userStatsSubscription?.cancel();
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
-    
+
     // Load stats from user document (denormalized counters)
     _userStatsSubscription = FirebaseFirestore.instance
         .collection('users')
@@ -286,9 +293,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _followersCount = data['followerCount'] ?? 0;
           _followingCount = data['followingCount'] ?? 0;
         });
-        
+
         if (kDebugMode) {
-          debugPrint("📊 StreamerCardView: Stats loaded - Posts: $_postsCount, Followers: $_followersCount, Following: $_followingCount");
+          debugPrint(
+              "📊 StreamerCardView: Stats loaded - Posts: $_postsCount, Followers: $_followersCount, Following: $_followingCount");
         }
       }
     });
@@ -303,9 +311,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         setState(() {
           _followersCount = snapshot.docs.length;
         });
-        
+
         if (kDebugMode) {
-          debugPrint("📊 StreamerCardView: Followers count updated from follows collection: $_followersCount");
+          debugPrint(
+              "📊 StreamerCardView: Followers count updated from follows collection: $_followersCount");
         }
       }
     });
@@ -320,9 +329,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         setState(() {
           _followingCount = snapshot.docs.length;
         });
-        
+
         if (kDebugMode) {
-          debugPrint("📊 StreamerCardView: Following count updated from follows collection: $_followingCount");
+          debugPrint(
+              "📊 StreamerCardView: Following count updated from follows collection: $_followingCount");
         }
       }
     });
@@ -331,21 +341,24 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void _checkRelationshipStatus() {
     if (widget.currentUserId == null || widget.currentUserId == widget.userId) {
       if (kDebugMode) {
-        debugPrint("🔘 StreamerCardView: Skipping relationship check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+        debugPrint(
+            "🔘 StreamerCardView: Skipping relationship check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
       }
       return;
     }
-    
+
     if (kDebugMode) {
-      debugPrint("🔘 StreamerCardView: Checking relationship status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+      debugPrint(
+          "🔘 StreamerCardView: Checking relationship status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
     }
-    
+
     // First do an initial check to set the current state
     _checkConnectionStatus().then((_) {
       if (kDebugMode) {
-        debugPrint("🔘 StreamerCardView: Initial relationship check complete - isFollowing: $_isFollowing, isFollowedByStreamer: $_isFollowedByStreamer, isConnected: $_isConnected");
+        debugPrint(
+            "🔘 StreamerCardView: Initial relationship check complete - isFollowing: $_isFollowing, isFollowedByStreamer: $_isFollowedByStreamer, isConnected: $_isConnected");
       }
-      
+
       // Then set up real-time listeners for relationship changes
       _setupRelationshipListeners();
     });
@@ -355,11 +368,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     // Cancel existing subscriptions
     _followingRelationshipSubscription?.cancel();
     _followedByRelationshipSubscription?.cancel();
-    
+
     if (kDebugMode) {
       debugPrint("🔘 StreamerCardView: Setting up relationship listeners");
     }
-    
+
     // Listen for changes in current user's following list
     _followingRelationshipSubscription = FirebaseFirestore.instance
         .collection('follows')
@@ -373,15 +386,18 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _isFollowing = snapshot.docs.isNotEmpty;
           _updateConnectionStatus();
         });
-        
+
         if (kDebugMode) {
-          debugPrint("🔄 StreamerCardView: Following listener updated - wasFollowing: $wasFollowing, isFollowing: $_isFollowing, docs count: ${snapshot.docs.length}");
-          debugPrint("🔄 StreamerCardView: Connection state after following update - isConnected: $_isConnected");
+          debugPrint(
+              "🔄 StreamerCardView: Following listener updated - wasFollowing: $wasFollowing, isFollowing: $_isFollowing, docs count: ${snapshot.docs.length}");
+          debugPrint(
+              "🔄 StreamerCardView: Connection state after following update - isConnected: $_isConnected");
         }
       }
     }, onError: (error) {
       if (kDebugMode) {
-        debugPrint("❌ StreamerCardView: Error in following relationship listener: $error");
+        debugPrint(
+            "❌ StreamerCardView: Error in following relationship listener: $error");
       }
     });
 
@@ -398,15 +414,18 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _isFollowedByStreamer = snapshot.docs.isNotEmpty;
           _updateConnectionStatus();
         });
-        
+
         if (kDebugMode) {
-          debugPrint("🔄 StreamerCardView: Followed by streamer listener updated - wasFollowedByStreamer: $wasFollowedByStreamer, isFollowedByStreamer: $_isFollowedByStreamer, docs count: ${snapshot.docs.length}");
-          debugPrint("🔄 StreamerCardView: Connection state after followed by update - isConnected: $_isConnected");
+          debugPrint(
+              "🔄 StreamerCardView: Followed by streamer listener updated - wasFollowedByStreamer: $wasFollowedByStreamer, isFollowedByStreamer: $_isFollowedByStreamer, docs count: ${snapshot.docs.length}");
+          debugPrint(
+              "🔄 StreamerCardView: Connection state after followed by update - isConnected: $_isConnected");
         }
       }
     }, onError: (error) {
       if (kDebugMode) {
-        debugPrint("❌ StreamerCardView: Error in followed by relationship listener: $error");
+        debugPrint(
+            "❌ StreamerCardView: Error in followed by relationship listener: $error");
       }
     });
   }
@@ -414,39 +433,46 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void _updateConnectionStatus() {
     final previousConnected = _isConnected;
     _isConnected = _isFollowing && _isFollowedByStreamer;
-    
+
     if (kDebugMode && previousConnected != _isConnected) {
-      debugPrint("🔄 StreamerCardView: Connection status changed from $previousConnected to $_isConnected");
-      debugPrint("🔄 StreamerCardView: _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+      debugPrint(
+          "🔄 StreamerCardView: Connection status changed from $previousConnected to $_isConnected");
+      debugPrint(
+          "🔄 StreamerCardView: _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
     }
   }
 
   // MARK: - Computed Properties
   Map<String, dynamic> get userData => _userData ?? {};
-  
-  String get displayName => userData['displayName'] as String? ?? 'Unknown User';
+
+  String get displayName =>
+      userData['displayName'] as String? ?? 'Unknown User';
   String get username => userData['username'] as String? ?? 'unknown';
   String get bio => userData['bio'] as String? ?? '';
   String? get avatarURL => userData['avatarURL'] as String?;
-  
+
   List<String> get hashtags {
     final hashtagsData = userData['hashtags'];
     if (hashtagsData == null) return [];
-    
+
     if (hashtagsData is List<dynamic>) {
       return hashtagsData.cast<String>();
     } else if (hashtagsData is String) {
-      return hashtagsData.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
+      return hashtagsData
+          .split(',')
+          .map((tag) => tag.trim())
+          .where((tag) => tag.isNotEmpty)
+          .toList();
     }
-    
+
     return [];
   }
-  
+
   int get selectedHashtagIndex {
     final index = hashtags.indexOf(_selectedHashtag);
     return index >= 0 ? index : 0;
   }
-  
+
   bool get isOwner {
     // For StreamerCardView, visitors should see bookmark buttons, not delete buttons
     // Only allow deletion if explicitly viewing own profile (which should use ProfileView instead)
@@ -457,7 +483,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   @override
   void dispose() {
     _flipController.dispose();
-    
+
     // Cancel all Firestore subscriptions to prevent memory leaks
     _userDataSubscription?.cancel();
     _userStatsSubscription?.cancel();
@@ -465,38 +491,40 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _followingSubscription?.cancel();
     _followingRelationshipSubscription?.cancel();
     _followedByRelationshipSubscription?.cancel();
-    
+
     super.dispose();
   }
-
 
   // MARK: - Connection Status
   Future<void> _checkConnectionStatus() async {
     if (widget.currentUserId == null || widget.currentUserId == widget.userId) {
       if (kDebugMode) {
-        debugPrint("🔘 StreamerCardView: Skipping connection check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+        debugPrint(
+            "🔘 StreamerCardView: Skipping connection check - currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
       }
       return;
     }
 
     if (kDebugMode) {
-      debugPrint("🔘 StreamerCardView: Checking connection status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
+      debugPrint(
+          "🔘 StreamerCardView: Checking connection status for currentUserId: ${widget.currentUserId}, userId: ${widget.userId}");
     }
 
     try {
       // Check if current user is following the streamer
       final isFollowing = await _checkIfFollowing(widget.userId);
-      
+
       // Check if streamer is following the current user
       final isFollowedByStreamer = await _checkIfFollowedBy(widget.userId);
-      
+
       // Connection = mutual follows
       final isConnected = isFollowing && isFollowedByStreamer;
-      
+
       if (kDebugMode) {
-        debugPrint("🔘 StreamerCardView: Connection check results - isFollowing: $isFollowing, isFollowedByStreamer: $isFollowedByStreamer, isConnected: $isConnected");
+        debugPrint(
+            "🔘 StreamerCardView: Connection check results - isFollowing: $isFollowing, isFollowedByStreamer: $isFollowedByStreamer, isConnected: $isConnected");
       }
-      
+
       if (mounted) {
         setState(() {
           _isFollowing = isFollowing;
@@ -542,27 +570,24 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
   }
 
-
-
-
   Future<void> _toggleBookmark(CalendarEvent event) async {
     HapticFeedback.lightImpact();
-    
+
     final isBookmarked = _bookmarkedEventIds.contains(event.id);
-    
+
     if (kDebugMode) {
-    // debugPrint('🔖 StreamerCardView: Toggling bookmark for event: ${event.id}');
-    // debugPrint('🔖 StreamerCardView: Currently bookmarked: $isBookmarked');
-    // debugPrint('🔖 StreamerCardView: Event title: ${event.title}');
-    // debugPrint('🔖 StreamerCardView: Event date: ${event.date}');
-    // debugPrint('🔖 StreamerCardView: Creator ID: ${widget.userId}');
+      // debugPrint('🔖 StreamerCardView: Toggling bookmark for event: ${event.id}');
+      // debugPrint('🔖 StreamerCardView: Currently bookmarked: $isBookmarked');
+      // debugPrint('🔖 StreamerCardView: Event title: ${event.title}');
+      // debugPrint('🔖 StreamerCardView: Event date: ${event.date}');
+      // debugPrint('🔖 StreamerCardView: Creator ID: ${widget.userId}');
     }
-    
+
     // Check if user is authenticated
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       if (kDebugMode) {
-    // debugPrint('❌ StreamerCardView: No authenticated user');
+        // debugPrint('❌ StreamerCardView: No authenticated user');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -575,11 +600,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       return;
     }
-    
+
     if (kDebugMode) {
-    // debugPrint('✅ StreamerCardView: User authenticated: ${currentUser.uid}');
+      // debugPrint('✅ StreamerCardView: User authenticated: ${currentUser.uid}');
     }
-    
+
     // Optimistic UI update
     if (isBookmarked) {
       _bookmarkedEventIds.remove(event.id);
@@ -587,15 +612,17 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       _bookmarkedEventIds.add(event.id);
     }
     setState(() {});
-    
+
     try {
       bool success;
       String message;
-      
+
       if (isBookmarked) {
         // Remove bookmark
         success = await _bookmarkService.deleteBookmark(eventId: event.id);
-        message = success ? 'Event removed from bookmarks!' : 'Failed to remove bookmark';
+        message = success
+            ? 'Event removed from bookmarks!'
+            : 'Failed to remove bookmark';
       } else {
         // Add bookmark
         success = await _bookmarkService.bookmarkEvent(
@@ -606,9 +633,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           notifyAt: event.date.subtract(const Duration(minutes: 15)),
           source: 'streamer_card',
         );
-        message = success ? 'Event saved to your bookmarks! You can view it in the menu.' : 'Failed to save bookmark';
+        message = success
+            ? 'Event saved to your bookmarks! You can view it in the menu.'
+            : 'Failed to save bookmark';
       }
-      
+
       if (!success && mounted) {
         // Revert optimistic update on failure
         if (isBookmarked) {
@@ -618,7 +647,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
         setState(() {});
       }
-      
+
       if (mounted) {
         // Show message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -637,16 +666,16 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         _bookmarkedEventIds.remove(event.id);
       }
       setState(() {});
-      
+
       if (kDebugMode) {
-    // debugPrint('❌ StreamerCardView: Error toggling bookmark: $e');
-    // debugPrint('❌ StreamerCardView: Error type: ${e.runtimeType}');
+        // debugPrint('❌ StreamerCardView: Error toggling bookmark: $e');
+        // debugPrint('❌ StreamerCardView: Error type: ${e.runtimeType}');
         if (e is FirebaseException) {
-    // debugPrint('❌ StreamerCardView: Firebase error code: ${e.code}');
-    // debugPrint('❌ StreamerCardView: Firebase error message: ${e.message}');
+          // debugPrint('❌ StreamerCardView: Firebase error code: ${e.code}');
+          // debugPrint('❌ StreamerCardView: Firebase error message: ${e.message}');
         }
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -697,7 +726,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-
   void _flipCard() {
     if (_isFront) {
       _flipController.forward();
@@ -712,11 +740,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (_isLoading) {
       return _buildLoadingState();
     }
-    
+
     if (_error != null) {
       return _buildErrorState();
     }
-    
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -726,33 +754,34 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       child: Scaffold(
         backgroundColor: Colors.black,
         extendBody: true,
-        extendBodyBehindAppBar: false, // SAFE AREA FIX: Don't extend behind system UI
+        extendBodyBehindAppBar:
+            false, // SAFE AREA FIX: Don't extend behind system UI
         body: Stack(
-        children: [
-          // Main StreamerCardView
-          AnimatedBuilder(
-            animation: _flipAnimation,
-            builder: (context, child) {
-              final isShowingFront = _flipAnimation.value < 0.5;
-              return Transform(
-                alignment: Alignment.center,
-                transform: Matrix4.identity()
-                  ..setEntry(3, 2, 0.001)
-                  ..rotateY(_flipAnimation.value * 3.14159),
-                child: isShowingFront
-                    ? _buildFrontView()
-                    : Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.identity()..rotateY(3.14159),
-                        child: _buildBackView(),
-                      ),
-              );
-            },
-          ),
-          // Chat View Overlay (Full Screen Cover)
-          if (_showChatView) _buildChatView(),
-        ],
-      ),
+          children: [
+            // Main StreamerCardView
+            AnimatedBuilder(
+              animation: _flipAnimation,
+              builder: (context, child) {
+                final isShowingFront = _flipAnimation.value < 0.5;
+                return Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.001)
+                    ..rotateY(_flipAnimation.value * 3.14159),
+                  child: isShowingFront
+                      ? _buildFrontView()
+                      : Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()..rotateY(3.14159),
+                          child: _buildBackView(),
+                        ),
+                );
+              },
+            ),
+            // Chat View Overlay (Full Screen Cover)
+            if (_showChatView) _buildChatView(),
+          ],
+        ),
       ),
     );
   }
@@ -818,7 +847,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // Chat View Presentation - Full Screen Cover
   Widget _buildChatView() {
     if (_selectedChat == null) return const SizedBox.shrink();
-    
+
     return Container(
       color: Colors.black,
       child: SafeArea(
@@ -831,7 +860,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 color: const Color(0xFF0E1220),
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.white.withValues(alpha:0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     width: 1,
                   ),
                 ),
@@ -868,7 +897,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                         Text(
                           '@$username',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha:0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 14,
                           ),
                         ),
@@ -888,14 +917,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                     children: [
                       Icon(
                         Icons.chat_bubble_outline,
-                        color: Colors.white.withValues(alpha:0.3),
+                        color: Colors.white.withValues(alpha: 0.3),
                         size: 64,
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'Chat with $displayName',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha:0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 18,
                         ),
                       ),
@@ -903,7 +932,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       Text(
                         'Chat ID: ${_selectedChat!['id']}',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha:0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           fontSize: 12,
                         ),
                       ),
@@ -911,7 +940,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                       Text(
                         'Chat functionality will be implemented here',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha:0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           fontSize: 14,
                         ),
                       ),
@@ -927,82 +956,83 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildFrontView() {
-    return Container( // FIXED: Remove SafeArea to allow manual control
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF6137EB), // Purple
-              Color(0xFF1C135D), // Dark purple
-            ],
-          ),
-        ),
-        child: Column(
-          children: [
-            _buildTopBar(),
-            const SizedBox(height: 8), // Add spacing after top bar
-            _buildProfileSection(),
-            _buildStatisticsRow(),
-            _buildActionButtons(),
-            const SizedBox(height: 24), // Spacing between buttons and tabs
-            _buildContentTabs(),
-            _buildContentArea(),
+    return Container(
+      // FIXED: Remove SafeArea to allow manual control
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF6137EB), // Purple
+            Color(0xFF1C135D), // Dark purple
           ],
         ),
-      );
+      ),
+      child: Column(
+        children: [
+          _buildTopBar(),
+          const SizedBox(height: 8), // Add spacing after top bar
+          _buildProfileSection(),
+          _buildStatisticsRow(),
+          _buildActionButtons(),
+          const SizedBox(height: 24), // Spacing between buttons and tabs
+          _buildContentTabs(),
+          _buildContentArea(),
+        ],
+      ),
+    );
   }
 
   Widget _buildTopBar() {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Back button
-              GestureDetector(
-                onTap: widget.onDismiss,
-                child: const Icon(
-                  Icons.arrow_back,
-                  color: Colors.white,
-                  size: 24,
-                ),
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Back button
+            GestureDetector(
+              onTap: widget.onDismiss,
+              child: const Icon(
+                Icons.arrow_back,
+                color: Colors.white,
+                size: 24,
               ),
-              // Center: No title, clean gradient background
-              const SizedBox(width: 40), // Spacer for center
-              // Right side action buttons
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => _flipCard(),
+            ),
+            // Center: No title, clean gradient background
+            const SizedBox(width: 40), // Spacer for center
+            // Right side action buttons
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () => _flipCard(),
+                  child: const Icon(
+                    Icons.flip,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                InstantResponseButton(
+                  onPressed: () => _showShareSheet(context),
+                  hapticType: HapticFeedbackType.lightImpact,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
                     child: const Icon(
-                      Icons.flip,
+                      Icons.more_horiz,
                       color: Colors.white,
                       size: 24,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  InstantResponseButton(
-                    onPressed: () => _showShareSheet(context),
-                    hapticType: HapticFeedbackType.lightImpact,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      child: const Icon(
-                        Icons.more_horiz,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+          ],
         ),
-      );
+      ),
+    );
   }
 
   Widget _buildProfileSection() {
@@ -1049,7 +1079,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha:0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             fontSize: 16,
             fontWeight: FontWeight.w600,
             height: 1.0,
@@ -1069,7 +1099,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             child: _buildGradientPillButton(
               text: _getFollowButtonText(),
               onPressed: _getFollowButtonAction(),
-          ),
+            ),
           ),
           const SizedBox(width: 16),
           // Message Button
@@ -1077,7 +1107,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             child: _buildGradientPillButton(
               text: 'Message',
               onPressed: _getMessageButtonAction(),
-          ),
+            ),
           ),
           const SizedBox(width: 16),
           // Share Button
@@ -1097,17 +1127,20 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     required String text,
     required VoidCallback? onPressed,
   }) {
-    final isLoading = text == _getFollowButtonText() && (_isFollowingOperation || _isUnfollowingOperation);
-    
+    final isLoading = text == _getFollowButtonText() &&
+        (_isFollowingOperation || _isUnfollowingOperation);
+
     return GestureDetector(
       onTap: onPressed,
       child: Container(
         height: 48,
         decoration: BoxDecoration(
           gradient: onPressed != null ? _getFollowButtonGradient() : null,
-          color: onPressed == null ? Colors.grey.withValues(alpha:0.3) : null,
+          color: onPressed == null ? Colors.grey.withValues(alpha: 0.3) : null,
           borderRadius: BorderRadius.circular(24),
-          border: onPressed == null ? Border.all(color: Colors.grey.withValues(alpha:0.5)) : null,
+          border: onPressed == null
+              ? Border.all(color: Colors.grey.withValues(alpha: 0.5))
+              : null,
         ),
         child: Center(
           child: isLoading
@@ -1120,13 +1153,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   ),
                 )
               : Text(
-            text,
+                  text,
                   style: TextStyle(
                     color: onPressed != null ? Colors.white : Colors.grey,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
         ),
       ),
     );
@@ -1160,14 +1193,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   VoidCallback? _getMessageButtonAction() {
     if (kDebugMode) {
-      debugPrint("💬 StreamerCardView: _getMessageButtonAction - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+      debugPrint(
+          "💬 StreamerCardView: _getMessageButtonAction - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
     }
-    if (_isConnected) return _handleMessage; // Only enabled when connected (mutual follow)
+    if (_isConnected)
+      return _handleMessage; // Only enabled when connected (mutual follow)
     return null; // Disabled when not connected
   }
-
-
-
 
   // MARK: - Follow Button Action Handler (Real-time Updates)
   void _handleFollowButtonTap() {
@@ -1177,9 +1209,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       debugPrint("🔘 Is followed by other: $_isFollowedByStreamer");
       debugPrint("🔘 Is connected: $_isConnected");
     }
-    
+
     HapticFeedback.lightImpact();
-    
+
     // Handle button actions based on current relationship state
     if (_isConnected) {
       // Both users follow each other - unfollow the other user
@@ -1194,8 +1226,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Future<void> _handleFollow() async {
-    if (_isFollowingOperation) return; // Prevent multiple simultaneous operations
-    
+    if (_isFollowingOperation)
+      return; // Prevent multiple simultaneous operations
+
     // Check if currentUserId is available
     if (widget.currentUserId == null) {
       if (mounted) {
@@ -1209,50 +1242,53 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       return;
     }
-    
+
     if (kDebugMode) {
       debugPrint("🔘 StreamerCardView: Following user: ${widget.userId}");
-      debugPrint("🔘 StreamerCardView: Current user ID: ${widget.currentUserId}");
+      debugPrint(
+          "🔘 StreamerCardView: Current user ID: ${widget.currentUserId}");
     }
-    
+
     // Store original state for rollback
     final originalFollowingState = _isFollowing;
-    
+
     // Update local state optimistically
     setState(() {
       _isFollowing = true;
       _isFollowingOperation = true;
       _updateConnectionStatus();
     });
-    
+
     // Call the parent callback first
     if (widget.onFollow != null) {
       try {
         await widget.onFollow!(widget.userId);
-        
+
         // If parent callback succeeds, keep the optimistic state
         if (mounted) {
           setState(() {
             _isFollowingOperation = false;
           });
         }
-        
+
         if (kDebugMode) {
-          debugPrint("🔘 StreamerCardView: Parent follow callback completed successfully");
+          debugPrint(
+              "🔘 StreamerCardView: Parent follow callback completed successfully");
         }
         return; // Exit early if parent handles it successfully
       } catch (e) {
         if (kDebugMode) {
           debugPrint("🔘 StreamerCardView: Parent follow callback failed: $e");
         }
-        
+
         // For demo content, simulate successful follow
-        if (e.toString().contains('not-found') && widget.userId.startsWith('user')) {
+        if (e.toString().contains('not-found') &&
+            widget.userId.startsWith('user')) {
           if (mounted) {
             setState(() {
               _isFollowingOperation = false;
             });
-            
+
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Demo: Successfully followed user!'),
@@ -1263,36 +1299,38 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           }
           return; // Simulate success for demo content
         }
-        
+
         // Fall back to our own implementation for real errors
       }
     }
-    
+
     // Fallback: Handle follow ourselves if no parent callback or it failed
     try {
       if (kDebugMode) {
-        debugPrint("🔘 StreamerCardView: Starting Firebase follow operation using FollowsService");
+        debugPrint(
+            "🔘 StreamerCardView: Starting Firebase follow operation using FollowsService");
       }
-      
+
       // Use FollowsService to follow the user (this updates the 'follows' collection)
       final success = await _followsService.followUser(widget.userId);
-      
+
       if (!success) {
         throw Exception('Failed to follow user via FollowsService');
       }
-      
+
       if (kDebugMode) {
-        debugPrint("✅ StreamerCardView: Successfully followed user via FollowsService");
+        debugPrint(
+            "✅ StreamerCardView: Successfully followed user via FollowsService");
       }
-      
+
       // Create follow notification
       await _createFollowNotification();
-      
+
       if (mounted) {
         setState(() {
           _isFollowingOperation = false;
         });
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Successfully followed user!'),
@@ -1300,11 +1338,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             duration: Duration(seconds: 2),
           ),
         );
-        
+
         // Navigate to appropriate tab in NetworkView
         _navigateToAppropriateTab();
       }
-      
+
       if (kDebugMode) {
         debugPrint("✅ Successfully followed user: ${widget.userId}");
       }
@@ -1312,7 +1350,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       if (kDebugMode) {
         debugPrint("🔘 StreamerCardView: Error following user: $error");
       }
-      
+
       // Rollback optimistic update
       if (mounted) {
         setState(() {
@@ -1321,7 +1359,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _updateConnectionStatus();
         });
       }
-      
+
       // Show appropriate error message based on error type
       if (mounted) {
         String errorMessage = 'Failed to follow user';
@@ -1332,7 +1370,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         } else if (error.toString().contains('network')) {
           errorMessage = 'Network error';
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -1345,60 +1383,65 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Future<void> _handleUnfollow() async {
-    if (_isUnfollowingOperation) return; // Prevent multiple simultaneous operations
-    
+    if (_isUnfollowingOperation)
+      return; // Prevent multiple simultaneous operations
+
     if (kDebugMode) {
       debugPrint("🔘 StreamerCardView: Unfollowing user: ${widget.userId}");
-      debugPrint("🔘 StreamerCardView: Current state - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
+      debugPrint(
+          "🔘 StreamerCardView: Current state - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
     }
-    
+
     // Store original state for rollback
     final originalFollowingState = _isFollowing;
-    
+
     // Update local state optimistically
     setState(() {
       _isFollowing = false;
       _isUnfollowingOperation = true;
       _updateConnectionStatus();
     });
-    
+
     if (kDebugMode) {
-      debugPrint("🔘 StreamerCardView: After optimistic update - _isFollowing: $_isFollowing, _isConnected: $_isConnected");
+      debugPrint(
+          "🔘 StreamerCardView: After optimistic update - _isFollowing: $_isFollowing, _isConnected: $_isConnected");
     }
-    
+
     try {
       // Use FollowsService to unfollow the user (this updates the 'follows' collection)
       final success = await _followsService.unfollowUser(widget.userId);
-      
+
       if (!success) {
         throw Exception('Failed to unfollow user via FollowsService');
       }
-      
+
       if (kDebugMode) {
-        debugPrint("✅ StreamerCardView: Successfully unfollowed user via FollowsService");
+        debugPrint(
+            "✅ StreamerCardView: Successfully unfollowed user via FollowsService");
       }
-      
+
       // Remove follow notification
       await _removeFollowNotification();
-      
+
       if (kDebugMode) {
         debugPrint("✅ Successfully unfollowed user: ${widget.userId}");
-        debugPrint("🔘 StreamerCardView: Final state after unfollow - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
+        debugPrint(
+            "🔘 StreamerCardView: Final state after unfollow - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
       }
-      
+
       // Navigate to appropriate tab in NetworkView
       _navigateToAppropriateTab();
     } catch (error) {
       if (kDebugMode) {
-    // debugPrint("❌ Error unfollowing user: $error");
+        // debugPrint("❌ Error unfollowing user: $error");
       }
-      
+
       // Rollback optimistic update
       setState(() {
         _isFollowing = originalFollowingState;
         _updateConnectionStatus();
       });
-      
+
       // Show error to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1424,15 +1467,17 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   void _handleMessage() {
     if (kDebugMode) {
-      debugPrint("💬 StreamerCardView: _handleMessage called - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+      debugPrint(
+          "💬 StreamerCardView: _handleMessage called - _isConnected: $_isConnected, _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
     }
-    
+
     HapticFeedback.lightImpact();
-    
+
     // Check if users are connected (mutual follow)
     if (!_isConnected) {
       if (kDebugMode) {
-        debugPrint("💬 StreamerCardView: Users are not connected, showing error message");
+        debugPrint(
+            "💬 StreamerCardView: Users are not connected, showing error message");
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1445,14 +1490,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
       return;
     }
-    
+
     if (kDebugMode) {
-      debugPrint("💬 StreamerCardView: Users are connected, proceeding with message");
+      debugPrint(
+          "💬 StreamerCardView: Users are connected, proceeding with message");
     }
-    
+
     // Call the parent callback first
     widget.onMessage?.call(widget.userId);
-    
+
     // Navigate to chat view
     _navigateToChat();
   }
@@ -1462,13 +1508,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       // Import the necessary services
       final chatService = ChatService.shared;
       final currentUser = FirebaseAuth.instance.currentUser;
-      
+
       if (kDebugMode) {
-        debugPrint("💬 StreamerCardView: Starting chat navigation for user: ${widget.userId}");
+        debugPrint(
+            "💬 StreamerCardView: Starting chat navigation for user: ${widget.userId}");
         debugPrint("💬 StreamerCardView: Current user: ${currentUser?.uid}");
         debugPrint("💬 StreamerCardView: User data: $_userData");
       }
-      
+
       if (currentUser == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1497,29 +1544,34 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
       // Create or fetch chat
       final chat = await chatService.fetchOrCreateChat(widget.userId);
-      
+
       if (kDebugMode) {
         debugPrint("💬 StreamerCardView: Chat created/fetched: $chat");
       }
-      
+
       // Hide loading indicator
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-      
+
       if (chat != null && mounted) {
         // Get user data for the chat view
-        final otherUserName = _userData?['displayName'] ?? _userData?['username'] ?? 'Unknown User';
-        final otherUserAvatarURL = _userData?['avatarURL'] ?? _userData?['profileImageURL'] ?? '';
-        final otherUserIsOnline = _userData?['isOnline'] ?? _userData?['onlineStatus'] == 'online' ?? false;
-        
+        final otherUserName = _userData?['displayName'] ??
+            _userData?['username'] ??
+            'Unknown User';
+        final otherUserAvatarURL =
+            _userData?['avatarURL'] ?? _userData?['profileImageURL'] ?? '';
+        final otherUserIsOnline = _userData?['isOnline'] ??
+            _userData?['onlineStatus'] == 'online' ??
+            false;
+
         if (kDebugMode) {
           debugPrint("💬 StreamerCardView: Navigating to chat with:");
           debugPrint("💬 StreamerCardView: - Name: $otherUserName");
           debugPrint("💬 StreamerCardView: - Avatar: $otherUserAvatarURL");
           debugPrint("💬 StreamerCardView: - Online: $otherUserIsOnline");
         }
-        
+
         // Navigate to chat view
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -1542,9 +1594,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             ),
           );
         }
-        
+
         if (kDebugMode) {
-          debugPrint("💬 StreamerCardView: Failed to create/fetch chat - chat is null");
+          debugPrint(
+              "💬 StreamerCardView: Failed to create/fetch chat - chat is null");
         }
       }
     } catch (e) {
@@ -1552,7 +1605,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1562,7 +1615,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           ),
         );
       }
-      
+
       if (kDebugMode) {
         debugPrint("💬 StreamerCardView: Error starting conversation: $e");
       }
@@ -1571,13 +1624,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   void _navigateToAppropriateTab() {
     if (widget.onNavigateToTab == null) return;
-    
+
     // Determine which tab to navigate to based on current relationship state
     if (_isConnected) {
       // Both users follow each other - go to Connections tab
       widget.onNavigateToTab!('connections');
       if (kDebugMode) {
-        debugPrint("🔘 StreamerCardView: Navigating to Connections tab (mutual follow)");
+        debugPrint(
+            "🔘 StreamerCardView: Navigating to Connections tab (mutual follow)");
       }
     } else if (_isFollowing) {
       // Current user follows the other user - go to Following tab
@@ -1595,13 +1649,14 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       // No relationship - go to Following tab (where they'll be added)
       widget.onNavigateToTab!('following');
       if (kDebugMode) {
-        debugPrint("🔘 StreamerCardView: Navigating to Following tab (new follow)");
+        debugPrint(
+            "🔘 StreamerCardView: Navigating to Following tab (new follow)");
       }
     }
   }
 
   // MARK: - Video Navigation
-  
+
   void _navigateToPlayerScreen(ProfileVideoFeedType feedType) {
     try {
       // For now, we'll navigate to a simple player screen
@@ -1647,20 +1702,20 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   const SizedBox(height: 8),
                   Text(
                     'User: $displayName',
-            style: const TextStyle(
+                    style: const TextStyle(
                       color: Colors.white70,
-              fontSize: 16,
+                      fontSize: 16,
                     ),
                   ),
                 ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
     } catch (e) {
       if (kDebugMode) {
-    // debugPrint("❌ Error navigating to player screen: $e");
+        // debugPrint("❌ Error navigating to player screen: $e");
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1670,7 +1725,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       );
     }
   }
-  
+
   String _getFeedTypeTitle(ProfileVideoFeedType feedType) {
     switch (feedType) {
       case ProfileVideoFeedType.videos:
@@ -1683,35 +1738,37 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   // MARK: - Helper Methods for Follow/Unfollow Operations
-  
+
   Future<void> _createFollowNotification() async {
     try {
       if (kDebugMode) {
         debugPrint("🔘 StreamerCardView: Creating follow notification");
       }
-      
-      final notificationDoc = await FirebaseFirestore.instance
-          .collection('notifications')
-          .add({
+
+      final notificationDoc =
+          await FirebaseFirestore.instance.collection('notifications').add({
         'userId': widget.userId,
         'type': 'follow',
         'fromUserId': widget.currentUserId!,
-        'fromUserName': 'Current User', // User name placeholder - actual name retrieval to be implemented
+        'fromUserName':
+            'Current User', // User name placeholder - actual name retrieval to be implemented
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
       });
-      
+
       if (kDebugMode) {
-        debugPrint("✅ StreamerCardView: Successfully created follow notification: ${notificationDoc.id}");
+        debugPrint(
+            "✅ StreamerCardView: Successfully created follow notification: ${notificationDoc.id}");
       }
     } catch (error) {
       if (kDebugMode) {
-        debugPrint("❌ StreamerCardView: Error creating follow notification: $error");
+        debugPrint(
+            "❌ StreamerCardView: Error creating follow notification: $error");
       }
       // Don't throw here - notification is not critical for follow operation
     }
   }
-  
+
   Future<void> _removeFollowNotification() async {
     try {
       final notificationQuery = await FirebaseFirestore.instance
@@ -1720,40 +1777,32 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           .where('type', isEqualTo: 'follow')
           .where('fromUserId', isEqualTo: widget.currentUserId!)
           .get();
-      
+
       for (final doc in notificationQuery.docs) {
         await doc.reference.delete();
       }
     } catch (error) {
       if (kDebugMode) {
-    // debugPrint("❌ Error removing follow notification: $error");
+        // debugPrint("❌ Error removing follow notification: $error");
       }
       // Don't throw here - notification cleanup is not critical
     }
   }
 
-
-
-
-
-
-
-
-
   Widget _buildContentTabs() {
     return Container(
       height: 56,
       margin: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.1),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-          color: Colors.white.withValues(alpha:0.15),
-            width: 1,
-          ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.15),
+          width: 1,
         ),
-        child: Row(
-          children: [
+      ),
+      child: Row(
+        children: [
           _buildTab('Video', 0),
           _buildTab('Favorites', 1),
           _buildTab('Tagged', 2),
@@ -1764,33 +1813,37 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Widget _buildTab(String label, int index) {
     final isSelected = _selectedTabIndex == index;
-    
+
     return Expanded(
       child: GestureDetector(
-      onTap: () {
+        onTap: () {
           setState(() {
             _selectedTabIndex = index;
           });
-      },
+        },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeInOut,
-        margin: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-            color: isSelected ? Colors.white.withValues(alpha:0.08) : Colors.transparent,
+          margin: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: isSelected
                 ? Border.all(
-                    color: Colors.white.withValues(alpha:0.25),
+                    color: Colors.white.withValues(alpha: 0.25),
                     width: 1,
                   )
                 : null,
-        ),
-        child: Center(
+          ),
+          child: Center(
             child: AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
-            style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white.withValues(alpha:0.7),
+              style: TextStyle(
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.7),
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -1836,7 +1889,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         );
       default:
         return const Center(
-        child: Text(
+          child: Text(
             'No content available',
             style: TextStyle(color: Colors.white70),
           ),
@@ -1875,7 +1928,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                     ? Image.network(
                         avatarURL!,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
                           Icons.person,
                           color: Colors.white,
                           size: 48,
@@ -1894,7 +1948,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         Consumer(
           builder: (context, ref, child) {
             final statusAsync = ref.watch(userStatusProvider(widget.userId));
-            
+
             return statusAsync.when(
               data: (presence) {
                 if (presence.status != UserStatus.offline) {
@@ -1910,7 +1964,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                         border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: _getStatusColor(presence.status).withValues(alpha:0.5),
+                            color: _getStatusColor(presence.status)
+                                .withValues(alpha: 0.5),
                             blurRadius: 6,
                           ),
                         ],
@@ -1953,10 +2008,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-
-
-
-
   Widget _buildBackView() {
     return Container(
       width: double.infinity,
@@ -1977,32 +2028,42 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _buildHeader(),
           // Main content
           Padding(
-            padding: const EdgeInsets.only(top: 80), // Space for the header buttons
+            padding:
+                const EdgeInsets.only(top: 80), // Space for the header buttons
             child: CustomScrollView(
-                slivers: [
-                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              slivers: [
+                const SliverToBoxAdapter(child: SizedBox(height: 12)),
                 SliverToBoxAdapter(child: _buildIdentity()),
                 const SliverToBoxAdapter(child: SizedBox(height: 12)),
                 SliverToBoxAdapter(child: _buildTags()),
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                SliverToBoxAdapter(child: _buildSectionHeader('Bio', _showBio, () => setState(() => _showBio = !_showBio))),
+                SliverToBoxAdapter(
+                    child: _buildSectionHeader('Bio', _showBio,
+                        () => setState(() => _showBio = !_showBio))),
                 if (_showBio) SliverToBoxAdapter(child: _buildBioBody()),
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                SliverToBoxAdapter(child: _buildSectionHeader('Platforms', _showPlatforms, () => setState(() => _showPlatforms = !_showPlatforms))),
-                if (_showPlatforms) SliverToBoxAdapter(child: _buildPlatforms(_platforms)),
+                SliverToBoxAdapter(
+                    child: _buildSectionHeader(
+                        'Platforms',
+                        _showPlatforms,
+                        () =>
+                            setState(() => _showPlatforms = !_showPlatforms))),
+                if (_showPlatforms)
+                  SliverToBoxAdapter(child: _buildPlatforms(_platforms)),
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                SliverToBoxAdapter(child: _buildSectionHeader('Calendar', _showCalendar, () => setState(() => _showCalendar = !_showCalendar))),
-                if (_showCalendar) SliverToBoxAdapter(child: _buildCalendar(_calendarEvents)),
+                SliverToBoxAdapter(
+                    child: _buildSectionHeader('Calendar', _showCalendar,
+                        () => setState(() => _showCalendar = !_showCalendar))),
+                if (_showCalendar)
+                  SliverToBoxAdapter(child: _buildCalendar(_calendarEvents)),
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                ],
-              ),
+              ],
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
   }
-
-
 
   Widget _buildHeader() {
     return SafeArea(
@@ -2047,7 +2108,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 Text(
                   '@${_userData?['username'] ?? 'username'}',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha:0.75),
+                    color: Colors.white.withValues(alpha: 0.75),
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     height: 1.0,
@@ -2061,56 +2122,58 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-
   Widget _buildTags() {
     final hashtagsData = _userData?['hashtags'];
     List<String> hashtags = [];
-    
+
     if (hashtagsData != null) {
       if (hashtagsData is List) {
         hashtags = hashtagsData.map((tag) => tag.toString()).toList();
       } else if (hashtagsData is String) {
         // If it's a string, split by comma or space
-        hashtags = hashtagsData.split(RegExp(r'[,\s]+')).where((tag) => tag.isNotEmpty).toList();
+        hashtags = hashtagsData
+            .split(RegExp(r'[,\s]+'))
+            .where((tag) => tag.isNotEmpty)
+            .toList();
       }
     }
-    
+
     if (hashtags.isEmpty) return const SizedBox.shrink();
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
         children: hashtags.map((hashtag) {
-                final isSelected = _selectedHashtag == hashtag;
+          final isSelected = _selectedHashtag == hashtag;
           return GestureDetector(
-                    onTap: () {
-                      setState(() {
+            onTap: () {
+              setState(() {
                 _selectedHashtag = isSelected ? "" : hashtag;
-                      });
-                    },
-                    child: Container(
+              });
+            },
+            child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: isSelected ? _selectedHashtagGradient : null,
-                color: isSelected ? null : Colors.white.withValues(alpha:0.1),
+                color: isSelected ? null : Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                  color: Colors.white.withValues(alpha:0.2),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.2),
                   width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        '#$hashtag',
+                ),
+              ),
+              child: Text(
+                '#$hashtag',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                );
+                ),
+              ),
+            ),
+          );
         }).toList(),
       ),
     );
@@ -2121,45 +2184,46 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Text(
         _userData?['bio'] ?? 'No bio available',
-            style: TextStyle(
+        style: TextStyle(
           color: Colors.white.withValues(alpha: 0.75),
-              fontSize: 16,
+          fontSize: 16,
           fontWeight: FontWeight.w600,
-            ),
+        ),
       ),
     );
   }
 
   Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
-    debugPrint('🔗 _buildPlatforms: Building platforms section with ${platforms.length} platforms');
+    debugPrint(
+        '🔗 _buildPlatforms: Building platforms section with ${platforms.length} platforms');
     if (platforms.isEmpty) {
       debugPrint('🔗 _buildPlatforms: No platforms found, showing empty state');
-    return Padding(
+      return Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
         child: Text(
           'No platforms added yet.',
-                  style: TextStyle(
+          style: TextStyle(
             color: Colors.white.withValues(alpha: 0.6),
             fontSize: 16,
             fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                );
+          ),
+        ),
+      );
     }
-    
+
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-                child: Column(
-                  children: [
+      child: Column(
+        children: [
           for (final platform in platforms)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
               child: _ClickablePlatformRow(
                 platform: platform,
                 onTap: () => _launchPlatformUrl(platform),
-                      ),
-                    ),
-                  ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -2179,57 +2243,54 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             // Show first 5 events
             ...events.take(5).map((event) => _buildCalendarRow(event)),
             // Show "+X more..." if there are more than 5 events
-                            if (events.length > 5) ...[
-                              const SizedBox(height: 8),
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8),
-                                child: Text(
-                                  '+${events.length - 5} more…',
+            if (events.length > 5) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  '+${events.length - 5} more…',
                   style: const TextStyle(
                     color: Color(0x80FFFFFF),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title, bool isExpanded, VoidCallback onTap) {
+  Widget _buildSectionHeader(
+      String title, bool isExpanded, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
         onTap: onTap,
-            child: Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
+          children: [
+            Text(
               title,
               style: const TextStyle(
-                                        color: Colors.white,
+                color: Colors.white,
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
               ),
             ),
             Icon(
-              isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+              isExpanded
+                  ? Icons.keyboard_arrow_down
+                  : Icons.keyboard_arrow_right,
               color: Colors.white.withValues(alpha: 0.9),
-                    size: 24,
-                ),
-              ],
+              size: 24,
             ),
+          ],
+        ),
       ),
     );
   }
-
-
-
-
-
-
 
   Widget _buildCalendarRow(CalendarEvent event) {
     return Container(
@@ -2298,8 +2359,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             GestureDetector(
               onTap: () => _toggleBookmark(event),
               child: Icon(
-                _bookmarkedEventIds.contains(event.id) 
-                    ? Icons.bookmark 
+                _bookmarkedEventIds.contains(event.id)
+                    ? Icons.bookmark
                     : Icons.bookmark_border,
                 color: Colors.white,
                 size: 20,
@@ -2311,14 +2372,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     );
   }
 
-
-
-
-
   String _formatEventTime(DateTime date) {
     final now = DateTime.now();
     final difference = date.difference(now).inDays;
-    
+
     if (difference == 0) {
       return 'Today · ${_formatTime(date)}';
     } else if (difference == 1) {
@@ -2332,8 +2389,18 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   String _formatDate(DateTime date) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return '${months[date.month - 1]} ${date.day}';
   }
@@ -2346,7 +2413,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     final displayMinute = minute.toString().padLeft(2, '0');
     return '$displayHour:$displayMinute $period';
   }
-
 
   Color _getStatusColor(UserStatus status) {
     switch (status) {
@@ -2371,20 +2437,26 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         final platformsData = _userData!['platforms'];
         debugPrint('🔗 _loadPlatforms: Platforms data: $platformsData');
         if (platformsData is List) {
-          debugPrint('🔗 _loadPlatforms: Platforms is a List with ${platformsData.length} items');
+          debugPrint(
+              '🔗 _loadPlatforms: Platforms is a List with ${platformsData.length} items');
           setState(() {
-            _platforms = platformsData.map((platform) {
-              if (platform is Map<String, dynamic>) {
-                return {
-                  'id': platform['id']?.toString() ?? '',
-                  'type': platform['type']?.toString() ?? '',
-                  'username': platform['username']?.toString() ?? '',
-                  'followers': (platform['followers'] as num?)?.toInt() ?? 0,
-                  'url': platform['url']?.toString(),
-                };
-              }
-              return null;
-            }).where((platform) => platform != null).cast<Map<String, dynamic>>().toList();
+            _platforms = platformsData
+                .map((platform) {
+                  if (platform is Map<String, dynamic>) {
+                    return {
+                      'id': platform['id']?.toString() ?? '',
+                      'type': platform['type']?.toString() ?? '',
+                      'username': platform['username']?.toString() ?? '',
+                      'followers':
+                          (platform['followers'] as num?)?.toInt() ?? 0,
+                      'url': platform['url']?.toString(),
+                    };
+                  }
+                  return null;
+                })
+                .where((platform) => platform != null)
+                .cast<Map<String, dynamic>>()
+                .toList();
           });
         } else {
           // If platforms is not a list, initialize as empty
@@ -2394,7 +2466,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
       } catch (e) {
         if (kDebugMode) {
-    // debugPrint('Error loading platforms: $e');
+          // debugPrint('Error loading platforms: $e');
         }
         setState(() {
           _platforms = [];
@@ -2409,28 +2481,32 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         final eventsData = _userData!['calendarEvents'];
         if (eventsData is List) {
           setState(() {
-            _calendarEvents = eventsData.map((eventData) {
-              if (eventData is Map<String, dynamic> && 
-                  eventData['id'] != null && 
-                  eventData['title'] != null && 
-                  eventData['description'] != null && 
-                  eventData['date'] != null) {
-                try {
-                  return CalendarEvent(
-                    id: eventData['id'] as String,
-                    title: eventData['title'] as String,
-                    description: eventData['description'] as String,
-                    date: (eventData['date'] as Timestamp).toDate(),
-                  );
-                } catch (e) {
-                  if (kDebugMode) {
-    // debugPrint('Error creating CalendarEvent: $e');
+            _calendarEvents = eventsData
+                .map((eventData) {
+                  if (eventData is Map<String, dynamic> &&
+                      eventData['id'] != null &&
+                      eventData['title'] != null &&
+                      eventData['description'] != null &&
+                      eventData['date'] != null) {
+                    try {
+                      return CalendarEvent(
+                        id: eventData['id'] as String,
+                        title: eventData['title'] as String,
+                        description: eventData['description'] as String,
+                        date: (eventData['date'] as Timestamp).toDate(),
+                      );
+                    } catch (e) {
+                      if (kDebugMode) {
+                        // debugPrint('Error creating CalendarEvent: $e');
+                      }
+                      return null;
+                    }
                   }
                   return null;
-                }
-              }
-              return null;
-            }).where((event) => event != null).cast<CalendarEvent>().toList();
+                })
+                .where((event) => event != null)
+                .cast<CalendarEvent>()
+                .toList();
           });
         } else {
           // If calendarEvents is not a list, initialize as empty
@@ -2440,7 +2516,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         }
       } catch (e) {
         if (kDebugMode) {
-    // debugPrint('Error loading calendar events: $e');
+          // debugPrint('Error loading calendar events: $e');
         }
         setState(() {
           _calendarEvents = [];
@@ -2452,24 +2528,25 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void _launchPlatformUrl(Map<String, dynamic> platform) async {
     final url = platform['url'] as String?;
     debugPrint('🔗 StreamerCardView: Attempting to launch URL: $url');
-    
+
     if (url != null && url.isNotEmpty) {
       try {
         final uri = Uri.parse(url);
         debugPrint('🔗 StreamerCardView: Parsed URI: $uri');
-        
+
         final canLaunch = await canLaunchUrl(uri);
         debugPrint('🔗 StreamerCardView: Can launch URL: $canLaunch');
-        
+
         if (canLaunch) {
           debugPrint('🔗 StreamerCardView: Launching URL...');
           await launchUrl(uri, mode: LaunchMode.externalApplication);
           debugPrint('🔗 StreamerCardView: URL launched successfully');
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Opening ${_getPlatformDisplayName(platform['type'])}...'),
+                content: Text(
+                    'Opening ${_getPlatformDisplayName(platform['type'])}...'),
                 backgroundColor: Colors.green,
                 duration: const Duration(seconds: 2),
               ),
@@ -2504,24 +2581,36 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {
-      case 'twitch': return 'Twitch';
-      case 'youtube': return 'YouTube';
-      case 'kick': return 'Kick';
-      case 'tiktok': return 'TikTok';
-      case 'facebook': return 'Facebook';
-      case 'bluesky': return 'Bluesky';
-      case 'twitter': return 'Twitter';
-      case 'instagram': return 'Instagram';
-      case 'reddit': return 'Reddit';
-      case 'discord': return 'Discord';
-      case 'other': return 'Website';
-      default: return platformType;
+      case 'twitch':
+        return 'Twitch';
+      case 'youtube':
+        return 'YouTube';
+      case 'kick':
+        return 'Kick';
+      case 'tiktok':
+        return 'TikTok';
+      case 'facebook':
+        return 'Facebook';
+      case 'bluesky':
+        return 'Bluesky';
+      case 'twitter':
+        return 'Twitter';
+      case 'instagram':
+        return 'Instagram';
+      case 'reddit':
+        return 'Reddit';
+      case 'discord':
+        return 'Discord';
+      case 'other':
+        return 'Website';
+      default:
+        return platformType;
     }
   }
 
   void _showShareSheet(BuildContext context) {
     HapticFeedback.lightImpact();
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2538,7 +2627,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       ),
     );
   }
-
 }
 
 // MARK: - Calendar Event Sheet
@@ -2594,21 +2682,23 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               labelText: 'Event Title',
-              labelStyle: TextStyle(color: Colors.white.withValues(alpha:0.7)),
+              labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Color(0xFF9248D2)),
               ),
               filled: true,
-              fillColor: Colors.white.withValues(alpha:0.1),
+              fillColor: Colors.white.withValues(alpha: 0.1),
             ),
           ),
           const SizedBox(height: 16),
@@ -2617,21 +2707,23 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               labelText: 'Description (Optional)',
-              labelStyle: TextStyle(color: Colors.white.withValues(alpha:0.7)),
+              labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.white.withValues(alpha:0.3)),
+                borderSide:
+                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Color(0xFF9248D2)),
               ),
               filled: true,
-              fillColor: Colors.white.withValues(alpha:0.1),
+              fillColor: Colors.white.withValues(alpha: 0.1),
             ),
             maxLines: 3,
           ),
@@ -2644,9 +2736,10 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white.withValues(alpha:0.3)),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3)),
                       borderRadius: BorderRadius.circular(8),
-                      color: Colors.white.withValues(alpha:0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2654,7 +2747,7 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                         Text(
                           'Date',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha:0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 12,
                           ),
                         ),
@@ -2675,9 +2768,10 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white.withValues(alpha:0.3)),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.3)),
                       borderRadius: BorderRadius.circular(8),
-                      color: Colors.white.withValues(alpha:0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2685,7 +2779,7 @@ class _CalendarEventSheetState extends State<CalendarEventSheet> {
                         Text(
                           'Time',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha:0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 12,
                           ),
                         ),
@@ -2827,7 +2921,12 @@ class _SmallAvatar extends StatelessWidget {
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: SweepGradient(
-          colors: [Color(0xFFFF6CAB), Color(0xFF8E54E9), Color(0xFF3D99F7), Color(0xFFFF6CAB)],
+          colors: [
+            Color(0xFFFF6CAB),
+            Color(0xFF8E54E9),
+            Color(0xFF3D99F7),
+            Color(0xFFFF6CAB)
+          ],
         ),
       ),
       child: Center(
@@ -2864,7 +2963,8 @@ class _ClickablePlatformRow extends StatelessWidget {
     final username = platform['username'] as String? ?? '';
     // final url = platform['url'] as String? ?? '';
 
-    debugPrint('🔗 _ClickablePlatformRow: Building platform card - type: $platformType, username: $username');
+    debugPrint(
+        '🔗 _ClickablePlatformRow: Building platform card - type: $platformType, username: $username');
 
     return GestureDetector(
       onTap: () {
@@ -2921,7 +3021,6 @@ class _ClickablePlatformRow extends StatelessWidget {
       ),
     );
   }
-
 
   String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {

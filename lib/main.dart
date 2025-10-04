@@ -14,28 +14,29 @@ import 'services/firestore_optimization_service.dart';
 import 'services/firestore_cache_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/performance_emergency_service.dart';
+import 'services/global_post_count_fix.dart';
 import 'widgets/ios_minimal_startup.dart';
 import 'providers/service_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // MINIMAL STARTUP: Initialize only essential services synchronously
   NetworkConfigService.initialize();
   IOSMemoryService.initialize();
-  
+
   // Initialize emergency performance monitoring
   PerformanceEmergencyService().initialize();
-  
+
   // Initialize Firebase immediately (required for app functionality)
   await FirebaseIOSService.initialize();
-  
+
   // Initialize performance optimizations immediately
   _initializePerformanceOptimizations();
-  
+
   // Run app immediately with loading screen
   runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
-  
+
   // Initialize remaining services in background after app starts
   _initializeBackgroundServices();
 }
@@ -47,18 +48,21 @@ void _initializeBackgroundServices() async {
     await FirestoreOptimizationService.initialize();
     await FirestoreCacheService.initialize();
     await PushNotificationService().initialize();
-    
+
+    // Fix post counts for all users globally (run once per app startup)
+    await GlobalPostCountFix().fixAllUsersPostCounts();
+
     // Initialize Google Services fix in background
     await GoogleServicesFix.initialize();
-    
+
     // Initialize Unified Avatar Service in background (non-blocking)
     nav.UnifiedAvatarService().initialize().catchError((e) {
       debugPrint('⚠️ Avatar service init failed (non-critical): $e');
     });
-    
+
     // Initialize production services in background
     await _initializeProductionServices();
-    
+
     debugPrint('✅ All background services initialized');
   } catch (e) {
     debugPrint('❌ Background service initialization failed: $e');
@@ -69,10 +73,10 @@ Future<void> _initializeProductionServices() async {
   try {
     // Initialize analytics and crashlytics
     await AnalyticsService.instance.initialize();
-    
+
     // Initialize error handling
     ErrorHandlerService.instance.initialize();
-    
+
     debugPrint('✅ Production services initialized successfully');
   } catch (e) {
     debugPrint('❌ Error initializing production services: $e');
@@ -82,10 +86,10 @@ Future<void> _initializeProductionServices() async {
 void _initializePerformanceOptimizations() {
   // Enable performance optimizations
   WidgetsBinding.instance.addObserver(PerformanceObserver());
-  
+
   // Initialize memory optimization
   MemoryOptimizationService().optimizeMemory();
-  
+
   debugPrint('✅ Performance optimizations initialized');
 }
 
@@ -93,7 +97,7 @@ class PerformanceObserver extends WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    
+
     switch (state) {
       case AppLifecycleState.paused:
         // Optimize memory when app is paused
@@ -121,7 +125,7 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Initialize the EventTriggerService provider to ensure it's set up
     ref.read(eventTriggerServiceProvider);
-    
+
     return MaterialApp(
       title: 'StreamersTip',
       navigatorKey: nav.NavigationService.navigatorKey,

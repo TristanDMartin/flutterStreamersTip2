@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../models/streamer_card.dart';
 import '../services/following_service.dart';
+import '../services/global_post_count_fix.dart';
 import '../widgets/chat_view_optimized.dart';
 import '../models/chat.dart' as app_chat;
 import 'online_status_indicator.dart';
@@ -92,6 +94,9 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       _selectedHashtag = hashtags.first;
     }
 
+    // Fix post count for this user automatically
+    _fixUserPostCountIfNeeded();
+
     // TEMPORARY: Disable ALL async operations to prevent app backgrounding // cspell:ignore backgrounding
     // _checkConnectionStatus();
     // _loadCalendarEvents();
@@ -113,6 +118,37 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   bool get isOwner {
     final currentUserId = widget.currentUserId ?? '';
     return currentUserId == _currentStreamerCard.id;
+  }
+
+  /// Fix post count for this user using the global fix service
+  Future<void> _fixUserPostCountIfNeeded() async {
+    try {
+      if (kDebugMode) {
+        debugPrint(
+            '🌍 STREAMER CARD: Auto-fixing post count for user ${widget.displayStreamer.id}');
+      }
+
+      final globalFix = GlobalPostCountFix();
+      final success =
+          await globalFix.fixUserPostCount(widget.displayStreamer.id);
+
+      if (success) {
+        if (kDebugMode) {
+          debugPrint(
+              '🌍 STREAMER CARD: Successfully fixed post count for user ${widget.displayStreamer.id}');
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint(
+              '🌍 STREAMER CARD: Failed to fix post count for user ${widget.displayStreamer.id}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            '🌍 STREAMER CARD: Error fixing post count for user ${widget.displayStreamer.id}: $e');
+      }
+    }
   }
 
   @override
