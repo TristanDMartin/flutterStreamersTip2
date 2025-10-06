@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'post_counter_service.dart';
 
 class DraftsService {
   static final DraftsService _instance = DraftsService._internal();
@@ -21,21 +22,19 @@ class DraftsService {
           .get();
 
       final List<Map<String, dynamic>> drafts = [];
-      
+
       for (final doc in snapshot.docs) {
         final draftData = doc.data();
         final videoId = draftData['videoId'] as String?;
-        
+
         if (videoId != null) {
           // Get the actual video data
-          final videoDoc = await _firestore
-              .collection('videos')
-              .doc(videoId)
-              .get();
-          
+          final videoDoc =
+              await _firestore.collection('videos').doc(videoId).get();
+
           if (videoDoc.exists) {
             final videoData = videoDoc.data()!;
-            
+
             // Create a draft object with video data
             final draft = {
               'id': videoId,
@@ -50,12 +49,12 @@ class DraftsService {
               'hashtags': videoData['hashtags'] ?? <String>[],
               'addedAt': draftData['addedAt'],
             };
-            
+
             drafts.add(draft);
           }
         }
       }
-      
+
       return drafts;
     } catch (e) {
       debugPrint('Error getting user drafts: $e');
@@ -67,7 +66,7 @@ class DraftsService {
   Future<List<Map<String, dynamic>>> getCurrentUserDrafts() async {
     final user = _auth.currentUser;
     if (user == null) return [];
-    
+
     return getUserDrafts(user.uid);
   }
 
@@ -76,6 +75,18 @@ class DraftsService {
     try {
       final user = _auth.currentUser;
       if (user == null) return false;
+
+      // Check if video was published before deleting
+      final videoDoc = await _firestore.collection('videos').doc(videoId).get();
+
+      bool wasPublished = false;
+      if (videoDoc.exists) {
+        final videoData = videoDoc.data()!;
+        final status = videoData['status'] as String? ?? 'draft';
+        final privacy = videoData['privacy'] as String? ?? 'private';
+        wasPublished = status == 'published' &&
+            (privacy == 'public' || privacy == 'followers');
+      }
 
       // Delete from drafts collection
       await _firestore
@@ -86,10 +97,20 @@ class DraftsService {
           .delete();
 
       // Delete the video document
-      await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .delete();
+      await _firestore.collection('videos').doc(videoId).delete();
+
+      // Decrement post count if it was published
+      if (wasPublished) {
+        try {
+          final postCounterService = PostCounterService();
+          await postCounterService.decrementPostCount(user.uid,
+              postId: videoId);
+          debugPrint(
+              '✅ PostCounterService decremented for deleted published video');
+        } catch (e) {
+          debugPrint('⚠️ Failed to decrement PostCounterService: $e');
+        }
+      }
 
       return true;
     } catch (e) {
@@ -105,10 +126,7 @@ class DraftsService {
       if (user == null) return false;
 
       // Update video status to published
-      await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .update({
+      await _firestore.collection('videos').doc(videoId).update({
         'status': 'published',
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -122,18 +140,26 @@ class DraftsService {
           .delete();
 
       // Add to appropriate feeds based on privacy
-      final videoDoc = await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .get();
-      
+      final videoDoc = await _firestore.collection('videos').doc(videoId).get();
+
       if (videoDoc.exists) {
         final videoData = videoDoc.data()!;
         final privacy = videoData['privacy'] as String? ?? 'Everyone';
         final category = videoData['metadata']?['category'] as String?;
-        
+
         // Add to feeds (reuse the logic from VideoUploadService)
         await _addToFeeds(videoId, privacy, user.uid, category: category);
+
+        // Update PostCounterService for accurate post count
+        try {
+          final postCounterService = PostCounterService();
+          await postCounterService.incrementPostCount(user.uid,
+              postId: videoId);
+          debugPrint('✅ PostCounterService updated for published draft');
+        } catch (e) {
+          debugPrint('⚠️ Failed to update PostCounterService for draft: $e');
+          // Continue anyway, this is not critical
+        }
       }
 
       return true;
@@ -144,7 +170,8 @@ class DraftsService {
   }
 
   /// Add video to appropriate feeds based on privacy setting
-  Future<void> _addToFeeds(String videoId, String privacy, String userId, {String? category}) async {
+  Future<void> _addToFeeds(String videoId, String privacy, String userId,
+      {String? category}) async {
     try {
       switch (privacy) {
         case 'Everyone':
@@ -160,7 +187,7 @@ class DraftsService {
             'privacy': privacy,
             'addedAt': FieldValue.serverTimestamp(),
           });
-          
+
           // Add to following feed
           await _firestore
               .collection('feeds')

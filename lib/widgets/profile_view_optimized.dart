@@ -143,6 +143,44 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     }
   }
 
+  /// Manually reconcile post count using PostCounterService
+  Future<void> _reconcilePostCount() async {
+    try {
+      debugPrint(
+          '🔄 PROFILE: Manually reconciling post count for user ${widget.user.id}');
+
+      final postCounterService = PostCounterService();
+      final reconciledCount =
+          await postCounterService.reconcilePostCount(widget.user.id);
+
+      debugPrint('✅ PROFILE: Reconciled post count: $reconciledCount');
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Post count synced: $reconciledCount posts'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Refresh stats to show updated count
+        _loadStats();
+      }
+    } catch (e) {
+      debugPrint('❌ PROFILE: Error reconciling post count: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error syncing post count: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _loadStats() {
     if (widget.user.id.isEmpty) {
       return;
@@ -729,14 +767,33 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
           );
         }
 
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        return Column(
           children: [
-            _buildStatItem('Posts', _postsCount.toString()),
-            const SizedBox(width: 54),
-            _buildStatItem('Followers', _followersCount.toString()),
-            const SizedBox(width: 54),
-            _buildStatItem('Following', _followingCount.toString()),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildStatItem('Posts', _postsCount.toString()),
+                const SizedBox(width: 54),
+                _buildStatItem('Followers', _followersCount.toString()),
+                const SizedBox(width: 54),
+                _buildStatItem('Following', _followingCount.toString()),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Debug button to manually reconcile post count
+            if (widget.isCurrentUser)
+              ElevatedButton(
+                onPressed: () async {
+                  await _reconcilePostCount();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                child: const Text('🔄 Sync Post Count'),
+              ),
           ],
         );
       },

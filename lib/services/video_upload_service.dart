@@ -8,6 +8,7 @@ import 'enhanced_error_handling_service.dart';
 import 'video_processing_service.dart';
 import 'logging_service.dart';
 import 'tag_mention_service.dart';
+import 'post_counter_service.dart';
 
 class VideoUploadResult {
   final bool success;
@@ -188,6 +189,16 @@ class VideoUploadService {
         debugPrint('✅ User video count updated');
       } catch (e) {
         debugPrint('⚠️ Failed to update user video count: $e');
+        // Continue anyway, this is not critical
+      }
+
+      // 7.5. Update PostCounterService for accurate post count
+      try {
+        final postCounterService = PostCounterService();
+        await postCounterService.incrementPostCount(userId, postId: videoId);
+        debugPrint('✅ PostCounterService updated for published video');
+      } catch (e) {
+        debugPrint('⚠️ Failed to update PostCounterService: $e');
         // Continue anyway, this is not critical
       }
 
