@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:math' as math;
-import '../services/enhanced_like_service.dart';
+import '../services/tiktok_like_service.dart';
 
 /// Enhanced Like Button with TikTok-style animations and persistence
 ///
@@ -56,11 +57,47 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
     _isLiked = widget.initialIsLiked;
     _likeCount = widget.initialLikeCount;
 
+    debugPrint(
+        '🚀 EnhancedLikeButton: initState() - videoId: ${widget.videoId}, initialIsLiked: ${widget.initialIsLiked}, initialLikeCount: ${widget.initialLikeCount}');
+
     _initializeAnimations();
 
     // Load persistent state after initialization
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint(
+          '🔄 EnhancedLikeButton: addPostFrameCallback triggered for videoId: ${widget.videoId}');
       _loadPersistentState();
+      _startListeningToServiceChanges();
+    });
+  }
+
+  /// Start listening to TikTokLikeService state changes
+  void _startListeningToServiceChanges() {
+    // Check for state changes periodically
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (mounted) {
+        final tiktokLikeService = TikTokLikeService();
+        final currentState = tiktokLikeService.getLikeState(widget.videoId);
+
+        // Update local state if it differs from service state
+        if (_isLiked != currentState.isLiked ||
+            _likeCount != currentState.likeCount) {
+          debugPrint(
+              '🔄 EnhancedLikeButton: State changed detected - videoId: ${widget.videoId}, old _isLiked: $_isLiked, new isLiked: ${currentState.isLiked}, old _likeCount: $_likeCount, new likeCount: ${currentState.likeCount}');
+
+          if (mounted) {
+            setState(() {
+              _isLiked = currentState.isLiked;
+              _likeCount = currentState.likeCount;
+            });
+            debugPrint(
+                '✅ EnhancedLikeButton: Local state updated - _isLiked: $_isLiked, _likeCount: $_likeCount');
+          }
+        }
+        return mounted; // Continue while widget is mounted
+      }
+      return false; // Stop if widget is disposed
     });
   }
 
@@ -133,19 +170,26 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   /// Load persistent state from local storage
   Future<void> _loadPersistentState() async {
     try {
-      final enhancedLikeService = EnhancedLikeService();
-      final isLiked = await enhancedLikeService.isVideoLiked(widget.videoId);
-      final likeCount = await enhancedLikeService.getLikeCount(widget.videoId);
+      final tiktokLikeService = TikTokLikeService();
+      final state = tiktokLikeService.getLikeState(widget.videoId);
+      final isLiked = state.isLiked;
+      final likeCount = state.likeCount;
+
+      debugPrint(
+          '💖 EnhancedLikeButton: Loading persistent state - videoId: ${widget.videoId}, isLiked: $isLiked, likeCount: $likeCount');
 
       if (mounted) {
         setState(() {
           _isLiked = isLiked;
           _likeCount = likeCount;
         });
+        debugPrint(
+            '💖 EnhancedLikeButton: Set local _isLiked to: $_isLiked, _likeCount to: $_likeCount');
       }
     } catch (e) {
+      debugPrint(
+          '❌ EnhancedLikeButton: Error loading persistent like state: $e');
       // Fallback to initial values if loading fails
-      debugPrint('Error loading persistent like state: $e');
     }
   }
 
@@ -223,77 +267,89 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   /// Perform background sync with server
   Future<void> _performBackgroundSync() async {
     try {
-      final enhancedLikeService = EnhancedLikeService();
+      final tiktokLikeService = TikTokLikeService();
+      final currentUser = FirebaseAuth.instance.currentUser;
 
-      // Sync with server using enhanced service
-      final result = await enhancedLikeService.toggleLike(widget.videoId,
-          source: widget.source ?? 'button');
-
-      if (result != LikeResult.success) {
-        debugPrint('Background sync failed: $result');
+      if (currentUser != null) {
+        // Use TikTokLikeService for consistency
+        await tiktokLikeService.toggleLike(widget.videoId, currentUser.uid);
+        debugPrint(
+            '💖 EnhancedLikeButton: Background sync completed with TikTokLikeService');
+      } else {
+        debugPrint('❌ EnhancedLikeButton: No current user for background sync');
       }
     } catch (e) {
       // Don't throw - we want to keep the optimistic UI state
-      debugPrint('Background sync failed (keeping UI state): $e');
+      debugPrint(
+          '❌ EnhancedLikeButton: Background sync failed (keeping UI state): $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _handleLike,
-      behavior: HitTestBehavior.opaque, // Prevent tap from passing through
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Main heart button
-          AnimatedBuilder(
-            animation: _heartAnimationController,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: _heartScaleAnimation.value,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Heart icon with morph effect - optimized
-                    Icon(
-                      _isLiked ? Icons.favorite : Icons.favorite_border,
-                      color: _isLiked
-                          ? const Color(0xFF9248D2)
-                          : Colors.white.withValues(alpha: 0.85),
-                      size: 28,
-                    ),
-                    const SizedBox(height: 4),
-                    // Like count
-                    Text(
-                      _likeCount.toString(),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+    debugPrint(
+        '🎨 EnhancedLikeButton: Building - videoId: ${widget.videoId}, local _isLiked: $_isLiked, _likeCount: $_likeCount');
 
-          // Sparkle effect overlay - only when liking
-          if (_isLiked && _sparkleController.isAnimating)
+    return Semantics(
+      label: _isLiked ? 'Unlike' : 'Like',
+      hint: 'Double-tap video to like',
+      button: true,
+      onTap: _handleLike,
+      child: GestureDetector(
+        onTap: _handleLike,
+        behavior: HitTestBehavior.opaque, // Prevent tap from passing through
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Main heart button
             AnimatedBuilder(
-              animation: _sparkleController,
+              animation: _heartAnimationController,
               builder: (context, child) {
                 return Transform.scale(
-                  scale: _sparkleScaleAnimation.value,
-                  child: Opacity(
-                    opacity: _sparkleOpacityAnimation.value,
-                    child: _buildSparkleEffect(),
+                  scale: _heartScaleAnimation.value,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Heart icon with morph effect - optimized
+                      Icon(
+                        _isLiked ? Icons.favorite : Icons.favorite_border,
+                        color: _isLiked
+                            ? const Color(0xFF9248D2)
+                            : Colors.white.withValues(alpha: 0.85),
+                        size: 28,
+                      ),
+                      const SizedBox(height: 4),
+                      // Like count
+                      Text(
+                        _likeCount.toString(),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 );
               },
             ),
-        ],
+
+            // Sparkle effect overlay - only when liking
+            if (_isLiked && _sparkleController.isAnimating)
+              AnimatedBuilder(
+                animation: _sparkleController,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _sparkleScaleAnimation.value,
+                    child: Opacity(
+                      opacity: _sparkleOpacityAnimation.value,
+                      child: _buildSparkleEffect(),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
       ),
     );
   }

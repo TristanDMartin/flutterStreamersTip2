@@ -1,6 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
-import 'video_controller_manager.dart';
+import 'video_controller_registry.dart';
 import 'production_logging_service.dart';
 
 /// Service for preloading video controllers to eliminate purple screen flash
@@ -11,7 +10,7 @@ class VideoPreloaderService {
   factory VideoPreloaderService() => _instance;
   VideoPreloaderService._internal();
 
-  final VideoControllerManager _controllerManager = VideoControllerManager();
+  final VideoControllerRegistry _controllerRegistry = VideoControllerRegistry();
   final ProductionLoggingService _logger = ProductionLoggingService();
 
   // Preload window: current + 1 neighbor on each side
@@ -77,6 +76,8 @@ class VideoPreloaderService {
 
   /// Preload controllers for current window (current ± preloadWindow)
   Future<void> _preloadCurrentWindow() async {
+    if (_videos.isEmpty) return; // Guard against empty video list
+
     final startIndex =
         (_currentIndex - _preloadWindow).clamp(0, _videos.length - 1);
     final endIndex =
@@ -109,8 +110,7 @@ class VideoPreloaderService {
           tag: 'VideoPreloader');
 
       // Get controller from manager (this will create if needed)
-      final controller =
-          await _controllerManager.getController(videoId, video.videoURL);
+      final controller = _controllerRegistry.getController(videoId);
 
       if (controller != null) {
         _preloadedControllers[videoId] = controller;
@@ -154,7 +154,7 @@ class VideoPreloaderService {
     // Dispose controllers outside window
     for (final videoId in videosToDispose) {
       try {
-        _controllerManager.releaseController(videoId);
+        _controllerRegistry.dispose(videoId);
         _preloadedControllers.remove(videoId);
         _preloadedStates.remove(videoId);
 
@@ -186,7 +186,7 @@ class VideoPreloaderService {
 
     for (final videoId in _preloadedControllers.keys) {
       try {
-        _controllerManager.releaseController(videoId);
+        _controllerRegistry.dispose(videoId);
       } catch (e) {
         _logger.error(
             'VideoPreloader: Error disposing controller for video $videoId',

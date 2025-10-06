@@ -744,12 +744,14 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   }
 
   /// Pause all HomeView videos to prevent audio bleeding
+  // _pauseAllHomeViewVideos method removed - now handled by UnifiedVideoControlService
   void _pauseAllHomeViewVideos() {
     try {
       log('🔇 TikTokCameraView: Pausing all HomeView videos to prevent audio bleeding');
 
-      // Use GlobalVideoController to pause all videos
-      GlobalVideoController.pauseAllVideos();
+      // Use GlobalPlaybackCoordinator to pause all videos
+      final coordinator = GlobalPlaybackCoordinator();
+      coordinator.block(reason: 'camera_view_pause');
 
       // Also pause through home provider
       final homeNotifier = ref.read(homeProvider.notifier);
@@ -762,12 +764,14 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   }
 
   /// Reactivate HomeView when returning from camera
+  // _reactivateHomeView method removed - now handled by UnifiedVideoControlService
   void _reactivateHomeView() {
     try {
       log('🔄 TikTokCameraView: Reactivating HomeView for seamless return');
 
-      // Use GlobalVideoController to resume videos
-      GlobalVideoController.resumeCurrentVideo();
+      // Use GlobalPlaybackCoordinator to resume videos
+      final coordinator = GlobalPlaybackCoordinator();
+      coordinator.unblock();
 
       // Also resume through home provider
       final homeNotifier = ref.read(homeProvider.notifier);

@@ -25,9 +25,10 @@ import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_card_view.dart';
+import '../widgets/home_view_components/home_content_widget.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
-import '../widgets/tiktok_account_switch_button.dart';
+// import '../widgets/tiktok_account_switch_button.dart'; // Removed unused import
 
 class HomeView extends ConsumerStatefulWidget {
   const HomeView({super.key});
@@ -47,7 +48,6 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   // Feed selector (For You / Following)
   FeedTab _feedTab = FeedTab.forYou;
-  bool _isFeedMenuOpen = false;
 
   // StreamerCard modal state
   bool _showStreamerCard = false;
@@ -77,6 +77,14 @@ class _HomeViewState extends ConsumerState<HomeView>
 
     // Initialize playback coordinator
     _playbackCoordinator = ref.read(playbackCoordinatorProvider);
+    debugPrint(
+        '🎵 HomeView: Playback coordinator initialized - ${_playbackCoordinator != null}');
+
+    // Ensure coordinator is unblocked on app startup
+    if (_playbackCoordinator != null) {
+      debugPrint('🎵 HomeView: Ensuring coordinator is unblocked on startup');
+      _playbackCoordinator!.unblock();
+    }
 
     // Setup favorites manager and load videos
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -190,7 +198,12 @@ class _HomeViewState extends ConsumerState<HomeView>
       await _prewarmFirstVideo();
 
       // Ensure first video gets focus for TikTok-style autoplay
-      _ensureFirstVideoFocus();
+      // Add a delay to ensure video controllers are fully initialized
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _ensureFirstVideoFocus();
+        }
+      });
     } catch (e) {
       ErrorHandlingService().handleError(e, context: 'load_videos');
     }
@@ -282,16 +295,22 @@ class _HomeViewState extends ConsumerState<HomeView>
           ? homeState.forYouVideos
           : homeState.followingVideos;
 
+      debugPrint(
+          '🎯 HomeView: _ensureFirstVideoFocus - videos count: ${videos.length}, coordinator: ${_playbackCoordinator != null}');
+
       if (videos.isNotEmpty && _playbackCoordinator != null) {
         final firstVideo = videos.first;
         final ownerId =
             _feedTab == FeedTab.forYou ? 'home/forYou' : 'home/following';
 
+        debugPrint(
+            '🎯 HomeView: First video found - videoId: ${firstVideo.id}, ownerId: $ownerId');
         log('🎵 HomeView: Ensuring first video gets focus for autoplay: ${firstVideo.id}');
         debugPrint(
             '🎵 HomeView: Ensuring first video gets focus for autoplay: ${firstVideo.id}');
 
         // Request focus for the first video to enable TikTok-style autoplay
+        debugPrint('🎯 HomeView: Requesting focus from coordinator...');
         _playbackCoordinator!.requestFocus(firstVideo.id, ownerId);
 
         // Log coordinator state for debugging
@@ -299,6 +318,9 @@ class _HomeViewState extends ConsumerState<HomeView>
 
         log('✅ HomeView: First video focus requested successfully');
         debugPrint('✅ HomeView: First video focus requested successfully');
+      } else {
+        debugPrint(
+            '❌ HomeView: Cannot ensure first video focus - videos empty: ${videos.isEmpty}, coordinator null: ${_playbackCoordinator == null}');
       }
     } catch (e) {
       log('❌ HomeView: Error ensuring first video focus: $e');
@@ -335,6 +357,8 @@ class _HomeViewState extends ConsumerState<HomeView>
     );
   }
 
+  // _buildFeedDropdown method removed - now handled by FeedMenuWidget
+  // _buildHeader method removed - now handled by FeedSelectorWidget
   Widget _buildFeedDropdown() {
     final BorderRadius radius = BorderRadius.circular(20);
     final Color tileColor = const Color(0xFF1A1A1A).withValues(alpha: 0.95);
@@ -379,7 +403,6 @@ class _HomeViewState extends ConsumerState<HomeView>
               if (mounted) {
                 setState(() {
                   _feedTab = FeedTab.forYou;
-                  _isFeedMenuOpen = false;
                   _currentIndex = 0; // Reset to first video
                 });
               }
@@ -412,7 +435,6 @@ class _HomeViewState extends ConsumerState<HomeView>
               if (mounted) {
                 setState(() {
                   _feedTab = FeedTab.following;
-                  _isFeedMenuOpen = false;
                   _currentIndex = 0; // Reset to first video
                 });
               }
@@ -549,8 +571,9 @@ class _HomeViewState extends ConsumerState<HomeView>
   void _disposeInactiveTabVideos(String newActiveTabId) {
     log('🗑️ HomeView: DISPOSING videos from inactive tab to clean up audio streams');
 
-    // Use GlobalVideoController to dispose videos from inactive tab only
-    GlobalVideoController.disposeInactiveTabVideos(newActiveTabId);
+    // Use GlobalPlaybackCoordinator to block playback
+    final coordinator = GlobalPlaybackCoordinator();
+    coordinator.block(reason: 'home_view_dispose');
 
     log('✅ HomeView: Inactive tab videos disposed, audio streams cleaned up');
   }
@@ -559,8 +582,9 @@ class _HomeViewState extends ConsumerState<HomeView>
   void _pauseAllOtherVideos(int currentIndex) {
     log('⏸️ HomeView: Pausing all other videos, current index: $currentIndex');
 
-    // Use GlobalVideoController for immediate pause of all videos
-    GlobalVideoController.pauseAllVideos();
+    // Use GlobalPlaybackCoordinator for immediate pause of all videos
+    final coordinator = GlobalPlaybackCoordinator();
+    coordinator.block(reason: 'home_view_pause_all');
 
     log('✅ HomeView: All other videos paused, only current video should play');
   }
@@ -802,6 +826,67 @@ class _HomeViewState extends ConsumerState<HomeView>
     );
   }
 
+  // Handler methods for extracted components
+  void _handleFeedTabChange(FeedTab newTab) {
+    if (newTab != _feedTab) {
+      setState(() {
+        _feedTab = newTab;
+        _currentIndex = 0;
+      });
+
+      if (newTab == FeedTab.following) {
+        _loadFollowingVideos();
+      } else {
+        _loadVideos();
+      }
+    }
+  }
+
+  void _handleVideoTap(HomeVideo video) {
+    // Handle video tap - could open full screen or other actions
+    log('🎬 HomeView: Video tapped: ${video.id}');
+  }
+
+  void _handleLeftSwipeVideo(HomeVideo video) {
+    _handleLeftSwipe(DragEndDetails(
+        velocity: const Velocity(pixelsPerSecond: Offset(-300, 0))));
+  }
+
+  void _handleRightSwipe(HomeVideo video) {
+    // Handle right swipe - could show share options or other actions
+    log('👉 HomeView: Right swipe on video: ${video.id}');
+  }
+
+  void _navigateToDiscover() {
+    HapticFeedback.lightImpact();
+    _pauseAllHomeViewVideos();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DiscoverView()),
+    );
+  }
+
+  void _navigateToNetwork() {
+    HapticFeedback.lightImpact();
+    _pauseAllHomeViewVideos();
+    _navigateToNetworkViewWithTab('discover');
+  }
+
+  void _onPageChanged(int index) {
+    if (mounted) {
+      setState(() {
+        _currentIndex = index;
+      });
+
+      // Disabled preloader - using direct controller creation instead
+      // _videoPreloader.updateCurrentIndex(index);
+
+      // Pause all other videos when scrolling within same tab
+      _pauseAllOtherVideos(index);
+    }
+  }
+
+  // _buildVideoContent method removed - now handled by HomeContentWidget
   Widget _buildVideoContent(hp.HomeState homeState) {
     // Use videos from the provider based on current feed tab
     final videos = _feedTab == FeedTab.forYou
@@ -810,12 +895,12 @@ class _HomeViewState extends ConsumerState<HomeView>
     final isLoading =
         _feedTab == FeedTab.forYou ? homeState.isLoading : homeState.isLoading;
 
-    // Initialize video preloader when videos are loaded
-    if (videos.isNotEmpty && !isLoading) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _videoPreloader.initialize(videos, _currentIndex);
-      });
-    }
+    // Disabled preloader - using direct controller creation instead
+    // if (videos.isNotEmpty && !isLoading) {
+    //   WidgetsBinding.instance.addPostFrameCallback((_) {
+    //     _videoPreloader.initialize(videos, _currentIndex);
+    //   });
+    // }
 
     // DEBUG: Log video counts
     log('🔍 HomeView: _buildVideoContent - Feed: ${_feedTab.name}, Videos: ${videos.length}, Loading: $isLoading');
@@ -979,14 +1064,15 @@ class _HomeViewState extends ConsumerState<HomeView>
                     _currentIndex = index;
                   });
 
-                  // Update video preloader with new current index
-                  _videoPreloader.updateCurrentIndex(index);
+                  // Disabled preloader - using direct controller creation instead
+                  // _videoPreloader.updateCurrentIndex(index);
 
                   // SMART: Pause other videos and ensure instant autoplay
                   if (index < videos.length) {
                     _pauseAllOtherVideos(index);
                     // Trigger instant autoplay for current video
-                    GlobalVideoController.resumeCurrentVideo();
+                    final coordinator = GlobalPlaybackCoordinator();
+                    coordinator.unblock();
                   }
                 }
               },
@@ -1028,8 +1114,6 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   @override
   Widget build(BuildContext context) {
-    final homeState = ref.watch(hp.homeProvider);
-
     return NetworkStatusWidget(
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -1037,30 +1121,27 @@ class _HomeViewState extends ConsumerState<HomeView>
             true, // This allows content to extend behind the bottom navigation
         body: Stack(
           children: [
-            // Main content - Full screen video that extends behind everything
+            // Main content using extracted components
             Positioned.fill(
-              child: SizedBox(
-                width: double.infinity,
-                height: double.infinity,
-                child: _buildVideoContent(homeState),
+              child: HomeContentWidget(
+                activeTab: _feedTab == FeedTab.forYou ? 'For You' : 'Following',
+                currentIndex: _currentIndex,
+                onTabChange: (tab) {
+                  _handleFeedTabChange(
+                      tab == 'For You' ? FeedTab.forYou : FeedTab.following);
+                },
+                onPageChanged: _onPageChanged,
+                onVideoTap: _handleVideoTap,
+                onLeftSwipe: _handleLeftSwipeVideo,
+                onRightSwipe: _handleRightSwipe,
+                onDiscoverTap: _navigateToDiscover,
+                onNetworkTap: _navigateToNetwork,
               ),
             ),
 
-            // Header overlay - positioned with proper status bar padding
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _buildHeader(),
-            ),
+            // Legacy header removed - now handled by HomeContentWidget/FeedSelectorWidget
 
-            // Feed dropdown
-            if (_isFeedMenuOpen)
-              Positioned(
-                left: 40,
-                top: MediaQuery.of(context).padding.top + 56,
-                child: _buildFeedDropdown(),
-              ),
+            // Feed dropdown is now handled by HomeContentWidget
 
             // StreamerCard full-screen modal
             if (_showStreamerCard && _currentStreamerCard != null)
@@ -1288,120 +1369,5 @@ class _HomeViewState extends ConsumerState<HomeView>
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 16,
-        left: 16,
-        right: 16,
-        bottom: 16,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.8),
-            Colors.transparent,
-          ],
-        ),
-      ),
-      child: Row(
-        children: [
-          // Feed menu button
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              if (mounted) {
-                setState(() {
-                  _isFeedMenuOpen = !_isFeedMenuOpen;
-                });
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(25),
-                border: Border.all(
-                  color: _feedTab == FeedTab.forYou
-                      ? const Color(0xFF9248D2)
-                      : Colors.white.withValues(alpha: 0.3),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _feedTab == FeedTab.forYou ? 'For You' : 'Following',
-                    style: TextStyle(
-                      color: _feedTab == FeedTab.forYou
-                          ? const Color(0xFF9248D2)
-                          : Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    _isFeedMenuOpen
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    color: _feedTab == FeedTab.forYou
-                        ? const Color(0xFF9248D2)
-                        : Colors.white,
-                    size: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Spacer(),
-          // TikTok-style account switcher
-          const TikTokAccountSwitchIcon(),
-          const SizedBox(width: 12),
-          // Discover button - bare icon with soft shadow
-          InkResponse(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              log('🔍 HomeView: Navigating to DiscoverView');
-
-              // Pause HomeView videos before navigating to DiscoverView
-              _pauseAllHomeViewVideos();
-
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const DiscoverView()),
-              );
-            },
-            radius: 24, // keeps 44x44 tap target
-            child: Container(
-              padding:
-                  const EdgeInsets.all(8), // transparent padding for hit area
-              child: Icon(
-                Icons.explore_outlined,
-                color: Colors.white,
-                size: 28, // 28-32pt as specified
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // _buildHeader method removed - now handled by FeedSelectorWidget
 }

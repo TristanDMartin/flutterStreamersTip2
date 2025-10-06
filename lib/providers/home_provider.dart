@@ -18,6 +18,7 @@ import '../services/enhanced_like_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
 import '../widgets/video_player_view_optimized.dart';
+import '../services/global_playback_coordinator.dart';
 
 enum FeedType { forYou, following }
 
@@ -140,11 +141,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
     // ALSO call global controller for immediate response
     try {
       // This will provide immediate pause without waiting for Consumer
-      log('🔊 HomeProvider: Calling GlobalVideoController.pauseAllVideos()');
-      GlobalVideoController.pauseAllVideos();
-      log('🔊 HomeProvider: GlobalVideoController.pauseAllVideos() completed');
+      log('🔊 HomeProvider: Calling GlobalPlaybackCoordinator.block()');
+      final coordinator = GlobalPlaybackCoordinator();
+      coordinator.block(reason: 'home_provider_pause');
+      log('🔊 HomeProvider: GlobalPlaybackCoordinator.block() completed');
     } catch (e) {
-      log('❌ HomeProvider: Error calling GlobalVideoController: $e');
+      log('❌ HomeProvider: Error calling GlobalPlaybackCoordinator: $e');
     }
 
     // Reset the flag after a short delay to allow for future navigation
@@ -188,10 +190,11 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     // ALSO call global controller for immediate response
     try {
-      log('🔊 HomeProvider: Calling GlobalVideoController.resumeCurrentVideo()');
-      GlobalVideoController.resumeCurrentVideo();
+      log('🔊 HomeProvider: Calling GlobalPlaybackCoordinator.unblock()');
+      final coordinator = GlobalPlaybackCoordinator();
+      coordinator.unblock();
     } catch (e) {
-      log('❌ HomeProvider: Error calling GlobalVideoController resume: $e');
+      log('❌ HomeProvider: Error calling GlobalPlaybackCoordinator resume: $e');
     }
 
     // Reset the flag after a short delay

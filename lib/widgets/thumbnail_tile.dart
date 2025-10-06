@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/home_video.dart';
-import '../services/thumbnail_service.dart';
+// import '../services/thumbnail_service.dart'; // Removed unused import
 
 /// Single source of truth for all video thumbnail rendering
 /// Handles cache busting, fallbacks, and consistent placeholder behavior
@@ -29,8 +29,6 @@ class ThumbnailTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final thumbnailService = ThumbnailService();
-
     // Get the best thumbnail URL with cache busting
     final thumbnailUrl = _getBestThumbnailUrl();
     final cacheKey = _getCacheKey();
@@ -72,8 +70,7 @@ class ThumbnailTile extends StatelessWidget {
 
               if (showDraftBadge && video.isDraft == true) _buildDraftBadge(),
 
-              if (showViewsBadge && video.views != null && video.views! > 0)
-                _buildViewsBadge(),
+              if (showViewsBadge && video.views > 0) _buildViewsBadge(),
 
               // DEBUG: Temporary overlay to see if images are loading
               if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
@@ -220,7 +217,7 @@ class ThumbnailTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
-          _formatViews(video.views!),
+          _formatViews(video.views),
           style: const TextStyle(
             color: Colors.white,
             fontSize: 12,

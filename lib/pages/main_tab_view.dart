@@ -6,7 +6,6 @@ import '../services/robust_auth_service.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/custom_bottom_nav.dart';
 import '../widgets/tiktok_camera_view.dart';
-import '../widgets/video_player_view_optimized.dart';
 import '../views/network_view.dart';
 import '../widgets/inbox_view_optimized.dart';
 import 'home_view.dart';
@@ -15,6 +14,8 @@ import '../services/network_view_model_advanced.dart';
 import '../services/profile_update_service.dart';
 import '../services/clean_relationship_service.dart';
 import '../providers/home_provider.dart';
+import '../services/unified_video_control_service.dart';
+import '../services/global_playback_coordinator.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
   const MainTabView({super.key});
@@ -27,12 +28,14 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   int _currentIndex = 0;
   late PageController _pageController;
   late NetworkViewModelAdvanced _networkViewModel;
+  UnifiedVideoControlService? _videoControl;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
     _networkViewModel = NetworkViewModelAdvanced();
+    _videoControl = ref.read(unifiedVideoControlProvider);
     _startDataSync();
   }
 
@@ -68,17 +71,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   }
 
   void _resumeHomeViewVideos() {
-    try {
-      // Notify HomeView to resume current video
-      final homeNotifier = ref.read(homeProvider.notifier);
-      homeNotifier.resumeCurrentVideo();
-
-      log('▶️ MainTabView: Resumed HomeView current video');
-      debugPrint('▶️ MainTabView: Resumed HomeView current video');
-    } catch (e) {
-      log('❌ MainTabView: Error resuming HomeView video: $e');
-      debugPrint('❌ MainTabView: Error resuming HomeView video: $e');
-    }
+    _videoControl?.resumeCurrentVideo(
+      tabId: 'home/forYou', // Default to For You tab
+      ref: ref,
+    );
   }
 
   void _startDataSync() {
@@ -129,14 +125,36 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       return;
     }
 
+    // Block playback during tab switch
+    final coordinator = GlobalPlaybackCoordinator();
+    coordinator.block(reason: 'tabSwitch');
+
     setState(() {
       _currentIndex = index;
     });
-    _pageController.animateToPage(
+
+    _pageController
+        .animateToPage(
       index,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
-    );
+    )
+        .then((_) {
+      // Unblock after animation completes
+      Future.delayed(const Duration(milliseconds: 100), () {
+        coordinator.unblock();
+        // Request focus for current video if on home tab
+        if (index == 0) {
+          _requestFocusForCurrentVideo();
+        }
+      });
+    });
+  }
+
+  void _requestFocusForCurrentVideo() {
+    // Request focus for the current video when returning to home tab
+    // This will be handled by the video player when it becomes current
+    log('🎵 MainTabView: Requesting focus for current video');
   }
 
   void _onUploadTapped() {
@@ -256,18 +274,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     try {
       log('🚨 AUDIO FIX: Starting aggressive video disposal...');
 
-      // AGGRESSIVE: Use GlobalVideoController to dispose ALL videos
-      GlobalVideoController.disposeAllVideos();
-
-      // Notify HomeView to pause all videos
-      final homeNotifier = ref.read(homeProvider.notifier);
-      homeNotifier.pauseAllVideos();
-
-      // DOUBLE AGGRESSIVE: Call disposal again after a short delay to ensure it takes effect
-      Future.delayed(const Duration(milliseconds: 50), () {
-        GlobalVideoController.disposeAllVideos();
-        log('🚨 AUDIO FIX: Double disposal completed');
-      });
+      // Block all video playback
+      final coordinator = GlobalPlaybackCoordinator();
+      coordinator.block(reason: 'camera_navigation');
 
       log('⏸️ MainTabView: Paused all HomeView videos with aggressive disposal');
       debugPrint(
@@ -311,9 +320,17 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             _currentIndex = index;
           });
 
-          // Pause videos when leaving HomeView (index 0)
-          if (_currentIndex != 0) {
-            _pauseAllHomeViewVideos();
+          // Block/unblock based on tab
+          final coordinator = GlobalPlaybackCoordinator();
+          if (index != 0) {
+            // Leaving home tab - block playback
+            coordinator.block(reason: 'tabSwitch');
+          } else {
+            // Returning to home tab - unblock and request focus
+            coordinator.unblock();
+            Future.delayed(const Duration(milliseconds: 100), () {
+              _requestFocusForCurrentVideo();
+            });
           }
         },
         // Disable swipe gestures when on NetworkView (index 1)

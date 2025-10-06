@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:video_player/video_player.dart';
 import '../models/video_thumbnails.dart';
 
 /// Service for managing video thumbnails with multiple sizes and DPR support

@@ -18,6 +18,7 @@ import 'services/global_post_count_fix.dart';
 import 'services/navigation_observer.dart';
 import 'widgets/ios_minimal_startup.dart';
 import 'providers/service_providers.dart';
+import 'services/tiktok_like_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +35,11 @@ void main() async {
 
   // Initialize performance optimizations immediately
   _initializePerformanceOptimizations();
+
+  // Initialize TikTokLikeService immediately (needed for like buttons)
+  TikTokLikeService().initialize().catchError((e) {
+    debugPrint('⚠️ TikTokLikeService immediate init failed: $e');
+  });
 
   // Run app immediately with loading screen
   runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
@@ -59,6 +65,11 @@ void _initializeBackgroundServices() async {
     // Initialize Unified Avatar Service in background (non-blocking)
     nav.UnifiedAvatarService().initialize().catchError((e) {
       debugPrint('⚠️ Avatar service init failed (non-critical): $e');
+    });
+
+    // Initialize TikTokLikeService in background (non-blocking)
+    TikTokLikeService().initialize().catchError((e) {
+      debugPrint('⚠️ TikTokLikeService init failed (non-critical): $e');
     });
 
     // Initialize production services in background

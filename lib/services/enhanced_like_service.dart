@@ -69,6 +69,35 @@ class EnhancedLikeService {
     }
   }
 
+  /// Double-tap like (never unlikes - TikTok behavior)
+  Future<LikeResult> doubleTapLike(String videoId) async {
+    try {
+      // Rate limiting check
+      if (_isRateLimited(videoId)) {
+        log('⚠️ Like operation rate limited for video: $videoId');
+        return LikeResult.rateLimited;
+      }
+
+      final currentUser = _auth.currentUser;
+      final isCurrentlyLiked = await isVideoLiked(videoId);
+
+      log('💖 Double-tap like for video: $videoId, currently liked: $isCurrentlyLiked');
+
+      // Double-tap never unlikes - only likes if not already liked
+      if (!isCurrentlyLiked) {
+        // Update rate limiting
+        _lastLikeTimes[videoId] = DateTime.now();
+        return await _likeVideo(currentUser?.uid, videoId, 'double-tap');
+      } else {
+        log('💖 Video already liked, double-tap does nothing');
+        return LikeResult.alreadyLiked;
+      }
+    } catch (e) {
+      log('❌ Error in double-tap like: $e');
+      return LikeResult.error;
+    }
+  }
+
   /// Check if operation is rate limited
   bool _isRateLimited(String videoId) {
     final lastTime = _lastLikeTimes[videoId];
@@ -228,7 +257,9 @@ class EnhancedLikeService {
     try {
       // First check local storage for immediate response
       final likedVideos = await getLikedVideos();
-      return likedVideos.contains(videoId);
+      final isLiked = likedVideos.contains(videoId);
+      log('🔍 EnhancedLikeService: isVideoLiked($videoId) - likedVideos count: ${likedVideos.length}, isLiked: $isLiked');
+      return isLiked;
     } catch (e) {
       log('❌ Error checking if video is liked: $e');
       return false;
@@ -252,10 +283,15 @@ class EnhancedLikeService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final likedVideosJson = prefs.getString(_likedVideosKey);
+      log('🔍 EnhancedLikeService: getLikedVideos() - likedVideosJson: $likedVideosJson');
+
       if (likedVideosJson != null) {
         final List<dynamic> likedVideosList = json.decode(likedVideosJson);
-        return likedVideosList.cast<String>().toSet();
+        final likedVideos = likedVideosList.cast<String>().toSet();
+        log('🔍 EnhancedLikeService: getLikedVideos() - parsed likedVideos: $likedVideos');
+        return likedVideos;
       }
+      log('🔍 EnhancedLikeService: getLikedVideos() - no cached data, returning empty set');
       return <String>{};
     } catch (e) {
       log('❌ Error getting liked videos: $e');
@@ -460,4 +496,5 @@ enum LikeResult {
   success,
   error,
   rateLimited,
+  alreadyLiked,
 }

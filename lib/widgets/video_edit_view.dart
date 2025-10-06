@@ -14,6 +14,7 @@ import '../services/video_processing_service.dart';
 import '../services/logging_service.dart';
 import '../providers/home_provider.dart';
 import 'video_player_view_optimized.dart';
+import '../services/global_playback_coordinator.dart';
 
 class VideoEditView extends ConsumerStatefulWidget {
   final File videoFile;
@@ -1534,8 +1535,9 @@ class _VideoEditViewState extends ConsumerState<VideoEditView>
       LoggingService.instance.debug(
           'VideoEditView: Pausing all HomeView videos to prevent audio bleeding');
 
-      // Use GlobalVideoController to pause all videos
-      GlobalVideoController.pauseAllVideos();
+      // Use GlobalPlaybackCoordinator to pause all videos
+      final coordinator = GlobalPlaybackCoordinator();
+      coordinator.block(reason: 'video_edit_pause');
 
       // Also pause through home provider
       final homeNotifier = ref.read(homeProvider.notifier);
@@ -1555,8 +1557,9 @@ class _VideoEditViewState extends ConsumerState<VideoEditView>
       LoggingService.instance
           .debug('VideoEditView: Reactivating HomeView for seamless return');
 
-      // Use GlobalVideoController to resume videos
-      GlobalVideoController.resumeCurrentVideo();
+      // Use GlobalPlaybackCoordinator to resume videos
+      final coordinator = GlobalPlaybackCoordinator();
+      coordinator.unblock();
 
       // Also resume through home provider
       final homeNotifier = ref.read(homeProvider.notifier);
