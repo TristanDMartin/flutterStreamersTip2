@@ -157,22 +157,11 @@ class DraftThumbnailService {
       // Generate a placeholder thumbnail image
       final image = img.Image(width: targetWidth, height: targetHeight);
 
-      // Create a gradient background that looks like video content
+      // Create a simple solid color background (no gradients)
+      final solidColor = img.ColorRgb8(45, 45, 45); // Dark grey
       for (int y = 0; y < targetHeight; y++) {
         for (int x = 0; x < targetWidth; x++) {
-          // Create a realistic video-like gradient
-          final normalizedX = x / targetWidth;
-          final normalizedY = y / targetHeight;
-
-          // Simulate video content with varying colors
-          final r =
-              (50 + normalizedX * 100 + normalizedY * 50).round().clamp(0, 255);
-          final g =
-              (80 + normalizedX * 80 + normalizedY * 100).round().clamp(0, 255);
-          final b =
-              (120 + normalizedX * 60 + normalizedY * 80).round().clamp(0, 255);
-
-          image.setPixel(x, y, img.ColorRgb8(r, g, b));
+          image.setPixel(x, y, solidColor);
         }
       }
 

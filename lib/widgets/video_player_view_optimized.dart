@@ -19,6 +19,7 @@ import '../services/enhanced_like_service.dart';
 import '../widgets/enhanced_like_button.dart';
 import '../services/video_performance_service.dart';
 import '../services/video_controller_manager.dart';
+import '../services/video_preloader_service.dart';
 import '../services/production_logging_service.dart';
 import '../services/audio_enhancement_service.dart';
 import '../widgets/comments_view_optimized.dart';
@@ -116,7 +117,7 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
 
 class _VideoPlayerViewOptimizedState
     extends ConsumerState<VideoPlayerViewOptimized>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   VideoPlayerController? _videoPlayerController;
   bool _isInitialized = false;
   bool _isPlaying = false;
@@ -222,6 +223,9 @@ class _VideoPlayerViewOptimizedState
   final GlobalKey _likeButtonKey = GlobalKey();
 
   @override
+  bool get wantKeepAlive => true; // Keep pages alive while swiping
+
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
@@ -238,25 +242,25 @@ class _VideoPlayerViewOptimizedState
     PerformanceService()
         .trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
 
-    // CRITICAL: Safe disposal with multiple safety checks
+    // With AutomaticKeepAliveClientMixin and preloader, we don't dispose controllers here
+    // The VideoPreloaderService manages controller lifecycle
     if (_videoPlayerController != null && !_isDisposed) {
       try {
-        // Check if controller is still valid before disposing
+        // Check if controller is still valid before pausing
         final controllerValue = _videoPlayerController!.value;
         if (controllerValue.isInitialized && !controllerValue.hasError) {
           _videoPlayerController!.removeListener(_videoErrorListener);
           _videoPlayerController!.removeListener(_videoStateListener);
-          _videoPlayerController!.pause(); // Pause before disposing
-          _videoPlayerController!.setVolume(0.0); // Mute before disposing
+          _videoPlayerController!.pause(); // Pause but don't dispose
+          _videoPlayerController!.setVolume(0.0); // Mute but don't dispose
         }
-        _videoPlayerController!.dispose();
-        log('🗑️ Widget dispose: Cleanly disposed controller for ${widget.video.id}');
+        // Don't dispose - let VideoPreloaderService handle it
+        log('🔄 Widget dispose: Paused controller for ${widget.video.id} (managed by preloader)');
       } catch (e) {
-        log('⚠️ Widget dispose: Error disposing controller: $e');
-        // Even if disposal fails, mark as disposed to prevent further use
+        log('⚠️ Widget dispose: Error pausing controller: $e');
       } finally {
-        _videoPlayerController = null;
-        _isDisposed = true;
+        // Don't set _videoPlayerController = null or _isDisposed = true
+        // Keep the reference for potential reuse by preloader
       }
     }
 
@@ -358,12 +362,19 @@ class _VideoPlayerViewOptimizedState
     PerformanceService().startVideoLoad(widget.video.id);
 
     try {
-      // Use VideoControllerManager to get or create controller
-      _videoPlayerController = await _controllerManager.getController(
-          widget.video.id, widget.video.videoURL);
+      // Try to get preloaded controller first
+      final preloader = VideoPreloaderService();
+      _videoPlayerController =
+          preloader.getPreloadedControllerById(widget.video.id);
 
       if (_videoPlayerController == null) {
-        _logger.error('Failed to get controller from VideoControllerManager',
+        // Fallback to VideoControllerManager if not preloaded
+        _videoPlayerController = await _controllerManager.getController(
+            widget.video.id, widget.video.videoURL);
+      }
+
+      if (_videoPlayerController == null) {
+        _logger.error('Failed to get controller from preloader or manager',
             tag: 'VideoPlayer');
         return;
       }
@@ -925,6 +936,8 @@ class _VideoPlayerViewOptimizedState
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
     return Consumer(
       builder: (context, ref, child) {
         // Listen for pause signal when leaving HomeView
@@ -1211,24 +1224,6 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
-  Widget _buildGradientPlaceholder() {
-    return Positioned.fill(
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1A1A1A),
-              Color(0xFF2D2D2D),
-              Color(0xFF1A1A1A),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildBlackPlaceholder() {
     return Positioned.fill(
       child: Container(
@@ -1262,6 +1257,13 @@ class _VideoPlayerViewOptimizedState
         log('⚠️ Controller not ready, showing thumbnail: ${widget.video.id}');
         return _buildInstantThumbnail();
       }
+
+      // THUMBNAIL GATING: Show thumbnail until first frame is ready
+      // This prevents the purple screen flash during texture attachment
+      if (!controllerValue.isInitialized || controllerValue.size.isEmpty) {
+        log('🖼️ Controller not fully ready, showing thumbnail until first frame: ${widget.video.id}');
+        return _buildInstantThumbnail();
+      }
     } catch (e) {
       log('❌ Controller access error, showing thumbnail: $e');
       // Controller was disposed, trigger reinitialization
@@ -1276,6 +1278,7 @@ class _VideoPlayerViewOptimizedState
       return _buildInstantThumbnail();
     }
 
+    // Video is ready - show the actual video player
     return FittedBox(
       fit: BoxFit.cover,
       alignment: Alignment.center,

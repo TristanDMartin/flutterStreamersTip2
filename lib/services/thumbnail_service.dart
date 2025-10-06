@@ -12,9 +12,6 @@ class ThumbnailService {
   // Available thumbnail sizes (width in pixels)
   static const List<int> _thumbnailSizes = [360, 540, 720];
 
-  // Cache for thumbnail URLs to avoid repeated computations
-  final Map<String, String> _thumbnailCache = {};
-
   // Cache for device pixel ratio to avoid repeated MediaQuery calls
   double? _cachedDevicePixelRatio;
 
@@ -179,21 +176,10 @@ class ThumbnailService {
     );
   }
 
-  /// Build a shimmer placeholder for loading states
+  /// Build a simple placeholder for loading states (no gradients)
   Widget _buildShimmerPlaceholder() {
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.grey[300]!,
-            Colors.grey[100]!,
-            Colors.grey[300]!,
-          ],
-          stops: const [0.0, 0.5, 1.0],
-        ),
-      ),
+      color: Colors.grey[900], // Simple solid color - no gradients
       child: const Center(
         child: Icon(
           Icons.video_library_outlined,
@@ -247,26 +233,6 @@ class ThumbnailService {
     );
   }
 
-  /// Generate a local thumbnail from video URL (for drafts)
-  Future<String?> generateLocalThumbnail({
-    required String videoUrl,
-    required double timestamp, // in seconds
-  }) async {
-    try {
-      final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
-      await controller.initialize();
-
-      // TODO: Implement actual frame extraction
-      // This would require platform-specific implementation
-      debugPrint(
-          '🖼️ ThumbnailService: Generated local thumbnail for $videoUrl at ${timestamp}s');
-      return 'local_thumbnail_${videoUrl.hashCode}';
-    } catch (e) {
-      debugPrint('🖼️ ThumbnailService: Error generating local thumbnail: $e');
-    }
-    return null;
-  }
-
   /// Get device pixel ratio (cached for performance)
   double getDevicePixelRatio(BuildContext context) {
     try {
@@ -283,37 +249,8 @@ class ThumbnailService {
     _cachedDevicePixelRatio = null;
   }
 
-  /// Get thumbnail size recommendations for different screen densities
-  Map<String, int> getThumbnailSizeRecommendations(double devicePixelRatio) {
-    return {
-      'low': 360,
-      'medium': 540,
-      'high': 720,
-      'ultra': (720 * devicePixelRatio).round(),
-    };
-  }
-
-  /// Validate thumbnail URL format
-  bool isValidThumbnailUrl(String url) {
-    if (url.isEmpty) return false;
-
-    // Check for common image formats
-    final imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.avif'];
-    final lowerUrl = url.toLowerCase();
-
-    return imageExtensions.any((ext) => lowerUrl.contains(ext)) ||
-        lowerUrl.startsWith('http') ||
-        lowerUrl.startsWith('https');
-  }
-
-  /// Build cache key for thumbnail URL
-  String buildCacheKey(String url, int width, int height) {
-    return '${url}_${width}x$height';
-  }
-
-  /// Clear thumbnail cache
+  /// Clear device pixel ratio cache
   void clearCache() {
-    _thumbnailCache.clear();
     clearDevicePixelRatioCache();
     debugPrint('🖼️ ThumbnailService: Cache cleared');
   }

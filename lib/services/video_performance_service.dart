@@ -131,48 +131,39 @@ class VideoPerformanceService {
     await Future.wait(futures);
   }
 
-  /// Dispose video controller with comprehensive error handling
-  Future<void> disposeVideo(String videoUrl) async {
+  /// Pause video controller (VideoPreloaderService handles disposal)
+  Future<void> pauseVideo(String videoUrl) async {
     final controller = _videoControllers[videoUrl];
     if (controller != null) {
       try {
-        // Check if controller is still valid before disposing
         if (controller.value.isInitialized && !controller.value.hasError) {
           await controller.pause();
           await controller.setVolume(0.0);
         }
-        await controller.dispose();
-        _videoControllers.remove(videoUrl);
-        _videoPreloaded[videoUrl] = false;
-        debugPrint(
-            '✅ VideoPerformanceService: Disposed controller for $videoUrl');
+        debugPrint('🔄 VideoPerformanceService: Paused controller: $videoUrl');
       } catch (e) {
-        debugPrint(
-            '❌ VideoPerformanceService: Error disposing controller for $videoUrl: $e');
-        // Force cleanup even if disposal fails
-        _videoControllers.remove(videoUrl);
-        _videoPreloaded[videoUrl] = false;
+        debugPrint('❌ VideoPerformanceService: Error pausing controller: $e');
       }
     }
   }
 
-  /// Alias for disposeVideo
+  /// Alias for pauseVideo
   Future<void> disposeController(String videoUrl) async {
-    await disposeVideo(videoUrl);
+    await pauseVideo(videoUrl);
   }
 
-  /// Dispose all videos with comprehensive error handling
-  Future<void> disposeAll() async {
+  /// Pause all videos (VideoPreloaderService handles disposal)
+  Future<void> pauseAll() async {
     final controllerUrls = _videoControllers.keys.toList();
 
     for (final videoUrl in controllerUrls) {
-      await disposeVideo(videoUrl);
+      await pauseVideo(videoUrl);
     }
 
     _videoControllers.clear();
     _videoPreloaded.clear();
     _thumbnailCache.clear();
-    debugPrint('✅ VideoPerformanceService: Disposed all controllers');
+    debugPrint('✅ VideoPerformanceService: Paused all controllers');
   }
 
   /// Get optimized video player widget

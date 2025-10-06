@@ -55,16 +55,17 @@ class _TikTokQualityThumbnailState extends State<TikTokQualityThumbnail> {
       _isLoading = true;
       _hasError = false;
     });
-    
+
     try {
       // Use TikTok-quality thumbnail generation
-      final thumbnailData = await VideoThumbnailService.generateTikTokQualityThumbnail(
+      final thumbnailData =
+          await VideoThumbnailService.generateTikTokQualityThumbnail(
         widget.videoUrl,
         maxWidth: widget.width?.toInt() ?? 720,
         maxHeight: widget.height?.toInt() ?? 1280,
         timeMs: widget.thumbnailTime.inMilliseconds,
       );
-      
+
       if (mounted) {
         setState(() {
           _thumbnailData = thumbnailData;
@@ -102,11 +103,11 @@ class _TikTokQualityThumbnailState extends State<TikTokQualityThumbnail> {
     if (_isLoading) {
       return widget.placeholder ?? _buildDefaultPlaceholder();
     }
-    
+
     if (_hasError || _thumbnailData == null) {
       return widget.errorWidget ?? _buildDefaultErrorWidget();
     }
-    
+
     return Image.memory(
       _thumbnailData!,
       fit: widget.fit,
@@ -121,14 +122,7 @@ class _TikTokQualityThumbnailState extends State<TikTokQualityThumbnail> {
       width: widget.width,
       height: widget.height,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.grey.shade800,
-            Colors.grey.shade900,
-          ],
-        ),
+        color: Colors.grey[900], // Simple solid color - no gradients
       ),
       child: const Center(
         child: CircularProgressIndicator(
@@ -144,14 +138,7 @@ class _TikTokQualityThumbnailState extends State<TikTokQualityThumbnail> {
       width: widget.width,
       height: widget.height,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.grey.shade700,
-            Colors.grey.shade800,
-          ],
-        ),
+        color: Colors.grey[900], // Simple solid color - no gradients
       ),
       child: const Center(
         child: Icon(

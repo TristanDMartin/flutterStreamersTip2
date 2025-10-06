@@ -203,7 +203,6 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
               onTap: _showDraftsSheet,
               showDraftBadge: true,
               showDurationBadge: false,
-              enableLazyLoading: false,
             );
           }
 
@@ -252,8 +251,17 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildHomeVideoCard(HomeVideo video, int index) {
-    debugPrint(
-        '🎬 ProfileView: Building video card ${video.id} - thumbnailURL: "${video.thumbnailURL}", thumbnails: ${video.thumbnails != null ? "YES" : "NO"}');
+    debugPrint('🎬 ProfileView: Building video card ${video.id}');
+    debugPrint('  - thumbnailURL: "${video.thumbnailURL}"');
+    debugPrint('  - videoURL: "${video.videoURL}"');
+    debugPrint('  - thumbnails: ${video.thumbnails != null ? "YES" : "NO"}');
+    if (video.thumbnails != null) {
+      debugPrint('  - thumbnails.urls: ${video.thumbnails!.urls}');
+      debugPrint(
+          '  - thumbnails.generatedAt: ${video.thumbnails!.generatedAt}');
+    }
+    debugPrint('  - isDraft: ${video.isDraft}');
+    debugPrint('  - createdAt: ${video.createdAt}');
     return GridThumbnail(
       video: video,
       onTap: () {
@@ -262,7 +270,6 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       },
       showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
       showDurationBadge: true,
-      enableLazyLoading: false,
     );
   }
 
@@ -298,7 +305,6 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       },
       showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
       showDurationBadge: true,
-      enableLazyLoading: true,
     );
   }
 

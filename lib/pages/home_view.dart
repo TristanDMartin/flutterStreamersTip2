@@ -17,6 +17,7 @@ import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/video_performance_service.dart';
+import '../services/video_preloader_service.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
@@ -37,6 +38,9 @@ class _HomeViewState extends ConsumerState<HomeView>
     with WidgetsBindingObserver {
   late PageController _pageController;
   int _currentIndex = 0;
+
+  // Video preloader for TikTok-style instant switching
+  final VideoPreloaderService _videoPreloader = VideoPreloaderService();
 
   // Feed selector (For You / Following)
   FeedTab _feedTab = FeedTab.forYou;
@@ -258,6 +262,9 @@ class _HomeViewState extends ConsumerState<HomeView>
 
     // Clear performance data
     _videoEngagementScores.clear();
+
+    // Dispose video preloader
+    _videoPreloader.dispose();
 
     super.dispose();
   }
@@ -741,6 +748,13 @@ class _HomeViewState extends ConsumerState<HomeView>
     final isLoading =
         _feedTab == FeedTab.forYou ? homeState.isLoading : homeState.isLoading;
 
+    // Initialize video preloader when videos are loaded
+    if (videos.isNotEmpty && !isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _videoPreloader.initialize(videos, _currentIndex);
+      });
+    }
+
     // DEBUG: Log video counts
     log('🔍 HomeView: _buildVideoContent - Feed: ${_feedTab.name}, Videos: ${videos.length}, Loading: $isLoading');
     debugPrint(
@@ -902,6 +916,9 @@ class _HomeViewState extends ConsumerState<HomeView>
                   setState(() {
                     _currentIndex = index;
                   });
+
+                  // Update video preloader with new current index
+                  _videoPreloader.updateCurrentIndex(index);
 
                   // SMART: Pause other videos and ensure instant autoplay
                   if (index < videos.length) {

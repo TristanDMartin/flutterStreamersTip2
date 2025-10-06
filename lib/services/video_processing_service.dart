@@ -168,22 +168,11 @@ class VideoProcessingService {
           '🎬 VideoProcessingService: Created image canvas ${image.width}x${image.height}',
           tag: 'VideoProcessingService');
 
-      // Create a realistic video thumbnail background
+      // Create a solid dark background (no gradients)
+      final solidColor = img.ColorRgb8(45, 45, 45); // Dark grey
       for (int y = 0; y < image.height; y++) {
         for (int x = 0; x < image.width; x++) {
-          // Create a more realistic video-like gradient
-          final normalizedX = x / image.width;
-          final normalizedY = y / image.height;
-
-          // Simulate video content with varying colors
-          final r =
-              (50 + normalizedX * 100 + normalizedY * 50).round().clamp(0, 255);
-          final g =
-              (80 + normalizedX * 80 + normalizedY * 100).round().clamp(0, 255);
-          final b =
-              (120 + normalizedX * 60 + normalizedY * 80).round().clamp(0, 255);
-
-          image.setPixel(x, y, img.ColorRgb8(r, g, b));
+          image.setPixel(x, y, solidColor);
         }
       }
 

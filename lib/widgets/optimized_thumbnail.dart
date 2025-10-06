@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/home_video.dart';
 import '../services/thumbnail_service.dart';
+import 'thumbnail_tile.dart';
 
 /// Optimized thumbnail widget for 3-column grids with crisp, non-blurry images
 class OptimizedThumbnail extends StatefulWidget {
@@ -15,7 +16,6 @@ class OptimizedThumbnail extends StatefulWidget {
   final bool showDraftBadge;
   final bool showDurationBadge;
   final bool showViewsBadge;
-  final bool enableLazyLoading;
 
   const OptimizedThumbnail({
     super.key,
@@ -30,7 +30,6 @@ class OptimizedThumbnail extends StatefulWidget {
     this.showDraftBadge = true,
     this.showDurationBadge = true,
     this.showViewsBadge = false,
-    this.enableLazyLoading = true,
   });
 
   @override
@@ -86,9 +85,11 @@ class _OptimizedThumbnailState extends State<OptimizedThumbnail>
       child: Container(
         width: _containerWidth,
         height: _containerHeight,
-        decoration: widget.borderRadius != null
-            ? BoxDecoration(borderRadius: widget.borderRadius)
-            : null,
+        decoration: BoxDecoration(
+          color: Colors
+              .black, // Solid background to prevent gradient bleed-through
+          borderRadius: widget.borderRadius,
+        ),
         child: ClipRRect(
           borderRadius: widget.borderRadius ?? BorderRadius.zero,
           child: Stack(
@@ -137,24 +138,8 @@ class _OptimizedThumbnailState extends State<OptimizedThumbnail>
   }
 
   Widget _buildGradientOverlay() {
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        height: 60,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              Colors.black.withValues(alpha: 0.7),
-            ],
-          ),
-        ),
-      ),
-    );
+    // No gradient overlay - return empty container
+    return const SizedBox.shrink();
   }
 
   Widget _buildDurationBadge() {
@@ -250,138 +235,12 @@ class _OptimizedThumbnailState extends State<OptimizedThumbnail>
   }
 }
 
-/// Lazy loading wrapper for OptimizedThumbnail
-class LazyOptimizedThumbnail extends StatefulWidget {
-  final HomeVideo video;
-  final VoidCallback? onTap;
-  final double? width;
-  final double? height;
-  final BoxFit fit;
-  final BorderRadius? borderRadius;
-  final Widget? placeholder;
-  final Widget? errorWidget;
-  final bool showDraftBadge;
-  final bool showDurationBadge;
-  final bool showViewsBadge;
-
-  const LazyOptimizedThumbnail({
-    super.key,
-    required this.video,
-    this.onTap,
-    this.width,
-    this.height,
-    this.fit = BoxFit.cover,
-    this.borderRadius,
-    this.placeholder,
-    this.errorWidget,
-    this.showDraftBadge = true,
-    this.showDurationBadge = true,
-    this.showViewsBadge = false,
-  });
-
-  @override
-  State<LazyOptimizedThumbnail> createState() => _LazyOptimizedThumbnailState();
-}
-
-class _LazyOptimizedThumbnailState extends State<LazyOptimizedThumbnail> {
-  final GlobalKey _containerKey = GlobalKey();
-  bool _isVisible = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkVisibility();
-    });
-  }
-
-  void _checkVisibility() {
-    if (!mounted) return;
-
-    try {
-      final RenderBox? renderBox =
-          _containerKey.currentContext?.findRenderObject() as RenderBox?;
-      if (renderBox == null) return;
-
-      final position = renderBox.localToGlobal(Offset.zero);
-      final size = renderBox.size;
-      final screenSize = MediaQuery.of(context).size;
-
-      // Check if the widget is visible in the viewport
-      final isVisible =
-          position.dy < screenSize.height && position.dy + size.height > 0;
-
-      if (isVisible != _isVisible) {
-        setState(() {
-          _isVisible = isVisible;
-        });
-      }
-    } catch (e) {
-      // Fallback: show the thumbnail if MediaQuery is not available
-      debugPrint('🖼️ LazyOptimizedThumbnail: Error checking visibility: $e');
-      if (!_isVisible) {
-        setState(() {
-          _isVisible = true;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        _checkVisibility();
-        return false;
-      },
-      child: Container(
-        key: _containerKey,
-        child: _isVisible
-            ? OptimizedThumbnail(
-                video: widget.video,
-                onTap: widget.onTap,
-                width: widget.width,
-                height: widget.height,
-                fit: widget.fit,
-                borderRadius: widget.borderRadius,
-                placeholder: widget.placeholder,
-                errorWidget: widget.errorWidget,
-                showDraftBadge: widget.showDraftBadge,
-                showDurationBadge: widget.showDurationBadge,
-                showViewsBadge: widget.showViewsBadge,
-                enableLazyLoading: false, // Already handled by this wrapper
-              )
-            : _buildPlaceholder(),
-      ),
-    );
-  }
-
-  Widget _buildPlaceholder() {
-    return Container(
-      width: widget.width,
-      height: widget.height,
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: widget.borderRadius,
-      ),
-      child: const Center(
-        child: Icon(
-          Icons.video_library_outlined,
-          color: Colors.white54,
-          size: 24,
-        ),
-      ),
-    );
-  }
-}
-
 /// Grid-specific thumbnail widget with automatic sizing
 class GridThumbnail extends StatelessWidget {
   final HomeVideo video;
   final VoidCallback? onTap;
   final bool showDraftBadge;
   final bool showDurationBadge;
-  final bool enableLazyLoading;
 
   const GridThumbnail({
     super.key,
@@ -389,7 +248,6 @@ class GridThumbnail extends StatelessWidget {
     this.onTap,
     this.showDraftBadge = true,
     this.showDurationBadge = true,
-    this.enableLazyLoading = true,
   });
 
   @override
@@ -401,7 +259,7 @@ class GridThumbnail extends StatelessWidget {
           (screenWidth - 32 - 32) / 3; // 16px edge padding + 16px gutters
       final tileHeight = tileWidth * (16 / 9); // 9:16 aspect ratio
 
-      final thumbnailWidget = OptimizedThumbnail(
+      return ThumbnailTile(
         video: video,
         onTap: onTap,
         width: tileWidth,
@@ -411,23 +269,10 @@ class GridThumbnail extends StatelessWidget {
         showDurationBadge: showDurationBadge,
         showViewsBadge: false,
       );
-
-      return enableLazyLoading
-          ? LazyOptimizedThumbnail(
-              video: video,
-              onTap: onTap,
-              width: tileWidth,
-              height: tileHeight,
-              borderRadius: BorderRadius.circular(12),
-              showDraftBadge: showDraftBadge,
-              showDurationBadge: showDurationBadge,
-              showViewsBadge: false,
-            )
-          : thumbnailWidget;
     } catch (e) {
       // Fallback if MediaQuery is not available
       debugPrint('🖼️ GridThumbnail: Error accessing MediaQuery: $e');
-      return OptimizedThumbnail(
+      return ThumbnailTile(
         video: video,
         onTap: onTap,
         width: 100,

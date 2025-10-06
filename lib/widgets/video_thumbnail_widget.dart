@@ -52,16 +52,18 @@ class _VideoThumbnailWidgetState extends State<VideoThumbnailWidget> {
       _isLoading = true;
       _hasError = false;
     });
-    
+
     try {
       // Use TikTok-quality thumbnail generation with smaller dimensions to prevent buffer overflow
       final thumbnailData = await VideoThumbnailService.generateCustomThumbnail(
         widget.videoUrl,
-        maxWidth: widget.width?.toInt() ?? 160, // Smaller dimensions to prevent overflow
-        maxHeight: widget.height?.toInt() ?? 240, // Smaller dimensions to prevent overflow
+        maxWidth: widget.width?.toInt() ??
+            160, // Smaller dimensions to prevent overflow
+        maxHeight: widget.height?.toInt() ??
+            240, // Smaller dimensions to prevent overflow
         quality: 90, // High quality but not maximum to prevent memory issues
       );
-      
+
       if (mounted) {
         setState(() {
           _thumbnailData = thumbnailData;
@@ -242,15 +244,7 @@ class _LoadingThumbnailWidgetState extends State<LoadingThumbnailWidget>
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: widget.borderRadius,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.grey[800]!,
-                    Colors.grey[700]!,
-                    Colors.grey[800]!,
-                  ],
-                ),
+                color: Colors.grey[900], // Simple solid color - no gradients
               ),
               child: const Center(
                 child: Icon(

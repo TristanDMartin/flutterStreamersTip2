@@ -26,7 +26,6 @@ class VideoControllerManager {
   final Map<String, VideoPlayerController> _controllers = {};
   final Map<String, ControllerState> _controllerStates = {};
   final Map<String, DateTime> _lastUsed = {};
-  final Set<String> _disposingControllers = {};
 
   // Configuration
   static const int _maxControllers = 3;
@@ -59,7 +58,7 @@ class VideoControllerManager {
             return null;
           }
           // Retry failed controller
-          await _disposeController(videoId);
+          await _pauseController(videoId);
         }
       }
 
@@ -127,14 +126,15 @@ class VideoControllerManager {
       _lastFailure[videoId] = DateTime.now();
       _retryCount[videoId] = (_retryCount[videoId] ?? 0) + 1;
 
-      // Clean up failed controller
+      // Don't dispose failed controllers - let VideoPreloaderService handle disposal
+      // Just mark as error and remove from our tracking
       try {
-        final controller = _controllers.remove(videoId);
-        if (controller != null) {
-          await controller.dispose();
-        }
-      } catch (disposeError) {
-        log('❌ Error disposing failed controller $videoId: $disposeError');
+        _controllers.remove(videoId);
+        _controllerStates.remove(videoId);
+        _lastUsed.remove(videoId);
+        log('🔄 Marked failed controller $videoId for preloader disposal');
+      } catch (e) {
+        log('❌ Error marking failed controller $videoId: $e');
       }
 
       return null;
@@ -183,44 +183,23 @@ class VideoControllerManager {
     }
 
     if (oldestId != null) {
-      await _disposeController(oldestId);
+      await _pauseController(oldestId);
     }
   }
 
-  /// Dispose controller safely
-  Future<void> _disposeController(String videoId) async {
-    if (_disposingControllers.contains(videoId)) {
-      log('⚠️ Controller $videoId already being disposed');
-      return;
-    }
-
-    _disposingControllers.add(videoId);
-    _controllerStates[videoId] = ControllerState.disposing;
-
-    try {
-      final controller = _controllers.remove(videoId);
-      if (controller != null) {
-        // Pause and mute before disposal
-        try {
-          if (controller.value.isInitialized && !controller.value.hasError) {
-            await controller.pause();
-            await controller.setVolume(0.0);
-          }
-        } catch (e) {
-          log('⚠️ Error pausing controller $videoId before disposal: $e');
+  /// Pause controller safely (VideoPreloaderService handles disposal)
+  Future<void> _pauseController(String videoId) async {
+    final controller = _controllers[videoId];
+    if (controller != null) {
+      try {
+        if (controller.value.isInitialized && !controller.value.hasError) {
+          await controller.pause();
+          await controller.setVolume(0.0);
         }
-
-        await controller.dispose();
-        log('🗑️ Controller disposed successfully: $videoId');
+        log('🔄 Paused controller $videoId (disposal handled by preloader)');
+      } catch (e) {
+        log('⚠️ Error pausing controller $videoId: $e');
       }
-    } catch (e) {
-      log('❌ Error disposing controller $videoId: $e');
-    } finally {
-      _controllerStates.remove(videoId);
-      _lastUsed.remove(videoId);
-      _disposingControllers.remove(videoId);
-      _retryCount.remove(videoId);
-      _lastFailure.remove(videoId);
     }
   }
 
@@ -272,7 +251,7 @@ class VideoControllerManager {
     }
 
     for (final videoId in expiredIds) {
-      await _disposeController(videoId);
+      await _pauseController(videoId);
     }
 
     if (expiredIds.isNotEmpty) {
@@ -284,7 +263,6 @@ class VideoControllerManager {
   Map<String, dynamic> getStats() {
     return {
       'totalControllers': _controllers.length,
-      'disposingControllers': _disposingControllers.length,
       'maxControllers': _maxControllers,
       'controllerStates':
           _controllerStates.map((k, v) => MapEntry(k, v.toString())),
@@ -296,23 +274,22 @@ class VideoControllerManager {
     };
   }
 
-  /// Dispose all controllers
-  Future<void> disposeAll() async {
-    log('🧹 Disposing all controllers...');
+  /// Pause all controllers (VideoPreloaderService handles disposal)
+  Future<void> pauseAll() async {
+    log('🧹 Pausing all controllers...');
 
     final controllerIds = _controllers.keys.toList();
     for (final videoId in controllerIds) {
-      await _disposeController(videoId);
+      await _pauseController(videoId);
     }
 
     _controllers.clear();
     _controllerStates.clear();
     _lastUsed.clear();
-    _disposingControllers.clear();
     _retryCount.clear();
     _lastFailure.clear();
 
-    log('✅ All controllers disposed');
+    log('✅ All controllers paused');
   }
 
   /// Periodic cleanup task
@@ -333,6 +310,6 @@ class VideoControllerManager {
   @override
   void dispose() {
     stopPeriodicCleanup();
-    disposeAll();
+    pauseAll();
   }
 }
