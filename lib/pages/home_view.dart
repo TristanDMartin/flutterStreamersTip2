@@ -18,6 +18,8 @@ import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/video_performance_service.dart';
 import '../services/video_preloader_service.dart';
+import '../services/global_playback_coordinator.dart';
+import '../providers/playback_coordinator_provider.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
@@ -41,6 +43,7 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   // Video preloader for TikTok-style instant switching
   final VideoPreloaderService _videoPreloader = VideoPreloaderService();
+  GlobalPlaybackCoordinator? _playbackCoordinator;
 
   // Feed selector (For You / Following)
   FeedTab _feedTab = FeedTab.forYou;
@@ -71,6 +74,9 @@ class _HomeViewState extends ConsumerState<HomeView>
     ErrorHandlingService().initialize();
     OfflineDataService();
     EngagementAnalyticsService().initialize();
+
+    // Initialize playback coordinator
+    _playbackCoordinator = ref.read(playbackCoordinatorProvider);
 
     // Setup favorites manager and load videos
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -123,6 +129,16 @@ class _HomeViewState extends ConsumerState<HomeView>
 
           if (_currentIndex < currentVideos.length) {
             _pauseAllOtherVideos(_currentIndex);
+
+            // Ensure current video gets focus for TikTok-style autoplay
+            final currentVideo = currentVideos[_currentIndex];
+            final ownerId =
+                _feedTab == FeedTab.forYou ? 'home/forYou' : 'home/following';
+
+            if (_playbackCoordinator != null) {
+              log('🎵 HomeView: Reactivating focus for current video: ${currentVideo.id}');
+              _playbackCoordinator!.requestFocus(currentVideo.id, ownerId);
+            }
           }
 
           log('✅ HomeView: Feed reactivated successfully');
@@ -172,6 +188,9 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       // Prewarm the first video for instant play (TikTok style)
       await _prewarmFirstVideo();
+
+      // Ensure first video gets focus for TikTok-style autoplay
+      _ensureFirstVideoFocus();
     } catch (e) {
       ErrorHandlingService().handleError(e, context: 'load_videos');
     }
@@ -255,6 +274,38 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
+  /// Ensure first video gets focus for TikTok-style autoplay on app startup
+  void _ensureFirstVideoFocus() {
+    try {
+      final homeState = ref.read(hp.homeProvider);
+      final videos = _feedTab == FeedTab.forYou
+          ? homeState.forYouVideos
+          : homeState.followingVideos;
+
+      if (videos.isNotEmpty && _playbackCoordinator != null) {
+        final firstVideo = videos.first;
+        final ownerId =
+            _feedTab == FeedTab.forYou ? 'home/forYou' : 'home/following';
+
+        log('🎵 HomeView: Ensuring first video gets focus for autoplay: ${firstVideo.id}');
+        debugPrint(
+            '🎵 HomeView: Ensuring first video gets focus for autoplay: ${firstVideo.id}');
+
+        // Request focus for the first video to enable TikTok-style autoplay
+        _playbackCoordinator!.requestFocus(firstVideo.id, ownerId);
+
+        // Log coordinator state for debugging
+        _playbackCoordinator!.logCurrentState();
+
+        log('✅ HomeView: First video focus requested successfully');
+        debugPrint('✅ HomeView: First video focus requested successfully');
+      }
+    } catch (e) {
+      log('❌ HomeView: Error ensuring first video focus: $e');
+      debugPrint('❌ HomeView: Error ensuring first video focus: $e');
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -313,6 +364,12 @@ class _HomeViewState extends ConsumerState<HomeView>
             isSelected: _feedTab == FeedTab.forYou,
             onTap: () {
               log('📱 HomeView: Switching to For You tab');
+
+              // Use coordinator to pause all except For You tab
+              if (_playbackCoordinator != null) {
+                _playbackCoordinator!.pauseAllExcept('home/forYou');
+              }
+
               // SMART: Dispose videos from inactive tab only
               if (_feedTab != FeedTab.forYou) {
                 _disposeInactiveTabVideos(
@@ -340,6 +397,11 @@ class _HomeViewState extends ConsumerState<HomeView>
             onTap: () {
               log('👥 HomeView: Following tab tapped!');
               debugPrint('👥 HomeView: Following tab tapped!');
+
+              // Use coordinator to pause all except Following tab
+              if (_playbackCoordinator != null) {
+                _playbackCoordinator!.pauseAllExcept('home/following');
+              }
 
               // SMART: Dispose videos from inactive tab only
               if (_feedTab != FeedTab.following) {
@@ -942,8 +1004,8 @@ class _HomeViewState extends ConsumerState<HomeView>
                   isCurrentVideo: index == _currentIndex,
                   isFirstVideo: index == 0,
                   tabId: _feedTab == FeedTab.forYou
-                      ? 'forYou'
-                      : 'following', // Pass tab ID
+                      ? 'home/forYou'
+                      : 'home/following', // Pass tab ID for coordinator
                   homeViewModel: homeVM,
                   showSheet: false,
                   sheetType: '',

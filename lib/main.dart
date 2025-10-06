@@ -15,6 +15,7 @@ import 'services/firestore_cache_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/performance_emergency_service.dart';
 import 'services/global_post_count_fix.dart';
+import 'services/navigation_observer.dart';
 import 'widgets/ios_minimal_startup.dart';
 import 'providers/service_providers.dart';
 
@@ -129,6 +130,7 @@ class MyApp extends ConsumerWidget {
     return MaterialApp(
       title: 'StreamersTip',
       navigatorKey: nav.NavigationService.navigatorKey,
+      navigatorObservers: [AppNavigationObserver()],
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,

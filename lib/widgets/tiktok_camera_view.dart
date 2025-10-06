@@ -7,6 +7,7 @@ import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/tiktok_camera_service.dart';
+import '../services/global_playback_coordinator.dart';
 import '../providers/home_provider.dart';
 import 'video_player_view_optimized.dart';
 import 'video_recording_preview.dart';
@@ -30,6 +31,8 @@ class TikTokCameraView extends ConsumerStatefulWidget {
 class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     with WidgetsBindingObserver {
   final TikTokCameraService _cameraService = TikTokCameraService();
+  final GlobalPlaybackCoordinator _playbackCoordinator =
+      GlobalPlaybackCoordinator();
   final ImagePicker _imagePicker = ImagePicker();
 
   bool _isInitialized = false;
@@ -46,7 +49,10 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _pauseAllHomeViewVideos(); // Stop HomeView audio immediately
+
+    // Pause all videos when opening camera
+    _playbackCoordinator.pauseAll(reason: 'cameraViewOpened');
+
     _initializeCamera();
   }
 
@@ -55,7 +61,10 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     WidgetsBinding.instance.removeObserver(this);
     _recordingTimer?.cancel();
     _cameraService.dispose();
-    _reactivateHomeView(); // Resume HomeView when leaving camera
+
+    // Resume playback when leaving camera
+    _playbackCoordinator.resumePlayback();
+
     super.dispose();
   }
 

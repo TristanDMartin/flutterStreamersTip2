@@ -17,11 +17,12 @@ import '../services/engagement_analytics_service.dart';
 import '../services/robust_auth_service.dart';
 import '../services/enhanced_like_service.dart';
 import '../widgets/enhanced_like_button.dart';
-import '../services/video_performance_service.dart';
 import '../services/video_controller_manager.dart';
 import '../services/video_preloader_service.dart';
 import '../services/production_logging_service.dart';
 import '../services/audio_enhancement_service.dart';
+import '../services/global_playback_coordinator.dart';
+import '../providers/playback_coordinator_provider.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_share_sheet.dart';
 
@@ -132,6 +133,7 @@ class _VideoPlayerViewOptimizedState
   // Production-ready controller management
   final VideoControllerManager _controllerManager = VideoControllerManager();
   final ProductionLoggingService _logger = ProductionLoggingService();
+  GlobalPlaybackCoordinator? _playbackCoordinator;
 
   /// Safe controller operations with comprehensive error handling
   Future<bool> _safeSetVolume(double volume) async {
@@ -230,6 +232,9 @@ class _VideoPlayerViewOptimizedState
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    // Initialize playback coordinator
+    _playbackCoordinator = ref.read(playbackCoordinatorProvider);
+
     // TIKTOK-STYLE: Initialize video immediately for instant playback
     _initializeVideo();
   }
@@ -241,6 +246,11 @@ class _VideoPlayerViewOptimizedState
     // Track performance
     PerformanceService()
         .trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
+
+    // Unregister from playback coordinator
+    if (_playbackCoordinator != null) {
+      _playbackCoordinator!.unregisterController(widget.video.id);
+    }
 
     // With AutomaticKeepAliveClientMixin and preloader, we don't dispose controllers here
     // The VideoPreloaderService manages controller lifecycle
@@ -291,6 +301,12 @@ class _VideoPlayerViewOptimizedState
     // SIMPLE: React when the page becomes current/non-current
     if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
       if (widget.isCurrentVideo) {
+        // Request focus from coordinator - this will pause all other videos
+        if (_playbackCoordinator != null) {
+          _playbackCoordinator!.requestFocus(widget.video.id, widget.tabId);
+          log('🎵 VideoPlayer: Requested focus for current video: ${widget.video.id}');
+        }
+
         // This video is now current - play it with TikTok-style audio enhancement
         _applyAudioEnhancement().then((_) async {
           await _safeSetVolume(1.0);
@@ -304,6 +320,12 @@ class _VideoPlayerViewOptimizedState
               '🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
         });
       } else {
+        // Relinquish focus - this video is no longer current
+        if (_playbackCoordinator != null) {
+          _playbackCoordinator!.relinquishFocus(widget.video.id);
+          log('🎵 VideoPlayer: Relinquished focus for non-current video: ${widget.video.id}');
+        }
+
         // This video is no longer current - pause it immediately
         _safePause().then((_) {
           _safeSetVolume(0.0); // Mute audio immediately
@@ -312,6 +334,15 @@ class _VideoPlayerViewOptimizedState
 
         log('⏸️ Video no longer current, paused: ${widget.video.id}');
         debugPrint('⏸️ Video no longer current, paused: ${widget.video.id}');
+      }
+    }
+
+    // TIKTOK-STYLE: Also ensure focus if this video is current but coordinator doesn't have focus
+    if (widget.isCurrentVideo && _playbackCoordinator != null) {
+      // Check if this video should have focus but doesn't
+      if (_playbackCoordinator!.activeVideoId != widget.video.id) {
+        log('🎵 VideoPlayer: Current video doesn\'t have focus, requesting it: ${widget.video.id}');
+        _playbackCoordinator!.requestFocus(widget.video.id, widget.tabId);
       }
     }
   }
@@ -383,12 +414,26 @@ class _VideoPlayerViewOptimizedState
       _videoPlayerController!.addListener(_videoErrorListener);
       _videoPlayerController!.addListener(_videoStateListener);
 
+      // Register with playback coordinator
+      if (_playbackCoordinator != null) {
+        _playbackCoordinator!.registerController(
+          widget.video.id,
+          _videoPlayerController!,
+          widget
+              .tabId, // Use tabId as the owner (e.g., 'home/forYou', 'home/following')
+        );
+      }
+
       _isInitialized = true;
       _logger.debug('Video initialized successfully: ${widget.video.id}',
           tag: 'VideoPlayer');
 
       // Auto-play if this is the current video
       if (widget.isCurrentVideo) {
+        // Request focus from coordinator to ensure audio plays
+        if (_playbackCoordinator != null) {
+          _playbackCoordinator!.requestFocus(widget.video.id, widget.tabId);
+        }
         await _safePlay();
       }
     } catch (e) {
@@ -1173,9 +1218,6 @@ class _VideoPlayerViewOptimizedState
     if (widget.video.thumbnails != null &&
         widget.video.thumbnails!.urls.isNotEmpty) {
       // Get the best thumbnail size for the screen
-      final screenWidth = MediaQuery.of(context).size.width;
-      final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
-      final effectiveWidth = (screenWidth * devicePixelRatio).round();
 
       // Choose the best thumbnail size (720p, 540p, or 360p)
       if (widget.video.thumbnails!.urls.containsKey(720)) {
