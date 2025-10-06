@@ -610,20 +610,25 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
           ),
         ),
         child: Row(
-          children: [
-            Expanded(
-              child: _buildTab('Video', 0),
-            ),
-            Expanded(
-              child: _buildTab('Favorites', 1),
-            ),
-            Expanded(
-              child: _buildTab('Tagged', 2),
-            ),
-          ],
+          children: _buildTabs(),
         ),
       ),
     );
+  }
+
+  List<Widget> _buildTabs() {
+    final tabs = <Widget>[
+      Expanded(child: _buildTab('Video', 0)),
+    ];
+
+    // Only show Favorites tab if privacy allows it
+    if (displayStreamer.privacy.showFavoritesOnCard) {
+      tabs.add(Expanded(child: _buildTab('Favorites', 1)));
+    }
+
+    tabs.add(Expanded(child: _buildTab('Tagged', 2)));
+
+    return tabs;
   }
 
   Widget _buildTab(String text, int index) {
@@ -667,16 +672,32 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildTabContent() {
-    switch (_selectedTabIndex) {
-      case 0: // Videos
+    // Get the actual tab type based on current selection and privacy settings
+    final tabType = _getTabType(_selectedTabIndex);
+
+    switch (tabType) {
+      case TabType.videos:
         return _buildVideosTab();
-      case 1: // Favorites
+      case TabType.favorites:
         return _buildFavoritesTab();
-      case 2: // Tagged
+      case TabType.tagged:
         return _buildTaggedTab();
-      default:
-        return _buildVideosTab();
     }
+  }
+
+  TabType _getTabType(int selectedIndex) {
+    if (selectedIndex == 0) return TabType.videos;
+
+    // If Favorites are hidden, Tagged is at index 1
+    if (!displayStreamer.privacy.showFavoritesOnCard) {
+      return selectedIndex == 1 ? TabType.tagged : TabType.videos;
+    }
+
+    // If Favorites are shown, they're at index 1, Tagged at index 2
+    if (selectedIndex == 1) return TabType.favorites;
+    if (selectedIndex == 2) return TabType.tagged;
+
+    return TabType.videos;
   }
 
   Widget _buildVideosTab() {
@@ -687,9 +708,49 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildFavoritesTab() {
+    // Check if this is the owner viewing their own card
+    if (isOwner && !displayStreamer.privacy.showFavoritesOnCard) {
+      return _buildOwnerNotice();
+    }
+
     return const _EmptyStateWidget(
       icon: Icons.favorite_outline,
       message: 'No favorites yet',
+    );
+  }
+
+  Widget _buildOwnerNotice() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.visibility_off,
+            color: Colors.white.withValues(alpha: 0.6),
+            size: 48,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Favorites are hidden on your public card',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Change in Edit Profile',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
@@ -1274,4 +1335,10 @@ class _EmptyStateWidget extends StatelessWidget {
       ),
     );
   }
+}
+
+enum TabType {
+  videos,
+  favorites,
+  tagged,
 }

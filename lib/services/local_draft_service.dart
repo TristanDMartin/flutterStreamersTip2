@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import 'draft_thumbnail_service.dart';
 import 'package:path/path.dart' as path;
 
 /// Local Draft Service - Manages drafts using local storage (equivalent to iOS @AppStorage)
@@ -277,15 +278,22 @@ class LocalDraftService {
   Future<String?> _generateAndSaveThumbnail(
       File videoFile, String draftId) async {
     try {
-      // Thumbnail generation implementation
-      // This would use video_thumbnail package to generate thumbnail
-      // and save it to local storage
-      // Currently not implemented - would require video processing service integration
-
       debugPrint('🖼️ Generating thumbnail for draft: $draftId');
 
-      // For now, return null (no thumbnail)
-      return null;
+      // Use the DraftThumbnailService to generate thumbnail
+      final draftThumbnailService = DraftThumbnailService();
+      final thumbnailPath = await draftThumbnailService.generateLocalThumbnail(
+        videoPath: videoFile.path,
+        videoId: draftId,
+      );
+
+      if (thumbnailPath != null) {
+        debugPrint('✅ Generated thumbnail for draft $draftId: $thumbnailPath');
+      } else {
+        debugPrint('❌ Failed to generate thumbnail for draft $draftId');
+      }
+
+      return thumbnailPath;
     } catch (e) {
       debugPrint('❌ Error generating thumbnail: $e');
       return null;

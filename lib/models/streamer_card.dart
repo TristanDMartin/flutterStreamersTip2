@@ -1,4 +1,5 @@
 import 'calendar_event.dart';
+import 'user.dart';
 
 class StreamerCard {
   final String id;
@@ -15,6 +16,7 @@ class StreamerCard {
   final List<CalendarEvent> calendarEvents;
   final bool isFollowing;
   final bool isFollowingYou;
+  final UserPrivacy privacy;
 
   const StreamerCard({
     required this.id,
@@ -31,6 +33,7 @@ class StreamerCard {
     this.calendarEvents = const [],
     this.isFollowing = false,
     this.isFollowingYou = false,
+    this.privacy = const UserPrivacy(),
   });
 
   factory StreamerCard.fromJson(Map<String, dynamic> json) {
@@ -42,21 +45,27 @@ class StreamerCard {
       avatarURL: json['avatarURL'] as String?,
       coverImageURL: json['coverImageURL'] as String?,
       platforms: (json['platforms'] as List<dynamic>?)
-          ?.map((p) => Platform.fromJson(p as Map<String, dynamic>))
-          .toList() ?? [],
+              ?.map((p) => Platform.fromJson(p as Map<String, dynamic>))
+              .toList() ??
+          [],
       hashtags: (json['hashtags'] as List<dynamic>?)
-          ?.map((h) => h as String)
-          .toList() ?? [],
+              ?.map((h) => h as String)
+              .toList() ??
+          [],
       socialLinks: (json['socialLinks'] as List<dynamic>?)
-          ?.map((s) => SocialLink.fromJson(s as Map<String, dynamic>))
-          .toList() ?? [],
+              ?.map((s) => SocialLink.fromJson(s as Map<String, dynamic>))
+              .toList() ??
+          [],
       isConnected: json['isConnected'] as bool? ?? false,
       onlineStatus: json['onlineStatus'] as String? ?? 'online',
       calendarEvents: (json['calendarEvents'] as List<dynamic>?)
-          ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
-          .toList() ?? [],
+              ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
+              .toList() ??
+          [],
       isFollowing: json['isFollowing'] as bool? ?? false,
       isFollowingYou: json['isFollowingYou'] as bool? ?? false,
+      privacy:
+          UserPrivacy.fromMap(json['privacy'] as Map<String, dynamic>? ?? {}),
     );
   }
 
@@ -76,6 +85,7 @@ class StreamerCard {
       'calendarEvents': calendarEvents.map((e) => e.toMap()).toList(),
       'isFollowing': isFollowing,
       'isFollowingYou': isFollowingYou,
+      'privacy': privacy.toMap(),
     };
   }
 }
@@ -234,6 +244,6 @@ extension PlatformTypeExtension on PlatformType {
 
 extension StreamerCardExtension on StreamerCard {
   bool get isOnline => onlineStatus == 'online';
-  
+
   bool get isMutuallyConnected => isFollowing && isFollowingYou;
 }

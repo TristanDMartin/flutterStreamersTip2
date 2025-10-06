@@ -4,23 +4,24 @@ import 'package:video_player/video_player.dart';
 
 /// Service for optimizing video performance like TikTok
 class VideoPerformanceService {
-  static final VideoPerformanceService _instance = VideoPerformanceService._internal();
+  static final VideoPerformanceService _instance =
+      VideoPerformanceService._internal();
   factory VideoPerformanceService() => _instance;
   VideoPerformanceService._internal();
 
   final Map<String, VideoPlayerController> _videoControllers = {};
   final Map<String, bool> _videoPreloaded = {};
   final Map<String, Widget> _thumbnailCache = {};
-  
+
   // CRITICAL: Disable preloading to prevent buffer overflow
   static const int _preloadCount = 0; // Disabled to prevent buffer overflow
-  
+
   /// Preload video for instant playback - DISABLED to prevent buffer overflow
   Future<void> preloadVideo(String videoUrl, {String? thumbnailUrl}) async {
     // CRITICAL: Disabled to prevent ImageReader_JNI buffer overflow
     debugPrint('⚠️ Video preloading disabled to prevent buffer overflow');
     return;
-    
+
     // DISABLED CODE:
     // if (_videoPreloaded[videoUrl] == true) return;
     // try {
@@ -49,7 +50,7 @@ class VideoPerformanceService {
     if (_videoControllers[url] != null) {
       return _videoControllers[url]!;
     }
-    
+
     final controller = VideoPlayerController.networkUrl(
       Uri.parse(url),
       videoPlayerOptions: VideoPlayerOptions(
@@ -65,66 +66,115 @@ class VideoPerformanceService {
     return controller;
   }
 
-  /// Get ready controller (warm start)
-  VideoPlayerController? getReady(String url) => _videoControllers[url];
-  
-  
-  /// Get preloaded video controller
-  VideoPlayerController? getVideoController(String videoUrl) {
-    return _videoControllers[videoUrl];
+  /// Get ready controller (warm start) with validation
+  VideoPlayerController? getReady(String url) {
+    final controller = _videoControllers[url];
+    if (controller != null && _isControllerValid(controller)) {
+      return controller;
+    }
+    // Remove invalid controller
+    if (controller != null) {
+      _videoControllers.remove(url);
+      _videoPreloaded[url] = false;
+    }
+    return null;
   }
-  
+
+  /// Check if controller is valid and safe to use
+  bool _isControllerValid(VideoPlayerController controller) {
+    try {
+      return controller.value.isInitialized && !controller.value.hasError;
+    } catch (e) {
+      debugPrint('❌ VideoPerformanceService: Controller validation error: $e');
+      return false;
+    }
+  }
+
+  /// Get preloaded video controller with validation
+  VideoPlayerController? getVideoController(String videoUrl) {
+    final controller = _videoControllers[videoUrl];
+    if (controller != null && _isControllerValid(controller)) {
+      return controller;
+    }
+    // Remove invalid controller
+    if (controller != null) {
+      _videoControllers.remove(videoUrl);
+      _videoPreloaded[videoUrl] = false;
+    }
+    return null;
+  }
+
   /// Alias for getVideoController
   VideoPlayerController? getController(String videoUrl) {
     return getVideoController(videoUrl);
   }
-  
+
   /// Check if video is preloaded
   bool isVideoPreloaded(String videoUrl) {
     return _videoPreloaded[videoUrl] == true;
   }
-  
+
   /// Preload multiple videos for smooth scrolling
-  Future<void> preloadVideoBatch(List<String> videoUrls, {List<String>? thumbnailUrls}) async {
+  Future<void> preloadVideoBatch(List<String> videoUrls,
+      {List<String>? thumbnailUrls}) async {
     final futures = <Future>[];
-    
+
     for (int i = 0; i < videoUrls.length && i < _preloadCount; i++) {
       final videoUrl = videoUrls[i];
-      final thumbnailUrl = thumbnailUrls != null && i < thumbnailUrls.length 
-          ? thumbnailUrls[i] 
+      final thumbnailUrl = thumbnailUrls != null && i < thumbnailUrls.length
+          ? thumbnailUrls[i]
           : null;
-      
+
       futures.add(preloadVideo(videoUrl, thumbnailUrl: thumbnailUrl));
     }
-    
+
     await Future.wait(futures);
   }
-  
-  /// Dispose video controller
-  void disposeVideo(String videoUrl) {
+
+  /// Dispose video controller with comprehensive error handling
+  Future<void> disposeVideo(String videoUrl) async {
     final controller = _videoControllers[videoUrl];
     if (controller != null) {
-      controller.dispose();
-      _videoControllers.remove(videoUrl);
-      _videoPreloaded[videoUrl] = false;
+      try {
+        // Check if controller is still valid before disposing
+        if (controller.value.isInitialized && !controller.value.hasError) {
+          await controller.pause();
+          await controller.setVolume(0.0);
+        }
+        await controller.dispose();
+        _videoControllers.remove(videoUrl);
+        _videoPreloaded[videoUrl] = false;
+        debugPrint(
+            '✅ VideoPerformanceService: Disposed controller for $videoUrl');
+      } catch (e) {
+        debugPrint(
+            '❌ VideoPerformanceService: Error disposing controller for $videoUrl: $e');
+        // Force cleanup even if disposal fails
+        _videoControllers.remove(videoUrl);
+        _videoPreloaded[videoUrl] = false;
+      }
     }
   }
-  
+
   /// Alias for disposeVideo
-  void disposeController(String videoUrl) {
-    disposeVideo(videoUrl);
+  Future<void> disposeController(String videoUrl) async {
+    await disposeVideo(videoUrl);
   }
-  
-  /// Dispose all videos
-  void disposeAll() {
-    for (final controller in _videoControllers.values) {
-      controller.dispose();
+
+  /// Dispose all videos with comprehensive error handling
+  Future<void> disposeAll() async {
+    final controllerUrls = _videoControllers.keys.toList();
+
+    for (final videoUrl in controllerUrls) {
+      await disposeVideo(videoUrl);
     }
+
     _videoControllers.clear();
     _videoPreloaded.clear();
     _thumbnailCache.clear();
+    debugPrint('✅ VideoPerformanceService: Disposed all controllers');
   }
-  
+
   /// Get optimized video player widget
   Widget getOptimizedVideoPlayer({
     required String videoUrl,
@@ -135,18 +185,19 @@ class VideoPerformanceService {
     Widget? placeholder,
   }) {
     final controller = getVideoController(videoUrl);
-    
+
     if (controller == null) {
-      return placeholder ?? Container(
-        width: width,
-        height: height,
-        color: Colors.black,
-        child: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
-      );
+      return placeholder ??
+          Container(
+            width: width,
+            height: height,
+            color: Colors.black,
+            child: const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          );
     }
-    
+
     return SizedBox(
       width: width,
       height: height,
@@ -160,7 +211,7 @@ class VideoPerformanceService {
       ),
     );
   }
-  
+
   /// Get cached thumbnail widget - DISABLED to prevent buffer overflow
   Widget getCachedThumbnail({
     required String thumbnailUrl,
@@ -177,7 +228,7 @@ class VideoPerformanceService {
         child: Icon(Icons.video_library, color: Colors.grey),
       ),
     );
-    
+
     // DISABLED CODE:
     // return CachedNetworkImage(
     //   imageUrl: thumbnailUrl,
@@ -206,5 +257,6 @@ class VideoPerformanceService {
 
 /// Navigation service for global context access
 class NavigationService {
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 }

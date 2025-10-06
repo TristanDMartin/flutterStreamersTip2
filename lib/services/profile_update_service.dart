@@ -6,13 +6,16 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 /// This ensures that ProfileView, ProfileBackView, StreamerCardView, and StreamerCardBackView
 /// are all updated when user data changes in EditProfileView
 class ProfileUpdateService extends ChangeNotifier {
-  static final ProfileUpdateService _instance = ProfileUpdateService._internal();
+  static final ProfileUpdateService _instance =
+      ProfileUpdateService._internal();
   factory ProfileUpdateService() => _instance;
   ProfileUpdateService._internal();
 
   firebase_auth.User? _currentUser;
   Map<String, dynamic>? _userData;
-  
+  bool _isLoading = false;
+  DateTime? _lastNotificationTime;
+
   // Listeners for different views
   final List<VoidCallback> _profileViewListeners = [];
   final List<VoidCallback> _profileBackViewListeners = [];
@@ -26,7 +29,8 @@ class ProfileUpdateService extends ChangeNotifier {
   /// Initialize the service with current user
   Future<void> initialize() async {
     _currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-    debugPrint("🔍 ProfileUpdateService: Initializing with user: ${_currentUser?.uid}");
+    debugPrint(
+        "🔍 ProfileUpdateService: Initializing with user: ${_currentUser?.uid}");
     if (_currentUser != null) {
       await _loadUserData();
     }
@@ -36,21 +40,39 @@ class ProfileUpdateService extends ChangeNotifier {
   Future<void> _loadUserData() async {
     if (_currentUser == null) return;
 
+    // Prevent infinite loops by checking if we're already loading
+    if (_isLoading) {
+      debugPrint(
+          "🔍 ProfileUpdateService: Already loading user data, skipping...");
+      return;
+    }
+    _isLoading = true;
+
     try {
-      debugPrint("🔍 ProfileUpdateService: Loading user data for UID: ${_currentUser!.uid}");
+      debugPrint(
+          "🔍 ProfileUpdateService: Loading user data for UID: ${_currentUser!.uid}");
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(_currentUser!.uid)
           .get();
-      
+
       debugPrint("🔍 ProfileUpdateService: Document exists: ${doc.exists}");
       if (doc.exists) {
-        _userData = doc.data();
-        debugPrint("🔍 ProfileUpdateService: Loaded user data: $_userData");
-        notifyAllListeners();
+        final newData = doc.data();
+        // Only notify if data has actually changed
+        if (_userData == null || !_mapsEqual(_userData!, newData!)) {
+          _userData = newData;
+          debugPrint("🔍 ProfileUpdateService: Loaded user data: $_userData");
+          notifyAllListeners();
+        } else {
+          debugPrint(
+              "🔍 ProfileUpdateService: Data unchanged, skipping notification");
+        }
       }
     } catch (e) {
       debugPrint('❌ ProfileUpdateService: Error loading user data: $e');
+    } finally {
+      _isLoading = false;
     }
   }
 
@@ -67,10 +89,10 @@ class ProfileUpdateService extends ChangeNotifier {
 
       // Update local data
       _userData = {...?_userData, ...updates};
-      
+
       // Notify all listeners
       notifyAllListeners();
-      
+
       debugPrint('✅ ProfileUpdateService: User data updated successfully');
     } catch (e) {
       debugPrint('❌ ProfileUpdateService: Error updating user data: $e');
@@ -118,14 +140,29 @@ class ProfileUpdateService extends ChangeNotifier {
     _streamerCardBackViewListeners.remove(listener);
   }
 
-  /// Notify all listeners
+  /// Notify all listeners with debouncing to prevent excessive notifications
   void notifyAllListeners() {
+    final now = DateTime.now();
+
+    // Debounce notifications - only notify once every 1000ms (1 second)
+    if (_lastNotificationTime != null &&
+        now.difference(_lastNotificationTime!).inMilliseconds < 1000) {
+      debugPrint(
+          "🔍 ProfileUpdateService: Debouncing notification (too frequent)");
+      return;
+    }
+    _lastNotificationTime = now;
+
+    debugPrint(
+        "🔍 ProfileUpdateService: Notifying ${_profileViewListeners.length} ProfileView listeners, ${_profileBackViewListeners.length} ProfileBackView listeners, ${_streamerCardViewListeners.length} StreamerCardView listeners");
+
     // Notify ProfileView listeners
     for (final listener in _profileViewListeners) {
       try {
         listener();
       } catch (e) {
-        debugPrint('❌ ProfileUpdateService: Error notifying ProfileView listener: $e');
+        debugPrint(
+            '❌ ProfileUpdateService: Error notifying ProfileView listener: $e');
       }
     }
 
@@ -134,7 +171,8 @@ class ProfileUpdateService extends ChangeNotifier {
       try {
         listener();
       } catch (e) {
-        debugPrint('❌ ProfileUpdateService: Error notifying ProfileBackView listener: $e');
+        debugPrint(
+            '❌ ProfileUpdateService: Error notifying ProfileBackView listener: $e');
       }
     }
 
@@ -143,7 +181,8 @@ class ProfileUpdateService extends ChangeNotifier {
       try {
         listener();
       } catch (e) {
-        debugPrint('❌ ProfileUpdateService: Error notifying StreamerCardView listener: $e');
+        debugPrint(
+            '❌ ProfileUpdateService: Error notifying StreamerCardView listener: $e');
       }
     }
 
@@ -152,7 +191,8 @@ class ProfileUpdateService extends ChangeNotifier {
       try {
         listener();
       } catch (e) {
-        debugPrint('❌ ProfileUpdateService: Error notifying StreamerCardBackView listener: $e');
+        debugPrint(
+            '❌ ProfileUpdateService: Error notifying StreamerCardBackView listener: $e');
       }
     }
   }
@@ -162,12 +202,23 @@ class ProfileUpdateService extends ChangeNotifier {
     return _userData?[field];
   }
 
-
   /// Clear all listeners (useful for cleanup)
   void clearAllListeners() {
     _profileViewListeners.clear();
     _profileBackViewListeners.clear();
     _streamerCardViewListeners.clear();
     _streamerCardBackViewListeners.clear();
+  }
+
+  /// Helper method to compare two maps for equality
+  bool _mapsEqual(Map<String, dynamic> map1, Map<String, dynamic> map2) {
+    if (map1.length != map2.length) return false;
+
+    for (final key in map1.keys) {
+      if (!map2.containsKey(key)) return false;
+      if (map1[key] != map2[key]) return false;
+    }
+
+    return true;
   }
 }

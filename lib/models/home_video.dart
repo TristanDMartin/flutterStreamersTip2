@@ -1,6 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user.dart';
+import 'video_thumbnails.dart';
 
 part 'home_video.freezed.dart';
 
@@ -10,7 +11,8 @@ class HomeVideo with _$HomeVideo {
     required String id,
     required User creator,
     required String videoURL,
-    String? thumbnailURL,
+    String? thumbnailURL, // Legacy field for backward compatibility
+    VideoThumbnails? thumbnails, // New multi-size thumbnail support
     @Default(0) int likes,
     @Default(0) int comments,
     @Default(0) int views,

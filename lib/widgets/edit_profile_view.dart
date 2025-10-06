@@ -870,6 +870,8 @@ class _EditProfileViewState extends State<EditProfileView> {
                 _buildPlatformsRow(),
                 _buildDivider(),
                 _buildHashtagsRow(),
+                _buildDivider(),
+                _buildFavoritesVisibilityRow(),
               ],
             ),
           ),
@@ -1066,6 +1068,106 @@ class _EditProfileViewState extends State<EditProfileView> {
       height: 1,
       color: Colors.white.withValues(alpha: 0.1),
     );
+  }
+
+  Widget _buildFavoritesVisibilityRow() {
+    final privacy = _user['privacy'] as Map<String, dynamic>? ?? {};
+    final showFavoritesOnCard = privacy['showFavoritesOnCard'] ?? false;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Show Favorites on your Streamer Card',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Toggles visibility on your public Streamer Card only. Your Profile still shows Favorites to you.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: showFavoritesOnCard,
+            onChanged: (value) async {
+              await _updateFavoritesVisibility(value);
+            },
+            activeColor: const Color(0xFF9248D2),
+            inactiveThumbColor: Colors.white.withValues(alpha: 0.3),
+            inactiveTrackColor: Colors.white.withValues(alpha: 0.1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _updateFavoritesVisibility(bool showFavorites) async {
+    try {
+      // Update local state immediately for optimistic UI
+      setState(() {
+        _user['privacy'] = {
+          ...(_user['privacy'] as Map<String, dynamic>? ?? {}),
+          'showFavoritesOnCard': showFavorites,
+        };
+      });
+
+      // Update Firestore using ProfileUpdateService for nested fields
+      await _profileUpdateService?.updateUserData({
+        'privacy': {
+          ...(_user['privacy'] as Map<String, dynamic>? ?? {}),
+          'showFavoritesOnCard': showFavorites,
+        },
+      });
+
+      // Show confirmation
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              showFavorites
+                  ? 'Favorites are now visible on your Streamer Card'
+                  : 'Favorites are now hidden on your Streamer Card',
+            ),
+            backgroundColor: const Color(0xFF9248D2),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Revert on error
+      setState(() {
+        _user['privacy'] = {
+          ...(_user['privacy'] as Map<String, dynamic>? ?? {}),
+          'showFavoritesOnCard': !showFavorites,
+        };
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update setting: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildPreferencesSection() {

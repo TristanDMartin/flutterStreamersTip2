@@ -19,7 +19,10 @@ mixin _$HomeVideo {
   String get id => throw _privateConstructorUsedError;
   User get creator => throw _privateConstructorUsedError;
   String get videoURL => throw _privateConstructorUsedError;
-  String? get thumbnailURL => throw _privateConstructorUsedError;
+  String? get thumbnailURL =>
+      throw _privateConstructorUsedError; // Legacy field for backward compatibility
+  VideoThumbnails? get thumbnails =>
+      throw _privateConstructorUsedError; // New multi-size thumbnail support
   int get likes => throw _privateConstructorUsedError;
   int get comments => throw _privateConstructorUsedError;
   int get views => throw _privateConstructorUsedError;
@@ -48,6 +51,7 @@ abstract class $HomeVideoCopyWith<$Res> {
       User creator,
       String videoURL,
       String? thumbnailURL,
+      VideoThumbnails? thumbnails,
       int likes,
       int comments,
       int views,
@@ -59,6 +63,8 @@ abstract class $HomeVideoCopyWith<$Res> {
       String categoryId,
       double? duration,
       Timestamp? createdAt});
+
+  $VideoThumbnailsCopyWith<$Res>? get thumbnails;
 }
 
 /// @nodoc
@@ -78,6 +84,7 @@ class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
     Object? creator = null,
     Object? videoURL = null,
     Object? thumbnailURL = freezed,
+    Object? thumbnails = freezed,
     Object? likes = null,
     Object? comments = null,
     Object? views = null,
@@ -107,6 +114,10 @@ class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
           ? _value.thumbnailURL
           : thumbnailURL // ignore: cast_nullable_to_non_nullable
               as String?,
+      thumbnails: freezed == thumbnails
+          ? _value.thumbnails
+          : thumbnails // ignore: cast_nullable_to_non_nullable
+              as VideoThumbnails?,
       likes: null == likes
           ? _value.likes
           : likes // ignore: cast_nullable_to_non_nullable
@@ -153,6 +164,18 @@ class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
               as Timestamp?,
     ) as $Val);
   }
+
+  @override
+  @pragma('vm:prefer-inline')
+  $VideoThumbnailsCopyWith<$Res>? get thumbnails {
+    if (_value.thumbnails == null) {
+      return null;
+    }
+
+    return $VideoThumbnailsCopyWith<$Res>(_value.thumbnails!, (value) {
+      return _then(_value.copyWith(thumbnails: value) as $Val);
+    });
+  }
 }
 
 /// @nodoc
@@ -168,6 +191,7 @@ abstract class _$$HomeVideoImplCopyWith<$Res>
       User creator,
       String videoURL,
       String? thumbnailURL,
+      VideoThumbnails? thumbnails,
       int likes,
       int comments,
       int views,
@@ -179,6 +203,9 @@ abstract class _$$HomeVideoImplCopyWith<$Res>
       String categoryId,
       double? duration,
       Timestamp? createdAt});
+
+  @override
+  $VideoThumbnailsCopyWith<$Res>? get thumbnails;
 }
 
 /// @nodoc
@@ -196,6 +223,7 @@ class __$$HomeVideoImplCopyWithImpl<$Res>
     Object? creator = null,
     Object? videoURL = null,
     Object? thumbnailURL = freezed,
+    Object? thumbnails = freezed,
     Object? likes = null,
     Object? comments = null,
     Object? views = null,
@@ -225,6 +253,10 @@ class __$$HomeVideoImplCopyWithImpl<$Res>
           ? _value.thumbnailURL
           : thumbnailURL // ignore: cast_nullable_to_non_nullable
               as String?,
+      thumbnails: freezed == thumbnails
+          ? _value.thumbnails
+          : thumbnails // ignore: cast_nullable_to_non_nullable
+              as VideoThumbnails?,
       likes: null == likes
           ? _value.likes
           : likes // ignore: cast_nullable_to_non_nullable
@@ -281,6 +313,7 @@ class _$HomeVideoImpl implements _HomeVideo {
       required this.creator,
       required this.videoURL,
       this.thumbnailURL,
+      this.thumbnails,
       this.likes = 0,
       this.comments = 0,
       this.views = 0,
@@ -301,6 +334,10 @@ class _$HomeVideoImpl implements _HomeVideo {
   final String videoURL;
   @override
   final String? thumbnailURL;
+// Legacy field for backward compatibility
+  @override
+  final VideoThumbnails? thumbnails;
+// New multi-size thumbnail support
   @override
   @JsonKey()
   final int likes;
@@ -337,7 +374,7 @@ class _$HomeVideoImpl implements _HomeVideo {
 
   @override
   String toString() {
-    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt)';
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt)';
   }
 
   @override
@@ -351,6 +388,8 @@ class _$HomeVideoImpl implements _HomeVideo {
                 other.videoURL == videoURL) &&
             (identical(other.thumbnailURL, thumbnailURL) ||
                 other.thumbnailURL == thumbnailURL) &&
+            (identical(other.thumbnails, thumbnails) ||
+                other.thumbnails == thumbnails) &&
             (identical(other.likes, likes) || other.likes == likes) &&
             (identical(other.comments, comments) ||
                 other.comments == comments) &&
@@ -376,6 +415,7 @@ class _$HomeVideoImpl implements _HomeVideo {
       creator,
       videoURL,
       thumbnailURL,
+      thumbnails,
       likes,
       comments,
       views,
@@ -401,6 +441,7 @@ abstract class _HomeVideo implements HomeVideo {
       required final User creator,
       required final String videoURL,
       final String? thumbnailURL,
+      final VideoThumbnails? thumbnails,
       final int likes,
       final int comments,
       final int views,
@@ -421,7 +462,9 @@ abstract class _HomeVideo implements HomeVideo {
   String get videoURL;
   @override
   String? get thumbnailURL;
-  @override
+  @override // Legacy field for backward compatibility
+  VideoThumbnails? get thumbnails;
+  @override // New multi-size thumbnail support
   int get likes;
   @override
   int get comments;

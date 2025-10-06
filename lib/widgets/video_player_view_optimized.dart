@@ -18,6 +18,8 @@ import '../services/robust_auth_service.dart';
 import '../services/enhanced_like_service.dart';
 import '../widgets/enhanced_like_button.dart';
 import '../services/video_performance_service.dart';
+import '../services/video_controller_manager.dart';
+import '../services/production_logging_service.dart';
 import '../services/audio_enhancement_service.dart';
 import '../widgets/comments_view_optimized.dart';
 import '../widgets/streamer_share_sheet.dart';
@@ -126,6 +128,87 @@ class _VideoPlayerViewOptimizedState
       false; // Track if audio has been unmuted by user interaction
   bool _isDisposed = false; // Track if this widget's controller is disposed
 
+  // Production-ready controller management
+  final VideoControllerManager _controllerManager = VideoControllerManager();
+  final ProductionLoggingService _logger = ProductionLoggingService();
+
+  /// Safe controller operations with comprehensive error handling
+  Future<bool> _safeSetVolume(double volume) async {
+    if (_videoPlayerController == null || _isDisposed) {
+      _logger.warn('Cannot set volume: controller is null or disposed',
+          tag: 'VideoPlayer');
+      return false;
+    }
+
+    try {
+      if (_controllerManager.isControllerSafe(widget.video.id)) {
+        await _videoPlayerController!.setVolume(volume);
+        _logger.debug('Volume set to $volume for ${widget.video.id}',
+            tag: 'VideoPlayer');
+        return true;
+      } else {
+        _logger.warn(
+            'Controller not safe for volume operation: ${widget.video.id}',
+            tag: 'VideoPlayer');
+        return false;
+      }
+    } catch (e) {
+      _logger.error('Error setting volume to $volume',
+          tag: 'VideoPlayer', error: e);
+      return false;
+    }
+  }
+
+  Future<bool> _safePlay() async {
+    if (_videoPlayerController == null || _isDisposed) {
+      _logger.warn('Cannot play: controller is null or disposed',
+          tag: 'VideoPlayer');
+      return false;
+    }
+
+    try {
+      if (_controllerManager.isControllerSafe(widget.video.id)) {
+        await _videoPlayerController!.play();
+        _controllerManager.markPlaying(widget.video.id);
+        _logger.debug('Video playing: ${widget.video.id}', tag: 'VideoPlayer');
+        return true;
+      } else {
+        _logger.warn(
+            'Controller not safe for play operation: ${widget.video.id}',
+            tag: 'VideoPlayer');
+        return false;
+      }
+    } catch (e) {
+      _logger.error('Error playing video', tag: 'VideoPlayer', error: e);
+      return false;
+    }
+  }
+
+  Future<bool> _safePause() async {
+    if (_videoPlayerController == null || _isDisposed) {
+      _logger.warn('Cannot pause: controller is null or disposed',
+          tag: 'VideoPlayer');
+      return false;
+    }
+
+    try {
+      if (_controllerManager.isControllerSafe(widget.video.id)) {
+        await _videoPlayerController!.pause();
+        _controllerManager.markPaused(widget.video.id);
+        _logger.debug('Video paused: ${widget.video.id}', tag: 'VideoPlayer');
+        return true;
+      } else {
+        _logger.warn(
+            'Controller not safe for pause operation: ${widget.video.id}',
+            tag: 'VideoPlayer');
+        return false;
+      }
+    } catch (e) {
+      _logger.error('Error pausing video', tag: 'VideoPlayer', error: e);
+      return false;
+    }
+  }
+
   // Track state changes to prevent duplicate callbacks
   bool _lastShouldPauseAllVideos = false;
   bool _lastShouldResumeCurrentVideo = false;
@@ -155,14 +238,22 @@ class _VideoPlayerViewOptimizedState
     PerformanceService()
         .trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
 
-    // SIMPLIFIED: Only dispose if not already disposed
+    // CRITICAL: Safe disposal with multiple safety checks
     if (_videoPlayerController != null && !_isDisposed) {
       try {
-        _videoPlayerController!.removeListener(_videoErrorListener);
+        // Check if controller is still valid before disposing
+        final controllerValue = _videoPlayerController!.value;
+        if (controllerValue.isInitialized && !controllerValue.hasError) {
+          _videoPlayerController!.removeListener(_videoErrorListener);
+          _videoPlayerController!.removeListener(_videoStateListener);
+          _videoPlayerController!.pause(); // Pause before disposing
+          _videoPlayerController!.setVolume(0.0); // Mute before disposing
+        }
         _videoPlayerController!.dispose();
         log('🗑️ Widget dispose: Cleanly disposed controller for ${widget.video.id}');
       } catch (e) {
         log('⚠️ Widget dispose: Error disposing controller: $e');
+        // Even if disposal fails, mark as disposed to prevent further use
       } finally {
         _videoPlayerController = null;
         _isDisposed = true;
@@ -181,13 +272,14 @@ class _VideoPlayerViewOptimizedState
     final homeState = ref.read(homeProvider);
     if (homeState.shouldPauseAllVideos) {
       // IMMEDIATE pause - stops audio instantly
-      _videoPlayerController!.pause();
-      log('⏸️ Video paused due to HomeView navigation: ${widget.video.id}');
-      // Update UI state after build completes (prevents setState error)
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() => _isPlaying = false);
-        }
+      _safePause().then((_) {
+        log('⏸️ Video paused due to HomeView navigation: ${widget.video.id}');
+        // Update UI state after build completes (prevents setState error)
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() => _isPlaying = false);
+          }
+        });
       });
       return;
     }
@@ -196,11 +288,11 @@ class _VideoPlayerViewOptimizedState
     if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
       if (widget.isCurrentVideo) {
         // This video is now current - play it with TikTok-style audio enhancement
-        _applyAudioEnhancement().then((_) {
-          _videoPlayerController!.setVolume(1.0);
+        _applyAudioEnhancement().then((_) async {
+          await _safeSetVolume(1.0);
           setState(() => _audioUnmuted = true);
 
-          _videoPlayerController!.play();
+          await _safePlay();
           setState(() => _isPlaying = true);
 
           log('🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
@@ -209,8 +301,9 @@ class _VideoPlayerViewOptimizedState
         });
       } else {
         // This video is no longer current - pause it immediately
-        _videoPlayerController!.pause();
-        _videoPlayerController!.setVolume(0.0); // Mute audio immediately
+        _safePause().then((_) {
+          _safeSetVolume(0.0); // Mute audio immediately
+        });
         setState(() => _isPlaying = false);
 
         log('⏸️ Video no longer current, paused: ${widget.video.id}');
@@ -227,17 +320,18 @@ class _VideoPlayerViewOptimizedState
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-        _videoPlayerController!.pause();
-        setState(() => _isPlaying = false);
+        _safePause().then((_) {
+          setState(() => _isPlaying = false);
+        });
         break;
       case AppLifecycleState.resumed:
         if (widget.isCurrentVideo) {
           // Auto-unmute audio when app resumes with TikTok-style enhancement
-          _applyAudioEnhancement().then((_) {
-            _videoPlayerController!.setVolume(1.0);
+          _applyAudioEnhancement().then((_) async {
+            await _safeSetVolume(1.0);
             setState(() => _audioUnmuted = true);
 
-            _videoPlayerController!.play();
+            await _safePlay();
             setState(() => _isPlaying = true);
 
             log('🔊 Auto-unmuted audio on app resume with enhanced audio: ${widget.video.id}');
@@ -247,12 +341,14 @@ class _VideoPlayerViewOptimizedState
         }
         break;
       case AppLifecycleState.detached:
-        _videoPlayerController!.pause();
-        setState(() => _isPlaying = false);
+        _safePause().then((_) {
+          setState(() => _isPlaying = false);
+        });
         break;
       case AppLifecycleState.hidden:
-        _videoPlayerController!.pause();
-        setState(() => _isPlaying = false);
+        _safePause().then((_) {
+          setState(() => _isPlaying = false);
+        });
         break;
     }
   }
@@ -262,141 +358,31 @@ class _VideoPlayerViewOptimizedState
     PerformanceService().startVideoLoad(widget.video.id);
 
     try {
-      // CRITICAL: Ensure any existing controller is properly disposed first
-      if (_videoPlayerController != null) {
-        try {
-          await _videoPlayerController!.dispose();
-          log('🗑️ Disposed existing controller before reinitialization: ${widget.video.id}');
-        } catch (e) {
-          log('⚠️ Error disposing existing controller: $e');
-        } finally {
-          _videoPlayerController = null;
-          _isInitialized = false;
-          _isPlaying = false;
-          _isDisposed = false; // Reset disposal flag for new controller
-        }
-      }
-
-      // Validate video URL first
-      if (widget.video.videoURL.isEmpty) {
-        throw Exception('Video URL is empty');
-      }
-
-      final videoUri = Uri.tryParse(widget.video.videoURL);
-      if (videoUri == null || !videoUri.hasAbsolutePath) {
-        throw Exception('Invalid video URL: ${widget.video.videoURL}');
-      }
-
-      // FRAME OPTIMIZATION: Use microtask to prevent blocking main thread
-      await Future.microtask(() {});
-
-      // Try warm controller first (TikTok style)
-      _videoPlayerController =
-          VideoPerformanceService().getReady(widget.video.videoURL);
-
-      if (_videoPlayerController != null) {
-        log('🎬 Using prewarmed controller from VideoPerformanceService');
-        debugPrint(
-            '🎬 Using prewarmed controller from VideoPerformanceService');
-        // Ensure prewarmed controller has correct settings
-        await _videoPlayerController!.setLooping(true);
-        await _videoPlayerController!
-            .setVolume(0); // Start muted for autoplay compliance
-        log('🔇 Prewarmed controller set to volume 0');
-        debugPrint('🔇 Prewarmed controller set to volume 0');
-      }
+      // Use VideoControllerManager to get or create controller
+      _videoPlayerController = await _controllerManager.getController(
+          widget.video.id, widget.video.videoURL);
 
       if (_videoPlayerController == null) {
-        // Create new controller if not prewarmed
-        _videoPlayerController = VideoPlayerController.networkUrl(
-          videoUri,
-          videoPlayerOptions: VideoPlayerOptions(
-            mixWithOthers: true,
-            allowBackgroundPlayback: false,
-          ),
-        );
-
-        // Add error listener before initialization
-        _videoPlayerController!.addListener(_videoErrorListener);
-
-        if (!_videoPlayerController!.value.isInitialized) {
-          await _videoPlayerController!.initialize().timeout(
-            const Duration(
-                seconds: 8), // Reduced timeout for faster failure detection
-            onTimeout: () {
-              throw Exception('Video initialization timeout');
-            },
-          );
-        }
-
-        await _videoPlayerController!.setLooping(true);
-        await _videoPlayerController!
-            .setVolume(0); // Start muted for autoplay compliance
-        log('🔇 Video initialized with volume 0 for autoplay compliance');
-        debugPrint(
-            '🔇 Video initialized with volume 0 for autoplay compliance');
+        _logger.error('Failed to get controller from VideoControllerManager',
+            tag: 'VideoPlayer');
+        return;
       }
 
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-          _isPlaying = widget.isCurrentVideo;
-        });
+      // Add listeners
+      _videoPlayerController!.addListener(_videoErrorListener);
+      _videoPlayerController!.addListener(_videoStateListener);
 
-        // TIKTOK-STYLE INSTANT PLAYBACK: Play immediately without any delay
-        if (_isPlaying && mounted && _videoPlayerController != null) {
-          try {
-            // CRITICAL: Check if controller is disposed and ready before using it
-            if (!_videoPlayerController!.value.hasError &&
-                _videoPlayerController!.value.isInitialized) {
-              // Auto-unmute audio for instant playback
-              _videoPlayerController!.setVolume(1.0);
-              setState(() => _audioUnmuted = true);
+      _isInitialized = true;
+      _logger.debug('Video initialized successfully: ${widget.video.id}',
+          tag: 'VideoPlayer');
 
-              _videoPlayerController!.play();
-              log('🎬 INSTANT PLAY: Video started immediately for ${widget.video.id}');
-              log('🔊 Auto-unmuted audio for instant playback - Volume: 1.0');
-              debugPrint(
-                  '🔊 Auto-unmuted audio for instant playback - Volume: 1.0');
-            } else {
-              log('⚠️ Video controller not ready, skipping playback for ${widget.video.id}');
-              _isPlaying = false;
-              setState(() {});
-            }
-          } catch (e) {
-            log('❌ Error during instant playback initialization: $e');
-            // Controller was disposed, need to reinitialize
-            _videoPlayerController = null;
-            _isInitialized = false;
-            _isPlaying = false;
-            setState(() {});
-
-            // SEAMLESS RETURN: Reinitialize after disposal
-            Future.delayed(const Duration(milliseconds: 200), () {
-              if (mounted && _videoPlayerController == null) {
-                _initializeVideo();
-              }
-            });
-          }
-        }
-
-        // Complete performance tracking
-        PerformanceService().completeVideoLoad(widget.video.id, success: true);
-        log('✅ Video initialized successfully: ${widget.video.id}');
+      // Auto-play if this is the current video
+      if (widget.isCurrentVideo) {
+        await _safePlay();
       }
     } catch (e) {
-      log('❌ Error initializing video: $e');
-      PerformanceService().completeVideoLoad(widget.video.id, success: false);
-
-      // Handle video error gracefully without crashing
-      _handleVideoError(e);
-
-      if (mounted) {
-        setState(() {
-          _isInitialized = false;
-          _isPlaying = false;
-        });
-      }
+      _logger.error('Error initializing video: ${widget.video.id}',
+          tag: 'VideoPlayer', error: e);
     }
   }
 
@@ -425,6 +411,20 @@ class _VideoPlayerViewOptimizedState
           'Unknown video error';
       log('❌ Video player error: $error');
       _handleVideoError(Exception(error));
+    }
+  }
+
+  void _videoStateListener() {
+    if (_videoPlayerController != null && mounted) {
+      final isPlaying = _videoPlayerController!.value.isPlaying;
+      if (isPlaying != _isPlaying) {
+        _logger.debug(
+            'Video state changed - isPlaying: $isPlaying, _isPlaying: $_isPlaying',
+            tag: 'VideoPlayer');
+        setState(() {
+          _isPlaying = isPlaying;
+        });
+      }
     }
   }
 
@@ -471,7 +471,20 @@ class _VideoPlayerViewOptimizedState
   }
 
   Future<void> _togglePlayPause() async {
-    if (_videoPlayerController == null || !_isInitialized) return;
+    print(
+        '🎮 _togglePlayPause called - _videoPlayerController: ${_videoPlayerController != null}, _isInitialized: $_isInitialized, _isPlaying: $_isPlaying');
+    _logger.debug(
+        '_togglePlayPause called - _videoPlayerController: ${_videoPlayerController != null}, _isInitialized: $_isInitialized, _isPlaying: $_isPlaying',
+        tag: 'VideoPlayer');
+
+    if (_videoPlayerController == null || !_isInitialized) {
+      print(
+          '❌ Cannot toggle play/pause - controller: ${_videoPlayerController != null}, initialized: $_isInitialized');
+      _logger.warn(
+          'Cannot toggle play/pause - controller: ${_videoPlayerController != null}, initialized: $_isInitialized',
+          tag: 'VideoPlayer');
+      return;
+    }
 
     // Unmute audio on first user interaction with TikTok-style enhancement
     if (!_audioUnmuted) {
@@ -479,20 +492,20 @@ class _VideoPlayerViewOptimizedState
       await _applyAudioEnhancement();
 
       // Try multiple approaches to ensure audio works
-      await _videoPlayerController!.setVolume(1.0);
+      await _safeSetVolume(1.0);
 
       // Wait a moment for the volume change to take effect
       await Future.delayed(const Duration(milliseconds: 100));
 
       // Try setting volume again to ensure it sticks
-      await _videoPlayerController!.setVolume(1.0);
+      await _safeSetVolume(1.0);
 
       // Force a restart of playback to ensure audio takes effect
       final wasPlaying = _videoPlayerController!.value.isPlaying;
       if (wasPlaying) {
-        await _videoPlayerController!.pause();
+        await _safePause();
         await Future.delayed(const Duration(milliseconds: 50));
-        await _videoPlayerController!.play();
+        await _safePlay();
       }
 
       setState(() {
@@ -524,7 +537,11 @@ class _VideoPlayerViewOptimizedState
     }
 
     if (_isPlaying) {
-      _videoPlayerController!.pause();
+      _logger.debug('Pausing video - current state: $_isPlaying',
+          tag: 'VideoPlayer');
+      final success = await _safePause();
+      _logger.debug('Pause result: $success', tag: 'VideoPlayer');
+
       setState(() {
         _isPlaying = false;
       });
@@ -533,7 +550,11 @@ class _VideoPlayerViewOptimizedState
       PerformanceService()
           .trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
     } else {
-      _videoPlayerController!.play();
+      _logger.debug('Playing video - current state: $_isPlaying',
+          tag: 'VideoPlayer');
+      final success = await _safePlay();
+      _logger.debug('Play result: $success', tag: 'VideoPlayer');
+
       setState(() {
         _isPlaying = true;
       });
@@ -784,6 +805,13 @@ class _VideoPlayerViewOptimizedState
     // Add haptic feedback for better user experience
     HapticFeedback.lightImpact();
 
+    // Debug logging
+    print(
+        '🎯 TAP DETECTED! - _isPlaying: $_isPlaying, _isInitialized: $_isInitialized, _videoPlayerController: ${_videoPlayerController != null}');
+    _logger.debug(
+        'Tap detected - Current state: _isPlaying=$_isPlaying, _isInitialized=$_isInitialized',
+        tag: 'VideoPlayer');
+
     // Toggle play/pause with animation
     _togglePlayPause();
 
@@ -914,8 +942,9 @@ class _VideoPlayerViewOptimizedState
           _lastShouldPauseAllVideos = true;
           // IMMEDIATE pause - stops audio instantly
           // CRITICAL: Mute audio first, then pause video
-          _videoPlayerController!.setVolume(0.0);
-          _videoPlayerController!.pause();
+          _safeSetVolume(0.0).then((_) {
+            _safePause();
+          });
           log('⏸️ Video paused due to HomeView navigation (Consumer): ${widget.video.id}');
           // Update UI state after build completes (prevents setState error)
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -940,8 +969,9 @@ class _VideoPlayerViewOptimizedState
             if (_videoPlayerController!.value.isInitialized &&
                 !_videoPlayerController!.value.hasError) {
               // IMMEDIATE resume - starts audio instantly
-              _videoPlayerController!.setVolume(1.0);
-              _videoPlayerController!.play();
+              _safeSetVolume(1.0).then((_) {
+                _safePlay();
+              });
               log('▶️ Video resumed when returning to HomeView: ${widget.video.id}');
               // Update UI state after build completes (prevents setState error)
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -989,15 +1019,10 @@ class _VideoPlayerViewOptimizedState
           debugPrint(
               '⏸️ Video paused due to GlobalVideoController: ${widget.video.id}');
           log('⏸️ Video paused due to GlobalVideoController: ${widget.video.id}');
-          // CRITICAL: Mute audio first, then pause video
-          try {
-            _videoPlayerController!.setVolume(0.0);
-            _videoPlayerController!.pause();
-          } catch (e) {
-            log('⚠️ Error pausing disposed controller: $e');
-            _isDisposed = true;
-            // Continue execution - the error is handled
-          }
+          // CRITICAL: Mute audio first, then pause video using safe operations
+          _safeSetVolume(0.0).then((_) {
+            _safePause();
+          });
           // Update UI state after build completes (prevents setState error)
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -1018,8 +1043,9 @@ class _VideoPlayerViewOptimizedState
           if (widget.tabId == 'forYou' || widget.tabId == 'following') {
             log('⏸️ SIMPLIFIED: Pausing HomeView video (no disposal): ${widget.video.id}');
             try {
-              _videoPlayerController!.setVolume(0.0);
-              _videoPlayerController!.pause();
+              _safeSetVolume(0.0).then((_) {
+                _safePause();
+              });
               _isPlaying = false;
             } catch (e) {
               log('⚠️ Error pausing controller: $e');
@@ -1034,8 +1060,9 @@ class _VideoPlayerViewOptimizedState
             _isPlaying &&
             !widget.isCurrentVideo) {
           log('⏸️ SIMPLE: Video not current, pausing: ${widget.video.id}');
-          _videoPlayerController!.pause();
-          _videoPlayerController!.setVolume(0.0); // Mute audio immediately
+          _safePause().then((_) {
+            _safeSetVolume(0.0); // Mute audio immediately
+          });
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               setState(() => _isPlaying = false);
@@ -1056,8 +1083,9 @@ class _VideoPlayerViewOptimizedState
             if (_videoPlayerController!.value.isInitialized &&
                 !_videoPlayerController!.value.hasError) {
               // IMMEDIATE resume - starts audio instantly
-              _videoPlayerController!.setVolume(1.0);
-              _videoPlayerController!.play();
+              _safeSetVolume(1.0).then((_) {
+                _safePlay();
+              });
               log('▶️ Video resumed due to GlobalVideoController: ${widget.video.id}');
               // Update UI state after build completes (prevents setState error)
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1126,18 +1154,49 @@ class _VideoPlayerViewOptimizedState
 
   Widget _buildInstantThumbnail() {
     // TIKTOK-STYLE: Show thumbnail instantly, no loading indicators
-    if (widget.video.thumbnailURL != null &&
+    String? thumbnailUrl;
+
+    // Try new VideoThumbnails system first
+    if (widget.video.thumbnails != null &&
+        widget.video.thumbnails!.urls.isNotEmpty) {
+      // Get the best thumbnail size for the screen
+      final screenWidth = MediaQuery.of(context).size.width;
+      final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+      final effectiveWidth = (screenWidth * devicePixelRatio).round();
+
+      // Choose the best thumbnail size (720p, 540p, or 360p)
+      if (widget.video.thumbnails!.urls.containsKey(720)) {
+        thumbnailUrl = widget.video.thumbnails!.urls[720];
+      } else if (widget.video.thumbnails!.urls.containsKey(540)) {
+        thumbnailUrl = widget.video.thumbnails!.urls[540];
+      } else if (widget.video.thumbnails!.urls.containsKey(360)) {
+        thumbnailUrl = widget.video.thumbnails!.urls[360];
+      } else {
+        // Use the first available thumbnail
+        thumbnailUrl = widget.video.thumbnails!.urls.values.first;
+      }
+
+      debugPrint(
+          '🎬 VideoPlayer: Using new thumbnail system - URL: $thumbnailUrl');
+    }
+    // Fallback to legacy thumbnailURL
+    else if (widget.video.thumbnailURL != null &&
         widget.video.thumbnailURL!.isNotEmpty) {
+      thumbnailUrl = widget.video.thumbnailURL;
+      debugPrint('🎬 VideoPlayer: Using legacy thumbnailURL: $thumbnailUrl');
+    }
+
+    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
       return Positioned.fill(
         child: Image.network(
-          widget.video.thumbnailURL!,
+          thumbnailUrl,
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,
           // No loading builder - show immediately
           errorBuilder: (context, error, stackTrace) {
             debugPrint('⚠️ VideoPlayer: Failed to load thumbnail: $error');
-            return _buildGradientPlaceholder();
+            return _buildBlackPlaceholder();
           },
           // Optimize for instant display
           cacheWidth: 400,
@@ -1146,7 +1205,9 @@ class _VideoPlayerViewOptimizedState
         ),
       );
     } else {
-      return _buildGradientPlaceholder();
+      debugPrint(
+          '⚠️ VideoPlayer: No thumbnail URL available, showing black placeholder');
+      return _buildBlackPlaceholder();
     }
   }
 
@@ -1164,6 +1225,14 @@ class _VideoPlayerViewOptimizedState
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBlackPlaceholder() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black, // Simple black background - no gradients
       ),
     );
   }
@@ -1207,17 +1276,15 @@ class _VideoPlayerViewOptimizedState
       return _buildInstantThumbnail();
     }
 
-    return Positioned.fill(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        alignment: Alignment.center,
-        child: SizedBox(
-          width: _videoPlayerController!.value.size.width,
-          height: _videoPlayerController!.value.size.height,
-          child: VideoPlayer(
-            _videoPlayerController!,
-            key: ValueKey(_videoPlayerController!.dataSource),
-          ),
+    return FittedBox(
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      child: SizedBox(
+        width: _videoPlayerController!.value.size.width,
+        height: _videoPlayerController!.value.size.height,
+        child: VideoPlayer(
+          _videoPlayerController!,
+          key: ValueKey(_videoPlayerController!.dataSource),
         ),
       ),
     );

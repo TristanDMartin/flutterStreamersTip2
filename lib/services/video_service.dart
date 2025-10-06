@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import '../models/home_video.dart';
+import '../models/video_thumbnails.dart';
 import 'real_user_data_service.dart';
 
 class VideoService extends StateNotifier<List<HomeVideo>> {
@@ -22,6 +23,16 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           .limit(100) // Reasonable limit
           .get();
 
+      debugPrint(
+          '🎬 VideoService: Found ${snapshot.docs.length} total videos in Firestore');
+
+      // Debug: Show details of each video found
+      for (int i = 0; i < snapshot.docs.length && i < 5; i++) {
+        final doc = snapshot.docs[i];
+        final data = doc.data();
+        debugPrint(
+            '🎬 Video ${i + 1}: ID=${doc.id}, userId=${data['userId']}, status=${data['status']}, thumbnailUrl=${data['thumbnailUrl'] != null ? 'YES' : 'NO'}');
+      }
       final videos = <HomeVideo>[];
 
       for (final doc in snapshot.docs) {
@@ -47,20 +58,81 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         final creator = await _userDataService.getUserById(userId);
         if (creator == null) continue;
 
+        // Create thumbnails object from legacy thumbnailUrl
+        VideoThumbnails? thumbnails;
+        final thumbnailUrl = data['thumbnailUrl'] as String?;
+        final videoUrl = data['videoUrl'] as String?;
+
+        debugPrint(
+            '🎬 VideoService: Video ${doc.id} - thumbnailUrl: "$thumbnailUrl", videoUrl: "$videoUrl"');
+        debugPrint(
+            '🎬 VideoService: Full video data for ${doc.id}: ${data.keys.toList()}');
+
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+          // Create a VideoThumbnails object with the legacy URL as w360 (most common size)
+          thumbnails = VideoThumbnails(
+            urls: {
+              360: thumbnailUrl,
+              540: thumbnailUrl, // Use same URL for now
+              720: thumbnailUrl, // Use same URL for now
+            },
+            generatedAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+          );
+          debugPrint(
+              '🖼️ VideoService: Created thumbnails for ${doc.id}: $thumbnailUrl');
+        } else {
+          debugPrint(
+              '🖼️ VideoService: No thumbnail URL for video ${doc.id}, videoUrl: $videoUrl');
+        }
+
+        // Check for new format thumbnails if legacy format not available
+        if (thumbnails == null) {
+          final thumbnailsData = data['thumbnails'] as Map<String, dynamic>?;
+          if (thumbnailsData != null && thumbnailsData['urls'] != null) {
+            final urlsData = thumbnailsData['urls'] as Map<String, dynamic>;
+            final urls = <int, String>{};
+
+            // Convert string keys to int keys
+            urlsData.forEach((key, value) {
+              final intKey = int.tryParse(key);
+              if (intKey != null && value is String) {
+                urls[intKey] = value;
+              }
+            });
+
+            if (urls.isNotEmpty) {
+              thumbnails = VideoThumbnails(
+                urls: urls,
+                generatedAt: thumbnailsData['generatedAt'] as Timestamp? ??
+                    data['createdAt'] as Timestamp? ??
+                    Timestamp.now(),
+              );
+              debugPrint(
+                  '🖼️ VideoService: Using new format thumbnails for ${doc.id}: ${urls.length} sizes');
+            }
+          }
+        }
+
         final video = HomeVideo(
           id: doc.id,
           creator: creator,
           videoURL: data['videoUrl'] ?? '',
-          thumbnailURL: data['thumbnailUrl'] ?? '',
+          thumbnailURL:
+              thumbnailUrl, // Keep legacy field for backward compatibility
+          thumbnails: thumbnails, // Add new thumbnails object
           caption: data['caption'] ?? data['title'] ?? 'Untitled',
           categoryId: data['category'] ?? 'general',
           views: data['views']?.toInt() ?? 0,
           likes: data['likes']?.toInt() ?? 0,
           comments: data['comments']?.toInt() ?? 0,
+          duration: data['metadata']?['duration']?.toDouble() ?? 0.0,
           isDraft: false,
           // Store creation date for proper sorting
           createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
         );
+
+        debugPrint(
+            '🎬 VideoService: Created video ${video.id} by ${video.creator.displayName} with thumbnails: ${thumbnails != null ? 'YES' : 'NO'}');
 
         videos.add(video);
       }

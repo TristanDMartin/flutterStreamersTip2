@@ -14,6 +14,7 @@ class User {
   final int followerCount;
   final int followingCount;
   final List<CalendarEvent> calendarEvents;
+  final UserPrivacy privacy;
 
   const User({
     required this.id,
@@ -28,6 +29,7 @@ class User {
     this.followerCount = 0,
     this.followingCount = 0,
     this.calendarEvents = const <CalendarEvent>[],
+    this.privacy = const UserPrivacy(),
   });
 
   factory User.fromMap(Map<String, dynamic> data) {
@@ -44,8 +46,11 @@ class User {
       followerCount: parseInteger(data['followerCount']),
       followingCount: parseInteger(data['followingCount']),
       calendarEvents: (data['calendarEvents'] as List<dynamic>?)
-          ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
-          .toList() ?? [],
+              ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      privacy:
+          UserPrivacy.fromMap(data['privacy'] as Map<String, dynamic>? ?? {}),
     );
   }
 
@@ -64,6 +69,7 @@ class User {
       'followerCount': followerCount,
       'followingCount': followingCount,
       'calendarEvents': calendarEvents.map((e) => e.toMap()).toList(),
+      'privacy': privacy.toMap(),
     };
   }
 }
@@ -95,4 +101,43 @@ extension UserSamples on User {
           followingCount: 500,
         ),
       ];
+}
+
+/// User privacy settings
+class UserPrivacy {
+  final bool showFavoritesOnCard;
+
+  const UserPrivacy({
+    this.showFavoritesOnCard = false, // Default: hidden
+  });
+
+  factory UserPrivacy.fromMap(Map<String, dynamic> data) {
+    return UserPrivacy(
+      showFavoritesOnCard: data['showFavoritesOnCard'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'showFavoritesOnCard': showFavoritesOnCard,
+    };
+  }
+
+  UserPrivacy copyWith({
+    bool? showFavoritesOnCard,
+  }) {
+    return UserPrivacy(
+      showFavoritesOnCard: showFavoritesOnCard ?? this.showFavoritesOnCard,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is UserPrivacy &&
+        other.showFavoritesOnCard == showFavoritesOnCard;
+  }
+
+  @override
+  int get hashCode => showFavoritesOnCard.hashCode;
 }

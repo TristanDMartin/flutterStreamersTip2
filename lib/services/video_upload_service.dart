@@ -34,7 +34,8 @@ class VideoUploadService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final VideoModerationService _moderationService = VideoModerationService();
-  final EnhancedErrorHandlingService _errorHandler = EnhancedErrorHandlingService();
+  final EnhancedErrorHandlingService _errorHandler =
+      EnhancedErrorHandlingService();
   final TagMentionService _tagMentionService = TagMentionService();
 
   /// Upload video with comprehensive moderation checks
@@ -48,7 +49,7 @@ class VideoUploadService {
   }) async {
     try {
       debugPrint('🚀 Starting video upload process...');
-      
+
       // 0. Validate file exists and is readable
       if (!await videoFile.exists()) {
         return const VideoUploadResult(
@@ -56,10 +57,11 @@ class VideoUploadService {
           error: 'Video file not found',
         );
       }
-      
+
       final fileSize = await videoFile.length();
-      debugPrint('📁 Video file size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
-      
+      debugPrint(
+          '📁 Video file size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
+
       // 1. Pre-upload moderation check
       debugPrint('🔍 Starting video moderation...');
       final moderationResult = await _moderationService.moderateVideo(
@@ -70,7 +72,8 @@ class VideoUploadService {
       );
 
       if (!moderationResult.isApproved) {
-        debugPrint('❌ Video rejected by moderation: ${moderationResult.reason}');
+        debugPrint(
+            '❌ Video rejected by moderation: ${moderationResult.reason}');
         return VideoUploadResult(
           success: false,
           error: 'Content rejected: ${moderationResult.reason}',
@@ -116,8 +119,21 @@ class VideoUploadService {
 
       // 5. Generate and upload thumbnail
       debugPrint('🖼️ Generating thumbnail...');
-      final thumbnailUrl = await _generateAndUploadThumbnail(videoFile, videoId, userId);
+      final thumbnailUrl =
+          await _generateAndUploadThumbnail(videoFile, videoId, userId);
       debugPrint('✅ Thumbnail generated: $thumbnailUrl');
+
+      // Create VideoThumbnails object for new format
+      final thumbnails = thumbnailUrl != null
+          ? {
+              'urls': {
+                '360': thumbnailUrl,
+                '540': thumbnailUrl,
+                '720': thumbnailUrl,
+              },
+              'generatedAt': FieldValue.serverTimestamp(),
+            }
+          : null;
 
       // 6. Create video document in Firestore
       debugPrint('💾 Saving video metadata to Firestore...');
@@ -125,7 +141,9 @@ class VideoUploadService {
         'id': videoId,
         'userId': userId,
         'videoUrl': videoUrl,
-        'thumbnailUrl': thumbnailUrl,
+        'thumbnailUrl':
+            thumbnailUrl, // Keep legacy field for backward compatibility
+        'thumbnails': thumbnails, // New format for multiple sizes
         'caption': caption,
         'hashtags': hashtags,
         'privacy': privacy,
@@ -154,10 +172,7 @@ class VideoUploadService {
       };
 
       try {
-        await _firestore
-            .collection('videos')
-            .doc(videoId)
-            .set(videoData);
+        await _firestore.collection('videos').doc(videoId).set(videoData);
         debugPrint('✅ Video document saved to Firestore');
       } catch (e) {
         debugPrint('❌ Failed to save video document: $e');
@@ -224,11 +239,10 @@ class VideoUploadService {
           }
         },
       );
-
     } catch (e) {
       debugPrint('❌ Video upload failed with exception: $e');
       debugPrint('❌ Stack trace: ${StackTrace.current}');
-      
+
       await _errorHandler.handleUploadError(
         operation: 'video_upload',
         error: e,
@@ -239,7 +253,7 @@ class VideoUploadService {
           'privacy': privacy,
         },
       );
-      
+
       // Provide more specific error messages based on the error type
       String errorMessage = 'Upload failed: ${e.toString()}';
       if (e.toString().contains('permission-denied')) {
@@ -251,7 +265,7 @@ class VideoUploadService {
       } else if (e.toString().contains('firestore')) {
         errorMessage = 'Database error. Please try again.';
       }
-      
+
       return VideoUploadResult(
         success: false,
         error: errorMessage,
@@ -290,7 +304,8 @@ class VideoUploadService {
       }
 
       // Generate thumbnail
-      final thumbnailUrl = await _generateAndUploadThumbnail(videoFile, videoId, userId);
+      final thumbnailUrl =
+          await _generateAndUploadThumbnail(videoFile, videoId, userId);
 
       // Save as draft
       final videoData = {
@@ -325,10 +340,7 @@ class VideoUploadService {
         ...?additionalMetadata,
       };
 
-      await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .set(videoData);
+      await _firestore.collection('videos').doc(videoId).set(videoData);
 
       // Add to user's drafts and profile
       await _addToUserDrafts(userId, videoId);
@@ -340,7 +352,6 @@ class VideoUploadService {
         thumbnailUrl: thumbnailUrl,
         metadata: {'videoId': videoId, 'status': 'draft'},
       );
-
     } catch (e) {
       return VideoUploadResult(
         success: false,
@@ -350,36 +361,36 @@ class VideoUploadService {
   }
 
   /// Upload video file to Firebase Storage
-  Future<String?> _uploadVideoFile(File videoFile, String videoId, String userId) async {
+  Future<String?> _uploadVideoFile(
+      File videoFile, String videoId, String userId) async {
     try {
       debugPrint('📁 Uploading file: ${videoFile.path}');
-      debugPrint('📁 File size: ${(await videoFile.length() / 1024 / 1024).toStringAsFixed(2)} MB');
-      
-      final ref = _storage
-          .ref()
-          .child('videos')
-          .child(userId)
-          .child('$videoId.mp4');
+      debugPrint(
+          '📁 File size: ${(await videoFile.length() / 1024 / 1024).toStringAsFixed(2)} MB');
+
+      final ref =
+          _storage.ref().child('videos').child(userId).child('$videoId.mp4');
 
       debugPrint('📁 Storage path: ${ref.fullPath}');
 
       final uploadTask = ref.putFile(videoFile);
-      
+
       // Monitor upload progress
       uploadTask.snapshotEvents.listen((snapshot) {
         final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        debugPrint('📁 Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
+        debugPrint(
+            '📁 Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
       });
-      
+
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
-      
+
       debugPrint('✅ Video uploaded successfully to: $downloadUrl');
       return downloadUrl;
     } catch (e) {
       debugPrint('❌ Error uploading video file: $e');
       debugPrint('❌ Stack trace: ${StackTrace.current}');
-      
+
       await _errorHandler.handleUploadError(
         operation: 'video_file_upload',
         error: e,
@@ -395,10 +406,11 @@ class VideoUploadService {
   }
 
   /// Generate and upload thumbnail
-  Future<String?> _generateAndUploadThumbnail(File videoFile, String videoId, String userId) async {
+  Future<String?> _generateAndUploadThumbnail(
+      File videoFile, String videoId, String userId) async {
     try {
       debugPrint('🖼️ Starting thumbnail generation...');
-      
+
       // Use the new video processing service for thumbnail generation
       final processingService = VideoProcessingService();
       final result = await processingService.processVideo(
@@ -406,15 +418,16 @@ class VideoUploadService {
         videoId: videoId,
         userId: userId,
       );
-      
+
       debugPrint('🖼️ Thumbnail generated: ${result.thumbnailUrl}');
       return result.thumbnailUrl;
     } catch (e) {
       debugPrint('❌ Error generating thumbnail: $e');
       debugPrint('❌ Stack trace: ${StackTrace.current}');
-      
-      LoggingService.instance.error('Error generating thumbnail', tag: 'VideoUploadService', error: e);
-      
+
+      LoggingService.instance.error('Error generating thumbnail',
+          tag: 'VideoUploadService', error: e);
+
       // Return null but don't fail the entire upload for thumbnail issues
       return null;
     }
@@ -428,7 +441,7 @@ class VideoUploadService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-    // print('Error updating user video count: $e');
+      // print('Error updating user video count: $e');
     }
   }
 
@@ -445,7 +458,7 @@ class VideoUploadService {
         'addedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-    // print('Error adding to user profile: $e');
+      // print('Error adding to user profile: $e');
     }
   }
 
@@ -462,12 +475,13 @@ class VideoUploadService {
         'addedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-    // print('Error adding to user drafts: $e');
+      // print('Error adding to user drafts: $e');
     }
   }
 
   /// Add video to appropriate feeds based on privacy setting
-  Future<void> _addToFeeds(String videoId, String privacy, String userId, {String? category}) async {
+  Future<void> _addToFeeds(String videoId, String privacy, String userId,
+      {String? category}) async {
     try {
       switch (privacy) {
         case 'Everyone':
@@ -483,7 +497,7 @@ class VideoUploadService {
             'privacy': privacy,
             'addedAt': FieldValue.serverTimestamp(),
           });
-          
+
           // Add to following feed for user's followers
           await _firestore
               .collection('feeds')
@@ -596,7 +610,7 @@ class VideoUploadService {
 
       return snapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-    // print('Error getting user videos: $e');
+      // print('Error getting user videos: $e');
       return [];
     }
   }
@@ -613,7 +627,7 @@ class VideoUploadService {
 
       return snapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-    // print('Error getting user drafts: $e');
+      // print('Error getting user drafts: $e');
       return [];
     }
   }
@@ -639,7 +653,8 @@ class VideoUploadService {
       }
 
       final videoData = doc.data()!;
-      final videoFile = File(videoData['videoUrl']); // This would need proper file handling
+      final videoFile =
+          File(videoData['videoUrl']); // This would need proper file handling
 
       // Re-run moderation
       final moderationResult = await _moderationService.moderateVideo(
@@ -670,7 +685,8 @@ class VideoUploadService {
 
       // Add to feeds
       final category = videoData['metadata']?['category'] as String?;
-      await _addToFeeds(videoId, videoData['privacy'], user.uid, category: category);
+      await _addToFeeds(videoId, videoData['privacy'], user.uid,
+          category: category);
 
       return VideoUploadResult(
         success: true,
@@ -678,7 +694,6 @@ class VideoUploadService {
         thumbnailUrl: videoData['thumbnailUrl'],
         metadata: {'videoId': videoId, 'status': 'published'},
       );
-
     } catch (e) {
       return VideoUploadResult(
         success: false,
