@@ -320,19 +320,26 @@ class TikTokLikeService extends ChangeNotifier {
         final videoId = key.substring(5);
         final isLiked = prefs.getBool(key) ?? false;
 
+        // Load cached like count
+        final likeCountKey = 'likeCount_$videoId';
+        final likeCount = prefs.getInt(likeCountKey) ?? 0;
+
         _localCache[videoId] = LikeState(
           videoId: videoId,
           isLiked: isLiked,
-          likeCount: 0, // Will be updated by server sync
+          likeCount: likeCount,
           isLoading: false,
         );
 
         debugPrint(
-            '📱 TikTokLikeService: Loaded cached state for $videoId - isLiked: $isLiked');
+            '📱 TikTokLikeService: Loaded cached state for $videoId - isLiked: $isLiked, likeCount: $likeCount');
       }
 
       debugPrint(
           '📱 TikTokLikeService: Loaded ${_localCache.length} cached states total');
+
+      // Sync with server to get latest like counts
+      await _syncLikeCountsFromServer();
     } catch (e) {
       debugPrint('❌ TikTokLikeService: Failed to load cache: $e');
     }
@@ -343,8 +350,59 @@ class TikTokLikeService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('like_$videoId', state.isLiked);
+      await prefs.setInt('likeCount_$videoId', state.likeCount);
     } catch (e) {
       debugPrint('❌ TikTokLikeService: Failed to save cache: $e');
+    }
+  }
+
+  /// Sync like counts from server for all cached videos
+  Future<void> _syncLikeCountsFromServer() async {
+    if (_localCache.isEmpty) return;
+
+    try {
+      debugPrint('🔄 TikTokLikeService: Syncing like counts from server...');
+
+      // Get all video IDs that we have cached
+      final videoIds = _localCache.keys.toList();
+
+      // Fetch like counts for all videos in batches
+      const batchSize = 10;
+      for (int i = 0; i < videoIds.length; i += batchSize) {
+        final batch = videoIds.skip(i).take(batchSize).toList();
+
+        // Create batch read for efficiency
+        final futures = batch.map((videoId) async {
+          try {
+            final videoDoc =
+                await _firestore.collection('videos').doc(videoId).get();
+
+            if (videoDoc.exists) {
+              final likeCount = videoDoc.data()?['likeCount'] ?? 0;
+
+              // Update local cache with server like count
+              final currentState = _localCache[videoId];
+              if (currentState != null) {
+                _localCache[videoId] =
+                    currentState.copyWith(likeCount: likeCount);
+                await _saveCachedState(videoId, _localCache[videoId]!);
+              }
+
+              debugPrint(
+                  '📊 TikTokLikeService: Synced like count for $videoId: $likeCount');
+            }
+          } catch (e) {
+            debugPrint(
+                '⚠️ TikTokLikeService: Failed to sync like count for $videoId: $e');
+          }
+        });
+
+        await Future.wait(futures);
+      }
+
+      debugPrint('✅ TikTokLikeService: Like count sync completed');
+    } catch (e) {
+      debugPrint('❌ TikTokLikeService: Failed to sync like counts: $e');
     }
   }
 

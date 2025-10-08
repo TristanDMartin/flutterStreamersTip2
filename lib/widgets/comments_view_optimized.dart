@@ -12,39 +12,94 @@ class CommentsViewOptimized extends ConsumerStatefulWidget {
   final String? videoOwnerId; // Add video owner ID for permission checking
 
   const CommentsViewOptimized({
-    super.key, 
+    super.key,
     required this.videoId,
     this.videoOwnerId,
   });
 
   @override
-  ConsumerState<CommentsViewOptimized> createState() => _CommentsViewOptimizedState();
+  ConsumerState<CommentsViewOptimized> createState() =>
+      _CommentsViewOptimizedState();
 }
 
-class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
+class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
+    with WidgetsBindingObserver {
   final List<Comment> _comments = <Comment>[];
   final TextEditingController _textController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   String? _errorMessage;
+  bool _isKeyboardVisible = false;
+
   // Simplified emoji reactions
   static const List<String> _emojiReactions = <String>[
-    '❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂',
+    '❤️',
+    '🙌',
+    '🔥',
+    '👏',
+    '😢',
+    '😍',
+    '😮',
+    '😂',
   ];
 
   @override
   void initState() {
     super.initState();
+    debugPrint('🔄 CommentsView: initState() - Starting initialization');
+    WidgetsBinding.instance.addObserver(this);
     _loadComments();
+
+    // Initialize focus node normally
+    debugPrint('🔄 CommentsView: Focus node initialized normally');
+
+    debugPrint('🔄 CommentsView: initState() - Initialization complete');
   }
 
   @override
   void dispose() {
+    debugPrint('🔄 CommentsView: dispose() - Cleaning up resources');
+    WidgetsBinding.instance.removeObserver(this);
+    // Focus listener removed to prevent bouncing
     _textController.dispose();
     _inputFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final bool wasKeyboardVisible = _isKeyboardVisible;
+    final bool isKeyboardVisible = keyboardHeight > 0;
+    final bool hasFocus = _inputFocusNode.hasFocus;
+    final bool canRequestFocus = _inputFocusNode.canRequestFocus;
+
+    debugPrint(
+      '📱 CommentsView: didChangeMetrics() - keyboardHeight: $keyboardHeight, wasVisible: $wasKeyboardVisible, isVisible: $isKeyboardVisible, hasFocus: $hasFocus, canRequestFocus: $canRequestFocus',
+    );
+
+    if (wasKeyboardVisible != isKeyboardVisible) {
+      debugPrint(
+        '📱 CommentsView: Keyboard state changed - updating _isKeyboardVisible from $wasKeyboardVisible to $isKeyboardVisible',
+      );
+
+      setState(() {
+        _isKeyboardVisible = isKeyboardVisible;
+      });
+
+      if (isKeyboardVisible) {
+        debugPrint('📱 CommentsView: Keyboard appeared');
+      } else {
+        debugPrint('📱 CommentsView: Keyboard disappeared');
+      }
+    } else {
+      debugPrint(
+        '📱 CommentsView: Keyboard state unchanged - still $isKeyboardVisible',
+      );
+    }
   }
 
   Future<void> _loadComments() async {
@@ -54,7 +109,8 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     });
 
     try {
-      final List<Comment> fetched = await CommentsService().fetchCommentsForVideo(widget.videoId);
+      final List<Comment> fetched =
+          await CommentsService().fetchCommentsForVideo(widget.videoId);
       if (mounted) {
         setState(() {
           _comments
@@ -64,19 +120,20 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       }
     } catch (e) {
       if (mounted) {
-        String errorMessage = 'Unable to load comments. Showing sample comments.';
-        
+        String errorMessage =
+            'Unable to load comments. Showing sample comments.';
+
         // Provide more specific error messages
         if (e.toString().contains('permission-denied')) {
           errorMessage = 'Permission denied. Please sign in to view comments.';
         } else if (e.toString().contains('network')) {
           errorMessage = 'Network error. Please check your connection.';
         }
-        
+
         setState(() {
           _errorMessage = errorMessage;
         });
-        
+
         // Still try to show mock data for better UX
         final List<Comment> mockData = CommentMockData.mockData();
         setState(() {
@@ -134,7 +191,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       // Revert optimistic update on failure
       if (mounted) {
         String errorMessage = 'Failed to add comment. Please try again.';
-        
+
         // Provide more specific error messages
         if (e.toString().contains('permission-denied')) {
           errorMessage = 'Permission denied. Please sign in to add comments.';
@@ -143,7 +200,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
         } else if (e.toString().contains('User not authenticated')) {
           errorMessage = 'Please sign in to add comments.';
         }
-        
+
         setState(() {
           _comments.removeWhere((c) => c.id == optimistic.id);
           _errorMessage = errorMessage;
@@ -172,8 +229,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     setState(() {
       final int idx = _comments.indexWhere((c) => c.id == parent.id);
       if (idx != -1) {
-        final List<Comment> updatedReplies =
-            List<Comment>.from(_comments[idx].replies ?? <Comment>[]);
+        final List<Comment> updatedReplies = List<Comment>.from(
+          _comments[idx].replies ?? <Comment>[],
+        );
         updatedReplies.insert(0, optimistic);
         _comments[idx] = _comments[idx].copyWith(replies: updatedReplies);
       }
@@ -190,9 +248,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       setState(() {
         final int idx = _comments.indexWhere((c) => c.id == parent.id);
         if (idx != -1) {
-          final List<Comment> updatedReplies =
-              List<Comment>.from(_comments[idx].replies ?? <Comment>[])
-                ..removeWhere((r) => r.id == optimistic.id);
+          final List<Comment> updatedReplies = List<Comment>.from(
+            _comments[idx].replies ?? <Comment>[],
+          )..removeWhere((r) => r.id == optimistic.id);
           _comments[idx] = _comments[idx].copyWith(replies: updatedReplies);
         }
         _errorMessage = e.toString();
@@ -204,13 +262,14 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   bool _canDeleteComment(Comment comment) {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
     if (currentUser == null) return false;
-    
+
     // Comment author can delete their own comment
     if (comment.user.id == currentUser.uid) return true;
-    
+
     // Video owner can delete any comment on their video
-    if (widget.videoOwnerId != null && widget.videoOwnerId == currentUser.uid) return true;
-    
+    if (widget.videoOwnerId != null && widget.videoOwnerId == currentUser.uid)
+      return true;
+
     return false;
   }
 
@@ -219,7 +278,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       // Check if user has permission to delete this comment
       final comment = _comments.firstWhere((c) => c.id == commentId);
       if (!_canDeleteComment(comment)) {
-        setState(() => _errorMessage = 'You are not authorized to delete this comment');
+        setState(
+          () => _errorMessage = 'You are not authorized to delete this comment',
+        );
         return;
       }
 
@@ -228,14 +289,14 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
         commentId: commentId,
         videoOwnerId: widget.videoOwnerId,
       );
-      
+
       if (success) {
         setState(() {
           _comments.removeWhere((c) => c.id == commentId);
           for (int i = 0; i < _comments.length; i++) {
-            final List<Comment> replies =
-                List<Comment>.from(_comments[i].replies ?? <Comment>[])
-                  ..removeWhere((r) => r.id == commentId);
+            final List<Comment> replies = List<Comment>.from(
+              _comments[i].replies ?? <Comment>[],
+            )..removeWhere((r) => r.id == commentId);
             _comments[i] = _comments[i].copyWith(replies: replies);
           }
         });
@@ -245,47 +306,60 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Color(0xFF6633CC), // Purple (matches ProfileView)
-            Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Drag indicator bar
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey[600],
-              borderRadius: BorderRadius.circular(2),
-            ),
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final double screenHeight = MediaQuery.of(context).size.height;
+    final double containerHeight = screenHeight * 0.75 - keyboardHeight;
+    final bool hasFocus = _inputFocusNode.hasFocus;
+    final bool canRequestFocus = _inputFocusNode.canRequestFocus;
+
+    debugPrint(
+      '🎨 CommentsView: build() - keyboardHeight: $keyboardHeight, screenHeight: $screenHeight, containerHeight: $containerHeight, hasFocus: $hasFocus, canRequestFocus: $canRequestFocus, _isKeyboardVisible: $_isKeyboardVisible',
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        // Use flexible height that adjusts to keyboard
+        height: containerHeight,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF6633CC), // Purple (matches ProfileView)
+              Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          
-          // Header
-          _buildHeader(),
-          
-          // Comments List
-          Expanded(child: _buildCommentList()),
-          
-          // Reactions Row (Above Input)
-          _buildEmojiRow(),
-          
-          // Input Bar
-          _buildInputBar(),
-        ],
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Drag indicator bar
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[600],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // Header
+            _buildHeader(),
+
+            // Comments List
+            Expanded(child: _buildCommentList()),
+
+            // Reactions Row (Above Input) - Only show when keyboard is not visible
+            if (keyboardHeight == 0) _buildEmojiRow(),
+
+            // Input Bar
+            _buildInputBar(),
+          ],
+        ),
       ),
     );
   }
@@ -305,14 +379,11 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
             ),
           ),
           const SizedBox(height: 12),
-          
+
           // Comment count
           Text(
             '${_comments.length} comments',
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.grey[400], fontSize: 14),
           ),
         ],
       ),
@@ -344,18 +415,11 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.info_outline,
-                color: Colors.orange,
-                size: 48,
-              ),
+              const Icon(Icons.info_outline, color: Colors.orange, size: 48),
               const SizedBox(height: 16),
               Text(
                 _errorMessage!,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
@@ -386,6 +450,11 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   }
 
   Widget _buildEmojiRow() {
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    debugPrint(
+      '😀 CommentsView: _buildEmojiRow() - Building emoji row - keyboardHeight: $keyboardHeight, _isKeyboardVisible: $_isKeyboardVisible',
+    );
+
     return Container(
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -397,17 +466,29 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           final String emoji = _emojiReactions[index];
           return GestureDetector(
             onTap: () {
-              _textController.text = _textController.text + emoji;
-              _inputFocusNode.requestFocus();
+              final bool hasFocus = _inputFocusNode.hasFocus;
+              final bool canRequestFocus = _inputFocusNode.canRequestFocus;
+              debugPrint(
+                '😀 CommentsView: Emoji tapped - $emoji, hasFocus: $hasFocus, canRequestFocus: $canRequestFocus',
+              );
+
+              final String currentText = _textController.text;
+              _textController.text = currentText + emoji;
+
+              // Move cursor to end of text
+              _textController.selection = TextSelection.fromPosition(
+                TextPosition(offset: _textController.text.length),
+              );
+
+              debugPrint(
+                '😀 CommentsView: Text updated - "${_textController.text}"',
+              );
             },
             child: SizedBox(
               width: 40,
               height: 40,
               child: Center(
-                child: Text(
-                  emoji,
-                  style: const TextStyle(fontSize: 24), // Increased size for better visibility
-                ),
+                child: Text(emoji, style: const TextStyle(fontSize: 24)),
               ),
             ),
           );
@@ -417,12 +498,19 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   }
 
   Widget _buildInputBar() {
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final double bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    debugPrint(
+      '📝 CommentsView: _buildInputBar() - keyboardHeight: $keyboardHeight, bottomPadding: $bottomPadding',
+    );
+
     return Container(
       padding: EdgeInsets.fromLTRB(
         16,
         8,
         16,
-        MediaQuery.of(context).padding.bottom + 8,
+        keyboardHeight > 0 ? 8 : bottomPadding + 8,
       ),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -433,9 +521,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
-        border: Border(
-          top: BorderSide(color: Colors.white24, width: 1),
-        ),
+        border: Border(top: BorderSide(color: Colors.white24, width: 1)),
       ),
       child: Row(
         children: [
@@ -456,14 +542,17 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
                 : null,
           ),
           const SizedBox(width: 12),
-          
+
           // Text field
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.1), // Semi-transparent white
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha:0.2), width: 1),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  width: 1,
+                ),
               ),
               child: TextField(
                 controller: _textController,
@@ -477,28 +566,42 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
                     horizontal: 16,
                     vertical: 12,
                   ),
-                  suffixIcon: IconButton(
-                    onPressed: () {
-                      _inputFocusNode.requestFocus();
-                    },
-                    icon: const Icon(
-                      Icons.emoji_emotions_outlined,
-                      color: Colors.white54,
-                      size: 20,
-                    ),
-                  ),
                 ),
                 textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _addComment(),
+                keyboardType: TextInputType.text,
+                enableInteractiveSelection: true,
+                onSubmitted: (_) {
+                  debugPrint(
+                    '📝 CommentsView: Text submitted - "${_textController.text}"',
+                  );
+                  _addComment();
+                },
+                onTap: () {
+                  debugPrint(
+                    '📝 CommentsView: TextField tapped - current focus: ${_inputFocusNode.hasFocus}',
+                  );
+                },
+                onChanged: (String value) {
+                  debugPrint('📝 CommentsView: Text changed - "$value"');
+                },
+                onTapOutside: (event) {
+                  debugPrint(
+                    '📝 CommentsView: TextField tapped outside - unfocusing',
+                  );
+                  _inputFocusNode.unfocus();
+                },
               ),
             ),
           ),
-          
+
           const SizedBox(width: 8),
-          
+
           // Send button
           GestureDetector(
-            onTap: _addComment,
+            onTap: () {
+              debugPrint('📝 CommentsView: Send button tapped');
+              _addComment();
+            },
             child: Container(
               width: 40,
               height: 40,
@@ -510,11 +613,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
                 ),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(
-                Icons.send,
-                color: Colors.white,
-                size: 20,
-              ),
+              child: const Icon(Icons.send, color: Colors.white, size: 20),
             ),
           ),
         ],
@@ -527,96 +626,110 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      useSafeArea: false,
+      isDismissible: true,
+      enableDrag: true,
       builder: (BuildContext context) {
         final TextEditingController replyController = TextEditingController();
-        return Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Color(0xFF6633CC), // Purple (matches ProfileView)
-                Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+        return Material(
+          color: Colors.transparent,
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Color(0xFF6633CC), // Purple (matches ProfileView)
+                  Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
             ),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-              left: 16,
-              right: 16,
-              top: 16,
-            ),
-            child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                left: 16,
+                right: 16,
+                top: 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Reply to @${parent.user.username}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[800],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     child: Text(
-                      'Reply to @${parent.user.username}',
+                      parent.text,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        color: Colors.white70,
+                        fontSize: 12,
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Colors.white),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: replyController,
+                    maxLines: 5,
+                    minLines: 3,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: 'Write your reply...',
+                      hintStyle: TextStyle(color: Colors.white54),
+                      border: OutlineInputBorder(),
+                    ),
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () async {
+                          final String text = replyController.text.trim();
+                          if (text.isEmpty) return;
+                          Navigator.pop(context);
+                          await _sendReply(parent, text);
+                        },
+                        child: const Text('Send'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  parent.text,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: replyController,
-                maxLines: 5,
-                minLines: 3,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  hintText: 'Write your reply...',
-                  hintStyle: TextStyle(color: Colors.white54),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final String text = replyController.text.trim();
-                      if (text.isEmpty) return;
-                      Navigator.pop(context);
-                      await _sendReply(parent, text);
-                    },
-                    child: const Text('Send'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
+            ),
           ),
         );
       },
@@ -626,7 +739,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
   void _showDeleteSheet(Comment c) {
     // Only show delete sheet if user can delete the comment
     if (!_canDeleteComment(c)) {
-      setState(() => _errorMessage = 'You are not authorized to delete this comment');
+      setState(
+        () => _errorMessage = 'You are not authorized to delete this comment',
+      );
       return;
     }
 
@@ -649,47 +764,54 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Delete Comment',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Are you sure you want to delete this comment?',
-                style: TextStyle(color: Colors.white70),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(8),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Delete Comment',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                child: Text(c.text, style: const TextStyle(color: Colors.white)),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Are you sure you want to delete this comment?',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[800],
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () async {
-                      Navigator.pop(context);
-                      await _deleteComment(c.id);
-                    },
-                    child: const Text('Delete'),
+                  child: Text(
+                    c.text,
+                    style: const TextStyle(color: Colors.white),
                   ),
-                ],
-              ),
-            ],
-          ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await _deleteComment(c.id);
+                      },
+                      child: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -701,11 +823,14 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized> {
     if (currentUser != null) {
       final AuthenticationService auth = ref.read(authServiceProvider);
       final Map<String, dynamic>? profile = auth.currentUserProfile;
-      
+
       return app_user.User(
         id: currentUser.uid, // Use Firebase Auth UID directly
-        username: (profile?['username'] ?? currentUser.displayName ?? 'you').toString(),
-        displayName: (profile?['displayName'] ?? currentUser.displayName ?? 'You').toString(),
+        username: (profile?['username'] ?? currentUser.displayName ?? 'you')
+            .toString(),
+        displayName:
+            (profile?['displayName'] ?? currentUser.displayName ?? 'You')
+                .toString(),
         bio: null,
         avatarURL: profile?['photoURL'] ?? currentUser.photoURL,
         onlineStatus: 'online',

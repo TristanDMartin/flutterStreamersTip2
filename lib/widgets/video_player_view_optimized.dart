@@ -731,6 +731,9 @@ class _VideoPlayerViewOptimizedState
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      useSafeArea: false,
+      isDismissible: true,
+      enableDrag: true,
       builder: (BuildContext context) {
         return CommentsViewOptimized(
           videoId: widget.video.id,
