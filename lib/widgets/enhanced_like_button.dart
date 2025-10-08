@@ -73,9 +73,9 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
 
   /// Start listening to TikTokLikeService state changes
   void _startListeningToServiceChanges() {
-    // Check for state changes periodically
+    // Check for state changes periodically (reduced from 100ms to 2000ms for performance)
     Future.doWhile(() async {
-      await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 2000));
       if (mounted) {
         final tiktokLikeService = TikTokLikeService();
         final currentState = tiktokLikeService.getLikeState(widget.videoId);
@@ -287,8 +287,9 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
 
   @override
   Widget build(BuildContext context) {
-    debugPrint(
-        '🎨 EnhancedLikeButton: Building - videoId: ${widget.videoId}, local _isLiked: $_isLiked, _likeCount: $_likeCount');
+    // Removed excessive build logging - was called on every frame
+    // debugPrint(
+    //     '🎨 EnhancedLikeButton: Building - videoId: ${widget.videoId}, local _isLiked: $_isLiked, _likeCount: $_likeCount');
 
     return Semantics(
       label: _isLiked ? 'Unlike' : 'Like',

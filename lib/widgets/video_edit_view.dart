@@ -13,7 +13,6 @@ import 'advanced_video_editor.dart';
 import '../services/video_processing_service.dart';
 import '../services/logging_service.dart';
 import '../providers/home_provider.dart';
-import 'video_player_view_optimized.dart';
 import '../services/global_playback_coordinator.dart';
 
 class VideoEditView extends ConsumerStatefulWidget {

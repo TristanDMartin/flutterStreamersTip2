@@ -73,8 +73,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       builder: (context, ref, child) {
         // Ensure VideoService is loaded when ProfileView is accessed
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          final videoServiceState = ref.read(videoServiceProvider);
           final videoService = ref.read(videoServiceProvider.notifier);
-          if (videoService.state.isEmpty) {
+          if (videoServiceState.isEmpty) {
             debugPrint(
                 '🎬 ProfileView: VideoService is empty, loading videos...');
             videoService.loadAllVideos();

@@ -56,6 +56,25 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       }
     }
 
+    // DEBUG: Log all route information
+    debugPrint('🔍 NavigationObserver: Route change detected:');
+    debugPrint('   - Route type: ${route.runtimeType}');
+    debugPrint('   - Route name: ${route.settings.name}');
+    debugPrint('   - Determined owner: $owner');
+
+    // TIKTOK FIX: Don't pause video for CommentsView2 modal - keep video playing behind
+    final shouldKeepVideoPlaying =
+        owner?.contains('modalbottomsheetroute') == true ||
+            owner?.contains('comments') == true ||
+            route.runtimeType.toString().contains('ModalBottomSheetRoute');
+
+    if (shouldKeepVideoPlaying) {
+      debugPrint(
+          '🎵 NavigationObserver: Comments modal opened - keeping video playing (owner: $owner, routeType: ${route.runtimeType})');
+      // Don't call onRouteChange for comments modal - let video keep playing
+      return;
+    }
+
     // Notify coordinator about route change
     _coordinator.onRouteChange(owner, isForeground);
 
@@ -68,7 +87,15 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
   /// Handle modal presentations (bottom sheets, dialogs, etc.)
   void handleModalPresentation({required bool isPresented, String? modalType}) {
     if (isPresented) {
-      // Pause all videos when modal is presented
+      // TIKTOK FIX: Don't pause videos for CommentsView2 - keep playing behind modal
+      if (modalType?.contains('comments') == true ||
+          modalType?.contains('Comments') == true) {
+        debugPrint(
+            '🎵 NavigationObserver: Comments modal presented - keeping video playing');
+        return;
+      }
+
+      // Pause all videos when modal is presented (for other modals)
       _coordinator.pauseAll(reason: 'modalPresented: $modalType');
       debugPrint('🎵 NavigationObserver: Modal presented - $modalType');
     } else {

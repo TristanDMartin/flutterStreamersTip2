@@ -309,19 +309,21 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
   @override
   Widget build(BuildContext context) {
     final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    final double screenHeight = MediaQuery.of(context).size.height;
-    final double containerHeight = screenHeight * 0.75 - keyboardHeight;
-    final bool hasFocus = _inputFocusNode.hasFocus;
-    final bool canRequestFocus = _inputFocusNode.canRequestFocus;
+    
+    // 🔒 CRITICAL: Calculate FULL physical screen height (never changes)
+    final double screenHeight = MediaQuery.of(context).size.height + keyboardHeight;
+    
+    // 🔒 FIXED HEIGHT: Never changes to prevent bounce
+    final double containerHeight = screenHeight * 0.75;
 
     debugPrint(
-      '🎨 CommentsView: build() - keyboardHeight: $keyboardHeight, screenHeight: $screenHeight, containerHeight: $containerHeight, hasFocus: $hasFocus, canRequestFocus: $canRequestFocus, _isKeyboardVisible: $_isKeyboardVisible',
+      '🎨 CommentsView: build() - containerHeight: $containerHeight (FIXED), keyboard: $keyboardHeight',
     );
 
     return Material(
       color: Colors.transparent,
       child: Container(
-        // Use flexible height that adjusts to keyboard
+        // FIXED HEIGHT: Never changes to prevent bounce
         height: containerHeight,
         decoration: const BoxDecoration(
           gradient: LinearGradient(

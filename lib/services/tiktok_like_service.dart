@@ -66,8 +66,9 @@ class TikTokLikeService extends ChangeNotifier {
 
     final result = cachedState ?? defaultState;
 
-    debugPrint(
-        '🔍 TikTokLikeService: getLikeState($videoId) - cached: ${cachedState != null}, isLiked: ${result.isLiked}, likeCount: ${result.likeCount}');
+    // Removed excessive logging - was called 10+ times per second per button
+    // debugPrint(
+    //     '🔍 TikTokLikeService: getLikeState($videoId) - cached: ${cachedState != null}, isLiked: ${result.isLiked}, likeCount: ${result.likeCount}');
 
     return result;
   }

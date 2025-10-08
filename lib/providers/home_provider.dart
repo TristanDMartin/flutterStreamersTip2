@@ -17,7 +17,6 @@ import '../services/like_service.dart';
 import '../services/enhanced_like_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
-import '../widgets/video_player_view_optimized.dart';
 import '../services/global_playback_coordinator.dart';
 
 enum FeedType { forYou, following }

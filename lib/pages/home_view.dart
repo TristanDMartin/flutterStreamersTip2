@@ -23,7 +23,7 @@ import '../providers/playback_coordinator_provider.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
-import '../widgets/comments_view_optimized.dart';
+import '../widgets/comments_view2.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/home_view_components/home_content_widget.dart';
 import '../models/user.dart';
@@ -344,21 +344,23 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   void _openComments(String videoId, String videoOwnerId) {
     HapticFeedback.lightImpact();
+
     showModalBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return CommentsViewOptimized(
-          videoId: videoId,
-          videoOwnerId: videoOwnerId,
-        );
-      },
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      builder: (context) => CommentsView2(
+        videoId: videoId,
+        videoOwnerId: videoOwnerId,
+      ),
     );
   }
 
   // _buildFeedDropdown method removed - now handled by FeedMenuWidget
   // _buildHeader method removed - now handled by FeedSelectorWidget
+  // ignore: unused_element
   Widget _buildFeedDropdown() {
     final BorderRadius radius = BorderRadius.circular(20);
     final Color tileColor = const Color(0xFF1A1A1A).withValues(alpha: 0.95);
@@ -887,6 +889,7 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   // _buildVideoContent method removed - now handled by HomeContentWidget
+  // ignore: unused_element
   Widget _buildVideoContent(hp.HomeState homeState) {
     // Use videos from the provider based on current feed tab
     final videos = _feedTab == FeedTab.forYou

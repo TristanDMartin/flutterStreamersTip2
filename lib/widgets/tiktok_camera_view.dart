@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/tiktok_camera_service.dart';
 import '../services/global_playback_coordinator.dart';
 import '../providers/home_provider.dart';
-import 'video_player_view_optimized.dart';
 import 'video_recording_preview.dart';
 import 'video_edit_view.dart';
 
@@ -745,6 +744,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
 
   /// Pause all HomeView videos to prevent audio bleeding
   // _pauseAllHomeViewVideos method removed - now handled by UnifiedVideoControlService
+  // ignore: unused_element
   void _pauseAllHomeViewVideos() {
     try {
       log('🔇 TikTokCameraView: Pausing all HomeView videos to prevent audio bleeding');
@@ -765,6 +765,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
 
   /// Reactivate HomeView when returning from camera
   // _reactivateHomeView method removed - now handled by UnifiedVideoControlService
+  // ignore: unused_element
   void _reactivateHomeView() {
     try {
       log('🔄 TikTokCameraView: Reactivating HomeView for seamless return');

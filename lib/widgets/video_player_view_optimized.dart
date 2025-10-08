@@ -24,7 +24,7 @@ import '../services/production_logging_service.dart';
 import '../services/audio_enhancement_service.dart';
 import '../services/global_playback_coordinator.dart';
 import '../providers/playback_coordinator_provider.dart';
-import '../widgets/comments_view_optimized.dart';
+import '../widgets/comments_view2.dart';
 import '../widgets/streamer_share_sheet.dart';
 
 // DEPRECATED: GlobalVideoController replaced by UnifiedVideoControlService
@@ -729,17 +729,14 @@ class _VideoPlayerViewOptimizedState
     HapticFeedback.lightImpact();
     showModalBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      useSafeArea: false,
+      isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,
-      builder: (BuildContext context) {
-        return CommentsViewOptimized(
-          videoId: widget.video.id,
-          videoOwnerId: widget.video.creator.id,
-        );
-      },
+      builder: (context) => CommentsView2(
+        videoId: widget.video.id,
+        videoOwnerId: widget.video.creator.id,
+      ),
     );
   }
 
@@ -1055,8 +1052,15 @@ class _VideoPlayerViewOptimizedState
   }
 
   Widget _buildVideoPlayer() {
+    // DEBUG: Log video controller state when modal is open
+    debugPrint(
+        '🎬 _buildVideoPlayer: videoId=${widget.video.id}, controller=${_videoPlayerController != null}, initialized=$_isInitialized, disposed=$_isDisposed, isCurrent=${widget.isCurrentVideo}');
+
     // TIKTOK-STYLE: Show video immediately or use thumbnail as instant fallback
     if (_videoPlayerController == null || !_isInitialized || _isDisposed) {
+      debugPrint(
+          '🎬 _buildVideoPlayer: FALLBACK TO THUMBNAIL - videoId=${widget.video.id}, controller=${_videoPlayerController != null}, initialized=$_isInitialized, disposed=$_isDisposed');
+
       // SEAMLESS RETURN: Reinitialize if controller was disposed
       if ((_videoPlayerController == null || _isDisposed) &&
           widget.isCurrentVideo) {
