@@ -10,14 +10,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 // cspell:ignore unmuted unmuting HOMEVIEW
 import '../models/home_video.dart';
+import '../models/share_payload.dart';
 import '../providers/home_provider.dart';
 import '../providers/following_provider.dart';
 import '../services/performance_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/robust_auth_service.dart';
+import '../services/share_service_optimized.dart';
 import '../widgets/enhanced_like_button.dart';
 import '../widgets/double_tap_gesture_detector.dart';
 import '../widgets/heart_animation_widget.dart';
+import '../widgets/share_sheet_view.dart';
 import '../services/tiktok_like_service.dart';
 import '../services/video_controller_registry.dart';
 import '../services/production_logging_service.dart';
@@ -44,7 +47,7 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final bool isLiked;
   final bool isBookmarked;
 
-  const VideoPlayerViewOptimized({
+  VideoPlayerViewOptimized({
     super.key,
     required this.video,
     required this.isCurrentVideo,
@@ -749,21 +752,35 @@ class _VideoPlayerViewOptimizedState
 
   void _handleShare() {
     debugPrint(
-        '🔥 _handleShare: Share button tapped for video ${widget.video.id}');
-    debugPrint(
-        '🔥 _handleShare: onShowShare callback exists: ${widget.onShowShare != null}');
-
-    // Handle share button tap - open new TikTok-style share sheet
+        '📤 _handleShare: Opening ShareSheetView for video ${widget.video.id}');
     HapticFeedback.lightImpact();
-    debugPrint('🔥 _handleShare: About to call widget.onShowShare()');
 
-    // Call the callback to open the share sheet (uses OptimizedShareButton logic)
-    try {
-      widget.onShowShare();
-      debugPrint('🔥 _handleShare: widget.onShowShare() called successfully');
-    } catch (e) {
-      debugPrint('🔥 _handleShare: ERROR calling onShowShare: $e');
-    }
+    // Open TikTok-style share sheet directly
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      enableDrag: true,
+      builder: (context) {
+        debugPrint('📤 _handleShare: Building ShareSheetView...');
+        return ShareSheetView(
+          video: widget.video,
+          payload: ShareServiceOptimized().getCachedPayload(widget.video.id),
+          onDismiss: () {
+            debugPrint('📤 _handleShare: ShareSheet dismissed');
+          },
+          onAction: (action) {
+            debugPrint('📤 _handleShare: ShareSheet action: $action');
+            ShareServiceOptimized().handleAction(
+              action,
+              widget.video.id,
+              widget.video.creator.id,
+            );
+          },
+        );
+      },
+    );
   }
 
   void _handleFollow(WidgetRef ref) {
