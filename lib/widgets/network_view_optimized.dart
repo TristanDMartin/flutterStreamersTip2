@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
 import '../services/network_service_optimized.dart';
-import 'streamer_card_view_optimized.dart';
 import '../services/unified_avatar_service.dart';
+import 'streamer_card_view.dart';
 
 class NetworkViewOptimized extends StatefulWidget {
   const NetworkViewOptimized({super.key});
@@ -74,8 +74,10 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
       id: 'dummy_streamer_123',
       username: 'teststreamer',
       displayName: 'Test Streamer',
-      bio: 'Welcome to my channel! I create amazing content about gaming, tech, and lifestyle. Follow me for daily updates and live streams!',
-      avatarURL: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+      bio:
+          'Welcome to my channel! I create amazing content about gaming, tech, and lifestyle. Follow me for daily updates and live streams!',
+      avatarURL:
+          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
       platforms: [
         Platform(
           id: 'platform_1',
@@ -233,7 +235,8 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
                       Row(
                         children: [
                           UnifiedAvatarService().getAvatar(
-                            imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+                            imageUrl:
+                                'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
                             radius: 30,
                           ),
                           const SizedBox(width: 16),
@@ -307,20 +310,31 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
         ),
       );
     }
-    
+
     return _buildUserList(_connections, 'No connections yet');
   }
 
   void _showStreamerCard() {
     final dummyCard = _createDummyStreamerCard();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => StreamerCardViewOptimized(
-          displayStreamer: dummyCard,
+
+    // Show StreamerCardView as modal (matching app-wide pattern)
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      enableDrag: true,
+      builder: (context) {
+        return StreamerCardView(
+          userId: dummyCard.id,
           currentUserId: 'current_user_123', // Dummy current user ID
           onDismiss: () => Navigator.of(context).pop(),
-        ),
-      ),
+          onFollow: (userId) async {},
+          onMessage: (userId) {},
+          onNavigateToTab: (tabName) {},
+          onShare: (userId) {},
+        );
+      },
     );
   }
 
@@ -492,7 +506,7 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
 
   Future<void> _handleFollow(User user) async {
     HapticFeedback.lightImpact();
-    
+
     try {
       final success = await _networkService.followUser(user.id);
       if (success) {
@@ -508,7 +522,7 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
 
   Future<void> _handleUnfollow(User user) async {
     HapticFeedback.lightImpact();
-    
+
     try {
       final success = await _networkService.unfollowUser(user.id);
       if (success) {
@@ -524,7 +538,7 @@ class _NetworkViewOptimizedState extends State<NetworkViewOptimized>
 
   Future<void> _handleRemove(User user) async {
     HapticFeedback.lightImpact();
-    
+
     try {
       final success = await _networkService.removeFollower(user.id);
       if (success) {

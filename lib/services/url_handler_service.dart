@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../views/streamer_card_page.dart';
+import '../widgets/streamer_card_view.dart';
 import '../models/user.dart';
 import 'unified_avatar_service.dart' as nav;
 // import 'package:firebase_auth/firebase_auth.dart' as fa; // Not used here
@@ -8,109 +8,109 @@ import 'unified_avatar_service.dart' as nav;
 class URLHandlerService extends ChangeNotifier {
   static final URLHandlerService _instance = URLHandlerService._internal();
   static URLHandlerService get shared => _instance;
-  
+
   String? _pendingURL;
   bool _isProcessingURL = false;
-  
+
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  
+
   // Getters
   String? get pendingURL => _pendingURL;
   bool get isProcessingURL => _isProcessingURL;
-  
+
   URLHandlerService._internal();
-  
+
   void handleURL(String url) {
     // print("🔗 URLHandlerService handling URL: $url");
     // cspell:ignore streamerstip
     if (!url.startsWith("streamerstip://")) {
-    // print("❌ Not a streamerstip URL: $url");
+      // print("❌ Not a streamerstip URL: $url");
       return;
     }
-    
+
     _pendingURL = url;
     _processURL(url);
   }
-  
+
   void _processURL(String url) {
     _isProcessingURL = true;
     notifyListeners();
-    
+
     // Remove scheme and parse path
-    final path = url.replaceFirst("streamerstip://", ""); // cspell:ignore streamerstip
-    final pathComponents = path.split("/").where((component) => component.isNotEmpty).toList();
-    
+    final path =
+        url.replaceFirst("streamerstip://", ""); // cspell:ignore streamerstip
+    final pathComponents =
+        path.split("/").where((component) => component.isNotEmpty).toList();
+
     // print("📋 Path components: $pathComponents");
-    
+
     if (pathComponents.isEmpty) {
-    // print("❌ Empty path components");
+      // print("❌ Empty path components");
       _isProcessingURL = false;
       notifyListeners();
       return;
     }
-    
+
     switch (pathComponents.first) {
       case "streamercard": // cspell:ignore streamercard
         if (pathComponents.length > 1) {
           final userId = pathComponents[1];
-    // print("👤 Processing streamer card for user ID: $userId");
+          // print("👤 Processing streamer card for user ID: $userId");
           _handleStreamerCard(userId);
         } else {
-    // print("❌ Missing user ID in streamercard URL"); // cspell:ignore streamercard
+          // print("❌ Missing user ID in streamercard URL"); // cspell:ignore streamercard
           _isProcessingURL = false;
           notifyListeners();
         }
-        
+
       case "profile":
         if (pathComponents.length > 1) {
           final username = pathComponents[1];
-    // print("👤 Processing profile for username: $username");
+          // print("👤 Processing profile for username: $username");
           _handleProfile(username);
         } else {
-    // print("❌ Missing username in profile URL");
+          // print("❌ Missing username in profile URL");
           _isProcessingURL = false;
           notifyListeners();
         }
-        
+
       default:
-    // print("❌ Unknown URL path: $pathComponents");
+        // print("❌ Unknown URL path: $pathComponents");
         _isProcessingURL = false;
         notifyListeners();
     }
   }
-  
+
   Future<void> _handleStreamerCard(String userId) async {
     try {
       final streamerCard = await _loadUserForStreamerCard(userId);
-    // print("✅ URLHandlerService: Loaded streamer card for user: $userId");
-      
+      // print("✅ URLHandlerService: Loaded streamer card for user: $userId");
+
       // Navigate to the streamer card view
       await _navigateToStreamerCard(streamerCard);
-      
     } catch (e) {
-    // print("❌ Error fetching user data: $e");
+      // print("❌ Error fetching user data: $e");
     }
-    
+
     _isProcessingURL = false;
     notifyListeners();
   }
-  
+
   Future<void> _handleProfile(String username) async {
     try {
       final streamerCard = await _loadUserByUsername(username);
-    // print("✅ URLHandlerService: Loaded streamer card for username: $username");
-      
+      // print("✅ URLHandlerService: Loaded streamer card for username: $username");
+
       // Navigate to the streamer card view
       await _navigateToStreamerCard(streamerCard);
-      
     } catch (e) {
-    // print("❌ Error fetching user by username: $e");
+      // print("❌ Error fetching user by username: $e");
     }
-    
+
     _isProcessingURL = false;
     notifyListeners();
   }
-  
+
   Future<StreamerCard> _loadUserForStreamerCard(String userId) async {
     try {
       final doc = await _db.collection("users").doc(userId).get();
@@ -121,11 +121,11 @@ class URLHandlerService extends ChangeNotifier {
         throw Exception("User not found");
       }
     } catch (e) {
-    // print("❌ Error loading user for streamer card: $e");
+      // print("❌ Error loading user for streamer card: $e");
       rethrow;
     }
   }
-  
+
   Future<StreamerCard> _loadUserByUsername(String username) async {
     try {
       final query = await _db
@@ -133,7 +133,7 @@ class URLHandlerService extends ChangeNotifier {
           .where("username", isEqualTo: username)
           .limit(1)
           .get();
-      
+
       if (query.docs.isNotEmpty) {
         final data = query.docs.first.data();
         return StreamerCard.fromMap(data);
@@ -141,12 +141,11 @@ class URLHandlerService extends ChangeNotifier {
         throw Exception("User not found");
       }
     } catch (e) {
-    // print("❌ Error loading user by username: $e");
+      // print("❌ Error loading user by username: $e");
       rethrow;
     }
   }
-  
-  
+
   Future<void> _navigateToStreamerCard(StreamerCard streamerCard) async {
     // Convert StreamerCard to User model for StreamerCardPage
     final user = User(
@@ -161,46 +160,59 @@ class URLHandlerService extends ChangeNotifier {
       followingCount: 0,
       postCount: 0,
     );
-    
+
     // Get the current navigator context
     final context = nav.NavigationService.navigatorKey.currentContext;
     if (context != null) {
-      // Navigate to StreamerCardPage
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => StreamerCardPage(user: user),
-        ),
+      // Show StreamerCardView as modal (matching app-wide pattern)
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        isDismissible: true,
+        enableDrag: true,
+        builder: (context) {
+          return StreamerCardView(
+            userId: user.id,
+            currentUserId: null, // Could get from FirebaseAuth if needed
+            onDismiss: () => Navigator.of(context).pop(),
+            onFollow: (userId) async {},
+            onMessage: (userId) {},
+            onNavigateToTab: (tabName) {},
+            onShare: (userId) {},
+          );
+        },
       );
     }
-    
+
     // Clear the pending URL
     _pendingURL = null;
     notifyListeners();
   }
-  
+
   // Additional methods for URL handling
-  
+
   void clearPendingURL() {
     _pendingURL = null;
     notifyListeners();
   }
-  
+
   bool isValidStreamerTipURL(String url) {
     return url.startsWith("streamerstip://"); // cspell:ignore streamerstip
   }
-  
+
   // Method to handle deep links from app launch
   void handleInitialURL(String? url) {
     if (url != null && isValidStreamerTipURL(url)) {
-    // print("🔗 Handling initial URL: $url");
+      // print("🔗 Handling initial URL: $url");
       handleURL(url);
     }
   }
-  
+
   // Method to handle URL changes while app is running
   void handleURLChange(String? url) {
     if (url != null && isValidStreamerTipURL(url)) {
-    // print("🔗 Handling URL change: $url");
+      // print("🔗 Handling URL change: $url");
       handleURL(url);
     }
   }
@@ -215,7 +227,7 @@ class StreamerCard {
   final String? avatarURL;
   final List<String> platforms;
   final bool isOnline;
-  
+
   const StreamerCard({
     required this.id,
     required this.username,
@@ -225,7 +237,7 @@ class StreamerCard {
     this.platforms = const [],
     this.isOnline = false,
   });
-  
+
   factory StreamerCard.fromMap(Map<String, dynamic> map) {
     return StreamerCard(
       id: map['id'] ?? '',
@@ -237,7 +249,7 @@ class StreamerCard {
       isOnline: map['isOnline'] ?? false,
     );
   }
-  
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
 import '../models/trending_creator.dart';
 import 'category_card.dart';
 import 'recommended_content_card.dart';
+import 'streamer_card_view.dart';
 // import 'search_screen.dart'; // Removed - unused
 import 'activity_view.dart';
 import '../services/logging_service.dart';
@@ -143,9 +145,49 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   void _onCreatorTapped(TrendingCreator creator) {
-    // Creator profile navigation - placeholder for future implementation
+    HapticFeedback.lightImpact();
     LoggingService.instance
         .debug('Creator tapped: ${creator.username}', tag: 'DiscoverView');
+    
+    // Show StreamerCardView as modal (matching HomeView/ProfileView pattern)
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      enableDrag: true,
+      builder: (context) {
+        return StreamerCardView(
+          userId: creator.id,
+          currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+          onDismiss: () => Navigator.of(context).pop(),
+          onFollow: (userId) async {
+            // Handle follow action
+            HapticFeedback.lightImpact();
+            LoggingService.instance.debug(
+              'Follow action for user: $userId',
+              tag: 'DiscoverView',
+            );
+          },
+          onMessage: (userId) {
+            // Handle message action  
+            HapticFeedback.lightImpact();
+            LoggingService.instance.debug(
+              'Message action for user: $userId',
+              tag: 'DiscoverView',
+            );
+          },
+          onNavigateToTab: (tabName) {
+            // Handle tab navigation
+            HapticFeedback.lightImpact();
+          },
+          onShare: (userId) {
+            // Handle share action
+            HapticFeedback.lightImpact();
+          },
+        );
+      },
+    );
   }
 
   Widget _buildTrendingCreatorItem(TrendingCreator creator) {

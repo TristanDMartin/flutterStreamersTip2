@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/home_video.dart';
 import '../models/share_payload.dart';
+import '../models/connection_lite.dart';
 import 'engagement_analytics_service.dart';
 import 'connections_service.dart';
 
@@ -67,6 +68,7 @@ class ShareServiceOptimized {
         ConnectionsService().createMockConnections().catchError((mockError) {
           log('⚠️ ShareService: Failed to create mock connections: $mockError');
         });
+        return <ConnectionLite>[]; // Return empty list on error
       });
 
       log('✅ ShareService: Prefetched payload for video ${video.id}');

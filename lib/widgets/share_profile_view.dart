@@ -56,9 +56,6 @@ class _ShareProfileViewState extends State<ShareProfileView> {
 
   void _showShareOptions() {
     if (_shareURL != null) {
-      final String shareText =
-          'Check out ${widget.user['displayName']} (@${widget.user['username']}) on StreamersTip!';
-
       // Simple share options without using ShareSheetView (which is for videos)
       showModalBottomSheet(
         context: context,

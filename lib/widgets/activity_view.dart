@@ -2,13 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../providers/activity_provider.dart';
 import '../services/auth_service.dart';
 import '../widgets/activity_row_view.dart';
 import '../models/activity_notification.dart';
 import '../models/user_model.dart' as user_model;
 import '../models/user.dart';
-import '../views/streamer_card_page.dart';
+import '../widgets/streamer_card_view.dart';
 import 'discover_view.dart';
 // import '../widgets/post_detail_view.dart'; // Removed - unused
 import 'instant_response_button.dart';
@@ -61,10 +62,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
-
-  // Common navigation transition
-  static const Duration _transitionDuration = Duration(milliseconds: 300);
-  static const Curve _transitionCurve = Curves.easeOutCubic;
 
   @override
   void initState() {
@@ -1124,23 +1121,39 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   void _handleProfileTap(user_model.User user) {
     HapticFeedback.lightImpact();
-    // Convert user_model.User to User for StreamerCardPage
-    final userForCard = User(
-      id: user.id,
-      displayName: user.displayName,
-      username: user.username,
-      bio: user.bio,
-      avatarURL: user.avatarURL,
-      onlineStatus: user.onlineStatus.name,
-      hashtags: user.hashtags,
-      followerCount: user.followerCount,
-      followingCount: user.followingCount,
-      postCount: user.postCount,
-    );
 
-    _navigateWithSlideTransition(
-      StreamerCardPage(user: userForCard),
-      const Offset(1.0, 0.0),
+    // Show StreamerCardView as modal (matching HomeView/ProfileView pattern)
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      enableDrag: true,
+      builder: (context) {
+        return StreamerCardView(
+          userId: user.id,
+          currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+          onDismiss: () => Navigator.of(context).pop(),
+          onFollow: (userId) async {
+            // Handle follow action
+            HapticFeedback.lightImpact();
+            // TODO: Implement follow logic
+          },
+          onMessage: (userId) {
+            // Handle message action
+            HapticFeedback.lightImpact();
+            // TODO: Navigate to chat
+          },
+          onNavigateToTab: (tabName) {
+            // Handle tab navigation
+            HapticFeedback.lightImpact();
+          },
+          onShare: (userId) {
+            // Handle share action
+            HapticFeedback.lightImpact();
+          },
+        );
+      },
     );
   }
 
@@ -1200,29 +1213,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
     // Navigate to StreamerCardView
     _handleProfileTap(user as user_model.User);
-  }
-
-  void _navigateWithSlideTransition(Widget page, Offset beginOffset,
-      {bool fullscreenDialog = false}) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: beginOffset,
-              end: Offset.zero,
-            ).animate(CurvedAnimation(
-              parent: animation,
-              curve: _transitionCurve,
-            )),
-            child: child,
-          );
-        },
-        transitionDuration: _transitionDuration,
-        fullscreenDialog: fullscreenDialog,
-      ),
-    );
   }
 
   BoxDecoration _buildContainerDecoration({
