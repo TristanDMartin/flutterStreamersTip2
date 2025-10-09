@@ -25,7 +25,6 @@ import '../services/audio_enhancement_service.dart';
 import '../services/global_playback_coordinator.dart';
 import '../providers/playback_coordinator_provider.dart';
 import '../widgets/comments_view2.dart';
-import '../widgets/streamer_share_sheet.dart';
 
 // DEPRECATED: GlobalVideoController replaced by UnifiedVideoControlService
 // This class is kept for backward compatibility but delegates to UnifiedVideoControlService
@@ -749,24 +748,22 @@ class _VideoPlayerViewOptimizedState
   }
 
   void _handleShare() {
-    // Handle share button tap
+    debugPrint(
+        '🔥 _handleShare: Share button tapped for video ${widget.video.id}');
+    debugPrint(
+        '🔥 _handleShare: onShowShare callback exists: ${widget.onShowShare != null}');
+
+    // Handle share button tap - open new TikTok-style share sheet
     HapticFeedback.lightImpact();
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return StreamerShareSheet(
-          userId: widget.video.creator.id,
-          displayName: widget.video.creator.displayName,
-          profileImageUrl: widget.video.creator.avatarURL,
-          onDismiss: () {
-            // Don't call Navigator.pop() here as it's already handled in the X button
-            // This prevents double pop which causes black screen
-          },
-        );
-      },
-    );
+    debugPrint('🔥 _handleShare: About to call widget.onShowShare()');
+
+    // Call the callback to open the share sheet (uses OptimizedShareButton logic)
+    try {
+      widget.onShowShare();
+      debugPrint('🔥 _handleShare: widget.onShowShare() called successfully');
+    } catch (e) {
+      debugPrint('🔥 _handleShare: ERROR calling onShowShare: $e');
+    }
   }
 
   void _handleFollow(WidgetRef ref) {

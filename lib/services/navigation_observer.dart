@@ -62,16 +62,17 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     debugPrint('   - Route name: ${route.settings.name}');
     debugPrint('   - Determined owner: $owner');
 
-    // TIKTOK FIX: Don't pause video for CommentsView2 modal - keep video playing behind
+    // TIKTOK FIX: Don't pause video for CommentsView2 or ShareSheet modals - keep video playing behind
     final shouldKeepVideoPlaying =
         owner?.contains('modalbottomsheetroute') == true ||
             owner?.contains('comments') == true ||
+            owner?.contains('share') == true ||
             route.runtimeType.toString().contains('ModalBottomSheetRoute');
 
     if (shouldKeepVideoPlaying) {
       debugPrint(
-          '🎵 NavigationObserver: Comments modal opened - keeping video playing (owner: $owner, routeType: ${route.runtimeType})');
-      // Don't call onRouteChange for comments modal - let video keep playing
+          '🎵 NavigationObserver: Modal opened - keeping video playing (owner: $owner, routeType: ${route.runtimeType})');
+      // Don't call onRouteChange for these modals - let video keep playing
       return;
     }
 
@@ -87,11 +88,13 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
   /// Handle modal presentations (bottom sheets, dialogs, etc.)
   void handleModalPresentation({required bool isPresented, String? modalType}) {
     if (isPresented) {
-      // TIKTOK FIX: Don't pause videos for CommentsView2 - keep playing behind modal
+      // TIKTOK FIX: Don't pause videos for CommentsView2 or ShareSheet - keep playing behind modal
       if (modalType?.contains('comments') == true ||
-          modalType?.contains('Comments') == true) {
+          modalType?.contains('Comments') == true ||
+          modalType?.contains('share') == true ||
+          modalType?.contains('Share') == true) {
         debugPrint(
-            '🎵 NavigationObserver: Comments modal presented - keeping video playing');
+            '🎵 NavigationObserver: Modal presented - keeping video playing (type: $modalType)');
         return;
       }
 

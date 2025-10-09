@@ -26,6 +26,7 @@ import '../views/network_view.dart';
 import '../widgets/comments_view2.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/home_view_components/home_content_widget.dart';
+import '../widgets/share_sheet_view.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
 // import '../widgets/tiktok_account_switch_button.dart'; // Removed unused import
@@ -504,8 +505,42 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _shareVideo(HomeVideo video) {
+    debugPrint('📤 HomeView: _shareVideo called for video ${video.id}');
     HapticFeedback.lightImpact();
-    ShareServiceOptimized().shareVideo(video);
+
+    try {
+      debugPrint('📤 HomeView: Opening ShareSheetView modal...');
+      // Open TikTok-style share sheet with connections row
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        isDismissible: true,
+        enableDrag: true,
+        builder: (context) {
+          debugPrint('📤 HomeView: Building ShareSheetView...');
+          // Import ShareSheetView
+          return ShareSheetView(
+            video: video,
+            payload: ShareServiceOptimized().getCachedPayload(video.id),
+            onDismiss: () {
+              debugPrint('📤 HomeView: ShareSheet dismissed');
+            },
+            onAction: (action) {
+              debugPrint('📤 HomeView: ShareSheet action: $action');
+              ShareServiceOptimized().handleAction(
+                action,
+                video.id,
+                video.creator.id,
+              );
+            },
+          );
+        },
+      );
+      debugPrint('📤 HomeView: Modal opened successfully');
+    } catch (e) {
+      debugPrint('❌ HomeView: Error opening share sheet: $e');
+    }
   }
 
   /// Handle pull-to-refresh gesture - INSTANT like TikTok
@@ -1101,7 +1136,16 @@ class _HomeViewState extends ConsumerState<HomeView>
                   onShowProfile: () => _showStreamerCardModal(video.creator),
                   onShowComments: () =>
                       _openComments(video.id, video.creator.id),
-                  onShowShare: () => _shareVideo(video),
+                  onShowShare: () {
+                    debugPrint(
+                        '🎯 onShowShare LAMBDA called for video ${video.id}');
+                    try {
+                      _shareVideo(video);
+                    } catch (e, stackTrace) {
+                      debugPrint('❌ ERROR in onShowShare: $e');
+                      debugPrint('❌ Stack trace: $stackTrace');
+                    }
+                  },
                   onShowStreamerCard: () =>
                       _showStreamerCardModal(video.creator),
                   isLiked: video.isLiked,

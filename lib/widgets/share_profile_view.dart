@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'share_sheet.dart';
 import 'qr_scanner_view.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 // Removed qr_flutter to avoid missing dependency for now
@@ -8,7 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 class ShareProfileView extends StatefulWidget {
   final Map<String, dynamic> user;
   final VoidCallback dismiss;
-  
+
   const ShareProfileView({
     super.key,
     required this.user,
@@ -59,21 +58,46 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     if (_shareURL != null) {
       final String shareText =
           'Check out ${widget.user['displayName']} (@${widget.user['username']}) on StreamersTip!';
+
+      // Simple share options without using ShareSheetView (which is for videos)
       showModalBottomSheet(
         context: context,
-        isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (context) {
           return Container(
+            padding: const EdgeInsets.all(20),
             decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
-            child: ShareSheet(
-              videoId: 'profile_${widget.user['id']}',
-              videoUrl: _shareURL!,
-              videoCaption: shareText,
-              onClose: () => Navigator.of(context).pop(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Share Profile',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  leading: const Icon(Icons.link),
+                  title: const Text('Copy Link'),
+                  onTap: () {
+                    _copyProfileLink();
+                    Navigator.of(context).pop();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.share),
+                  title: const Text('Share'),
+                  onTap: () {
+                    // Use system share
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
             ),
           );
         },
@@ -100,7 +124,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
             children: [
               // Top navigation bar
               _buildTopNavigation(),
-              
+
               // Main content
               Expanded(
                 child: SingleChildScrollView(
@@ -108,22 +132,22 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
-                      
+
                       // Profile section
                       _buildProfileSection(),
-                      
+
                       const SizedBox(height: 30),
-                      
+
                       // QR Code section
                       _buildQRCodeSection(),
-                      
+
                       const SizedBox(height: 30),
-                      
+
                       // Action buttons
                       _buildActionButtonsSection(),
-                      
+
                       const SizedBox(height: 40),
-                      
+
                       // Bottom text
                       _buildBottomText(),
                     ],
@@ -150,9 +174,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
               size: 24,
             ),
           ),
-          
           const Spacer(),
-          
           IconButton(
             onPressed: () {
               Navigator.of(context).push(
@@ -207,8 +229,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                       width: 110,
                       height: 110,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(
+                      errorBuilder: (context, error, stackTrace) => const Icon(
                         Icons.person,
                         color: Colors.grey,
                         size: 48,
@@ -222,9 +243,9 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                   ),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         Column(
           children: [
             Text(
@@ -235,9 +256,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            
             const SizedBox(height: 8),
-            
             Text(
               '@${widget.user['username'] ?? ''}',
               style: TextStyle(
@@ -315,12 +334,13 @@ class _ShareProfileViewState extends State<ShareProfileView> {
               ),
             ),
           ),
-        
         const SizedBox(height: 20),
-        
         Text(
           'Share this QR code with others to connect',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 16, fontWeight: FontWeight.w600),
+          style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 16,
+              fontWeight: FontWeight.w600),
           textAlign: TextAlign.center,
         ),
       ],
@@ -348,7 +368,11 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 children: [
                   Icon(Icons.link, color: Colors.white, size: 20),
                   SizedBox(width: 8),
-                  Text('Copy link', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text('Copy link',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
                 ],
               ),
             ),
@@ -373,7 +397,11 @@ class _ShareProfileViewState extends State<ShareProfileView> {
                 children: [
                   Icon(Icons.share, color: Colors.white, size: 20),
                   SizedBox(width: 8),
-                  Text('Share link', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text('Share link',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
                 ],
               ),
             ),
