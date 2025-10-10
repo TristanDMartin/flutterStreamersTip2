@@ -18,7 +18,7 @@ import 'services/global_post_count_fix.dart';
 import 'services/navigation_observer.dart';
 import 'widgets/ios_minimal_startup.dart';
 import 'providers/service_providers.dart';
-import 'services/tiktok_like_service.dart';
+import 'services/streamers_tip_like_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,8 +47,9 @@ Future<void> _initializeAllServices() async {
     _initializePerformanceOptimizations();
 
     // TIKTOK SERVICES (needed for UI)
-    TikTokLikeService().initialize().catchError((e) {
-      debugPrint('⚠️ TikTokLikeService init failed: $e');
+    // Note: Full initialization with userId happens after login in HomeView
+    StreamersTipLikeService().initialize().catchError((e) {
+      debugPrint('⚠️ StreamersTipLikeService init failed: $e');
     });
 
     debugPrint('✅ Critical services initialized');

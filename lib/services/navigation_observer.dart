@@ -77,10 +77,16 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     }
 
     // 🔊 AUDIO FIX: Block playback when leaving home
-    if (owner != 'home' && isForeground) {
+    final isHomeRoute = owner == 'home' || owner == '/';
+
+    if (!isHomeRoute && isForeground) {
       _manager.block(reason: 'route_change_$owner');
-    } else if (owner == 'home' && isForeground) {
+      debugPrint(
+          '🚫 NavigationObserver: Blocking playback for non-home route: $owner');
+    } else if (isHomeRoute && isForeground) {
       _manager.unblock();
+      debugPrint(
+          '✅ NavigationObserver: Unblocking playback for home route: $owner');
     }
 
     if (route.settings.name != null) {

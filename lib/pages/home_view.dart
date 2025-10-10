@@ -18,6 +18,7 @@ import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/unified_algorithm_service.dart';
 import '../services/global_playback_manager.dart';
+import '../services/streamers_tip_like_service.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
@@ -90,6 +91,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     // Setup favorites manager and load videos
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setupFavoritesManager();
+      _loadUserLikedVideos(); // TikTok-style: Load liked videos for heart state
       _loadVideos();
       _initializeVideoService();
     });
@@ -156,6 +158,36 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   /// Setup favorites manager - equivalent to Swift's .onAppear
+  /// TikTok-Style: Load user's liked videos when app opens
+  ///
+  /// This ensures that when videos appear in the feed, their hearts are
+  /// already filled if the user has previously liked them.
+  ///
+  /// Benefits:
+  /// - Hearts show correct state immediately (no delay)
+  /// - Works across app restarts (persisted in Firestore)
+  /// - Works across devices (same user profile)
+  /// - Survives logouts (re-syncs on next login)
+  Future<void> _loadUserLikedVideos() async {
+    try {
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        log('⚠️ HomeView: No user logged in, skipping liked videos load');
+        return;
+      }
+
+      log('🔄 HomeView: Loading liked videos for user ${currentUser.uid}');
+
+      await StreamersTipLikeService.instance
+          .loadUserLikedVideos(currentUser.uid);
+
+      log('✅ HomeView: Liked videos loaded successfully');
+    } catch (e) {
+      log('❌ HomeView: Error loading liked videos: $e');
+      // Don't block app startup if this fails
+    }
+  }
+
   void _setupFavoritesManager() {
     // The favorites service is automatically initialized via Riverpod
     // This is equivalent to: viewModel.setFavoritesManager(favoritesManager)
@@ -567,11 +599,50 @@ class _HomeViewState extends ConsumerState<HomeView>
         _currentIndex = index;
       });
 
-      // VideoPreloaderService removed - using direct controller creation for TikTok-style instant play
-      // Controllers are created on-demand and managed by GlobalPlaybackManager
+      // 🚀 INSTANT SWITCHING: Preload adjacent videos for seamless swiping
+      _preloadAdjacentVideos(index);
 
       // Pause all other videos when scrolling within same tab
       _pauseAllOtherVideos(index);
+    }
+  }
+
+  /// 🚀 INSTANT SWITCHING: Preload adjacent videos for seamless swiping experience
+  void _preloadAdjacentVideos(int currentIndex) {
+    try {
+      final homeState = ref.read(hp.homeProvider);
+      final activeFeed = ref.read(activeFeedProvider);
+      final videos = activeFeed == FeedTab.forYou
+          ? homeState.forYouVideos
+          : homeState.followingVideos;
+
+      if (videos.length <= 1) return; // No adjacent videos to preload
+
+      // Preload next video (index + 1)
+      if (currentIndex + 1 < videos.length) {
+        final nextVideo = videos[currentIndex + 1];
+        log('🚀 INSTANT SWITCHING: Preloading next video: ${nextVideo.id}');
+        // Trigger preloading in background without blocking UI
+        Future.microtask(() {
+          GlobalPlaybackManager.instance
+              .requestFocus(nextVideo.id, activeFeed.tabId);
+        });
+      }
+
+      // Preload previous video (index - 1) if exists
+      if (currentIndex > 0) {
+        final prevVideo = videos[currentIndex - 1];
+        log('🚀 INSTANT SWITCHING: Preloading previous video: ${prevVideo.id}');
+        // Trigger preloading in background without blocking UI
+        Future.microtask(() {
+          GlobalPlaybackManager.instance
+              .requestFocus(prevVideo.id, activeFeed.tabId);
+        });
+      }
+
+      log('✅ INSTANT SWITCHING: Adjacent videos preloaded for seamless swiping');
+    } catch (e) {
+      log('⚠️ INSTANT SWITCHING: Error preloading adjacent videos: $e (non-critical)');
     }
   }
 

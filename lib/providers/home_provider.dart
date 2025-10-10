@@ -245,7 +245,11 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('✅ loadVideos() completed successfully');
     } catch (e) {
       log('❌ Error loading videos: $e');
-      state = state.copyWith(isLoading: false, hasLoaded: true);
+      state = state.copyWith(
+        isLoading: false,
+        hasLoaded: true,
+        error: 'Failed to load videos. Check your connection.',
+      );
     }
   }
 
@@ -1199,6 +1203,18 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     log('✅ HomeProvider: Video state reset - ready for reinitialization');
   }
+
+  /// Simple retry method for failed video loading
+  Future<void> retryLoadVideos() async {
+    log('🔄 Retrying video loading...');
+    state = state.copyWith(clearError: true, hasLoaded: false);
+    await loadVideos();
+  }
+
+  /// Clear error state
+  void clearError() {
+    state = state.copyWith(clearError: true);
+  }
 }
 
 // MARK: - State Class
@@ -1219,6 +1235,7 @@ class HomeState {
   final FeedSlice? followingSlice;
   final bool shouldPauseAllVideos;
   final bool shouldResumeCurrentVideo;
+  final String? error; // Simple error message for network issues
 
   const HomeState({
     this.forYouVideos = const [],
@@ -1236,6 +1253,7 @@ class HomeState {
     this.followingSlice,
     this.shouldPauseAllVideos = false,
     this.shouldResumeCurrentVideo = false,
+    this.error,
   });
 
   HomeState copyWith({
@@ -1254,6 +1272,8 @@ class HomeState {
     FeedSlice? followingSlice,
     bool? shouldPauseAllVideos,
     bool? shouldResumeCurrentVideo,
+    String? error,
+    bool clearError = false,
   }) {
     return HomeState(
       forYouVideos: forYouVideos ?? this.forYouVideos,
@@ -1272,6 +1292,7 @@ class HomeState {
       shouldPauseAllVideos: shouldPauseAllVideos ?? this.shouldPauseAllVideos,
       shouldResumeCurrentVideo:
           shouldResumeCurrentVideo ?? this.shouldResumeCurrentVideo,
+      error: clearError ? null : (error ?? this.error),
     );
   }
 

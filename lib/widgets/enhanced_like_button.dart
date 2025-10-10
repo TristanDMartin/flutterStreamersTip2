@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:math' as math;
-import '../services/tiktok_like_service.dart';
+import '../services/streamers_tip_like_service.dart';
 
 /// Enhanced Like Button with TikTok-style animations and persistence
 ///
@@ -71,20 +71,25 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
     });
   }
 
-  /// Start listening to TikTokLikeService state changes
+  /// Start listening to StreamersTipLikeService state changes
   void _startListeningToServiceChanges() {
     // Check for state changes periodically (reduced from 100ms to 2000ms for performance)
     Future.doWhile(() async {
       await Future.delayed(const Duration(milliseconds: 2000));
       if (mounted) {
-        final tiktokLikeService = TikTokLikeService();
-        final currentState = tiktokLikeService.getLikeState(widget.videoId);
+        final streamersTipLikeService = StreamersTipLikeService();
+        final currentState =
+            streamersTipLikeService.getLikeState(widget.videoId);
 
         // Update local state if it differs from service state
         if (_isLiked != currentState.isLiked ||
             _likeCount != currentState.likeCount) {
           debugPrint(
-              '🔄 EnhancedLikeButton: State changed detected - videoId: ${widget.videoId}, old _isLiked: $_isLiked, new isLiked: ${currentState.isLiked}, old _likeCount: $_likeCount, new likeCount: ${currentState.likeCount}');
+              '⚠️ POLLING OVERRIDE: Service state differs from UI! videoId: ${widget.videoId}');
+          debugPrint('   UI: _isLiked=$_isLiked, _likeCount=$_likeCount');
+          debugPrint(
+              '   Service: isLiked=${currentState.isLiked}, likeCount=${currentState.likeCount}');
+          debugPrint('   ❗ OVERWRITING UI with service state...');
 
           if (mounted) {
             setState(() {
@@ -92,7 +97,7 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
               _likeCount = currentState.likeCount;
             });
             debugPrint(
-                '✅ EnhancedLikeButton: Local state updated - _isLiked: $_isLiked, _likeCount: $_likeCount');
+                '✅ POLLING: UI updated - _isLiked: $_isLiked, _likeCount: $_likeCount');
           }
         }
         return mounted; // Continue while widget is mounted
@@ -102,49 +107,44 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   }
 
   void _initializeAnimations() {
-    // Heart animation controller - shorter, smoother duration
+    // Instagram-style heart animation controller - faster, more responsive
     _heartAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 150), // Faster like Instagram
       vsync: this,
     );
 
-    // Sparkle animation controller - shorter duration
+    // Instagram-style sparkle animation controller - longer for more dramatic effect
     _sparkleController = AnimationController(
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 600), // Longer sparkle duration
       vsync: this,
     );
 
-    // Heart scale animation: 1.0 → 1.15 → 1.0 (smoother curve)
-    _heartScaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.15),
-        weight: 50,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.15, end: 1.0),
-        weight: 50,
-      ),
-    ]).animate(CurvedAnimation(
+    // Instagram-style heart scale animation with elastic bounce
+    _heartScaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.3, // Bigger scale for Instagram effect
+    ).animate(CurvedAnimation(
       parent: _heartAnimationController,
-      curve: Curves.easeOutCubic, // Smoother curve
+      curve: Curves.elasticOut, // Instagram-style elastic bounce
     ));
 
-    // Sparkle scale animation - simpler curve
+    // Instagram-style sparkle scale animation
     _sparkleScaleAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _sparkleController,
-      curve: Curves.easeOut,
+      curve: Curves.easeOutBack, // Instagram-style back easing
     ));
 
-    // Sparkle opacity animation - faster fade
+    // Instagram-style sparkle opacity animation - slower fade
     _sparkleOpacityAnimation = Tween<double>(
       begin: 1.0,
       end: 0.0,
     ).animate(CurvedAnimation(
       parent: _sparkleController,
-      curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+      curve: const Interval(0.3, 1.0,
+          curve: Curves.easeOutQuart), // Slower, smoother fade
     ));
   }
 
@@ -170,22 +170,40 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   /// Load persistent state from local storage
   Future<void> _loadPersistentState() async {
     try {
-      final tiktokLikeService = TikTokLikeService();
-      final state = tiktokLikeService.getLikeState(widget.videoId);
-      final isLiked = state.isLiked;
-      final likeCount = state.likeCount;
+      final streamersTipLikeService = StreamersTipLikeService();
+      final state = streamersTipLikeService.getLikeState(widget.videoId);
 
       debugPrint(
-          '💖 EnhancedLikeButton: Loading persistent state - videoId: ${widget.videoId}, isLiked: $isLiked, likeCount: $likeCount');
+          '💖 EnhancedLikeButton: Loading persistent state - videoId: ${widget.videoId}, cached isLiked: ${state.isLiked}, cached likeCount: ${state.likeCount}, initial likeCount: ${widget.initialLikeCount}');
 
-      if (mounted) {
-        setState(() {
-          _isLiked = isLiked;
-          _likeCount = likeCount;
-        });
-        debugPrint(
-            '💖 EnhancedLikeButton: Set local _isLiked to: $_isLiked, _likeCount to: $_likeCount');
+      // TikTok-Style: Service state takes precedence for isLiked status
+      // If service says it's liked, trust it (loaded from user's liked_videos array)
+      if (state.isLiked) {
+        // Video is liked - use service state, but use video's count if service has 0
+        if (mounted) {
+          setState(() {
+            _isLiked = true; // ❤️ Trust service for liked state
+            _likeCount = state.likeCount > 0
+                ? state.likeCount
+                : widget
+                    .initialLikeCount; // Use video's count if service doesn't have it yet
+          });
+          debugPrint(
+              '✅ EnhancedLikeButton: Video is LIKED (from service) - _isLiked: $_isLiked, _likeCount: $_likeCount');
+        }
+      } else if (state.likeCount > 0 || widget.initialLikeCount > 0) {
+        // Service has count data or video has count, but not liked
+        if (mounted) {
+          setState(() {
+            _isLiked = false; // 🤍 Not liked
+            _likeCount =
+                state.likeCount > 0 ? state.likeCount : widget.initialLikeCount;
+          });
+          debugPrint(
+              '✅ EnhancedLikeButton: Video is NOT LIKED - _isLiked: $_isLiked, _likeCount: $_likeCount');
+        }
       }
+      // else: No data from service or video, keep initial values (already set in initState)
     } catch (e) {
       debugPrint(
           '❌ EnhancedLikeButton: Error loading persistent like state: $e');
@@ -195,31 +213,48 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
 
   /// Handle like button tap with debouncing and animations
   Future<void> _handleLike() async {
+    debugPrint(
+        '🎯 EnhancedLikeButton: _handleLike() called for video ${widget.videoId}');
+
     // Debounce rapid taps
     final now = DateTime.now();
     if (_lastTapTime != null &&
         now.difference(_lastTapTime!) < _debounceDuration) {
+      debugPrint('⏱️ EnhancedLikeButton: Debounced (too fast)');
       return;
     }
     _lastTapTime = now;
 
-    if (_isAnimating || _isProcessing) return;
+    if (_isAnimating || _isProcessing) {
+      debugPrint('⏸️ EnhancedLikeButton: Already animating/processing');
+      return;
+    }
 
     _isAnimating = true;
     _isProcessing = true;
+
+    debugPrint(
+        '✅ EnhancedLikeButton: Starting like/unlike animation - current _isLiked: $_isLiked');
 
     // Store original state for potential rollback
     final originalIsLiked = _isLiked;
     final originalLikeCount = _likeCount;
 
     try {
-      // 1. Immediate haptic feedback
-      HapticFeedback.lightImpact();
+      // 1. Instagram-style haptic feedback (stronger)
+      HapticFeedback.mediumImpact(); // More satisfying like Instagram
 
-      // 2. Optimistic UI update
+      // 2. Optimistic UI update (TikTok-style: never show negative counts)
       setState(() {
         _isLiked = !_isLiked;
-        _likeCount = _isLiked ? _likeCount + 1 : math.max(0, _likeCount - 1);
+        if (_isLiked) {
+          _likeCount = _likeCount + 1;
+        } else {
+          // TikTok-style protection: Don't allow negative counts
+          _likeCount = math.max(0, _likeCount - 1);
+          debugPrint(
+              '💔 EnhancedLikeButton: Unlike - new count: $_likeCount (protected from negative)');
+        }
       });
 
       // 3. Notify parent immediately (before animations)
@@ -254,27 +289,56 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   Future<void> _playLikeAnimation() async {
     if (!_isLiked) {
       // Unlike: reverse animation (subtle scale down + fill→outline)
-      _heartAnimationController.reverse();
+      debugPrint('💔 EnhancedLikeButton: Playing UNLIKE animation');
+      await _heartAnimationController.reverse();
+      _sparkleController.reset();
     } else {
-      // Like: full animation sequence
-      _heartAnimationController.forward();
+      // Like: full animation sequence with sparkles
+      debugPrint(
+          '❤️ EnhancedLikeButton: Playing LIKE animation with gradient sparkles');
+      _heartAnimationController.reset();
+      _sparkleController.reset();
 
-      // Start sparkle effect immediately for smoother animation
+      await _heartAnimationController.forward();
       _sparkleController.forward();
+      debugPrint(
+          '✨ EnhancedLikeButton: Sparkle animation started - should see gradient burst!');
     }
   }
 
   /// Perform background sync with server
   Future<void> _performBackgroundSync() async {
     try {
-      final tiktokLikeService = TikTokLikeService();
+      final streamersTipLikeService = StreamersTipLikeService();
       final currentUser = FirebaseAuth.instance.currentUser;
 
       if (currentUser != null) {
-        // Use TikTokLikeService for consistency
-        await tiktokLikeService.toggleLike(widget.videoId, currentUser.uid);
         debugPrint(
-            '💖 EnhancedLikeButton: Background sync completed with TikTokLikeService');
+            '🔄 EnhancedLikeButton: Before sync - _isLiked: $_isLiked, _likeCount: $_likeCount');
+
+        // FIX: Call likeVideo/unlikeVideo directly based on UI state, NOT toggleLike!
+        // toggleLike checks service state which might be stale/out of sync
+        final success = _isLiked
+            ? await streamersTipLikeService.likeVideo(
+                widget.videoId, currentUser.uid, source: 'button_tap')
+            : await streamersTipLikeService.unlikeVideo(
+                widget.videoId, currentUser.uid);
+
+        debugPrint(
+            '💖 EnhancedLikeButton: Background sync completed - success: $success, action: ${_isLiked ? "LIKE" : "UNLIKE"}');
+
+        // Verify service state matches our UI state
+        final serviceState =
+            streamersTipLikeService.getLikeState(widget.videoId);
+        debugPrint(
+            '🔍 EnhancedLikeButton: After sync - service isLiked: ${serviceState.isLiked}, UI _isLiked: $_isLiked');
+
+        if (serviceState.isLiked != _isLiked) {
+          debugPrint(
+              '⚠️ EnhancedLikeButton: STATE MISMATCH! Service and UI out of sync!');
+          debugPrint(
+              '   This indicates the like/unlike operation may have failed or been reversed.');
+        }
       } else {
         debugPrint('❌ EnhancedLikeButton: No current user for background sync');
       }
@@ -302,41 +366,59 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Main heart button
-            AnimatedBuilder(
-              animation: _heartAnimationController,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _heartScaleAnimation.value,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Heart icon with morph effect - optimized
-                      Icon(
-                        _isLiked ? Icons.favorite : Icons.favorite_border,
-                        color: _isLiked
-                            ? const Color(0xFF9248D2)
-                            : Colors.white.withValues(alpha: 0.85),
-                        size: 28,
-                      ),
-                      const SizedBox(height: 4),
-                      // Like count
-                      Text(
-                        _likeCount.toString(),
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+            // Main heart button (fixed: only icon animates, not the count)
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Animated heart icon with gradient fill when liked
+                AnimatedBuilder(
+                  animation: _heartAnimationController,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _heartScaleAnimation.value,
+                      child: _isLiked
+                          ? ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFF9248D2), // Purple
+                                  Color(0xFF7768DF), // Another purple
+                                  Color(0xFF1670DE), // Blue
+                                  Color(0xFF3C8BD6), // Lighter blue
+                                  Color(0xFF4897D2), // Lightest blue
+                                ],
+                                stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                              ).createShader(bounds),
+                              child: const Icon(
+                                Icons.favorite,
+                                color: Colors.white,
+                                size: 34,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.favorite_border,
+                              color: Colors.white,
+                              size: 34,
+                            ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 4),
+                // Like count (static - doesn't animate)
+                Text(
+                  _likeCount.toString(),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
-                );
-              },
+                ),
+              ],
             ),
 
-            // Sparkle effect overlay - only when liking
-            if (_isLiked && _sparkleController.isAnimating)
+            // Sparkle effect overlay - show during animation
+            if (_sparkleController.isAnimating)
               AnimatedBuilder(
                 animation: _sparkleController,
                 builder: (context, child) {
@@ -355,43 +437,100 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
     );
   }
 
-  /// Build sparkle/burst effect around the heart
+  /// Build Instagram-style sparkle/burst effect around the heart
   Widget _buildSparkleEffect() {
     return CustomPaint(
-      size: const Size(60, 60),
-      painter: SparklePainter(),
+      size: const Size(80, 80), // Larger sparkle area like Instagram
+      painter: InstagramSparklePainter(
+        animationValue: _sparkleController.value,
+      ),
     );
   }
 }
 
-/// Custom painter for sparkle effect
-class SparklePainter extends CustomPainter {
+/// Instagram-style sparkle effect painter
+class InstagramSparklePainter extends CustomPainter {
+  final double animationValue;
+
+  InstagramSparklePainter({required this.animationValue});
+
   @override
   void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+
+    // Multiple layers of sparkles with brand gradient colors (purple to blue)
+    _drawSparkleLayer(canvas, center, 0.4, 0.6,
+        const Color(0xFF9248D2).withValues(alpha: 0.9), 12); // Purple
+    _drawSparkleLayer(canvas, center, 0.6, 0.8,
+        const Color(0xFF1670DE).withValues(alpha: 0.7), 8); // Blue
+    _drawSparkleLayer(canvas, center, 0.8, 1.0,
+        const Color(0xFF4897D2).withValues(alpha: 0.85), 6); // Lightest blue
+
+    // Central burst effect with gradient
+    _drawCentralBurst(canvas, center);
+  }
+
+  void _drawSparkleLayer(Canvas canvas, Offset center, double innerRadius,
+      double outerRadius, Color color, int count) {
     final paint = Paint()
-      ..color = const Color(0xFF9248D2)
+      ..color = color
       ..style = PaintingStyle.fill;
 
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
+    for (int i = 0; i < count; i++) {
+      final angle = (i * math.pi * 2) / count;
+      final progress = animationValue;
+      final radius = innerRadius + (outerRadius - innerRadius) * progress;
 
-    // Draw multiple sparkles around the heart
-    for (int i = 0; i < 8; i++) {
-      final angle = (i * math.pi * 2) / 8;
-      final sparkleX = center.dx + math.cos(angle) * radius * 0.7;
-      final sparkleY = center.dy + math.sin(angle) * radius * 0.7;
+      final sparkleX =
+          center.dx + math.cos(angle) * radius * 25; // 25 is base radius
+      final sparkleY = center.dy + math.sin(angle) * radius * 25;
 
-      // Draw small sparkle dots
-      canvas.drawCircle(
-        Offset(sparkleX, sparkleY),
-        2.0,
-        paint,
-      );
+      // Sparkle size based on animation progress
+      final sparkleSize = (2.0 + progress * 3.0) * (1.0 - (progress * 0.3));
+
+      // Draw sparkle with slight rotation
+      canvas.save();
+      canvas.translate(sparkleX, sparkleY);
+      canvas.rotate(angle + progress * math.pi);
+
+      // Draw sparkle shape (small star-like)
+      final path = Path();
+      path.moveTo(0, -sparkleSize);
+      path.lineTo(sparkleSize * 0.3, -sparkleSize * 0.3);
+      path.lineTo(sparkleSize, 0);
+      path.lineTo(sparkleSize * 0.3, sparkleSize * 0.3);
+      path.lineTo(0, sparkleSize);
+      path.lineTo(-sparkleSize * 0.3, sparkleSize * 0.3);
+      path.lineTo(-sparkleSize, 0);
+      path.lineTo(-sparkleSize * 0.3, -sparkleSize * 0.3);
+      path.close();
+
+      canvas.drawPath(path, paint);
+      canvas.restore();
+    }
+  }
+
+  void _drawCentralBurst(Canvas canvas, Offset center) {
+    // Draw central burst circles with gradient colors (purple to blue)
+    final colors = [
+      const Color(0xFF9248D2), // Purple
+      const Color(0xFF7768DF), // Another purple
+      const Color(0xFF1670DE), // Blue
+    ];
+
+    for (int i = 0; i < 3; i++) {
+      final paint = Paint()
+        ..color = colors[i].withValues(alpha: 0.4 * (1.0 - animationValue))
+        ..style = PaintingStyle.fill;
+
+      final radius = (5.0 + i * 3.0) * animationValue;
+      canvas.drawCircle(center, radius, paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(InstagramSparklePainter oldDelegate) =>
+      oldDelegate.animationValue != animationValue;
 }
 
 /// Enhanced floating hearts animation for double-tap
