@@ -17,6 +17,7 @@ import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/chat_service.dart';
 import '../services/follows_service.dart';
+import '../services/follow_button_service.dart';
 import 'chat_view.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
@@ -79,6 +80,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _isFollowing = false;
   bool _isFollowedByStreamer = false;
   bool _isConnected = false;
+
+  // 🎯 FOLLOW LOGIC: Use centralized FollowButtonService
+  FollowButtonState? _followButtonState;
 
   // Stats
   int _postsCount = 0;
@@ -179,6 +183,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _checkRelationshipStatus();
           _loadPlatforms();
           _loadCalendarEvents();
+
+          // 🎯 FOLLOW LOGIC: Update follow button state using centralized service
+          _updateFollowButtonState();
         } else {
           // Fall back to sample data for sample users
           _loadSampleUserData();
@@ -1166,12 +1173,55 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   // MARK: - Button State Helpers (NetworkView Logic)
+  /// 🎯 FOLLOW LOGIC: Update follow button state using centralized service
+  Future<void> _updateFollowButtonState() async {
+    if (widget.currentUserId == null) return;
+
+    try {
+      final state = await FollowButtonService.instance.getButtonState(
+        viewerId: widget.currentUserId!,
+        creatorId: widget.userId,
+      );
+
+      if (mounted) {
+        setState(() {
+          _followButtonState = state;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ StreamerCard: Error updating follow button state: $e');
+    }
+  }
+
   String _getFollowButtonText() {
-    // NetworkView-style follow button logic
-    if (_isConnected) return 'Connected';
-    if (_isFollowing) return 'Following';
-    if (_isFollowedByStreamer) return 'Follow back';
-    return 'Follow';
+    // 🎯 FOLLOW LOGIC: Use centralized service state
+    if (_followButtonState == null) return 'Follow';
+
+    switch (_followButtonState!) {
+      case FollowButtonState.self:
+        return 'You';
+      case FollowButtonState.connected:
+        return 'Connected';
+      case FollowButtonState.following:
+        return 'Following';
+      case FollowButtonState.follow:
+        return 'Follow';
+    }
+  }
+
+  /// Get connection status text for NetworkView-style display
+  /// Matches the three tabs: Connections | Followers | Following
+  String _getConnectionStatusText() {
+    if (_isConnected) {
+      return 'Connected'; // Appears in Connections tab
+    } else if (_isFollowing && _isFollowedByStreamer) {
+      return 'Connected'; // Both follow each other
+    } else if (_isFollowing) {
+      return 'Following'; // You follow them (Following tab)
+    } else if (_isFollowedByStreamer) {
+      return 'Follows You'; // They follow you (Followers tab)
+    }
+    return 'Not Following';
   }
 
   LinearGradient _getFollowButtonGradient() {
@@ -1188,6 +1238,12 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (_isFollowingOperation || _isUnfollowingOperation) {
       return null;
     }
+
+    // 🎯 FOLLOW LOGIC: Hide button for self state
+    if (_followButtonState == FollowButtonState.self) {
+      return null;
+    }
+
     return _handleFollowButtonTap;
   }
 
@@ -1212,16 +1268,475 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
     HapticFeedback.lightImpact();
 
-    // Handle button actions based on current relationship state
-    if (_isConnected) {
-      // Both users follow each other - unfollow the other user
-      _handleUnfollow();
-    } else if (_isFollowing) {
-      // Current user follows the other user - unfollow
-      _handleUnfollow();
+    // 🎯 NETWORKVIEW LOGIC: Match disjoint tabs model
+    // Connected → Immediately unfollow (moves user from Connections to Followers)
+    // Following → Immediately unfollow (removes from Following)
+    // Follow → Follow user (adds to Following, or Connections if they follow back)
+
+    if (_isConnected || _isFollowing) {
+      // Both "Connected" and "Following" → Immediate unfollow
+      _handleUnfollowWithOptimisticUpdate();
     } else {
-      // No relationship or only the other user follows - follow the other user
+      // "Follow" → Follow the user
       _handleFollow();
+    }
+  }
+
+  /// Unfollow with optimistic UI update for instant feedback
+  /// Matches NetworkView behavior: Connected → Follow, moves to Followers tab
+  void _handleUnfollowWithOptimisticUpdate() {
+    if (kDebugMode) {
+      debugPrint("🔘 Unfollowing user: ${widget.userId}");
+      debugPrint("🔘 Was connected: $_isConnected");
+      debugPrint("🔘 Was following: $_isFollowing");
+    }
+
+    // Optimistic update: immediately show new state
+    final wasConnected = _isConnected;
+
+    setState(() {
+      _isFollowing = false;
+      _isConnected = false;
+      // _isFollowedByStreamer stays the same (they still follow you)
+    });
+
+    // Show feedback based on what happened
+    if (wasConnected) {
+      // User moved from Connections → Followers (if they still follow you)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isFollowedByStreamer
+                  ? 'Removed from Connections. They\'re now in Followers.'
+                  : 'Unfollowed successfully.',
+            ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+
+    // Perform the actual unfollow
+    _handleUnfollow();
+  }
+
+  /// Show options menu for connected users (Message, Manage Connection, Report)
+  /// NOTE: Currently not used for single-tap behavior (immediate unfollow)
+  /// Keeping for potential future use (long-press, menu button, etc.)
+  void _showConnectedUserOptions() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // User info header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    // Avatar
+                    SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: _buildAvatarWithOnlineIndicator(),
+                    ),
+                    const SizedBox(width: 12),
+                    // Username
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _userData?['username'] ?? 'Unknown',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            _getConnectionStatusText(), // Shows NetworkView-style status
+                            style: const TextStyle(
+                              color: Color(0xFF9248D2),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Divider(color: Colors.grey, height: 1),
+
+              // Option 1: Message
+              _buildOptionTile(
+                icon: Icons.chat_bubble_outline,
+                title: 'Message',
+                subtitle: 'Send a direct message',
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleMessage();
+                },
+              ),
+
+              // Option 2: Manage Connection (Dynamic based on relationship)
+              // Shows: "Unfollow" if following/connected, "Follow" if not following
+              _buildOptionTile(
+                icon: _isFollowing
+                    ? Icons.person_remove_outlined
+                    : Icons.person_add_outlined,
+                title: _isFollowing ? 'Unfollow' : 'Follow',
+                subtitle: _isConnected
+                    ? 'Remove from Connections (both will be unfollowed)'
+                    : (_isFollowing
+                        ? 'Stop following this user'
+                        : 'Follow this user'),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (_isFollowing) {
+                    _confirmUnfollowWithConnectionWarning();
+                  } else {
+                    _handleFollow();
+                  }
+                },
+                isDestructive: _isFollowing,
+              ),
+
+              // Option 3: Report
+              _buildOptionTile(
+                icon: Icons.flag_outlined,
+                title: 'Report',
+                subtitle: 'Report this user',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showReportOptions();
+                },
+                isDestructive: true,
+              ),
+
+              const SizedBox(height: 12),
+
+              // Cancel button
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.grey[800],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build option tile for bottom sheet
+  Widget _buildOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isDestructive ? Colors.red : Colors.white,
+              size: 24,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: isDestructive ? Colors.red : Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: Colors.grey[600],
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Show confirmation dialog before unfollowing (with connection awareness)
+  void _confirmUnfollowWithConnectionWarning() {
+    final username = _userData?['username'] ?? 'this user';
+
+    // Different messages based on connection state
+    final title = _isConnected ? 'Remove Connection?' : 'Unfollow User?';
+    final message = _isConnected
+        ? 'Are you sure you want to unfollow $username?\n\n'
+            'This will remove them from your Connections and move them to Followers '
+            '(if they still follow you).'
+        : 'Are you sure you want to unfollow $username?';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: Colors.grey[300],
+            fontSize: 14,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.grey[400]),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _handleUnfollow();
+            },
+            child: const Text(
+              'Unfollow',
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show report options for the user
+  void _showReportOptions() {
+    final reportReasons = [
+      'Spam or scam',
+      'Inappropriate content',
+      'Harassment or bullying',
+      'Fake account',
+      'Other',
+    ];
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Title
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Why are you reporting this user?',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Divider(color: Colors.grey, height: 1),
+
+              // Report reasons
+              ...reportReasons.map((reason) => InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      _submitReport(reason);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              reason,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right,
+                            color: Colors.grey[600],
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )),
+
+              const SizedBox(height: 12),
+
+              // Cancel button
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.grey[800],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Submit report to backend
+  Future<void> _submitReport(String reason) async {
+    try {
+      await FirebaseFirestore.instance.collection('reports').add({
+        'reporterId': widget.currentUserId,
+        'reportedUserId': widget.userId,
+        'reason': reason,
+        'timestamp': FieldValue.serverTimestamp(),
+        'type': 'user_report',
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Report submitted. Thank you for keeping our community safe.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ Error submitting report: $e');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to submit report. Please try again.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 

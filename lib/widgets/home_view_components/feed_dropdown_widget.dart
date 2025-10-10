@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -23,52 +24,71 @@ class FeedDropdownWidget extends StatelessWidget {
     if (!isVisible) return const SizedBox.shrink();
 
     return Positioned(
-      top: 60, // Position below the header
+      top: 60, // Position right below the header (50px + 10px margin)
       left: 16,
-      child: Container(
-        width: 200,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-            width: 1.5,
+      child: Material(
+        elevation: 20, // Very high elevation to appear above video
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: 200,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A)
+                .withValues(alpha: 0.98), // More opaque dark background
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFF9248D2)
+                  .withValues(alpha: 0.8), // More visible purple border
+              width: 2.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.7), // Stronger shadow
+                blurRadius: 25,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: const Color(0xFF9248D2)
+                    .withValues(alpha: 0.2), // Purple glow
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildDropdownItem(
-              'For You',
-              isSelected: activeTab == 'For You',
-              onTap: () {
-                HapticFeedback.lightImpact();
-                onForYouTap();
-                onClose();
-              },
-            ),
-            Container(
-              height: 1,
-              color: Colors.white.withValues(alpha: 0.1),
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-            ),
-            _buildDropdownItem(
-              'Following',
-              isSelected: activeTab == 'Following',
-              onTap: () {
-                HapticFeedback.lightImpact();
-                onFollowingTap();
-                onClose();
-              },
-            ),
-          ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDropdownItem(
+                'For You',
+                isSelected: activeTab == 'For You',
+                onTap: () {
+                  log('🔘 FeedDropdown: For You tapped, current tab: $activeTab, isSelected: ${activeTab == 'For You'}');
+                  HapticFeedback.lightImpact();
+                  log('🔘 FeedDropdown: Calling onForYouTap()');
+                  onForYouTap();
+                  log('🔘 FeedDropdown: Calling onClose()');
+                  onClose();
+                  log('🔘 FeedDropdown: For You callback complete');
+                },
+              ),
+              Container(
+                height: 1,
+                color: Colors.white.withValues(alpha: 0.1),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              _buildDropdownItem(
+                'Following',
+                isSelected: activeTab == 'Following',
+                onTap: () {
+                  log('🔘 FeedDropdown: Following tapped, current tab: $activeTab');
+                  HapticFeedback.lightImpact();
+                  onFollowingTap();
+                  onClose();
+                  log('🔘 FeedDropdown: Following callback complete');
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

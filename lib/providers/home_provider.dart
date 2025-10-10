@@ -17,9 +17,7 @@ import '../services/like_service.dart';
 import '../services/enhanced_like_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
-import '../services/global_playback_coordinator.dart';
-
-enum FeedType { forYou, following }
+import '../services/global_playback_manager.dart';
 
 class HomeViewModel extends StateNotifier<HomeState> {
   final video_service.VideoService _videoService;
@@ -38,7 +36,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
   })  : _videoService = videoService,
         _userService = userService,
         _favoritesService = favoritesService,
-        _followingFeedService = followingFeedService ?? FollowingFeedService(),
+        _followingFeedService =
+            followingFeedService ?? FollowingFeedService.instance,
         _commentsService = commentsService ?? CommentsService(),
         super(const HomeState()) {
     // Initialize the callbacks
@@ -60,11 +59,11 @@ class HomeViewModel extends StateNotifier<HomeState> {
   // Callback for updating video favorite state from child widgets
   Future<void> Function(String videoId)? updateVideoFavoriteState;
 
-  List<HomeVideo> videos(FeedType feed) {
+  List<HomeVideo> videos(FeedTab feed) {
     switch (feed) {
-      case FeedType.forYou:
+      case FeedTab.forYou:
         return state.forYouVideos;
-      case FeedType.following:
+      case FeedTab.following:
         return state.followingVideos;
     }
   }
@@ -121,6 +120,18 @@ class HomeViewModel extends StateNotifier<HomeState> {
     log('🔄 Loading state set to: $isLoading');
   }
 
+  /// Update For You videos with ranked/personalized feed
+  void updateForYouVideos(List<HomeVideo> videos) {
+    state = state.copyWith(forYouVideos: videos);
+    log('🎯 UnifiedAlgorithm: For You feed updated with ${videos.length} ranked videos');
+  }
+
+  /// Update Following videos with ranked/personalized feed
+  void updateFollowingVideos(List<HomeVideo> videos) {
+    state = state.copyWith(followingVideos: videos);
+    log('🎯 UnifiedAlgorithm: Following feed updated with ${videos.length} ranked videos');
+  }
+
   /// Pause all videos when leaving HomeView
   void pauseAllVideos() {
     log('🚨 HomeProvider: pauseAllVideos() called!');
@@ -139,13 +150,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     // ALSO call global controller for immediate response
     try {
-      // This will provide immediate pause without waiting for Consumer
-      log('🔊 HomeProvider: Calling GlobalPlaybackCoordinator.block()');
-      final coordinator = GlobalPlaybackCoordinator();
-      coordinator.block(reason: 'home_provider_pause');
-      log('🔊 HomeProvider: GlobalPlaybackCoordinator.block() completed');
+      // 🔊 AUDIO FIX: Use GlobalPlaybackManager for immediate pause
+      log('🔊 HomeProvider: Calling GlobalPlaybackManager.block()');
+      GlobalPlaybackManager.instance.block(reason: 'home_provider_pause');
+      log('🔊 HomeProvider: GlobalPlaybackManager.block() completed');
     } catch (e) {
-      log('❌ HomeProvider: Error calling GlobalPlaybackCoordinator: $e');
+      log('❌ HomeProvider: Error calling GlobalPlaybackManager: $e');
     }
 
     // Reset the flag after a short delay to allow for future navigation
@@ -189,11 +199,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     // ALSO call global controller for immediate response
     try {
-      log('🔊 HomeProvider: Calling GlobalPlaybackCoordinator.unblock()');
-      final coordinator = GlobalPlaybackCoordinator();
-      coordinator.unblock();
+      log('🔊 HomeProvider: Calling GlobalPlaybackManager.unblock()');
+      GlobalPlaybackManager.instance.unblock();
     } catch (e) {
-      log('❌ HomeProvider: Error calling GlobalPlaybackCoordinator resume: $e');
+      log('❌ HomeProvider: Error calling GlobalPlaybackManager resume: $e');
     }
 
     // Reset the flag after a short delay
@@ -538,10 +547,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   // MARK: - Feed Switching (Hard refresh per feed)
 
-  Future<void> switchFeed(FeedType type) async {
+  Future<void> switchFeed(FeedTab type) async {
     state = state.copyWith(activeFeed: type);
     final String rid = DateTime.now().microsecondsSinceEpoch.toString();
-    if (type == FeedType.forYou) {
+    if (type == FeedTab.forYou) {
       final FeedSlice slice = FeedSlice(
         items: <HomeVideo>[],
         nextCursor: null,
@@ -607,17 +616,16 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
         return;
       }
-      final FollowingFeedResult res =
-          await _followingFeedService.fetchRankedFollowingFeed(
+      // Fetch videos using connections-based service
+      final videos = await _followingFeedService.fetchFollowingVideos(
         viewerId: viewerId,
-        pageSize: 20,
-        afterCursor: null,
+        limit: 20,
       );
       if (state.followingSlice?.requestId != rid) return;
       state = state.copyWith(
         followingSlice: state.followingSlice?.copyWith(
-          items: res.items,
-          nextCursor: res.nextCursor,
+          items: videos,
+          nextCursor: null, // We'll implement pagination later
           isLoading: false,
           error: null,
         ),
@@ -634,8 +642,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   Future<void> fetchMoreActive() async {
-    final FeedType active = state.activeFeed ?? FeedType.forYou;
-    if (active == FeedType.forYou) {
+    final FeedTab active = state.activeFeed ?? FeedTab.forYou;
+    if (active == FeedTab.forYou) {
       final FeedSlice? s = state.forYouSlice;
       if (s == null || s.isLoading || s.nextCursor == null) return;
       final String rid = DateTime.now().microsecondsSinceEpoch.toString();
@@ -673,16 +681,16 @@ class HomeViewModel extends StateNotifier<HomeState> {
       try {
         final String? viewerId = FirebaseAuth.instance.currentUser?.uid;
         if (viewerId == null) return;
-        final res = await _followingFeedService.fetchRankedFollowingFeed(
+        // Fetch more videos using connections-based service
+        final videos = await _followingFeedService.fetchFollowingVideos(
           viewerId: viewerId,
-          pageSize: 20,
-          afterCursor: s.nextCursor,
+          limit: 20,
         );
         if (state.followingSlice?.requestId != rid) return;
         state = state.copyWith(
           followingSlice: state.followingSlice?.copyWith(
-            items: [...s.items, ...res.items],
-            nextCursor: res.nextCursor,
+            items: [...s.items, ...videos],
+            nextCursor: null, // We'll implement pagination later
             isLoading: false,
             error: null,
           ),
@@ -755,23 +763,33 @@ class HomeViewModel extends StateNotifier<HomeState> {
         return;
       }
 
-      final result = await _followingFeedService.fetchRankedFollowingFeed(
+      // NEW: Use connections-based Following feed (same as NetworkView Connections)
+      log('👥 Fetching Following videos from Connections for user $viewerId');
+
+      // Check if user has connections
+      final hasConnections =
+          await _followingFeedService.hasConnections(viewerId);
+      if (!hasConnections) {
+        log('👥 No connections found for Following feed');
+        state = state.copyWith(followingVideos: []);
+        return;
+      }
+
+      // Fetch videos from connections
+      final videos = await _followingFeedService.fetchFollowingVideos(
         viewerId: viewerId,
-        pageSize: 20,
-        afterCursor: reset ? null : state.lastFollowingCursor,
+        limit: 20,
+        // TODO: Implement pagination with proper cursor
       );
 
       if (reset) {
-        state = state.copyWith(
-          followingVideos: result.items,
-          lastFollowingCursor: result.nextCursor,
-        );
+        state = state.copyWith(followingVideos: videos);
       } else {
-        state = state.copyWith(
-          followingVideos: [...state.followingVideos, ...result.items],
-          lastFollowingCursor: result.nextCursor,
-        );
+        final currentVideos = state.followingVideos;
+        state = state.copyWith(followingVideos: [...currentVideos, ...videos]);
       }
+
+      log('✅ Following feed updated: ${videos.length} videos from Connections');
     } catch (e) {
       log('Error fetching ranked Following feed: $e');
     }
@@ -779,7 +797,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   // MARK: - Load More Content
 
-  bool shouldLoadMoreContent(int currentIndex, FeedType feed) {
+  bool shouldLoadMoreContent(int currentIndex, FeedTab feed) {
     final videos = this.videos(feed);
     return currentIndex >= videos.length - 2 &&
         hasMoreContent &&
@@ -788,7 +806,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> loadMoreVideosIfNeeded({
     required int currentIndex,
-    required FeedType feed,
+    required FeedTab feed,
   }) async {
     if (!shouldLoadMoreContent(currentIndex, feed)) return;
 
@@ -796,10 +814,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     try {
       switch (feed) {
-        case FeedType.forYou:
+        case FeedTab.forYou:
           await fetchForYouVideos(reset: false);
           break;
-        case FeedType.following:
+        case FeedTab.following:
           final followingIds = await _userService.getFollowingIds();
           await fetchFollowingVideos(followingIds: followingIds, reset: false);
           break;
@@ -834,10 +852,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     // Get the video to update (for potential future use)
     switch (arrayType) {
-      case FeedType.forYou:
+      case FeedTab.forYou:
         // video = forYouVideos[index];
         break;
-      case FeedType.following:
+      case FeedTab.following:
         // video = followingVideos[index];
         break;
     }
@@ -848,28 +866,28 @@ class HomeViewModel extends StateNotifier<HomeState> {
     // Update the UI state to match FavoritesService
     final isFavorited = _favoritesService.isFavorited(videoId);
     switch (arrayType) {
-      case FeedType.forYou:
+      case FeedTab.forYou:
         _updateForYouVideoFavorite(index, isFavorited);
         break;
-      case FeedType.following:
+      case FeedTab.following:
         _updateFollowingVideoFavorite(index, isFavorited);
         break;
     }
   }
 
   /// Array type detection - matches Swift implementation
-  (FeedType, int)? _arrayTypeAndIndex(String videoId) {
+  (FeedTab, int)? _arrayTypeAndIndex(String videoId) {
     // Check For You videos first
     for (int i = 0; i < forYouVideos.length; i++) {
       if (forYouVideos[i].id == videoId) {
-        return (FeedType.forYou, i);
+        return (FeedTab.forYou, i);
       }
     }
 
     // Check Following videos
     for (int i = 0; i < followingVideos.length; i++) {
       if (followingVideos[i].id == videoId) {
-        return (FeedType.following, i);
+        return (FeedTab.following, i);
       }
     }
 
@@ -1196,7 +1214,7 @@ class HomeState {
   final String? lastForYouDoc;
   final String? lastFollowingDoc;
   final Map<String, dynamic>? lastFollowingCursor;
-  final FeedType? activeFeed;
+  final FeedTab? activeFeed;
   final FeedSlice? forYouSlice;
   final FeedSlice? followingSlice;
   final bool shouldPauseAllVideos;
@@ -1231,7 +1249,7 @@ class HomeState {
     String? lastForYouDoc,
     String? lastFollowingDoc,
     Map<String, dynamic>? lastFollowingCursor,
-    FeedType? activeFeed,
+    FeedTab? activeFeed,
     FeedSlice? forYouSlice,
     FeedSlice? followingSlice,
     bool? shouldPauseAllVideos,
@@ -1303,7 +1321,7 @@ final homeProvider = StateNotifierProvider<HomeViewModel, HomeState>((ref) {
     videoService: videoService,
     userService: userService,
     favoritesService: favoritesService,
-    followingFeedService: FollowingFeedService(),
+    followingFeedService: FollowingFeedService.instance,
   );
 });
 

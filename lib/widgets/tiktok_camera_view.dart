@@ -7,7 +7,7 @@ import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/tiktok_camera_service.dart';
-import '../services/global_playback_coordinator.dart';
+import '../services/global_playback_manager.dart';
 import '../providers/home_provider.dart';
 import 'video_recording_preview.dart';
 import 'video_edit_view.dart';
@@ -30,8 +30,6 @@ class TikTokCameraView extends ConsumerStatefulWidget {
 class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     with WidgetsBindingObserver {
   final TikTokCameraService _cameraService = TikTokCameraService();
-  final GlobalPlaybackCoordinator _playbackCoordinator =
-      GlobalPlaybackCoordinator();
   final ImagePicker _imagePicker = ImagePicker();
 
   bool _isInitialized = false;
@@ -49,8 +47,8 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Pause all videos when opening camera
-    _playbackCoordinator.pauseAll(reason: 'cameraViewOpened');
+    // 🔊 AUDIO FIX: Block playback when opening camera
+    GlobalPlaybackManager.instance.block(reason: 'cameraViewOpened');
 
     _initializeCamera();
   }
@@ -61,8 +59,8 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     _recordingTimer?.cancel();
     _cameraService.dispose();
 
-    // Resume playback when leaving camera
-    _playbackCoordinator.resumePlayback();
+    // 🔊 AUDIO FIX: Unblock playback when leaving camera
+    GlobalPlaybackManager.instance.unblock();
 
     super.dispose();
   }
@@ -749,11 +747,10 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     try {
       log('🔇 TikTokCameraView: Pausing all HomeView videos to prevent audio bleeding');
 
-      // Use GlobalPlaybackCoordinator to pause all videos
-      final coordinator = GlobalPlaybackCoordinator();
-      coordinator.block(reason: 'camera_view_pause');
+      // 🔊 AUDIO FIX: Use GlobalPlaybackManager to block playback
+      GlobalPlaybackManager.instance.block(reason: 'camera_view');
 
-      // Also pause through home provider
+      // Also pause through home provider for compatibility
       final homeNotifier = ref.read(homeProvider.notifier);
       homeNotifier.pauseAllVideos();
 
@@ -770,11 +767,10 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     try {
       log('🔄 TikTokCameraView: Reactivating HomeView for seamless return');
 
-      // Use GlobalPlaybackCoordinator to resume videos
-      final coordinator = GlobalPlaybackCoordinator();
-      coordinator.unblock();
+      // 🔊 AUDIO FIX: Use GlobalPlaybackManager to unblock playback
+      GlobalPlaybackManager.instance.unblock();
 
-      // Also resume through home provider
+      // Also resume through home provider for compatibility
       final homeNotifier = ref.read(homeProvider.notifier);
       homeNotifier.resumeCurrentVideo();
 

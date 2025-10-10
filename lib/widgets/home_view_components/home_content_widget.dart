@@ -18,6 +18,8 @@ class HomeContentWidget extends ConsumerStatefulWidget {
   final Function(HomeVideo) onRightSwipe;
   final VoidCallback onDiscoverTap;
   final VoidCallback onNetworkTap;
+  final Function(VoidCallback)?
+      onScrollControllerReady; // Pass scroll callback up
 
   const HomeContentWidget({
     super.key,
@@ -30,6 +32,7 @@ class HomeContentWidget extends ConsumerStatefulWidget {
     required this.onRightSwipe,
     required this.onDiscoverTap,
     required this.onNetworkTap,
+    this.onScrollControllerReady,
   });
 
   @override
@@ -37,6 +40,9 @@ class HomeContentWidget extends ConsumerStatefulWidget {
 }
 
 class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
+  bool _showScrollToTop = false;
+  VoidCallback? _scrollCallback;
+
   @override
   Widget build(BuildContext context) {
     final homeState = ref.watch(hp.homeProvider);
@@ -67,11 +73,55 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           right: 0,
           child: FeedSelectorWidget(
             activeTab: widget.activeTab,
-            onForYouTap: () => widget.onTabChange('For You'),
-            onFollowingTap: () => widget.onTabChange('Following'),
+            onForYouTap: () {
+              log('🔘 HomeContent: For You tapped, current tab: ${widget.activeTab}');
+              widget.onTabChange('For You');
+            },
+            onFollowingTap: () {
+              log('🔘 HomeContent: Following tapped, current tab: ${widget.activeTab}');
+              widget.onTabChange('Following');
+            },
             onDiscoverTap: widget.onDiscoverTap,
           ),
         ),
+
+        // Scroll to top button (TikTok-style)
+        if (_showScrollToTop)
+          Positioned(
+            bottom: 100,
+            right: 16,
+            child: GestureDetector(
+              onTap: () {
+                log('⬆️ HomeContent: Scroll to top tapped');
+                // Call the scroll callback from VideoPageViewWidget
+                if (_scrollCallback != null) {
+                  _scrollCallback!();
+                  setState(() {
+                    _showScrollToTop = false;
+                  });
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9248D2),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.arrow_upward,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -105,10 +155,26 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       videos: videos,
       currentIndex: widget.currentIndex,
       tabId: widget.activeTab == 'For You' ? 'home/forYou' : 'home/following',
-      onPageChanged: widget.onPageChanged,
+      onPageChanged: (index) {
+        widget.onPageChanged(index);
+        // Show scroll-to-top button when scrolled past first video
+        if (mounted) {
+          setState(() {
+            _showScrollToTop = index > 2; // Show after 3rd video
+          });
+        }
+      },
       onVideoTap: widget.onVideoTap,
       onLeftSwipe: widget.onLeftSwipe,
       onRightSwipe: widget.onRightSwipe,
+      onControllerReady: (callback) {
+        // Store callback locally for scroll-to-top button
+        _scrollCallback = callback;
+        // Also pass up to HomeView
+        if (widget.onScrollControllerReady != null) {
+          widget.onScrollControllerReady!(callback);
+        }
+      },
     );
   }
 }

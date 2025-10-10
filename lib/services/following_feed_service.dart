@@ -1,353 +1,223 @@
-import 'dart:math' as math;
+import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 
-class FollowingFeedResult {
-  FollowingFeedResult({required this.items, required this.nextCursor});
-  final List<HomeVideo> items;
-  final Map<String, dynamic>? nextCursor;
-}
-
+/// Service to fetch Following feed videos from Connections list
+/// This ensures Following tab pulls from NetworkView Connections data
 class FollowingFeedService {
-  FollowingFeedService({FirebaseFirestore? firestore})
-      : _db = firestore ?? FirebaseFirestore.instance;
+  static FollowingFeedService? _instance;
+  static FollowingFeedService get instance =>
+      _instance ??= FollowingFeedService._();
 
-  final FirebaseFirestore _db;
+  FollowingFeedService._();
 
-  // PRODUCTION READY: Configurable algorithm parameters
-  static const int _maxCreators = 20;
-  static const int _maxVideosPerQuery = 200;
-  static const double _tauDays = 2.0;
-  static const int _creatorCap = 2;
-  static const int _windowSize = 10;
-  static const double _socialBoost = 0.05;
-  static const double _fatiguePenalty = 0.10;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<FollowingFeedResult> fetchRankedFollowingFeed({
+  /// Fetch Following videos from user's Connections list
+  /// Uses the same data source as NetworkView Connections tab
+  Future<List<HomeVideo>> fetchFollowingVideos({
     required String viewerId,
-    int pageSize = 20,
-    Map<String, dynamic>? afterCursor,
+    int limit = 20,
+    DocumentSnapshot? startAfter,
   }) async {
-    final stopwatch = Stopwatch()..start();
-
     try {
-      debugPrint('🔄 Fetching following feed for user: $viewerId');
+      log('👥 FollowingFeedService: Fetching videos for viewer $viewerId');
 
-      // 1) Load connections using comprehensive approach (same as UserService)
-      final creatorIds = <String>{};
+      // 1) Get user's connections from the same source as NetworkView
+      final connections = await _getUserConnections(viewerId);
 
-      // Method 1: Check connections collection (users/{userId}/connections)
-      try {
-        final connectionsSnapshot = await _db
-            .collection('users')
-            .doc(viewerId)
-            .collection('connections')
-            .where('muted', isEqualTo: false)
-            .where('blocked', isEqualTo: false)
-            .get();
+      if (connections.isEmpty) {
+        log('👥 FollowingFeedService: No connections found for user $viewerId');
+        return [];
+      }
 
-        for (final doc in connectionsSnapshot.docs) {
-          final data = doc.data();
-          final peerId = data['peerId'] ?? doc.id;
-          if (peerId.isNotEmpty) {
-            creatorIds.add(peerId);
-            debugPrint('🔍 FollowingFeedService: Found connection: $peerId');
-          }
+      // 2) Extract author IDs from connections
+      log('👥 FollowingFeedService: Processing ${connections.length} total connections');
+      final authorIds = connections
+          .where((conn) =>
+              conn.followState == 'mutual' || conn.followState == 'following')
+          .map((conn) => conn.connectionId)
+          .toList();
+
+      if (authorIds.isEmpty) {
+        log('👥 FollowingFeedService: No valid connections for videos (connections: ${connections.length})');
+        for (final conn in connections) {
+          log('   - Connection ${conn.connectionId}: followState=${conn.followState}');
         }
-      } catch (e) {
-        debugPrint('⚠️ FollowingFeedService: Error fetching connections: $e');
+        return [];
       }
 
-      // Method 2: Check follows collection (follows/{followerId}_{followedId})
-      try {
-        final followsSnapshot = await _db
-            .collection('follows')
-            .where('followerId', isEqualTo: viewerId)
-            .get();
+      log('👥 FollowingFeedService: Found ${authorIds.length} connections to fetch videos from');
+      log('👥 FollowingFeedService: Author IDs: $authorIds');
 
-        for (final doc in followsSnapshot.docs) {
-          final data = doc.data();
-          final followedId = data['followedId'] ?? '';
-          if (followedId.isNotEmpty) {
-            creatorIds.add(followedId);
-            debugPrint(
-                '🔍 FollowingFeedService: Found follow relationship: $followedId');
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ FollowingFeedService: Error fetching follows: $e');
-      }
+      // 3) Fetch videos from these authors using chunked queries
+      final videos =
+          await _fetchVideosFromAuthors(authorIds, limit, startAfter);
 
-      // Method 3: Check relationships collection (relationships/{relationshipId})
-      try {
-        final relationshipsSnapshot = await _db
-            .collection('relationships')
-            .where('followerId', isEqualTo: viewerId)
-            .get();
-
-        for (final doc in relationshipsSnapshot.docs) {
-          final data = doc.data();
-          final followingId = data['followingId'] ?? '';
-          if (followingId.isNotEmpty) {
-            creatorIds.add(followingId);
-            debugPrint(
-                '🔍 FollowingFeedService: Found relationship: $followingId');
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ FollowingFeedService: Error fetching relationships: $e');
-      }
-
-      final creatorIdsList = creatorIds.toList();
-      debugPrint(
-          '✅ FollowingFeedService: Found ${creatorIdsList.length} following users: $creatorIdsList');
-
-      if (creatorIdsList.isEmpty) {
-        return FollowingFeedResult(items: <HomeVideo>[], nextCursor: null);
-      }
-
-      // 2) Fetch recent videos with optimized single query (FIXED: Eliminated N+1 problem)
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs =
-          <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-
-      // Limit to max creators to prevent excessive queries
-      final limitedCreatorIds = creatorIdsList.take(_maxCreators).toList();
-
-      if (limitedCreatorIds.isEmpty) {
-        return FollowingFeedResult(items: <HomeVideo>[], nextCursor: null);
-      }
-
-      try {
-        // ULTRA-SIMPLE: Query without any complex filters to avoid index issues
-        debugPrint(
-            '🔍 FollowingFeedService: Using ultra-simple query approach...');
-
-        for (final creatorId in limitedCreatorIds) {
-          try {
-            // SIMPLEST POSSIBLE: Just get videos by userId, no filters at all
-            final snap = await _db
-                .collection('videos')
-                .where('userId', isEqualTo: creatorId)
-                .limit(50) // Get more videos per creator
-                .get();
-
-            // Add ALL videos (no date filtering to avoid any issues)
-            docs.addAll(snap.docs);
-            debugPrint(
-                '🔍 FollowingFeedService: Found ${snap.docs.length} videos for creator: $creatorId');
-          } catch (e) {
-            debugPrint(
-                '⚠️ FollowingFeedService: Error fetching videos for creator $creatorId: $e');
-            // Continue with other creators even if one fails
-          }
-        }
-
-        // Sort all docs by createdAt descending (in memory)
-        docs.sort((a, b) {
-          final aTime =
-              (a.data()['createdAt'] as Timestamp?)?.toDate() ?? DateTime(1970);
-          final bTime =
-              (b.data()['createdAt'] as Timestamp?)?.toDate() ?? DateTime(1970);
-          return bTime.compareTo(aTime);
-        });
-
-        // Limit total results
-        if (docs.length > _maxVideosPerQuery) {
-          docs = docs.take(_maxVideosPerQuery).toList();
-        }
-
-        debugPrint(
-            '🔍 FollowingFeedService: Total videos found: ${docs.length}');
-      } catch (e) {
-        // FIXED: Proper error handling with fallback
-        debugPrint('❌ Error fetching videos: $e');
-        // Log error for monitoring
-        if (kDebugMode) {
-          debugPrint(
-              'FollowingFeedService: Failed to fetch videos for ${limitedCreatorIds.length} creators');
-        }
-        return FollowingFeedResult(items: <HomeVideo>[], nextCursor: null);
-      }
-
-      if (docs.isEmpty) {
-        return FollowingFeedResult(items: <HomeVideo>[], nextCursor: null);
-      }
-
-      // 3) Pre-filter: safe/visibility (best-effort if fields missing)
-      final List<_ScoredVideo> candidates = <_ScoredVideo>[];
-      final DateTime now = DateTime.now();
-
-      // Build affinity map from connections' strength (0..1)
-      final Map<String, double> affinity = <String, double>{};
-
-      // Set default affinity for all found connections
-      for (final creatorId in creatorIdsList) {
-        affinity[creatorId] = 0.8; // Default high affinity for connections
-      }
-
-      for (final doc in docs) {
-        final data = doc.data();
-        final String creatorId = (data['userId'] ?? '').toString();
-        if (creatorId.isEmpty) continue;
-
-        // visibility filter
-        final String visibility = (data['visibility'] ?? 'public').toString();
-        if (visibility == 'private') continue;
-        if (visibility == 'connections' &&
-            !creatorIdsList.contains(creatorId)) {
-          continue;
-        }
-
-        // safety filter
-        final double safeScore = ((data['safeScore'] ?? 1.0) as num).toDouble();
-        if (safeScore < 0.8) continue;
-
-        // build score components
-        final Timestamp ts =
-            (data['createdAt'] as Timestamp? ?? Timestamp.now());
-        final double ageDays = now.difference(ts.toDate()).inSeconds / 86400.0;
-        final double recency = math.exp(-ageDays / _tauDays);
-        final double a = affinity[creatorId] ?? 0.3;
-
-        final Map<String, dynamic> stats =
-            (data['stats'] as Map<String, dynamic>? ?? <String, dynamic>{});
-        final double avgWatchPct =
-            ((stats['avgWatchPct'] ?? 0.0) as num).toDouble().clamp(0.0, 1.0);
-        final double completionRate = ((stats['completionRate'] ?? 0.0) as num)
-            .toDouble()
-            .clamp(0.0, 1.0);
-        final int likes = (stats['likes'] ?? data['likes'] ?? 0) as int;
-        final int comments =
-            (stats['comments'] ?? data['comments'] ?? 0) as int;
-        final int views = (stats['views'] ?? data['views'] ?? 1) as int;
-        final double engagement =
-            views > 0 ? ((likes + comments) / views).clamp(0.0, 1.0) : 0.0;
-        final double quality =
-            0.5 * avgWatchPct + 0.3 * completionRate + 0.2 * engagement;
-
-        final String category = (data['category'] ?? '').toString();
-        final double categoryMatch = category.isNotEmpty ? 1.0 : 0.5;
-        const double socialBoost = _socialBoost; // Configurable social boost
-
-        final double base = 0.40 * recency +
-            0.25 * a +
-            0.20 * quality +
-            0.08 * categoryMatch +
-            socialBoost;
-
-        candidates.add(
-          _ScoredVideo(
-            id: doc.id,
-            creatorId: creatorId,
-            createdAt: ts.toDate(),
-            score: base,
-            data: data,
-          ),
-        );
-      }
-
-      // 4) Diversity penalty pass: penalize surplus from same creator while selecting top N
-      candidates.sort((a, b) => b.score.compareTo(a.score));
-      final List<_ScoredVideo> diversified = <_ScoredVideo>[];
-      final Map<String, int> counts = <String, int>{};
-      for (final v in candidates) {
-        final int current = counts[v.creatorId] ?? 0;
-        final double fatigue = math.min(current / 3.0, 1.0);
-        final double adjusted = v.score - _fatiguePenalty * fatigue;
-        diversified.add(v.copyWith(score: adjusted));
-        counts[v.creatorId] = current + 1;
-      }
-      diversified.sort((a, b) {
-        final c = b.score.compareTo(a.score);
-        if (c != 0) return c;
-        return b.createdAt.compareTo(a.createdAt);
-      });
-
-      // 5) Select page with creator cap K within first M
-      const int capK = _creatorCap;
-      const int windowM = _windowSize;
-      final List<_ScoredVideo> output = <_ScoredVideo>[];
-      final Map<String, int> topCounts = <String, int>{};
-      for (final v in diversified) {
-        final int count = topCounts[v.creatorId] ?? 0;
-        if (output.length < windowM && count >= capK) continue;
-        output.add(v);
-        topCounts[v.creatorId] = count + 1;
-        if (output.length == pageSize) break;
-      }
-
-      final List<HomeVideo> items = output.map(_mapDocToHomeVideo).toList();
-      final _ScoredVideo last =
-          output.isNotEmpty ? output.last : diversified.first;
-      final Map<String, dynamic> nextCursor = <String, dynamic>{
-        'lastScore': last.score,
-        'lastCreatedAt': Timestamp.fromDate(last.createdAt),
-        'lastId': last.id,
-      };
-
-      stopwatch.stop();
-      debugPrint(
-          '✅ Following feed fetched: ${items.length} items in ${stopwatch.elapsedMilliseconds}ms');
-
-      return FollowingFeedResult(
-          items: items, nextCursor: items.isEmpty ? null : nextCursor);
+      log('👥 FollowingFeedService: Fetched ${videos.length} videos');
+      return videos;
     } catch (e) {
-      stopwatch.stop();
-      debugPrint(
-          '❌ Following feed fetch failed: $e (${stopwatch.elapsedMilliseconds}ms)');
-      return FollowingFeedResult(items: <HomeVideo>[], nextCursor: null);
+      log('❌ FollowingFeedService: Error fetching following videos: $e');
+      return [];
     }
   }
 
-  HomeVideo _mapDocToHomeVideo(_ScoredVideo v) {
-    final data = v.data;
-    final String caption = (data['caption'] ?? '').toString();
-    final int likes = (data['likes'] ?? (data['stats']?['likes'] ?? 0)) as int;
-    final int comments =
-        (data['comments'] ?? (data['stats']?['comments'] ?? 0)) as int;
-    final String creatorId = (data['userId'] ?? '').toString();
-    final String creatorName = (data['creatorName'] ?? 'creator').toString();
-    final String videoURL =
-        (data['videoURL'] ?? data['videoUrl'] ?? '').toString();
+  /// Get user's connections (same as NetworkView Connections tab)
+  Future<List<Connection>> _getUserConnections(String viewerId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('users')
+          .doc(viewerId)
+          .collection('connections')
+          .get();
+
+      return querySnapshot.docs
+          .map((doc) => _connectionFromFirestore(doc))
+          .toList();
+    } catch (e) {
+      log('❌ FollowingFeedService: Error fetching connections: $e');
+      return [];
+    }
+  }
+
+  /// Fetch videos from multiple authors using chunked whereIn queries
+  /// Firestore has a limit of 10 items in whereIn, so we chunk the IDs
+  Future<List<HomeVideo>> _fetchVideosFromAuthors(
+    List<String> authorIds,
+    int limit,
+    DocumentSnapshot? startAfter,
+  ) async {
+    final allVideos = <HomeVideo>[];
+
+    // Chunk author IDs into groups of 10 (Firestore whereIn limit)
+    for (int i = 0; i < authorIds.length; i += 10) {
+      final chunk = authorIds.skip(i).take(10).toList();
+
+      try {
+        // Try querying by creatorId (the field name in the video document)
+        Query query = _firestore
+            .collection('videos')
+            .where('creatorId', whereIn: chunk)
+            .orderBy('createdAt', descending: true);
+
+        // Add pagination if needed
+        if (startAfter != null && i == 0) {
+          query = query.startAfterDocument(startAfter);
+        }
+
+        // Limit per chunk to avoid overwhelming the query
+        query = query.limit(limit ~/ (authorIds.length / 10).ceil() + 5);
+
+        final querySnapshot = await query.get();
+
+        log('👥 FollowingFeedService: Query returned ${querySnapshot.docs.length} documents for chunk: $chunk');
+
+        final chunkVideos = querySnapshot.docs
+            .map((doc) => _homeVideoFromFirestore(doc))
+            .toList();
+
+        allVideos.addAll(chunkVideos);
+
+        log('👥 FollowingFeedService: Fetched ${chunkVideos.length} videos from ${chunk.length} authors (chunk: $chunk)');
+      } catch (e) {
+        log('❌ FollowingFeedService: Error fetching videos from chunk: $e');
+        // Continue with next chunk instead of failing completely
+      }
+    }
+
+    // Sort all videos by creation date (since we got them from multiple queries)
+    allVideos.sort((a, b) {
+      final aTime = a.createdAt ?? Timestamp.now();
+      final bTime = b.createdAt ?? Timestamp.now();
+      return bTime.compareTo(aTime);
+    });
+
+    // Return only the requested limit
+    return allVideos.take(limit).toList();
+  }
+
+  /// Check if user has any connections to show Following feed
+  Future<bool> hasConnections(String viewerId) async {
+    try {
+      final connections = await _getUserConnections(viewerId);
+      return connections.any((conn) =>
+          conn.followState == 'mutual' || conn.followState == 'following');
+    } catch (e) {
+      log('❌ FollowingFeedService: Error checking connections: $e');
+      return false;
+    }
+  }
+
+  /// Get count of connections for Following feed
+  Future<int> getConnectionsCount(String viewerId) async {
+    try {
+      final connections = await _getUserConnections(viewerId);
+      return connections
+          .where((conn) =>
+              conn.followState == 'mutual' || conn.followState == 'following')
+          .length;
+    } catch (e) {
+      log('❌ FollowingFeedService: Error getting connections count: $e');
+      return 0;
+    }
+  }
+
+  /// Helper method to create Connection from Firestore document
+  Connection _connectionFromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Connection(
+      connectionId: doc.id,
+      followState: data['followState'] ?? 'follower',
+      canDM: data['canDM'] ?? false,
+      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+    );
+  }
+
+  /// Helper method to create HomeVideo from Firestore document
+  HomeVideo _homeVideoFromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+
+    // Create the creator/user object
+    final creator = User(
+      id: data['creatorId'] ?? '',
+      username: data['creatorUsername'] ?? '',
+      displayName: data['creatorDisplayName'] ?? '',
+      bio: data['creatorBio'],
+      avatarURL: data['creatorProfileImageURL'] ?? data['creatorAvatarURL'],
+    );
+
     return HomeVideo(
-      id: v.id,
-      creator:
-          User(id: creatorId, username: creatorName, displayName: creatorName),
-      videoURL: videoURL,
-      thumbnailURL: data['thumbnailURL'] as String?,
-      likes: likes,
-      comments: comments,
-      views: (data['views'] ?? (data['stats']?['views'] ?? 0)) as int,
-      caption: caption,
-      isLiked: false,
-      isFavorited: false,
-      mlScore: v.score,
-      categoryId: (data['category'] ?? '').toString(),
+      id: doc.id,
+      creator: creator,
+      videoURL: data['videoURL'] ?? '',
+      thumbnailURL: data['thumbnailURL'],
+      likes: data['likesCount'] ?? 0,
+      comments: data['commentsCount'] ?? 0,
+      views: data['viewsCount'] ?? 0,
+      caption: data['caption'] ?? data['description'] ?? '',
+      isLiked: data['isLiked'] ?? false,
+      isFavorited: data['isFavorited'] ?? false,
+      isDraft: data['isDraft'] ?? false,
+      mlScore: data['mlScore']?.toDouble() ?? 0.0,
+      categoryId: data['categoryId'] ?? '',
+      duration: data['duration']?.toDouble() ?? 0.0,
+      createdAt: data['createdAt'] as Timestamp?,
     );
   }
 }
 
-class _ScoredVideo {
-  _ScoredVideo({
-    required this.id,
-    required this.creatorId,
-    required this.createdAt,
-    required this.score,
-    required this.data,
-  });
-  final String id;
-  final String creatorId;
-  final DateTime createdAt;
-  final double score;
-  final Map<String, dynamic> data;
+/// Connection model for Following feed
+class Connection {
+  final String connectionId;
+  final String followState; // 'mutual', 'following', 'follower'
+  final bool canDM;
+  final DateTime updatedAt;
 
-  _ScoredVideo copyWith({double? score}) => _ScoredVideo(
-        id: id,
-        creatorId: creatorId,
-        createdAt: createdAt,
-        score: score ?? this.score,
-        data: data,
-      );
+  Connection({
+    required this.connectionId,
+    required this.followState,
+    required this.canDM,
+    required this.updatedAt,
+  });
 }

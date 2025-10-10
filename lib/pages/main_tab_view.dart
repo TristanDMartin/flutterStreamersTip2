@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,8 +15,7 @@ import '../services/network_view_model_advanced.dart';
 import '../services/profile_update_service.dart';
 import '../services/clean_relationship_service.dart';
 import '../providers/home_provider.dart';
-import '../services/unified_video_control_service.dart';
-import '../services/global_playback_coordinator.dart';
+import '../services/global_playback_manager.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
   const MainTabView({super.key});
@@ -28,19 +28,31 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   int _currentIndex = 0;
   late PageController _pageController;
   late NetworkViewModelAdvanced _networkViewModel;
-  UnifiedVideoControlService? _videoControl;
+
+  // ⏱️ MEMORY FIX: Timers for proper cancellation
+  Timer? _unblockTimer;
+  Timer? _cameraNavTimer;
+  Timer? _inboxNavTimer;
+  Timer? _profileNavTimer;
+  Timer? _resumeTimer;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
     _networkViewModel = NetworkViewModelAdvanced();
-    _videoControl = ref.read(unifiedVideoControlProvider);
     _startDataSync();
   }
 
   @override
   void dispose() {
+    // ⏱️ MEMORY FIX: Cancel all timers to prevent memory leaks
+    _unblockTimer?.cancel();
+    _cameraNavTimer?.cancel();
+    _inboxNavTimer?.cancel();
+    _profileNavTimer?.cancel();
+    _resumeTimer?.cancel();
+
     _pageController.dispose();
     _networkViewModel.dispose();
     super.dispose();
@@ -71,10 +83,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   }
 
   void _resumeHomeViewVideos() {
-    _videoControl?.resumeCurrentVideo(
-      tabId: 'home/forYou', // Default to For You tab
-      ref: ref,
-    );
+    // 🔊 AUDIO FIX: Use GlobalPlaybackManager to resume
+    GlobalPlaybackManager.instance.resumeAfterTabSwitch();
+    log('▶️ MainTabView: Resumed HomeView videos');
   }
 
   void _startDataSync() {
@@ -125,9 +136,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       return;
     }
 
-    // Block playback during tab switch
-    final coordinator = GlobalPlaybackCoordinator();
-    coordinator.block(reason: 'tabSwitch');
+    // 🔊 AUDIO FIX: Block playback during tab switch using GlobalPlaybackManager
+    final playbackManager = GlobalPlaybackManager.instance;
+    playbackManager.block(reason: 'tabSwitch');
 
     setState(() {
       _currentIndex = index;
@@ -141,8 +152,8 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     )
         .then((_) {
       // Unblock after animation completes
-      Future.delayed(const Duration(milliseconds: 100), () {
-        coordinator.unblock();
+      _unblockTimer = Timer(const Duration(milliseconds: 100), () {
+        playbackManager.unblock();
         // Request focus for current video if on home tab
         if (index == 0) {
           _requestFocusForCurrentVideo();
@@ -164,7 +175,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
     log('🚨 CAMERA NAVIGATION: About to call Navigator.push');
     // AUDIO FIX: Add delay to ensure disposal completes before navigation
-    Future.delayed(const Duration(milliseconds: 200), () {
+    _cameraNavTimer = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
       // Navigate directly to TikTok-quality camera view
       Navigator.of(context)
@@ -188,7 +199,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     _pauseAllHomeViewVideos();
 
     // AUDIO FIX: Add delay to ensure disposal completes before navigation
-    Future.delayed(const Duration(milliseconds: 200), () {
+    _inboxNavTimer = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
       // Navigate to inbox view as full screen
       Navigator.of(context)
@@ -234,7 +245,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       debugPrint("🔍 MainTabView: Created User object with ID: ${user.id}");
 
       // AUDIO FIX: Add delay to ensure disposal completes before navigation
-      Future.delayed(const Duration(milliseconds: 200), () {
+      _profileNavTimer = Timer(const Duration(milliseconds: 200), () {
         if (!mounted) return;
         Navigator.of(context)
             .push(
@@ -274,13 +285,13 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     try {
       log('🚨 AUDIO FIX: Starting aggressive video disposal...');
 
-      // Block all video playback
-      final coordinator = GlobalPlaybackCoordinator();
-      coordinator.block(reason: 'camera_navigation');
+      // 🔊 AUDIO FIX: Use GlobalPlaybackManager for consistent audio control
+      final playbackManager = ref.read(globalPlaybackManagerProvider);
+      playbackManager.pauseAllForTabSwitch(); // Pause + mute all videos
+      playbackManager.disposeAll(); // Dispose all controllers
 
-      log('⏸️ MainTabView: Paused all HomeView videos with aggressive disposal');
-      debugPrint(
-          '⏸️ MainTabView: Paused all HomeView videos with aggressive disposal');
+      log('⏸️ MainTabView: Paused and disposed all HomeView videos');
+      debugPrint('⏸️ MainTabView: Paused and disposed all HomeView videos');
     } catch (e) {
       log('❌ MainTabView: Error pausing HomeView videos: $e');
       debugPrint('❌ MainTabView: Error pausing HomeView videos: $e');
@@ -299,7 +310,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       homeNotifier.resetVideoState();
 
       // Resume current video playback after brief delay
-      Future.delayed(const Duration(milliseconds: 100), () {
+      _resumeTimer = Timer(const Duration(milliseconds: 100), () {
         homeNotifier.resumeCurrentVideo();
         log('✅ MainTabView: HomeView reactivated with video reinitialization');
       });
@@ -320,15 +331,15 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             _currentIndex = index;
           });
 
-          // Block/unblock based on tab
-          final coordinator = GlobalPlaybackCoordinator();
+          // 🔊 AUDIO FIX: Block/unblock using GlobalPlaybackManager
+          final playbackManager = GlobalPlaybackManager.instance;
           if (index != 0) {
             // Leaving home tab - block playback
-            coordinator.block(reason: 'tabSwitch');
+            playbackManager.block(reason: 'tabSwitch');
           } else {
             // Returning to home tab - unblock and request focus
-            coordinator.unblock();
-            Future.delayed(const Duration(milliseconds: 100), () {
+            playbackManager.unblock();
+            Timer(const Duration(milliseconds: 100), () {
               _requestFocusForCurrentVideo();
             });
           }

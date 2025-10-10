@@ -29,8 +29,9 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
     return SafeArea(
       top: true,
       child: Stack(
+        clipBehavior: Clip.none, // Allow dropdown to overflow
         children: [
-          // Header row
+          // Header row - FIRST (base layer)
           Container(
             height: 50,
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -49,8 +50,12 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 20, vertical: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF9248D2),
+                      color: const Color(0xFF1A1A1A).withValues(alpha: 0.98),
                       borderRadius: BorderRadius.circular(25),
+                      border: Border.all(
+                        color: const Color(0xFF9248D2).withValues(alpha: 0.8),
+                        width: 2.0,
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.3),
@@ -65,7 +70,7 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                         Text(
                           widget.activeTab,
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: Color(0xFF9248D2),
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -75,7 +80,7 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                           _isDropdownOpen
                               ? Icons.keyboard_arrow_up
                               : Icons.keyboard_arrow_down,
-                          color: Colors.white,
+                          color: const Color(0xFF9248D2),
                           size: 20,
                         ),
                       ],
@@ -106,31 +111,38 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
             ),
           ),
 
-          // Dropdown overlay
-          FeedDropdownWidget(
-            activeTab: widget.activeTab,
-            isVisible: _isDropdownOpen,
-            onForYouTap: widget.onForYouTap,
-            onFollowingTap: widget.onFollowingTap,
-            onClose: () {
-              setState(() {
-                _isDropdownOpen = false;
-              });
-            },
-          ),
-
-          // Tap outside to close dropdown
+          // Tap outside to close dropdown - absorbs taps outside dropdown area
           if (_isDropdownOpen)
             Positioned.fill(
               child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () {
                   setState(() {
                     _isDropdownOpen = false;
                   });
                 },
                 child: Container(
-                  color: Colors.transparent,
+                  color: Colors.black.withValues(alpha: 0.3), // Slight dimming
                 ),
+              ),
+            ),
+
+          // Dropdown overlay - LAST (top layer, absorbs its own taps)
+          if (_isDropdownOpen)
+            GestureDetector(
+              behavior:
+                  HitTestBehavior.opaque, // Prevent taps from going through
+              onTap: () {}, // Absorb taps on dropdown area
+              child: FeedDropdownWidget(
+                activeTab: widget.activeTab,
+                isVisible: _isDropdownOpen,
+                onForYouTap: widget.onForYouTap,
+                onFollowingTap: widget.onFollowingTap,
+                onClose: () {
+                  setState(() {
+                    _isDropdownOpen = false;
+                  });
+                },
               ),
             ),
         ],

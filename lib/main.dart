@@ -23,76 +23,113 @@ import 'services/tiktok_like_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // MINIMAL STARTUP: Initialize only essential services synchronously
-  NetworkConfigService.initialize();
-  IOSMemoryService.initialize();
+  // 🚀 CONSOLIDATED INITIALIZATION: Single point of service initialization
+  await _initializeAllServices();
 
-  // Initialize emergency performance monitoring
-  PerformanceEmergencyService().initialize();
-
-  // Initialize Firebase immediately (required for app functionality)
-  await FirebaseIOSService.initialize();
-
-  // Initialize performance optimizations immediately
-  _initializePerformanceOptimizations();
-
-  // Initialize TikTokLikeService immediately (needed for like buttons)
-  TikTokLikeService().initialize().catchError((e) {
-    debugPrint('⚠️ TikTokLikeService immediate init failed: $e');
-  });
-
-  // Run app immediately with loading screen
+  // Run app immediately
   runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
+}
 
-  // Initialize remaining services in background after app starts
-  _initializeBackgroundServices();
+/// 🚀 CONSOLIDATED: Initialize all services from single point
+Future<void> _initializeAllServices() async {
+  debugPrint(
+      '🚀 ServiceManager: Starting consolidated service initialization...');
+
+  try {
+    // CRITICAL SERVICES (blocking)
+    debugPrint('📡 Initializing critical services...');
+    NetworkConfigService.initialize();
+    IOSMemoryService.initialize();
+    PerformanceEmergencyService().initialize();
+    await FirebaseIOSService.initialize();
+
+    // PERFORMANCE OPTIMIZATIONS
+    _initializePerformanceOptimizations();
+
+    // TIKTOK SERVICES (needed for UI)
+    TikTokLikeService().initialize().catchError((e) {
+      debugPrint('⚠️ TikTokLikeService init failed: $e');
+    });
+
+    debugPrint('✅ Critical services initialized');
+
+    // BACKGROUND SERVICES (non-blocking)
+    _initializeBackgroundServices();
+  } catch (e) {
+    debugPrint('❌ ServiceManager: Critical services initialization failed: $e');
+    // Continue anyway - app should still work
+  }
 }
 
 /// Initialize remaining services in background to avoid blocking startup
 void _initializeBackgroundServices() async {
-  try {
-    // Initialize Firestore services (non-blocking)
+  debugPrint(
+      '🚀 ServiceManager: Starting background service initialization...');
+
+  // 🔒 INDIVIDUAL ERROR HANDLING: Each service initializes independently
+  await _initializeServiceSafely('FirestoreOptimizationService', () async {
     await FirestoreOptimizationService.initialize();
+  });
+
+  await _initializeServiceSafely('FirestoreCacheService', () async {
     await FirestoreCacheService.initialize();
+  });
+
+  await _initializeServiceSafely('PushNotificationService', () async {
     await PushNotificationService().initialize();
+  });
 
-    // Fix post counts for all users globally (run once per app startup)
+  await _initializeServiceSafely('GlobalPostCountFix', () async {
     await GlobalPostCountFix().fixAllUsersPostCounts();
+  });
 
-    // Initialize Google Services fix in background
+  await _initializeServiceSafely('GoogleServicesFix', () async {
     await GoogleServicesFix.initialize();
+  });
 
-    // Initialize Unified Avatar Service in background (non-blocking)
-    nav.UnifiedAvatarService().initialize().catchError((e) {
-      debugPrint('⚠️ Avatar service init failed (non-critical): $e');
-    });
+  // Initialize Unified Avatar Service (non-blocking)
+  _initializeServiceSafelyAsync('UnifiedAvatarService', () async {
+    await nav.UnifiedAvatarService().initialize();
+  });
 
-    // Initialize TikTokLikeService in background (non-blocking)
-    TikTokLikeService().initialize().catchError((e) {
-      debugPrint('⚠️ TikTokLikeService init failed (non-critical): $e');
-    });
+  // Initialize production services
+  await _initializeProductionServices();
 
-    // Initialize production services in background
-    await _initializeProductionServices();
+  debugPrint('✅ ServiceManager: Background services initialization completed');
+}
 
-    debugPrint('✅ All background services initialized');
+/// 🔒 SAFETY: Initialize a single service with individual error handling
+Future<void> _initializeServiceSafely(
+    String serviceName, Future<void> Function() initFunction) async {
+  try {
+    await initFunction();
+    debugPrint('✅ ServiceManager: $serviceName initialized successfully');
   } catch (e) {
-    debugPrint('❌ Background service initialization failed: $e');
+    debugPrint('❌ ServiceManager: $serviceName initialization failed: $e');
+    // Don't rethrow - allow other services to continue
   }
 }
 
+/// 🔒 SAFETY: Initialize a service asynchronously (non-blocking)
+void _initializeServiceSafelyAsync(
+    String serviceName, Future<void> Function() initFunction) {
+  Future.microtask(() async {
+    await _initializeServiceSafely(serviceName, initFunction);
+  });
+}
+
 Future<void> _initializeProductionServices() async {
-  try {
-    // Initialize analytics and crashlytics
+  debugPrint('🚀 ServiceManager: Initializing production services...');
+
+  await _initializeServiceSafely('AnalyticsService', () async {
     await AnalyticsService.instance.initialize();
+  });
 
-    // Initialize error handling
+  await _initializeServiceSafely('ErrorHandlerService', () async {
     ErrorHandlerService.instance.initialize();
+  });
 
-    debugPrint('✅ Production services initialized successfully');
-  } catch (e) {
-    debugPrint('❌ Error initializing production services: $e');
-  }
+  debugPrint('✅ ServiceManager: Production services initialization completed');
 }
 
 void _initializePerformanceOptimizations() {

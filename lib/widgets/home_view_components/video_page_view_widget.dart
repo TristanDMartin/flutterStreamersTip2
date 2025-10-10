@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:developer';
 import '../../models/home_video.dart';
 import '../video_player_view_optimized.dart';
-// import '../../services/unified_video_control_service.dart'; // Removed unused import
 import '../../providers/home_provider.dart';
 
 /// Video page view widget for HomeView (handles video scrolling)
@@ -15,6 +14,8 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
   final Function(HomeVideo) onVideoTap;
   final Function(HomeVideo) onLeftSwipe;
   final Function(HomeVideo) onRightSwipe;
+  final Function(VoidCallback)?
+      onControllerReady; // Callback to expose scroll-to-top
 
   const VideoPageViewWidget({
     super.key,
@@ -25,6 +26,7 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
     required this.onVideoTap,
     required this.onLeftSwipe,
     required this.onRightSwipe,
+    this.onControllerReady,
   });
 
   @override
@@ -39,6 +41,50 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: widget.currentIndex);
+
+    // Expose scroll-to-top functionality to parent
+    if (widget.onControllerReady != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onControllerReady!(_scrollToTop);
+      });
+    }
+  }
+
+  /// Scroll to top of the video feed
+  void _scrollToTop() {
+    if (_pageController.hasClients && mounted) {
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+      log('📜 VideoPageView: Scrolled to top');
+    }
+  }
+
+  @override
+  void didUpdateWidget(VideoPageViewWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Handle currentIndex changes from parent
+    if (oldWidget.currentIndex != widget.currentIndex &&
+        _pageController.hasClients) {
+      log('🔄 VideoPageView: currentIndex changed from ${oldWidget.currentIndex} to ${widget.currentIndex}');
+
+      // Jump to new index without animation to keep in sync
+      _pageController.jumpToPage(widget.currentIndex);
+    }
+
+    // Handle video list changes (e.g., feed switch)
+    if (oldWidget.videos.length != widget.videos.length ||
+        oldWidget.tabId != widget.tabId) {
+      log('🔄 VideoPageView: Videos or tabId changed, resetting to index 0');
+
+      // Reset to first video when feed changes
+      if (_pageController.hasClients && widget.videos.isNotEmpty) {
+        _pageController.jumpToPage(0);
+      }
+    }
   }
 
   @override
@@ -69,6 +115,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
           final isCurrentVideo = index == widget.currentIndex;
 
           return VideoPlayerViewOptimized(
+            key: ValueKey(video.id), // Stable key to prevent audio bleeding
             video: video,
             isCurrentVideo: isCurrentVideo,
             isFirstVideo: index == 0,
@@ -76,10 +123,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
             homeViewModel: ref.read(homeProvider.notifier),
             showSheet: false,
             sheetType: 'none',
-            onShowProfile: () {},
-            onShowComments: () {},
-            onShowShare: () {},
-            onShowStreamerCard: () {},
+            // Callbacks are now optional - will use internal methods
           );
         },
       ),

@@ -5,7 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../models/home_video.dart';
 import 'video_controller_registry.dart';
 import 'production_logging_service.dart';
-import 'global_playback_coordinator.dart';
+import 'global_playback_manager.dart';
 
 /// Unified Video Service - Consolidates all video-related operations
 ///
@@ -78,9 +78,9 @@ class UnifiedVideoService {
   }
 
   void pauseAllVideos({String? reason}) {
-    // Use GlobalPlaybackCoordinator for pausing all videos
-    final coordinator = GlobalPlaybackCoordinator();
-    coordinator.block(reason: reason ?? 'unified_video_service_pause');
+    // 🔊 AUDIO FIX: Use GlobalPlaybackManager for pausing all videos
+    GlobalPlaybackManager.instance
+        .block(reason: reason ?? 'unified_video_service_pause');
   }
 
   // Video preloading

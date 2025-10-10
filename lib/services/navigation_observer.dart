@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../services/global_playback_coordinator.dart';
+import 'global_playback_manager.dart';
 
 /// Navigation observer that handles route changes and coordinates with playback
 class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
-  final GlobalPlaybackCoordinator _coordinator = GlobalPlaybackCoordinator();
+  final GlobalPlaybackManager _manager = GlobalPlaybackManager.instance;
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
@@ -76,8 +76,12 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       return;
     }
 
-    // Notify coordinator about route change
-    _coordinator.onRouteChange(owner, isForeground);
+    // 🔊 AUDIO FIX: Block playback when leaving home
+    if (owner != 'home' && isForeground) {
+      _manager.block(reason: 'route_change_$owner');
+    } else if (owner == 'home' && isForeground) {
+      _manager.unblock();
+    }
 
     if (route.settings.name != null) {
       debugPrint(
@@ -98,12 +102,12 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
         return;
       }
 
-      // Pause all videos when modal is presented (for other modals)
-      _coordinator.pauseAll(reason: 'modalPresented: $modalType');
+      // 🔊 AUDIO FIX: Pause all videos when modal is presented
+      _manager.pauseAll();
       debugPrint('🎵 NavigationObserver: Modal presented - $modalType');
     } else {
-      // Resume playback when modal is dismissed
-      _coordinator.resumePlayback();
+      // 🔊 AUDIO FIX: Resume playback when modal is dismissed
+      _manager.resumeAfterTabSwitch();
       debugPrint('🎵 NavigationObserver: Modal dismissed - $modalType');
     }
   }

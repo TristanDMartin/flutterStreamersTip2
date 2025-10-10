@@ -1,35 +1,30 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/share_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import '../models/feed_tab.dart';
 import '../models/home_video.dart';
-import '../widgets/video_player_view_optimized.dart';
 import '../providers/home_provider.dart' as hp;
 import '../services/video_service.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/following_provider.dart';
+import '../providers/feed_state_provider.dart';
 import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
-import '../services/video_performance_service.dart';
-import '../services/video_preloader_service.dart';
-import '../services/global_playback_coordinator.dart';
-import '../providers/playback_coordinator_provider.dart';
+import '../services/unified_algorithm_service.dart';
+import '../services/global_playback_manager.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
-import '../widgets/comments_view2.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/home_view_components/home_content_widget.dart';
-import '../widgets/share_sheet_view.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
-// import '../widgets/tiktok_account_switch_button.dart'; // Removed unused import
 
 class HomeView extends ConsumerStatefulWidget {
   const HomeView({super.key});
@@ -40,57 +35,60 @@ class HomeView extends ConsumerStatefulWidget {
 
 class _HomeViewState extends ConsumerState<HomeView>
     with WidgetsBindingObserver {
-  late PageController _pageController;
   int _currentIndex = 0;
 
-  // Video preloader for TikTok-style instant switching
-  final VideoPreloaderService _videoPreloader = VideoPreloaderService();
-  GlobalPlaybackCoordinator? _playbackCoordinator;
+  // Callback infrastructure for scroll to top - now handled by HomeContentWidget
 
-  // Feed selector (For You / Following)
-  FeedTab _feedTab = FeedTab.forYou;
+  // VideoPreloaderService removed - conflicts with GlobalPlaybackManager
+  // Using direct controller creation for better memory management
+  // GlobalPlaybackCoordinator removed - merged into GlobalPlaybackManager
+
+  // Feed selector (For You / Following) - now managed by feed_state_provider
+  // Remove local state to use single source of truth
 
   // StreamerCard modal state
   bool _showStreamerCard = false;
   StreamerCard? _currentStreamerCard;
 
-  // SEAMLESS RETURN: Track returns to force video reinitialization
-  int _returnCounter = 0;
+  // 🚀 VIRAL ALGORITHM: Ranking cache to prevent excessive re-ranking
+  DateTime? _lastRankingTime;
+  bool _isRanking = false;
 
-  // Performance state
-  final Map<String, int> _videoEngagementScores = {};
+  // ⏱️ MEMORY FIX: Timers for proper cancellation
+  Timer? _resumeTimer;
+  Timer? _focusTimer;
+
+  // _returnCounter removed - now using stable ValueKey(video.id) instead
+  // _videoEngagementScores removed - tracked in EngagementAnalyticsService instead
 
   // Video data is now managed by Riverpod provider
 
   @override
   void initState() {
     super.initState();
-    log('🏠 HomeView: initState() called');
-    debugPrint('🏠 HomeView: initState() called');
+    if (kDebugMode) {
+      log('🏠 HomeView: initState() called');
+    }
 
     WidgetsBinding.instance.addObserver(this);
-    _pageController = PageController();
 
     // Initialize services
     ErrorHandlingService().initialize();
     OfflineDataService();
     EngagementAnalyticsService().initialize();
 
-    // Initialize playback coordinator
-    _playbackCoordinator = ref.read(playbackCoordinatorProvider);
-    debugPrint(
-        '🎵 HomeView: Playback coordinator initialized - ${_playbackCoordinator != null}');
+    // 🔊 AUDIO FIX: Ensure playback manager is unblocked on app startup
+    GlobalPlaybackManager.instance.unblock();
 
-    // Ensure coordinator is unblocked on app startup
-    if (_playbackCoordinator != null) {
-      debugPrint('🎵 HomeView: Ensuring coordinator is unblocked on startup');
-      _playbackCoordinator!.unblock();
+    // 🚀 VIRAL ALGORITHM: Start tracking session for engagement analytics
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      UnifiedAlgorithmService.instance.startSession(currentUser.uid);
+      log('🎯 UnifiedAlgorithm: Session started for user ${currentUser.uid}');
     }
 
     // Setup favorites manager and load videos
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      log('📋 HomeView: addPostFrameCallback executing');
-      debugPrint('📋 HomeView: addPostFrameCallback executing');
       _setupFavoritesManager();
       _loadVideos();
       _initializeVideoService();
@@ -104,8 +102,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (state == AppLifecycleState.resumed) {
       log('🔄 HomeView: App resumed - reactivating feed');
 
-      // SEAMLESS RETURN: Increment counter to force widget rebuilds
-      _returnCounter++;
+      // _returnCounter removed - now using stable ValueKey(video.id) for widget identification
 
       // SEAMLESS RETURN: Reactivate feed when returning from other views
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -125,14 +122,15 @@ class _HomeViewState extends ConsumerState<HomeView>
       _loadVideos();
 
       // Resume current video playback after a brief delay
-      Future.delayed(const Duration(milliseconds: 300), () {
+      _resumeTimer = Timer(const Duration(milliseconds: 300), () {
         if (mounted) {
           final homeVM = ref.read(hp.homeProvider.notifier);
           homeVM.resumeCurrentVideo();
 
           // Ensure the current video is playing
           final homeState = ref.read(hp.homeProvider);
-          final currentVideos = _feedTab == FeedTab.forYou
+          final activeFeed = ref.read(activeFeedProvider);
+          final currentVideos = activeFeed == FeedTab.forYou
               ? homeState.forYouVideos
               : homeState.followingVideos;
 
@@ -141,13 +139,12 @@ class _HomeViewState extends ConsumerState<HomeView>
 
             // Ensure current video gets focus for TikTok-style autoplay
             final currentVideo = currentVideos[_currentIndex];
-            final ownerId =
-                _feedTab == FeedTab.forYou ? 'home/forYou' : 'home/following';
+            final ownerId = activeFeed.tabId;
 
-            if (_playbackCoordinator != null) {
-              log('🎵 HomeView: Reactivating focus for current video: ${currentVideo.id}');
-              _playbackCoordinator!.requestFocus(currentVideo.id, ownerId);
-            }
+            // 🔊 AUDIO FIX: Use GlobalPlaybackManager for focus
+            log('🎵 HomeView: Reactivating focus for current video: ${currentVideo.id}');
+            GlobalPlaybackManager.instance
+                .requestFocus(currentVideo.id, ownerId);
           }
 
           log('✅ HomeView: Feed reactivated successfully');
@@ -173,17 +170,15 @@ class _HomeViewState extends ConsumerState<HomeView>
   /// Initialize VideoService to load all videos
   void _initializeVideoService() {
     try {
-      log('🎬 HomeView: Initializing VideoService...');
-      debugPrint('🎬 HomeView: Initializing VideoService...');
-
       final videoService = ref.read(videoServiceProvider.notifier);
       videoService.loadAllVideos();
-
-      log('✅ HomeView: VideoService initialized');
-      debugPrint('✅ HomeView: VideoService initialized');
+      if (kDebugMode) {
+        log('✅ HomeView: VideoService initialized');
+      }
     } catch (e) {
-      log('❌ HomeView: Error initializing VideoService: $e');
-      debugPrint('❌ HomeView: Error initializing VideoService: $e');
+      if (kDebugMode) {
+        log('❌ HomeView: Error initializing VideoService: $e');
+      }
     }
   }
 
@@ -195,12 +190,15 @@ class _HomeViewState extends ConsumerState<HomeView>
       // Use the new instant play loadVideos method
       await homeVM.loadVideos();
 
+      // 🚀 VIRAL ALGORITHM: Apply personalized ranking to loaded videos
+      await _applyAlgorithmRanking();
+
       // Prewarm the first video for instant play (TikTok style)
       await _prewarmFirstVideo();
 
       // Ensure first video gets focus for TikTok-style autoplay
       // Add a delay to ensure video controllers are fully initialized
-      Future.delayed(const Duration(milliseconds: 500), () {
+      _focusTimer = Timer(const Duration(milliseconds: 500), () {
         if (mounted) {
           _ensureFirstVideoFocus();
         }
@@ -210,29 +208,97 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
+  /// Apply unified algorithm ranking to videos (VIRAL BOOST)
+  Future<void> _applyAlgorithmRanking() async {
+    try {
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      // 🚀 CACHE: Skip if ranked within last 5 minutes
+      if (_lastRankingTime != null) {
+        final minutesSinceRanking =
+            DateTime.now().difference(_lastRankingTime!).inMinutes;
+        if (minutesSinceRanking < 5) {
+          log('⏭️ UnifiedAlgorithm: Skipping re-ranking (cached ${minutesSinceRanking}min ago)');
+          return;
+        }
+      }
+
+      final homeState = ref.read(hp.homeProvider);
+      final activeFeed = ref.read(activeFeedProvider);
+      final candidateVideos = activeFeed == FeedTab.forYou
+          ? homeState.forYouVideos
+          : homeState.followingVideos;
+
+      if (candidateVideos.isEmpty) return;
+
+      // 🎨 LOADING INDICATOR: Show user-friendly feedback
+      if (mounted) {
+        setState(() => _isRanking = true);
+      }
+
+      log('🎯 UnifiedAlgorithm: Ranking ${candidateVideos.length} videos...');
+
+      // Get personalized feed with all 7 systems applied
+      final rankedVideos =
+          await UnifiedAlgorithmService.instance.getPersonalizedFeed(
+        userId: currentUser.uid,
+        candidateVideos: candidateVideos,
+        limit: candidateVideos.length, // Keep all videos, just reorder
+      );
+
+      // Update provider with ranked videos
+      final homeVM = ref.read(hp.homeProvider.notifier);
+      if (activeFeed == FeedTab.forYou) {
+        homeVM.updateForYouVideos(rankedVideos);
+      } else {
+        homeVM.updateFollowingVideos(rankedVideos);
+      }
+
+      // Update cache timestamp
+      _lastRankingTime = DateTime.now();
+
+      log('✅ UnifiedAlgorithm: ${rankedVideos.length} videos ranked and ready for viral boost');
+    } catch (e) {
+      log('❌ UnifiedAlgorithm: Error applying ranking: $e');
+
+      // 💬 ERROR FEEDBACK: Show user-friendly message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Using standard feed (personalization temporarily unavailable)'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      // Non-critical error, continue with original order
+    } finally {
+      // Hide loading indicator
+      if (mounted) {
+        setState(() => _isRanking = false);
+      }
+    }
+  }
+
   /// INSTANT FOLLOWING: Switch to Following tab instantly (videos preloaded in background)
   Future<void> _loadFollowingVideos() async {
     try {
-      log('👥 INSTANT FOLLOWING: Switching to Following tab...');
-      debugPrint('👥 INSTANT FOLLOWING: Switching to Following tab...');
-
       final homeState = ref.read(hp.homeProvider);
 
       // INSTANT RESPONSE: Check if following videos are already preloaded
       if (homeState.followingVideos.isNotEmpty) {
-        log('👥 INSTANT FOLLOWING: Videos already preloaded: ${homeState.followingVideos.length} - instant switch!');
         await _prewarmFirstVideo();
         return;
       }
 
-      // If no videos preloaded, show empty state instantly (no loading delay)
-      log('👥 INSTANT FOLLOWING: No preloaded videos - showing empty state instantly');
-
       // Trigger background loading for future visits
       _triggerFollowingVideosBackgroundLoad();
     } catch (e) {
-      log('❌ INSTANT FOLLOWING: Error switching to Following tab: $e');
-      debugPrint('❌ INSTANT FOLLOWING: Error switching to Following tab: $e');
+      if (kDebugMode) {
+        log('❌ Error switching to Following tab: $e');
+      }
     }
   }
 
@@ -266,25 +332,20 @@ class _HomeViewState extends ConsumerState<HomeView>
   Future<void> _prewarmFirstVideo() async {
     try {
       final homeState = ref.read(hp.homeProvider);
-      final videos = _feedTab == FeedTab.forYou
+      final activeFeed = ref.read(activeFeedProvider);
+      final videos = activeFeed == FeedTab.forYou
           ? homeState.forYouVideos
           : homeState.followingVideos;
 
       if (videos.isNotEmpty) {
         final firstVideo = videos.first;
-        log('🔥 Prewarming first video: ${firstVideo.id}');
-        debugPrint('🔥 Prewarming first video: ${firstVideo.id}');
-
-        // Prewarm the first video controller
-        await VideoPerformanceService()
-            .prewarm(firstVideo.id, firstVideo.videoURL);
-
-        log('✅ First video prewarmed successfully');
-        debugPrint('✅ First video prewarmed successfully');
+        // 🔊 AUDIO FIX: Use GlobalPlaybackManager for prewarming
+        GlobalPlaybackManager.instance.requestFocus(firstVideo.id, 'home');
       }
     } catch (e) {
-      log('❌ Error prewarming first video: $e');
-      debugPrint('❌ Error prewarming first video: $e');
+      if (kDebugMode) {
+        log('❌ Error prewarming first video: $e');
+      }
     }
   }
 
@@ -292,336 +353,61 @@ class _HomeViewState extends ConsumerState<HomeView>
   void _ensureFirstVideoFocus() {
     try {
       final homeState = ref.read(hp.homeProvider);
-      final videos = _feedTab == FeedTab.forYou
+      final activeFeed = ref.read(activeFeedProvider);
+      final videos = activeFeed == FeedTab.forYou
           ? homeState.forYouVideos
           : homeState.followingVideos;
 
-      debugPrint(
-          '🎯 HomeView: _ensureFirstVideoFocus - videos count: ${videos.length}, coordinator: ${_playbackCoordinator != null}');
-
-      if (videos.isNotEmpty && _playbackCoordinator != null) {
+      if (videos.isNotEmpty) {
         final firstVideo = videos.first;
-        final ownerId =
-            _feedTab == FeedTab.forYou ? 'home/forYou' : 'home/following';
+        final ownerId = activeFeed.tabId;
 
-        debugPrint(
-            '🎯 HomeView: First video found - videoId: ${firstVideo.id}, ownerId: $ownerId');
-        log('🎵 HomeView: Ensuring first video gets focus for autoplay: ${firstVideo.id}');
-        debugPrint(
-            '🎵 HomeView: Ensuring first video gets focus for autoplay: ${firstVideo.id}');
+        // 🔊 AUDIO FIX: Use GlobalPlaybackManager for focus
+        GlobalPlaybackManager.instance.requestFocus(firstVideo.id, ownerId);
 
-        // Request focus for the first video to enable TikTok-style autoplay
-        debugPrint('🎯 HomeView: Requesting focus from coordinator...');
-        _playbackCoordinator!.requestFocus(firstVideo.id, ownerId);
-
-        // Log coordinator state for debugging
-        _playbackCoordinator!.logCurrentState();
-
-        log('✅ HomeView: First video focus requested successfully');
-        debugPrint('✅ HomeView: First video focus requested successfully');
-      } else {
-        debugPrint(
-            '❌ HomeView: Cannot ensure first video focus - videos empty: ${videos.isEmpty}, coordinator null: ${_playbackCoordinator == null}');
+        if (kDebugMode) {
+          GlobalPlaybackManager.instance.logCurrentState();
+        }
       }
     } catch (e) {
-      log('❌ HomeView: Error ensuring first video focus: $e');
-      debugPrint('❌ HomeView: Error ensuring first video focus: $e');
+      if (kDebugMode) {
+        log('❌ Error ensuring first video focus: $e');
+      }
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _pageController.dispose();
+    // PageController removed - now managed by VideoPageViewWidget
 
-    // Clear performance data
-    _videoEngagementScores.clear();
+    // VideoPreloaderService removed - controllers now managed by GlobalPlaybackManager
+    // _videoEngagementScores removed - tracked in EngagementAnalyticsService
 
-    // Dispose video preloader
-    _videoPreloader.dispose();
+    // ⏱️ MEMORY FIX: Cancel timers to prevent memory leaks
+    _resumeTimer?.cancel();
+    _focusTimer?.cancel();
+
+    // 🚀 VIRAL ALGORITHM: End session and save retention data
+    UnifiedAlgorithmService.instance.endSession();
+    log('🎯 UnifiedAlgorithm: Session ended, retention data saved');
 
     super.dispose();
   }
 
-  void _openComments(String videoId, String videoOwnerId) {
-    HapticFeedback.lightImpact();
+  // Dead code removed - _openComments, _shareVideo, _handlePullToRefresh, _refreshInBackground, _scrollToTop
+  // All handled by VideoPlayerViewOptimized or removed features
+  // Note: _scrollToTopCallback infrastructure kept for potential future use
 
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
-      builder: (context) => CommentsView2(
-        videoId: videoId,
-        videoOwnerId: videoOwnerId,
-      ),
-    );
-  }
-
-  // _buildFeedDropdown method removed - now handled by FeedMenuWidget
-  // _buildHeader method removed - now handled by FeedSelectorWidget
-  // ignore: unused_element
-  Widget _buildFeedDropdown() {
-    final BorderRadius radius = BorderRadius.circular(20);
-    final Color tileColor = const Color(0xFF1A1A1A).withValues(alpha: 0.95);
-
-    return Container(
-      width: 220,
-      decoration: BoxDecoration(
-        color: tileColor,
-        borderRadius: radius,
-        border: Border.all(
-          color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _feedMenuItem(
-            title: 'For You',
-            isSelected: _feedTab == FeedTab.forYou,
-            onTap: () {
-              log('📱 HomeView: Switching to For You tab');
-
-              // Use coordinator to pause all except For You tab
-              if (_playbackCoordinator != null) {
-                _playbackCoordinator!.pauseAllExcept('home/forYou');
-              }
-
-              // SMART: Dispose videos from inactive tab only
-              if (_feedTab != FeedTab.forYou) {
-                _disposeInactiveTabVideos(
-                    'forYou'); // Clean up audio from other tab
-              }
-
-              if (mounted) {
-                setState(() {
-                  _feedTab = FeedTab.forYou;
-                  _currentIndex = 0; // Reset to first video
-                });
-              }
-              _loadVideos();
-            },
-          ),
-          Container(
-            height: 1,
-            color: Colors.grey.withValues(alpha: 0.2),
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-          ),
-          _feedMenuItem(
-            title: 'Following',
-            isSelected: _feedTab == FeedTab.following,
-            onTap: () {
-              log('👥 HomeView: Following tab tapped!');
-              debugPrint('👥 HomeView: Following tab tapped!');
-
-              // Use coordinator to pause all except Following tab
-              if (_playbackCoordinator != null) {
-                _playbackCoordinator!.pauseAllExcept('home/following');
-              }
-
-              // SMART: Dispose videos from inactive tab only
-              if (_feedTab != FeedTab.following) {
-                _disposeInactiveTabVideos(
-                    'following'); // Clean up audio from other tab
-              }
-
-              if (mounted) {
-                setState(() {
-                  _feedTab = FeedTab.following;
-                  _currentIndex = 0; // Reset to first video
-                });
-              }
-
-              _loadFollowingVideos();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _feedMenuItem({
-    required String title,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF9248D2).withValues(alpha: 0.1)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              title == 'For You' ? Icons.explore : Icons.people,
-              color: isSelected
-                  ? const Color(0xFF9248D2)
-                  : Colors.white.withValues(alpha: 0.7),
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              title,
-              style: TextStyle(
-                color: isSelected ? const Color(0xFF9248D2) : Colors.white,
-                fontSize: 16,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              ),
-            ),
-            const Spacer(),
-            if (isSelected)
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF9248D2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 16,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _shareVideo(HomeVideo video) {
-    debugPrint('📤 HomeView: _shareVideo called for video ${video.id}');
-    HapticFeedback.lightImpact();
-
-    try {
-      debugPrint('📤 HomeView: Opening ShareSheetView modal...');
-      // Open TikTok-style share sheet with connections row
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        isDismissible: true,
-        enableDrag: true,
-        builder: (context) {
-          debugPrint('📤 HomeView: Building ShareSheetView...');
-          // Import ShareSheetView
-          return ShareSheetView(
-            video: video,
-            payload: ShareServiceOptimized().getCachedPayload(video.id),
-            onDismiss: () {
-              debugPrint('📤 HomeView: ShareSheet dismissed');
-            },
-            onAction: (action) {
-              debugPrint('📤 HomeView: ShareSheet action: $action');
-              ShareServiceOptimized().handleAction(
-                action,
-                video.id,
-                video.creator.id,
-              );
-            },
-          );
-        },
-      );
-      debugPrint('📤 HomeView: Modal opened successfully');
-    } catch (e) {
-      debugPrint('❌ HomeView: Error opening share sheet: $e');
-    }
-  }
-
-  /// Handle pull-to-refresh gesture - INSTANT like TikTok
-  Future<void> _handlePullToRefresh() async {
-    log('🔄 HomeView: INSTANT refresh triggered for ${_feedTab.name} tab');
-    debugPrint(
-        '🔄 HomeView: INSTANT refresh triggered for ${_feedTab.name} tab');
-
-    // INSTANT FEEDBACK - Immediate haptic and scroll to top
-    HapticFeedback.lightImpact();
-    await _scrollToTop();
-
-    // INSTANT UI UPDATE - Show loading state immediately
-    final homeVM = ref.read(hp.homeProvider.notifier);
-    homeVM.setLoadingState(true);
-
-    // BACKGROUND REFRESH - Load new content without blocking UI
-    _refreshInBackground(homeVM);
-  }
-
-  /// Refresh content in background for instant TikTok-like experience
-  Future<void> _refreshInBackground(hp.HomeViewModel homeVM) async {
-    try {
-      log('🔄 HomeView: Starting background refresh for ${_feedTab.name} tab');
-
-      // Refresh videos based on current tab in background
-      await homeVM.refreshFeedByTab(_feedTab);
-
-      log('✅ HomeView: Background refresh completed for ${_feedTab.name} tab');
-      debugPrint(
-          '✅ HomeView: Background refresh completed for ${_feedTab.name} tab');
-    } catch (e) {
-      log('❌ HomeView: Error during background refresh: $e');
-      debugPrint('❌ HomeView: Error during background refresh: $e');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to refresh feed: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } finally {
-      // Always clear loading state
-      homeVM.setLoadingState(false);
-    }
-  }
-
-  /// Scroll to top of feed to show newest video - INSTANT like TikTok
-  Future<void> _scrollToTop() async {
-    if (_pageController.hasClients) {
-      // INSTANT scroll - no animation delay
-      await _pageController.animateToPage(
-        0,
-        duration: const Duration(milliseconds: 200), // Faster animation
-        curve: Curves.easeOut, // Snappier curve
-      );
-      log('📜 HomeView: INSTANT scroll to top completed');
-    }
-  }
-
-  /// SMART: Dispose videos from inactive tab only (preserves current tab videos)
-  void _disposeInactiveTabVideos(String newActiveTabId) {
-    log('🗑️ HomeView: DISPOSING videos from inactive tab to clean up audio streams');
-
-    // Use GlobalPlaybackCoordinator to block playback
-    final coordinator = GlobalPlaybackCoordinator();
-    coordinator.block(reason: 'home_view_dispose');
-
-    log('✅ HomeView: Inactive tab videos disposed, audio streams cleaned up');
-  }
+  // Dead code removed - _disposeInactiveTabVideos now handled by GlobalPlaybackManager.disposeAll()
 
   /// SIMPLE: Pause all other videos when scrolling within same tab
   void _pauseAllOtherVideos(int currentIndex) {
     log('⏸️ HomeView: Pausing all other videos, current index: $currentIndex');
 
-    // Use GlobalPlaybackCoordinator for immediate pause of all videos
-    final coordinator = GlobalPlaybackCoordinator();
-    coordinator.block(reason: 'home_view_pause_all');
+    // 🔊 AUDIO FIX: Use GlobalPlaybackManager to pause all videos
+    final playbackManager = ref.read(globalPlaybackManagerProvider);
+    playbackManager.pauseAll();
 
     log('✅ HomeView: All other videos paused, only current video should play');
   }
@@ -638,167 +424,26 @@ class _HomeViewState extends ConsumerState<HomeView>
 
         // Get current video and show StreamerCardView
         final homeState = ref.read(hp.homeProvider);
-        final videos = _feedTab == FeedTab.forYou
+        final activeFeed = ref.read(activeFeedProvider);
+        final videos = activeFeed == FeedTab.forYou
             ? homeState.forYouVideos
             : homeState.followingVideos;
 
         if (_currentIndex < videos.length) {
           final currentVideo = videos[_currentIndex];
           _showStreamerCardModal(currentVideo.creator);
-
-          log('✅ HomeView: StreamerCardView opened for user: ${currentVideo.creator.username}');
-          debugPrint(
-              '✅ HomeView: StreamerCardView opened for user: ${currentVideo.creator.username}');
         }
       } catch (e) {
-        log('❌ HomeView: Error handling left swipe: $e');
-        debugPrint('❌ HomeView: Error handling left swipe: $e');
+        if (kDebugMode) {
+          log('❌ Error handling left swipe: $e');
+        }
       }
     }
   }
 
-  /// Handle swipe up gesture on end-of-feed message to refresh
-  void _handleSwipeUpRefresh(DragEndDetails details) {
-    // Check if it's an upward swipe (negative velocity on Y axis)
-    if (details.velocity.pixelsPerSecond.dy < -300) {
-      log('⬆️ HomeView: Swipe up refresh detected');
-      debugPrint('⬆️ HomeView: Swipe up refresh detected');
+  // Dead code removed - _handleSwipeUpRefresh was only used in removed _buildEndOfFeedMessage
 
-      try {
-        HapticFeedback.lightImpact();
-        _handlePullToRefresh();
-      } catch (e) {
-        log('❌ HomeView: Error handling swipe up refresh: $e');
-        debugPrint('❌ HomeView: Error handling swipe up refresh: $e');
-      }
-    }
-  }
-
-  /// Build end-of-feed message with swipe-up refresh functionality
-  Widget _buildEndOfFeedMessage() {
-    return GestureDetector(
-      onVerticalDragEnd: _handleSwipeUpRefresh,
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: Colors.black,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // End of feed icon
-            const Icon(
-              Icons.check_circle_outline,
-              size: 60,
-              color: Color(0xFF9248D2), // Primary purple
-            ),
-
-            const SizedBox(height: 24),
-
-            // End of feed title
-            const Text(
-              'You\'ve reached the end!',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // End of feed subtitle
-            Text(
-              'Tap the button below to refresh ${_feedTab == FeedTab.forYou ? 'For You' : 'Following'} feed',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
-            const SizedBox(height: 32),
-
-            // Tap to refresh button with instant loading state
-            Consumer(
-              builder: (context, ref, child) {
-                final homeState = ref.watch(hp.homeProvider);
-                final isLoading = homeState.isLoading;
-
-                return GestureDetector(
-                  onTap: isLoading
-                      ? null
-                      : () {
-                          HapticFeedback.lightImpact();
-                          _handlePullToRefresh();
-                        },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 12),
-                    decoration: BoxDecoration(
-                      gradient: isLoading
-                          ? null
-                          : const LinearGradient(
-                              colors: [
-                                Color(0xFF9248D2), // Primary purple
-                                Color(0xFF7768DF), // Secondary purple
-                                Color(0xFF1670DE), // Blue
-                              ],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                            ),
-                      color:
-                          isLoading ? Colors.grey.withValues(alpha: 0.3) : null,
-                      borderRadius: BorderRadius.circular(25),
-                      boxShadow: isLoading
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: const Color(0xFF9248D2)
-                                    .withValues(alpha: 0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isLoading)
-                          const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        else
-                          const Icon(
-                            Icons.refresh,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        const SizedBox(width: 8),
-                        Text(
-                          isLoading ? 'Refreshing...' : 'Tap to refresh',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Dead code removed - _buildEndOfFeedMessage UI not rendered in current implementation
 
   void _showStreamerCardModal(User user) {
     HapticFeedback.lightImpact();
@@ -845,10 +490,11 @@ class _HomeViewState extends ConsumerState<HomeView>
   void _pauseAllHomeViewVideos() {
     log('⏸️ HomeView: Pausing all videos before navigation');
     try {
-      // Notify HomeView to pause all videos
-      final homeNotifier = ref.read(hp.homeProvider.notifier);
-      homeNotifier.pauseAllVideos();
-      log('✅ HomeView: All videos paused successfully');
+      // 🔊 AUDIO FIX: Use GlobalPlaybackManager for consistent audio control
+      final playbackManager = ref.read(globalPlaybackManagerProvider);
+      playbackManager.pauseAllForTabSwitch(); // Pause + mute
+
+      log('✅ HomeView: All videos paused and muted successfully');
     } catch (e) {
       log('❌ HomeView: Error pausing videos: $e');
     }
@@ -865,18 +511,24 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   // Handler methods for extracted components
   void _handleFeedTabChange(FeedTab newTab) {
-    if (newTab != _feedTab) {
-      setState(() {
-        _feedTab = newTab;
-        _currentIndex = 0;
-      });
+    log('🔄 HomeView: Switching from ${ref.read(activeFeedProvider).displayName} to ${newTab.displayName}');
 
-      if (newTab == FeedTab.following) {
-        _loadFollowingVideos();
-      } else {
-        _loadVideos();
-      }
+    // Use the single source of truth provider
+    switchFeed(ref, newTab);
+
+    // Reset current index and trigger video loading
+    setState(() {
+      _currentIndex = 0;
+    });
+
+    // Load videos for the new feed
+    if (newTab == FeedTab.following) {
+      _loadFollowingVideos();
+    } else {
+      _loadVideos();
     }
+
+    log('✅ HomeView: Feed switched to ${newTab.displayName}');
   }
 
   void _handleVideoTap(HomeVideo video) {
@@ -915,249 +567,15 @@ class _HomeViewState extends ConsumerState<HomeView>
         _currentIndex = index;
       });
 
-      // Disabled preloader - using direct controller creation instead
-      // _videoPreloader.updateCurrentIndex(index);
+      // VideoPreloaderService removed - using direct controller creation for TikTok-style instant play
+      // Controllers are created on-demand and managed by GlobalPlaybackManager
 
       // Pause all other videos when scrolling within same tab
       _pauseAllOtherVideos(index);
     }
   }
 
-  // _buildVideoContent method removed - now handled by HomeContentWidget
-  // ignore: unused_element
-  Widget _buildVideoContent(hp.HomeState homeState) {
-    // Use videos from the provider based on current feed tab
-    final videos = _feedTab == FeedTab.forYou
-        ? homeState.forYouVideos
-        : homeState.followingVideos;
-    final isLoading =
-        _feedTab == FeedTab.forYou ? homeState.isLoading : homeState.isLoading;
-
-    // Disabled preloader - using direct controller creation instead
-    // if (videos.isNotEmpty && !isLoading) {
-    //   WidgetsBinding.instance.addPostFrameCallback((_) {
-    //     _videoPreloader.initialize(videos, _currentIndex);
-    //   });
-    // }
-
-    // DEBUG: Log video counts
-    log('🔍 HomeView: _buildVideoContent - Feed: ${_feedTab.name}, Videos: ${videos.length}, Loading: $isLoading');
-    debugPrint(
-        '🔍 HomeView: _buildVideoContent - Feed: ${_feedTab.name}, Videos: ${videos.length}, Loading: $isLoading');
-
-    // Show loading state if we're loading OR if videos are empty but we haven't loaded yet
-    final shouldShowLoading =
-        isLoading || (!homeState.hasLoaded && videos.isEmpty);
-
-    if (shouldShowLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Loading videos...',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-      );
-    } else if (videos.isEmpty) {
-      // Show different empty states based on feed type
-      if (_feedTab == FeedTab.following) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.people_outline,
-                size: 80,
-                color: Color(0xFF9248D2), // Primary purple
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'No videos from people you follow',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Follow some creators to see their videos here',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _navigateToNetworkViewWithTab('Discover');
-                },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF9248D2), // Primary purple
-                        Color(0xFF7768DF), // Secondary purple
-                        Color(0xFF1670DE), // Blue
-                      ],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.circular(25),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.explore,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        'Discover creators',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      } else {
-        // For You empty state
-        return const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.video_library_outlined,
-                size: 80,
-                color: Colors.grey,
-              ),
-              SizedBox(height: 16),
-              Text(
-                'No videos available',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Pull to refresh or check your connection',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-    } else {
-      return SizedBox.expand(
-        child: RefreshIndicator(
-          onRefresh: _handlePullToRefresh,
-          color: const Color(0xFF9248D2),
-          backgroundColor: Colors.black.withValues(alpha: 0.8),
-          strokeWidth: 2.0,
-          displacement: 60.0, // Pull down distance before refresh triggers
-          child: GestureDetector(
-            onHorizontalDragEnd: _handleLeftSwipe,
-            child: PageView.builder(
-              controller: _pageController,
-              scrollDirection: Axis.vertical, // TikTok-style vertical scrolling
-              itemCount: videos.length + 1, // Add 1 for end-of-feed message
-              onPageChanged: (index) {
-                if (mounted) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
-
-                  // Disabled preloader - using direct controller creation instead
-                  // _videoPreloader.updateCurrentIndex(index);
-
-                  // SMART: Pause other videos and ensure instant autoplay
-                  if (index < videos.length) {
-                    _pauseAllOtherVideos(index);
-                    // Trigger instant autoplay for current video
-                    final coordinator = GlobalPlaybackCoordinator();
-                    coordinator.unblock();
-                  }
-                }
-              },
-              itemBuilder: (context, index) {
-                // Show end-of-feed message when reaching the end
-                if (index >= videos.length) {
-                  return _buildEndOfFeedMessage();
-                }
-
-                final video = videos[index];
-                final homeVM = ref.read(hp.homeProvider.notifier);
-                return VideoPlayerViewOptimized(
-                  key: ValueKey('${video.id}_return$_returnCounter'),
-                  video: video,
-                  isCurrentVideo: index == _currentIndex,
-                  isFirstVideo: index == 0,
-                  tabId: _feedTab == FeedTab.forYou
-                      ? 'home/forYou'
-                      : 'home/following', // Pass tab ID for coordinator
-                  homeViewModel: homeVM,
-                  showSheet: false,
-                  sheetType: '',
-                  onShowProfile: () => _showStreamerCardModal(video.creator),
-                  onShowComments: () =>
-                      _openComments(video.id, video.creator.id),
-                  onShowShare: () {
-                    debugPrint(
-                        '🎯 onShowShare LAMBDA called for video ${video.id}');
-                    try {
-                      _shareVideo(video);
-                    } catch (e, stackTrace) {
-                      debugPrint('❌ ERROR in onShowShare: $e');
-                      debugPrint('❌ Stack trace: $stackTrace');
-                    }
-                  },
-                  onShowStreamerCard: () =>
-                      _showStreamerCardModal(video.creator),
-                  isLiked: video.isLiked,
-                  isBookmarked: video.isFavorited, // cSpell:ignore Favorited
-                );
-              },
-            ),
-          ),
-        ),
-      );
-    }
-  }
+  // Dead code removed - _buildVideoContent is now handled by HomeContentWidget
 
   @override
   Widget build(BuildContext context) {
@@ -1170,25 +588,87 @@ class _HomeViewState extends ConsumerState<HomeView>
           children: [
             // Main content using extracted components
             Positioned.fill(
-              child: HomeContentWidget(
-                activeTab: _feedTab == FeedTab.forYou ? 'For You' : 'Following',
-                currentIndex: _currentIndex,
-                onTabChange: (tab) {
-                  _handleFeedTabChange(
-                      tab == 'For You' ? FeedTab.forYou : FeedTab.following);
+              child: Consumer(
+                builder: (context, ref, child) {
+                  final activeFeed = ref.watch(activeFeedProvider);
+                  return HomeContentWidget(
+                    key: ValueKey(activeFeed
+                        .tabId), // Stable key to prevent audio bleeding
+                    activeTab: activeFeed.displayName,
+                    currentIndex: _currentIndex,
+                    onTabChange: (tab) {
+                      final newTab =
+                          tab == 'For You' ? FeedTab.forYou : FeedTab.following;
+                      _handleFeedTabChange(newTab);
+                    },
+                    onPageChanged: _onPageChanged,
+                    onVideoTap: _handleVideoTap,
+                    onLeftSwipe: _handleLeftSwipeVideo,
+                    onRightSwipe: _handleRightSwipe,
+                    onDiscoverTap: _navigateToDiscover,
+                    onNetworkTap: _navigateToNetwork,
+                    onScrollControllerReady: (callback) {
+                      // Scroll callback now handled by HomeContentWidget
+                      log('✅ HomeView: Scroll callback registered');
+                    },
+                  );
                 },
-                onPageChanged: _onPageChanged,
-                onVideoTap: _handleVideoTap,
-                onLeftSwipe: _handleLeftSwipeVideo,
-                onRightSwipe: _handleRightSwipe,
-                onDiscoverTap: _navigateToDiscover,
-                onNetworkTap: _navigateToNetwork,
               ),
             ),
 
             // Legacy header removed - now handled by HomeContentWidget/FeedSelectorWidget
 
             // Feed dropdown is now handled by HomeContentWidget
+
+            // 🎨 LOADING INDICATOR: Show when ranking videos
+            if (_isRanking)
+              Positioned(
+                top: 60,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF9248D2).withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Personalizing your feed...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
 
             // StreamerCard full-screen modal
             if (_showStreamerCard && _currentStreamerCard != null)

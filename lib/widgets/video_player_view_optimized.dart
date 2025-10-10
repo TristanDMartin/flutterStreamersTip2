@@ -11,7 +11,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 // cspell:ignore unmuted unmuting HOMEVIEW
 import '../models/home_video.dart';
 import '../providers/home_provider.dart';
-import '../providers/following_provider.dart';
 import '../services/performance_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/robust_auth_service.dart';
@@ -24,9 +23,12 @@ import '../services/tiktok_like_service.dart';
 import '../services/video_controller_registry.dart';
 import '../services/production_logging_service.dart';
 import '../services/audio_enhancement_service.dart';
-import '../services/global_playback_coordinator.dart';
-import '../providers/playback_coordinator_provider.dart';
+import '../services/global_playback_manager.dart';
 import '../widgets/comments_view2.dart';
+import '../widgets/profile_view_optimized.dart';
+import '../widgets/streamer_card_view.dart';
+import '../services/follow_button_service.dart';
+import '../services/unified_algorithm_service.dart';
 
 // DEPRECATED: GlobalVideoController replaced by UnifiedVideoControlService
 // This class is kept for backward compatibility but delegates to UnifiedVideoControlService
@@ -39,10 +41,11 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final HomeViewModel homeViewModel;
   final bool showSheet;
   final String sheetType;
-  final VoidCallback onShowProfile;
-  final VoidCallback onShowComments;
-  final VoidCallback onShowShare;
-  final VoidCallback onShowStreamerCard;
+  final VoidCallback? onShowProfile; // Optional - falls back to internal method
+  final VoidCallback? onShowComments; // Optional - falls back to _handleComment
+  final VoidCallback? onShowShare; // Optional - falls back to _handleShare
+  final VoidCallback?
+      onShowStreamerCard; // Optional - falls back to internal method
   final bool isLiked;
   final bool isBookmarked;
 
@@ -55,10 +58,10 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
     required this.homeViewModel,
     required this.showSheet,
     required this.sheetType,
-    required this.onShowProfile,
-    required this.onShowComments,
-    required this.onShowShare,
-    required this.onShowStreamerCard,
+    this.onShowProfile, // Now optional
+    this.onShowComments, // Now optional
+    this.onShowShare, // Now optional
+    this.onShowStreamerCard, // Now optional
     this.isLiked = false,
     this.isBookmarked = false,
   });
@@ -85,7 +88,70 @@ class _VideoPlayerViewOptimizedState
   // Production-ready controller management
   final VideoControllerRegistry _registry = VideoControllerRegistry();
   final ProductionLoggingService _logger = ProductionLoggingService();
-  GlobalPlaybackCoordinator? _playbackCoordinator;
+
+  // 🚀 VIRAL ALGORITHM: Watch time tracking
+  Timer? _watchTimeTracker;
+  double _lastReportedWatchPercentage = 0.0;
+  bool _hasWatchedOnce = false; // Track if this is a replay
+
+  /// 🚀 VIRAL ALGORITHM: Start watch time tracking
+  void _startWatchTimeTracking() {
+    _watchTimeTracker?.cancel();
+    _watchTimeTracker = Timer.periodic(const Duration(seconds: 2), (_) {
+      _trackWatchProgress();
+    });
+    log('🎯 Watch time tracking started for video ${widget.video.id}');
+  }
+
+  /// 🚀 VIRAL ALGORITHM: Stop watch time tracking
+  void _stopWatchTimeTracking() {
+    _watchTimeTracker?.cancel();
+    _watchTimeTracker = null;
+    log('🎯 Watch time tracking stopped for video ${widget.video.id}');
+  }
+
+  /// 🚀 VIRAL ALGORITHM: Track watch progress
+  void _trackWatchProgress() {
+    if (_videoPlayerController == null ||
+        !_videoPlayerController!.value.isInitialized) {
+      return;
+    }
+
+    final position = _videoPlayerController!.value.position;
+    final duration = _videoPlayerController!.value.duration;
+
+    if (duration.inSeconds == 0) return;
+
+    final watchPercentage = (position.inSeconds / duration.inSeconds) * 100;
+
+    // Report every 10% milestone
+    if ((watchPercentage - _lastReportedWatchPercentage).abs() >= 10.0 ||
+        watchPercentage >= 95.0) {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      final didComplete = watchPercentage >= 75.0;
+
+      // Check if this is a replay
+      final isReplay = _hasWatchedOnce && watchPercentage < 25.0;
+      if (didComplete) _hasWatchedOnce = true;
+
+      log('🎯 Watch progress: ${widget.video.id} - ${watchPercentage.toStringAsFixed(1)}% (isReplay: $isReplay, didComplete: $didComplete)');
+
+      // Track engagement with unified algorithm
+      UnifiedAlgorithmService.instance.trackEngagement(
+        videoId: widget.video.id,
+        creatorId: widget.video.creator.id,
+        userId: currentUser.uid,
+        watchPercentage: watchPercentage,
+        totalDuration: duration.inSeconds.toDouble(),
+        isReplay: isReplay,
+        didComplete: didComplete,
+      );
+
+      _lastReportedWatchPercentage = watchPercentage;
+    }
+  }
 
   /// Safe controller operations with comprehensive error handling
   Future<bool> _safeSetVolume(double volume) async {
@@ -136,6 +202,10 @@ class _VideoPlayerViewOptimizedState
         debugPrint(
             '▶️ VideoPlayer: Starting playback for videoId: ${widget.video.id}');
         await _videoPlayerController!.play();
+
+        // 🚀 VIRAL ALGORITHM: Start tracking watch time when video plays
+        _startWatchTimeTracking();
+
         debugPrint(
             '✅ VideoPlayer: Playback started successfully for videoId: ${widget.video.id}');
         _logger.debug('Video playing: ${widget.video.id}', tag: 'VideoPlayer');
@@ -165,6 +235,10 @@ class _VideoPlayerViewOptimizedState
     try {
       if (_registry.isSafe(widget.video.id)) {
         await _videoPlayerController!.pause();
+
+        // 🚀 VIRAL ALGORITHM: Stop tracking when video pauses
+        _stopWatchTimeTracking();
+
         _logger.debug('Video paused: ${widget.video.id}', tag: 'VideoPlayer');
         return true;
       } else {
@@ -193,9 +267,6 @@ class _VideoPlayerViewOptimizedState
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Initialize playback coordinator
-    _playbackCoordinator = ref.read(playbackCoordinatorProvider);
-
     // TIKTOK-STYLE: Initialize video immediately for instant playback
     _initializeVideo();
   }
@@ -204,18 +275,30 @@ class _VideoPlayerViewOptimizedState
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
 
+    // 🚀 VIRAL ALGORITHM: Stop watch time tracking
+    _stopWatchTimeTracking();
+
     // Track performance
     PerformanceService()
         .trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
 
-    // Unregister from playback coordinator
-    if (_playbackCoordinator != null) {
-      _playbackCoordinator!.unregisterController(widget.video.id);
+    // Unregister from global playback manager (safe to call even if widget is disposed)
+    try {
+      final playbackManager = GlobalPlaybackManager.instance;
+      playbackManager.unregisterController(widget.video.id);
+      log('🎵 VideoPlayer: Unregistered controller from PlaybackManager for video ${widget.video.id}');
+    } catch (e) {
+      log('⚠️ VideoPlayer: Could not unregister from PlaybackManager (widget already disposed): $e');
     }
+
+    // Controllers now unregistered from GlobalPlaybackManager only
+
+    // 🔒 SAFETY: Mark as disposed first to prevent listener callbacks
+    _isDisposed = true;
 
     // With AutomaticKeepAliveClientMixin and preloader, we don't dispose controllers here
     // The VideoPreloaderService manages controller lifecycle
-    if (_videoPlayerController != null && !_isDisposed) {
+    if (_videoPlayerController != null) {
       try {
         // Check if controller is still valid before pausing
         final controllerValue = _videoPlayerController!.value;
@@ -230,8 +313,8 @@ class _VideoPlayerViewOptimizedState
       } catch (e) {
         log('⚠️ Widget dispose: Error pausing controller: $e');
       } finally {
-        // Don't set _videoPlayerController = null or _isDisposed = true
-        // Keep the reference for potential reuse by preloader
+        // Don't set _videoPlayerController = null - keep reference for preloader
+        // _isDisposed is already set to true above
       }
     }
 
@@ -262,11 +345,10 @@ class _VideoPlayerViewOptimizedState
     // SIMPLE: React when the page becomes current/non-current
     if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
       if (widget.isCurrentVideo) {
-        // Request focus from coordinator - this will pause all other videos
-        if (_playbackCoordinator != null) {
-          _playbackCoordinator!.requestFocus(widget.video.id, widget.tabId);
-          log('🎵 VideoPlayer: Requested focus for current video: ${widget.video.id}');
-        }
+        // 🔊 AUDIO FIX: Request focus from GlobalPlaybackManager
+        GlobalPlaybackManager.instance
+            .requestFocus(widget.video.id, widget.tabId);
+        log('🎵 VideoPlayer: Requested focus for current video: ${widget.video.id}');
 
         // This video is now current - play it with TikTok-style audio enhancement
         _applyAudioEnhancement().then((_) async {
@@ -281,11 +363,7 @@ class _VideoPlayerViewOptimizedState
               '🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
         });
       } else {
-        // Relinquish focus - this video is no longer current
-        if (_playbackCoordinator != null) {
-          _playbackCoordinator!.relinquishFocus(widget.video.id);
-          log('🎵 VideoPlayer: Relinquished focus for non-current video: ${widget.video.id}');
-        }
+        // Video is no longer current - just pause (GlobalPlaybackManager handles focus)
 
         // This video is no longer current - pause it immediately
         _safePause().then((_) {
@@ -298,12 +376,12 @@ class _VideoPlayerViewOptimizedState
       }
     }
 
-    // TIKTOK-STYLE: Also ensure focus if this video is current but coordinator doesn't have focus
-    if (widget.isCurrentVideo && _playbackCoordinator != null) {
-      // Check if this video should have focus but doesn't
-      if (_playbackCoordinator!.activeVideoId != widget.video.id) {
+    // 🔊 AUDIO FIX: Ensure focus if this video is current
+    if (widget.isCurrentVideo) {
+      final playbackManager = GlobalPlaybackManager.instance;
+      if (playbackManager.activeVideoId != widget.video.id) {
         log('🎵 VideoPlayer: Current video doesn\'t have focus, requesting it: ${widget.video.id}');
-        _playbackCoordinator!.requestFocus(widget.video.id, widget.tabId);
+        playbackManager.requestFocus(widget.video.id, widget.tabId);
       }
     }
   }
@@ -385,15 +463,13 @@ class _VideoPlayerViewOptimizedState
       _videoPlayerController!.addListener(_videoErrorListener);
       _videoPlayerController!.addListener(_videoStateListener);
 
-      // Register with playback coordinator (which will register with registry)
-      if (_playbackCoordinator != null) {
-        _playbackCoordinator!.registerController(
-          widget.video.id,
-          _videoPlayerController!,
-          widget
-              .tabId, // Use tabId as the owner (e.g., 'home/forYou', 'home/following')
-        );
-      }
+      // 🔊 AUDIO FIX: Register with GlobalPlaybackManager (single registration)
+      GlobalPlaybackManager.instance.registerController(
+        widget.video.id,
+        _videoPlayerController!,
+        owner: widget.tabId,
+      );
+      log('🎵 VideoPlayer: Registered controller with PlaybackManager for video ${widget.video.id}');
 
       _isInitialized = true;
       _logger.debug('Video initialized successfully: ${widget.video.id}',
@@ -404,19 +480,17 @@ class _VideoPlayerViewOptimizedState
         debugPrint(
             '🎯 VideoPlayer: Auto-playing current video - videoId: ${widget.video.id}');
 
-        // Request focus from coordinator to ensure audio plays
-        if (_playbackCoordinator != null) {
-          debugPrint('🎯 VideoPlayer: Requesting focus from coordinator');
-          _playbackCoordinator!.requestFocus(widget.video.id, widget.tabId);
+        // 🔊 AUDIO FIX: Use GlobalPlaybackManager exclusively
+        final playbackManager = ref.read(globalPlaybackManagerProvider);
+        playbackManager.activate(widget.video.id, owner: widget.tabId);
 
-          // Apply audio enhancement and unmute for first video
-          _applyAudioEnhancement().then((_) async {
-            await _safeSetVolume(1.0);
-            setState(() => _audioUnmuted = true);
-            debugPrint(
-                '🔊 VideoPlayer: Audio unmuted for first video - videoId: ${widget.video.id}');
-          });
-        }
+        // Apply audio enhancement and unmute for first video
+        _applyAudioEnhancement().then((_) async {
+          await _safeSetVolume(1.0);
+          setState(() => _audioUnmuted = true);
+          debugPrint(
+              '🔊 VideoPlayer: Audio unmuted for first video - videoId: ${widget.video.id}');
+        });
 
         await _safePlay();
         debugPrint(
@@ -448,16 +522,32 @@ class _VideoPlayerViewOptimizedState
   }
 
   void _videoErrorListener() {
-    if (_videoPlayerController?.value.hasError == true) {
-      final error = _videoPlayerController?.value.errorDescription ??
-          'Unknown video error';
-      log('❌ Video player error: $error');
-      _handleVideoError(Exception(error));
+    // 🔒 SAFETY: Check if widget is still mounted and controller is valid
+    if (!mounted || _videoPlayerController == null || _isDisposed) {
+      return;
+    }
+
+    try {
+      if (_videoPlayerController?.value.hasError == true) {
+        final error = _videoPlayerController?.value.errorDescription ??
+            'Unknown video error';
+        log('❌ Video player error: $error');
+        _handleVideoError(Exception(error));
+      }
+    } catch (e) {
+      // Controller was disposed, remove listener to prevent further calls
+      log('⚠️ VideoPlayer: Controller disposed during error listener: $e');
+      _videoPlayerController?.removeListener(_videoErrorListener);
     }
   }
 
   void _videoStateListener() {
-    if (_videoPlayerController != null && mounted) {
+    // 🔒 SAFETY: Check if widget is still mounted and controller is valid
+    if (!mounted || _videoPlayerController == null || _isDisposed) {
+      return;
+    }
+
+    try {
       final isPlaying = _videoPlayerController!.value.isPlaying;
       if (isPlaying != _isPlaying) {
         _logger.debug(
@@ -467,6 +557,10 @@ class _VideoPlayerViewOptimizedState
           _isPlaying = isPlaying;
         });
       }
+    } catch (e) {
+      // Controller was disposed, remove listener to prevent further calls
+      log('⚠️ VideoPlayer: Controller disposed during state listener: $e');
+      _videoPlayerController?.removeListener(_videoStateListener);
     }
   }
 
@@ -725,8 +819,49 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
+  void _handleProfileTap() {
+    // Handle profile/avatar tap - open StreamerCardView for other users
+    HapticFeedback.lightImpact();
+    log('👤 VideoPlayer: Opening StreamerCard for ${widget.video.creator.username}');
+
+    // Get current user ID for follow/connection logic
+    final auth = ref.read(robustAuthServiceProvider);
+    final currentUserId = auth.currentUser?.id;
+
+    // Pause video playback when navigating away
+    GlobalPlaybackManager.instance.block(reason: 'streamerCardOpened');
+
+    // Navigate to StreamerCardView (for viewing other users)
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute(
+        builder: (context) => StreamerCardView(
+          userId: widget.video.creator.id,
+          currentUserId: currentUserId,
+          onDismiss: () {
+            // Resume video playback when returning to HomeView
+            Navigator.of(context).pop();
+            GlobalPlaybackManager.instance.unblock();
+            log('👤 VideoPlayer: Returned from StreamerCard, resuming playback');
+          },
+        ),
+        fullscreenDialog: true,
+      ),
+    )
+        .then((_) {
+      // Also unblock when back button is used (fallback)
+      GlobalPlaybackManager.instance.unblock();
+      log('👤 VideoPlayer: Back from StreamerCard (via back button)');
+    });
+  }
+
   void _handleComment() {
-    // Handle comment button tap
+    // Handle comment button tap - use callback if provided, else use internal
+    if (widget.onShowComments != null) {
+      widget.onShowComments!();
+      return;
+    }
+
     HapticFeedback.lightImpact();
     showModalBottomSheet<void>(
       context: context,
@@ -750,6 +885,12 @@ class _VideoPlayerViewOptimizedState
   }
 
   void _handleShare() {
+    // Use callback if provided, else use internal implementation
+    if (widget.onShowShare != null) {
+      widget.onShowShare!();
+      return;
+    }
+
     debugPrint(
         '📤 _handleShare: Opening ShareSheetView for video ${widget.video.id}');
     HapticFeedback.lightImpact();
@@ -782,78 +923,90 @@ class _VideoPlayerViewOptimizedState
     );
   }
 
-  void _handleFollow(WidgetRef ref) {
-    // Follow button tapped for creator: ${widget.video.creator.id}
+  void _handleFollowTap(WidgetRef ref, FollowButtonState currentState) async {
+    // Follow button tapped - use NetworkView Connections logic
     HapticFeedback.lightImpact();
 
-    // Check if user is authenticated
-    final auth = FirebaseAuth.instance;
-    final robustAuth = ref.read(robustAuthServiceProvider);
+    final auth = ref.read(robustAuthServiceProvider);
+    final viewerId = auth.currentUser?.id;
 
-    // Current user ID: ${robustAuth.currentUser?.id ?? 'null'}
-    // Firebase Auth user: ${auth.currentUser?.uid}
-
-    // Check if we're in bypass mode (mock user)
-    if (robustAuth.currentUser?.id == 'dev_user_123') {
-      // Using mock follow functionality for development
-      _handleMockFollow(ref);
-      return;
-    } else {
-      // Using real Firebase follow functionality
-    }
-
-    if (auth.currentUser == null) {
-      // User not authenticated, cannot follow
+    if (viewerId == null) {
+      log('⚠️ VideoPlayer: Cannot follow - user not authenticated');
       return;
     }
 
-    // Track follow/unfollow engagement
-    final isCurrentlyFollowing = ref
-        .read(followingProvider)
-        .followingList
-        .contains(widget.video.creator.id);
-    // Currently following: $isCurrentlyFollowing
-    // Following list: ${ref.read(followingProvider).followingList}
-    // Followers list: ${ref.read(followingProvider).followersList}
+    final followService = ref.read(followButtonServiceProvider);
 
+    // Track engagement
     EngagementAnalyticsService().trackEngagement(
       videoId: widget.video.id,
-      event: isCurrentlyFollowing
+      event: currentState == FollowButtonState.following
           ? EngagementEvent.unfollow
           : EngagementEvent.follow,
       metadata: {
         'timestamp': DateTime.now().toIso8601String(),
         'creatorId': widget.video.creator.id,
+        'previousState': currentState.buttonText,
       },
     );
 
-    // Toggle follow state
-    ref.read(followingProvider.notifier).toggleFollow(widget.video.creator.id);
-  }
+    // Handle based on current state
+    bool success = false;
+    switch (currentState) {
+      case FollowButtonState.follow:
+        // Follow the user
+        success = await followService.followUser(
+          viewerId: viewerId,
+          creatorId: widget.video.creator.id,
+        );
+        if (success) {
+          log('✅ VideoPlayer: Successfully followed ${widget.video.creator.username}');
+          // Trigger UI rebuild
+          if (mounted) setState(() {});
+        }
+        break;
 
-  void _handleMockFollow(WidgetRef ref) {
-    try {
-      // Mock follow functionality for development
-      final isCurrentlyFollowing = ref
-          .read(followingProvider)
-          .followingList
-          .contains(widget.video.creator.id);
+      case FollowButtonState.following:
+        // Unfollow the user
+        success = await followService.unfollowUser(
+          viewerId: viewerId,
+          creatorId: widget.video.creator.id,
+        );
+        if (success) {
+          log('✅ VideoPlayer: Successfully unfollowed ${widget.video.creator.username}');
+          // Trigger UI rebuild
+          if (mounted) setState(() {});
+        }
+        break;
 
-      if (isCurrentlyFollowing) {
-        ref
-            .read(followingProvider.notifier)
-            .unfollowUser(widget.video.creator.id);
-        // Mock unfollowed: ${widget.video.creator.id}
-      } else {
-        ref
-            .read(followingProvider.notifier)
-            .followUser(widget.video.creator.id);
-        // Mock followed: ${widget.video.creator.id}
+      case FollowButtonState.connected:
+        // Show options menu (Message, Unfollow, Report)
+        log('👥 VideoPlayer: Connected user tapped - showing options');
+        // TODO: Show bottom sheet with options
+        break;
+
+      case FollowButtonState.self:
+        // No action for self
+        break;
+    }
+
+    if (!success &&
+        currentState != FollowButtonState.connected &&
+        currentState != FollowButtonState.self) {
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Failed to ${currentState == FollowButtonState.following ? 'unfollow' : 'follow'}. Please try again.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
-    } catch (e) {
-      // Mock follow error: $e
     }
   }
+
+  // _handleMockFollow removed - now using FollowButtonService with real Firestore
 
   void _handleTap() {
     // Add haptic feedback for better user experience
@@ -1165,13 +1318,13 @@ class _VideoPlayerViewOptimizedState
             Row(
               children: [
                 GestureDetector(
-                  onTap: widget.onShowProfile,
+                  onTap: widget.onShowProfile ?? () => _handleProfileTap(),
                   child: _buildUserAvatar(),
                 ),
                 const SizedBox(width: 8),
                 Flexible(
                   child: GestureDetector(
-                    onTap: widget.onShowProfile,
+                    onTap: widget.onShowProfile ?? () => _handleProfileTap(),
                     child: Text(
                       '@${widget.video.creator.username}',
                       maxLines: 1,
@@ -1185,41 +1338,81 @@ class _VideoPlayerViewOptimizedState
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Follow pill next to username
+                // Follow pill next to username - uses NetworkView Connections logic
                 Consumer(
                   builder: (context, ref, child) {
-                    final isFollowing = ref
-                        .watch(followingProvider)
-                        .followingList
-                        .contains(widget.video.creator.id);
-                    return GestureDetector(
-                      onTap: () => _handleFollow(ref),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          gradient: isFollowing
-                              ? null
-                              : const LinearGradient(
-                                  colors: [
-                                    Color(0xFF955CFF),
-                                    Color(0xFF3D99F7)
-                                  ], // Match ProfileView edit button
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                ),
-                          color: isFollowing ? Colors.grey[600] : null,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          isFollowing ? 'Following' : 'Follow',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                    final auth = ref.watch(robustAuthServiceProvider);
+                    final viewerId = auth.currentUser?.id;
+
+                    if (viewerId == null) {
+                      return const SizedBox.shrink(); // Hide if not logged in
+                    }
+
+                    return FutureBuilder<FollowButtonState>(
+                      future:
+                          ref.read(followButtonServiceProvider).getButtonState(
+                                viewerId: viewerId,
+                                creatorId: widget.video.creator.id,
+                              ),
+                      builder: (context, snapshot) {
+                        final state = snapshot.data ?? FollowButtonState.follow;
+
+                        // Hide button for self
+                        if (state == FollowButtonState.self) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[800],
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Text(
+                              'You',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          );
+                        }
+
+                        return GestureDetector(
+                          onTap: state.isTappable
+                              ? () => _handleFollowTap(ref, state)
+                              : null,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              gradient: state.showGradient
+                                  ? const LinearGradient(
+                                      colors: [
+                                        Color(0xFF955CFF),
+                                        Color(0xFF3D99F7)
+                                      ],
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                    )
+                                  : null,
+                              color: state == FollowButtonState.following
+                                  ? Colors.grey[600]
+                                  : (state == FollowButtonState.connected
+                                      ? const Color(0xFF9248D2)
+                                      : null),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              state.buttonText,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     );
                   },
                 ),
@@ -1319,7 +1512,7 @@ class _VideoPlayerViewOptimizedState
 
           // Creator avatar - Made slightly smaller
           GestureDetector(
-            onTap: widget.onShowProfile,
+            onTap: widget.onShowProfile ?? () => _handleProfileTap(),
             child: _buildActionAvatar(),
           ),
         ],
