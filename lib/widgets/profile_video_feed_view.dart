@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../providers/favorites_provider.dart';
+import '../services/unified_bookmark_service.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../services/video_service.dart';
@@ -44,6 +46,56 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   @override
   Widget build(BuildContext context) {
     return _buildGridLayout();
+  }
+
+  /// Check if favorites should be visible based on privacy settings
+  Future<bool> _shouldShowFavorites() async {
+    try {
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return false;
+
+      // If viewing own profile, always show favorites
+      if (widget.userId == currentUser.uid) {
+        return true;
+      }
+
+      // If viewing someone else's profile, check their privacy settings
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId!)
+          .get();
+
+      if (!userDoc.exists) return false;
+
+      final userData = userDoc.data();
+      final privacy = userData?['privacy'] as Map<String, dynamic>? ?? {};
+      final showFavoritesOnCard = privacy['showFavoritesOnCard'] ?? false;
+
+      return showFavoritesOnCard;
+    } catch (e) {
+      debugPrint(
+          '❌ ProfileVideoFeedView: Error checking favorites visibility: $e');
+      return false; // Default to hidden on error
+    }
+  }
+
+  /// Fetch another user's favorites from Firebase
+  Future<List<String>> _fetchUserFavorites(String userId) async {
+    try {
+      final favoritesSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('favorites')
+          .get();
+
+      final favorites = favoritesSnapshot.docs.map((doc) => doc.id).toList();
+      debugPrint(
+          '🎯 ProfileVideoFeedView: Fetched ${favorites.length} favorites for user $userId');
+      return favorites;
+    } catch (e) {
+      debugPrint('❌ ProfileVideoFeedView: Error fetching user favorites: $e');
+      return [];
+    }
   }
 
   Widget _buildGridLayout() {
@@ -112,22 +164,161 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildFavoritesGrid() {
-    final favoritesState = ref.watch(favoritesProvider);
-    final favorites = favoritesState.favorites.toList();
+    // Check privacy settings before showing favorites
+    return FutureBuilder<bool>(
+      future: _shouldShowFavorites(),
+      builder: (context, privacySnapshot) {
+        if (privacySnapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2,
+            ),
+          );
+        }
 
-    if (favorites.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.bookmark_border,
-        title: 'No Saved Videos',
-        subtitle: 'Videos you save will appear here',
-      );
-    }
+        final shouldShowFavorites = privacySnapshot.data ?? false;
 
-    // Convert favorite IDs to video data
-    final favoriteVideos =
-        favorites.map((videoId) => _getSampleVideoData(videoId)).toList();
+        if (!shouldShowFavorites) {
+          return _buildEmptyState(
+            icon: Icons.lock_outline,
+            title: 'Favorites are Private',
+            subtitle: 'This user has chosen to keep their favorites private',
+          );
+        }
 
-    return _buildVideoGridContent(favoriteVideos);
+        // Get favorites based on whether viewing own profile or someone else's
+        final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+        final isViewingOwnProfile = widget.userId == currentUser?.uid;
+
+        if (isViewingOwnProfile) {
+          // Use current user's favorites from unified bookmark service
+          final bookmarkService = UnifiedBookmarkService.instance;
+
+          // Get bookmarked video IDs from the service
+          final bookmarkedStates = bookmarkService.bookmarkStates;
+          final favorites = bookmarkedStates.entries
+              .where((entry) => entry.value.isBookmarked)
+              .map((entry) => entry.key)
+              .toList();
+
+          debugPrint(
+              '📚 ProfileVideoFeedView: Found ${favorites.length} bookmarked videos');
+
+          if (favorites.isEmpty) {
+            return _buildEmptyState(
+              icon: Icons.bookmark_border,
+              title: 'No Saved Videos',
+              subtitle: 'Videos you save will appear here',
+            );
+          }
+
+          // Fetch real video data from Firebase for favorite video IDs
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: _fetchFavoriteVideos(favorites),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return _buildEmptyState(
+                  icon: Icons.error_outline,
+                  title: 'Error Loading Videos',
+                  subtitle: 'Unable to load your saved videos',
+                );
+              }
+
+              final favoriteVideos = snapshot.data ?? [];
+
+              if (favoriteVideos.isEmpty) {
+                return _buildEmptyState(
+                  icon: Icons.bookmark_border,
+                  title: 'No Saved Videos',
+                  subtitle: 'Videos you save will appear here',
+                );
+              }
+
+              return _buildVideoGridContent(favoriteVideos);
+            },
+          );
+        } else {
+          // Fetch other user's favorites from Firebase
+          return FutureBuilder<List<String>>(
+            future: _fetchUserFavorites(widget.userId!),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return _buildEmptyState(
+                  icon: Icons.error_outline,
+                  title: 'Error Loading Videos',
+                  subtitle: 'Unable to load your saved videos',
+                );
+              }
+
+              final favoriteVideoIds = snapshot.data ?? [];
+
+              if (favoriteVideoIds.isEmpty) {
+                return _buildEmptyState(
+                  icon: Icons.bookmark_border,
+                  title: 'No Saved Videos',
+                  subtitle: 'This user hasn\'t saved any videos yet',
+                );
+              }
+
+              // Fetch real video data from Firebase for favorite video IDs
+              return FutureBuilder<List<Map<String, dynamic>>>(
+                future: _fetchFavoriteVideos(favoriteVideoIds),
+                builder: (context, videoSnapshot) {
+                  if (videoSnapshot.connectionState ==
+                      ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    );
+                  }
+
+                  if (videoSnapshot.hasError) {
+                    return _buildEmptyState(
+                      icon: Icons.error_outline,
+                      title: 'Error Loading Videos',
+                      subtitle: 'Unable to load saved videos',
+                    );
+                  }
+
+                  final favoriteVideos = videoSnapshot.data ?? [];
+
+                  if (favoriteVideos.isEmpty) {
+                    return _buildEmptyState(
+                      icon: Icons.bookmark_border,
+                      title: 'No Saved Videos',
+                      subtitle: 'This user hasn\'t saved any videos yet',
+                    );
+                  }
+
+                  return _buildVideoGridContent(favoriteVideos);
+                },
+              );
+            },
+          );
+        }
+      },
+    );
   }
 
   Widget _buildTaggedVideosGrid() {
@@ -162,6 +353,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       },
       color: const Color(0xFF9248d2),
       child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           crossAxisSpacing: 16, // Tight gutters = 16pt
@@ -236,6 +429,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       },
       color: const Color(0xFF9248d2),
       child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           crossAxisSpacing: 16, // Tight gutters = 16pt
@@ -430,25 +625,52 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     ];
   }
 
-  Map<String, dynamic> _getSampleVideoData(String videoId) {
-    return {
-      'id': videoId,
-      'title': 'Favorite Video',
-      'likes': 1200, // Use integer instead of string
-      'comments': 45,
-      'views': 5000,
-      'duration': 30.0, // Use double for duration
-      'thumbnail': 'https://example.com/favorite.jpg',
-      'videoUrl': 'https://example.com/favorite.mp4',
-      'creatorId': 'sample_creator',
-      'creatorName': 'Sample Creator',
-      'creatorUsername': 'sample_creator',
-      'creatorAvatar': 'https://example.com/avatar.jpg',
-      'caption': 'This is a favorite video',
-      'categoryId': 'general',
-      'createdAt':
-          Timestamp.fromDate(DateTime.now().subtract(const Duration(hours: 3))),
-    };
+  /// Fetch real video data from Firebase for favorite video IDs
+  Future<List<Map<String, dynamic>>> _fetchFavoriteVideos(
+      List<String> videoIds) async {
+    try {
+      if (videoIds.isEmpty) return [];
+
+      final List<Map<String, dynamic>> videos = [];
+
+      // Fetch videos in batches to avoid Firestore limits
+      const batchSize = 10;
+      for (int i = 0; i < videoIds.length; i += batchSize) {
+        final batch = videoIds.skip(i).take(batchSize).toList();
+
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('videos')
+            .where(FieldPath.documentId, whereIn: batch)
+            .get();
+
+        for (final doc in querySnapshot.docs) {
+          final data = doc.data();
+          videos.add({
+            'id': doc.id,
+            'videoURL': data['videoURL'] ?? data['videoUrl'] ?? '',
+            'thumbnailURL': data['thumbnailURL'] ?? data['thumbnailUrl'] ?? '',
+            'caption': data['caption'] ?? '',
+            'likes': data['likes'] ?? 0,
+            'comments': data['comments'] ?? 0,
+            'views': data['views'] ?? 0,
+            'duration': data['duration']?.toDouble() ?? 0.0,
+            'creatorId': data['creatorId'] ?? '',
+            'creatorName': data['creatorName'] ?? 'Unknown',
+            'creatorUsername': data['creatorUsername'] ?? 'unknown',
+            'creatorAvatar': data['creatorAvatar'] ?? '',
+            'categoryId': data['categoryId'] ?? '',
+            'createdAt': data['createdAt'],
+          });
+        }
+      }
+
+      debugPrint(
+          '🎯 ProfileVideoFeedView: Fetched ${videos.length} favorite videos from Firebase');
+      return videos;
+    } catch (e) {
+      debugPrint('❌ ProfileVideoFeedView: Error fetching favorite videos: $e');
+      return [];
+    }
   }
 
   void _openVideoPlayer(HomeVideo video, int index, List<HomeVideo> videos) {
@@ -467,7 +689,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     );
   }
 
-  void _openVideoPlayerFromMap(Map<String, dynamic> video, int index) {
+  Future<void> _openVideoPlayerFromMap(
+      Map<String, dynamic> video, int index) async {
     // Get all videos from the current feed based on feed type
     List<Map<String, dynamic>> allVideos = [];
 
@@ -475,8 +698,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       case ProfileVideoFeedType.favorites:
         final favoritesState = ref.read(favoritesProvider);
         final favorites = favoritesState.favorites.toList();
-        allVideos =
-            favorites.map((videoId) => _getSampleVideoData(videoId)).toList();
+        // Fetch real video data for favorites
+        final favoriteVideos = await _fetchFavoriteVideos(favorites);
+        allVideos = favoriteVideos;
         break;
       case ProfileVideoFeedType.tagged:
         allVideos = _getSampleTaggedVideos();

@@ -22,15 +22,17 @@ class CustomBottomNav extends ConsumerWidget {
     final mediaQuery = MediaQuery.of(context);
     final bottomPadding = mediaQuery.padding.bottom;
     final isIOS = Platform.isIOS;
-    
+
     // Platform-specific padding adjustments - increased to prevent overflow
     final extraBottomPadding = isIOS ? 12.0 : 8.0;
     final totalBottomPadding = bottomPadding + extraBottomPadding;
-    
+
     return ConstrainedBox(
       constraints: BoxConstraints(
-        minHeight: 60 + totalBottomPadding, // Minimum height to prevent overflow
-        maxHeight: 100 + totalBottomPadding, // Maximum height to prevent overflow
+        minHeight:
+            60 + totalBottomPadding, // Minimum height to prevent overflow
+        maxHeight:
+            100 + totalBottomPadding, // Maximum height to prevent overflow
       ),
       child: Container(
         decoration: const BoxDecoration(
@@ -46,7 +48,8 @@ class CustomBottomNav extends ConsumerWidget {
             topRight: Radius.circular(25),
           ),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25), // Stronger blur for liquid glass
+            filter: ImageFilter.blur(
+                sigmaX: 25, sigmaY: 25), // Stronger blur for liquid glass
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: const BorderRadius.only(
@@ -58,9 +61,11 @@ class CustomBottomNav extends ConsumerWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withValues(alpha: 0.15), // Brighter top glass layer
+                    Colors.white
+                        .withValues(alpha: 0.15), // Brighter top glass layer
                     Colors.white.withValues(alpha: 0.08), // Middle glass layer
-                    Colors.black.withValues(alpha: 0.4), // Darker bottom glass layer
+                    Colors.black
+                        .withValues(alpha: 0.4), // Darker bottom glass layer
                   ],
                   stops: const [0.0, 0.5, 1.0],
                 ),
@@ -119,7 +124,7 @@ class CustomBottomNav extends ConsumerWidget {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = currentIndex == index;
-    
+
     return Semantics(
       label: label,
       hint: isSelected ? 'Selected tab' : 'Tap to switch to $label tab',
@@ -135,21 +140,23 @@ class CustomBottomNav extends ConsumerWidget {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isSelected 
-                  ? Colors.white.withValues(alpha: 0.2) // More visible selected background
-                  : Colors.transparent,
-                border: isSelected 
-                  ? Border.all(
-                      color: Colors.white.withValues(alpha: 0.3),
-                      width: 1,
-                    )
-                  : null,
+                color: isSelected
+                    ? Colors.white.withValues(
+                        alpha: 0.2) // More visible selected background
+                    : Colors.transparent,
+                border: isSelected
+                    ? Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        width: 1,
+                      )
+                    : null,
               ),
               child: Icon(
                 icon,
-                color: isSelected 
-                  ? Colors.white 
-                  : Colors.white.withValues(alpha: 0.4), // More visible when not selected
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(
+                        alpha: 0.4), // More visible when not selected
                 size: 24,
               ),
             ),
@@ -157,9 +164,10 @@ class CustomBottomNav extends ConsumerWidget {
             Text(
               label,
               style: TextStyle(
-                color: isSelected 
-                  ? Colors.white 
-                  : Colors.white.withValues(alpha: 0.4), // More visible when not selected
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(
+                        alpha: 0.4), // More visible when not selected
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -173,23 +181,17 @@ class CustomBottomNav extends ConsumerWidget {
   Widget _buildInboxNavItem(WidgetRef ref) {
     final isSelected = currentIndex == 3;
     final unreadCountAsync = ref.watch(unreadMessagesProvider);
-    final activityState = ref.watch(activityProvider);
-    
+    final activityUnreadCount = ref.watch(unreadActivityCountProvider);
+
     // Calculate total unread count (messages + activity notifications)
     int totalUnreadCount = 0;
     unreadCountAsync.whenOrNull(
       data: (unreadCount) => totalUnreadCount += unreadCount,
     );
-    
-    // Add activity notification count
-    for (final notifications in activityState.grouped.values) {
-      for (final notification in notifications) {
-        if (notification.status == 'pending') {
-          totalUnreadCount++;
-        }
-      }
-    }
-    
+
+    // Add activity notification count (from separate provider)
+    totalUnreadCount += activityUnreadCount;
+
     return Semantics(
       label: 'Inbox',
       hint: isSelected ? 'Selected inbox tab' : 'Tap to open inbox',
@@ -207,21 +209,21 @@ class CustomBottomNav extends ConsumerWidget {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isSelected 
-                      ? Colors.white.withValues(alpha: 0.2)
-                      : Colors.transparent,
-                    border: isSelected 
-                      ? Border.all(
-                          color: Colors.white.withValues(alpha: 0.3),
-                          width: 1,
-                        )
-                      : null,
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : Colors.transparent,
+                    border: isSelected
+                        ? Border.all(
+                            color: Colors.white.withValues(alpha: 0.3),
+                            width: 1,
+                          )
+                        : null,
                   ),
                   child: Icon(
                     Icons.mail_outline,
-                    color: isSelected 
-                      ? Colors.white 
-                      : Colors.white.withValues(alpha: 0.4),
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.4),
                     size: 24,
                   ),
                 ),
@@ -243,7 +245,9 @@ class CustomBottomNav extends ConsumerWidget {
                           minHeight: 16,
                         ),
                         child: Text(
-                          totalUnreadCount > 99 ? '99+' : totalUnreadCount.toString(),
+                          totalUnreadCount > 99
+                              ? '99+'
+                              : totalUnreadCount.toString(),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 10,
@@ -260,9 +264,9 @@ class CustomBottomNav extends ConsumerWidget {
             Text(
               'Inbox',
               style: TextStyle(
-                color: isSelected 
-                  ? Colors.white 
-                  : Colors.white.withValues(alpha: 0.4),
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.4),
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),

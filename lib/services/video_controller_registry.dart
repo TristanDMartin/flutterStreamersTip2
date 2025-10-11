@@ -56,6 +56,12 @@ class VideoControllerRegistry {
 
   /// Check if controller is safe for play/pause operations
   bool isSafe(String videoId) {
+    // Safety check: Prevent invalid video IDs
+    if (videoId.isEmpty || videoId == '0') {
+      log('❌ VideoControllerRegistry: Invalid video ID: "$videoId"');
+      return false;
+    }
+
     final isRegistered = _isRegistered[videoId] == true;
     final controller = _controllers[videoId];
     final isInitialized = controller?.value.isInitialized == true;
@@ -72,6 +78,12 @@ class VideoControllerRegistry {
 
   /// Get registered controller
   VideoPlayerController? getController(String videoId) {
+    // Safety check: Prevent invalid video IDs
+    if (videoId.isEmpty || videoId == '0') {
+      log('❌ VideoControllerRegistry: Cannot get controller for invalid video ID: "$videoId"');
+      return null;
+    }
+
     return _isRegistered[videoId] == true ? _controllers[videoId] : null;
   }
 

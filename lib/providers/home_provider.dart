@@ -207,8 +207,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     // Reset the flag after a short delay
     Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
+      try {
         state = state.copyWith(shouldResumeCurrentVideo: false);
+      } catch (e) {
+        log('⚠️ HomeProvider: Error resetting resume flag (provider may be disposed): $e');
       }
     });
 
@@ -1103,25 +1105,45 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   Future<void> _updateVideoFavoriteState(String videoId) async {
-    // Store original state for rollback
-    final originalForYouState =
-        _getVideoFavoriteState(state.forYouVideos, videoId);
-    final originalFollowingState =
-        _getVideoFavoriteState(state.followingVideos, videoId);
+    // Check if video exists in current feeds before attempting optimistic update
+    final videoExistsInForYou = state.forYouVideos.any((v) => v.id == videoId);
+    final videoExistsInFollowing =
+        state.followingVideos.any((v) => v.id == videoId);
+
+    // Store original state for rollback (will be used in catch block if needed)
+    bool originalForYouState = false;
+    bool originalFollowingState = false;
 
     try {
-      // Optimistic UI update - update immediately for better UX
-      _updateVideoInFeed(state.forYouVideos, videoId, (video) {
-        return video.copyWith(
-          isFavorited: !video.isFavorited,
-        );
-      });
+      if (!videoExistsInForYou && !videoExistsInFollowing) {
+        // Video not in current feeds - just update the service without UI changes
+        log('⚠️ Video $videoId not in current feeds, updating service only');
+        await _favoritesService.toggleFavorite(videoId);
+        log('✅ Successfully toggled favorite for video: $videoId (service only)');
+        return;
+      }
 
-      _updateVideoInFeed(state.followingVideos, videoId, (video) {
-        return video.copyWith(
-          isFavorited: !video.isFavorited,
-        );
-      });
+      // Get original states for rollback
+      originalForYouState = _getVideoFavoriteState(state.forYouVideos, videoId);
+      originalFollowingState =
+          _getVideoFavoriteState(state.followingVideos, videoId);
+
+      // Optimistic UI update - update immediately for better UX
+      if (videoExistsInForYou) {
+        _updateVideoInFeed(state.forYouVideos, videoId, (video) {
+          return video.copyWith(
+            isFavorited: !video.isFavorited,
+          );
+        });
+      }
+
+      if (videoExistsInFollowing) {
+        _updateVideoInFeed(state.followingVideos, videoId, (video) {
+          return video.copyWith(
+            isFavorited: !video.isFavorited,
+          );
+        });
+      }
 
       // Update state to trigger UI rebuild
       state = state.copyWith(
@@ -1134,14 +1156,23 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
       log('✅ Successfully toggled favorite for video: $videoId');
     } catch (e) {
-      // Rollback optimistic update on error
-      _updateVideoInFeed(state.forYouVideos, videoId, (video) {
-        return video.copyWith(isFavorited: originalForYouState);
-      });
+      // Rollback optimistic update on error (only if video exists in feeds)
+      final videoExistsInForYou =
+          state.forYouVideos.any((v) => v.id == videoId);
+      final videoExistsInFollowing =
+          state.followingVideos.any((v) => v.id == videoId);
 
-      _updateVideoInFeed(state.followingVideos, videoId, (video) {
-        return video.copyWith(isFavorited: originalFollowingState);
-      });
+      if (videoExistsInForYou) {
+        _updateVideoInFeed(state.forYouVideos, videoId, (video) {
+          return video.copyWith(isFavorited: originalForYouState);
+        });
+      }
+
+      if (videoExistsInFollowing) {
+        _updateVideoInFeed(state.followingVideos, videoId, (video) {
+          return video.copyWith(isFavorited: originalFollowingState);
+        });
+      }
 
       // Update state to trigger UI rebuild
       state = state.copyWith(
@@ -1155,11 +1186,15 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   bool _getVideoFavoriteState(List<HomeVideo> videos, String videoId) {
-    final video = videos.firstWhere(
-      (v) => v.id == videoId,
-      orElse: () => throw StateError('Video not found: $videoId'),
-    );
-    return video.isFavorited;
+    try {
+      final video = videos.firstWhere((v) => v.id == videoId);
+      return video.isFavorited;
+    } catch (e) {
+      // Video not found in current feed arrays - this can happen during feed transitions
+      // Return false as default and let the FavoritesService handle the actual state
+      log('⚠️ Video $videoId not found in current feed arrays, using default favorite state');
+      return false;
+    }
   }
 
   void _updateVideoInFeed(

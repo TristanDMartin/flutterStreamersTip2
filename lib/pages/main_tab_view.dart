@@ -164,8 +164,15 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
   void _requestFocusForCurrentVideo() {
     // Request focus for the current video when returning to home tab
-    // This will be handled by the video player when it becomes current
     log('🎵 MainTabView: Requesting focus for current video');
+
+    try {
+      final playbackManager = GlobalPlaybackManager.instance;
+      playbackManager.resumeAfterTabSwitch();
+      log('✅ MainTabView: Called resumeAfterTabSwitch() for current video');
+    } catch (e) {
+      log('❌ MainTabView: Error resuming current video: $e');
+    }
   }
 
   void _onUploadTapped() {
@@ -283,15 +290,16 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
   void _pauseAllHomeViewVideos() {
     try {
-      log('🚨 AUDIO FIX: Starting aggressive video disposal...');
+      log('🚨 AUDIO FIX: Pausing HomeView videos for tab switch...');
 
       // 🔊 AUDIO FIX: Use GlobalPlaybackManager for consistent audio control
       final playbackManager = ref.read(globalPlaybackManagerProvider);
       playbackManager.pauseAllForTabSwitch(); // Pause + mute all videos
-      playbackManager.disposeAll(); // Dispose all controllers
+      // ❌ REMOVED: playbackManager.disposeAll() - too aggressive, causes disposal errors
 
-      log('⏸️ MainTabView: Paused and disposed all HomeView videos');
-      debugPrint('⏸️ MainTabView: Paused and disposed all HomeView videos');
+      log('⏸️ MainTabView: Paused all HomeView videos (controllers kept alive)');
+      debugPrint(
+          '⏸️ MainTabView: Paused all HomeView videos (controllers kept alive)');
     } catch (e) {
       log('❌ MainTabView: Error pausing HomeView videos: $e');
       debugPrint('❌ MainTabView: Error pausing HomeView videos: $e');
@@ -303,17 +311,11 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     try {
       log('🔄 MainTabView: Reactivating HomeView after return from other view');
 
-      // SEAMLESS RETURN: Force video reinitialization
-      final homeNotifier = ref.read(homeProvider.notifier);
+      // 🔊 AUDIO FIX: Simply unblock and resume - no aggressive disposal
+      final playbackManager = ref.read(globalPlaybackManagerProvider);
+      playbackManager.resumeAfterTabSwitch();
 
-      // Reset video state to force reinitialization
-      homeNotifier.resetVideoState();
-
-      // Resume current video playback after brief delay
-      _resumeTimer = Timer(const Duration(milliseconds: 100), () {
-        homeNotifier.resumeCurrentVideo();
-        log('✅ MainTabView: HomeView reactivated with video reinitialization');
-      });
+      log('✅ MainTabView: HomeView reactivated - videos should resume automatically');
     } catch (e) {
       log('❌ MainTabView: Error reactivating HomeView: $e');
     }

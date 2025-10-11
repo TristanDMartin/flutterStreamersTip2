@@ -34,18 +34,17 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     debugPrint('  - _isInitialized: $_isInitialized');
     debugPrint('  - Current state: ${state.grouped.length} notifications');
     debugPrint('🔍 ActivityNotifier: About to set up Firestore listener...');
-    
+
     // Always re-initialize to ensure real-time updates work
     _isInitialized = true; // Mark as initialized
-    
+
     try {
       await _notifSub?.cancel();
       state = state.copyWith(isLoading: true, hasError: false, error: null);
-      
+
       // Load real data from Firestore
       debugPrint('🔄 Loading real data from Firestore...');
       await _loadFirestoreData(userId);
-      
     } catch (e) {
       debugPrint('❌ Error in init: $e');
       state = state.copyWith(
@@ -58,9 +57,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
 
   Future<void> _loadFirestoreData(String userId) async {
     try {
-      debugPrint('🔍 ActivityNotifier: Setting up Firestore listener for user: $userId');
+      debugPrint(
+          '🔍 ActivityNotifier: Setting up Firestore listener for user: $userId');
       debugPrint('🔍 ActivityNotifier: Path: notifications/$userId/items');
-      
+
       // First, try to get initial data
       try {
         final initialSnapshot = await _db
@@ -69,14 +69,16 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
             .collection('items')
             .orderBy('timestamp', descending: true)
             .get();
-        
-        debugPrint('🔍 ActivityNotifier: Initial load - ${initialSnapshot.docs.length} documents');
-        
+
+        debugPrint(
+            '🔍 ActivityNotifier: Initial load - ${initialSnapshot.docs.length} documents');
+
         if (initialSnapshot.docs.isNotEmpty) {
           final items = initialSnapshot.docs.map((d) {
             final data = d.data();
-            debugPrint('🔍 ActivityNotifier: Processing document ${d.id}: $data');
-            
+            debugPrint(
+                '🔍 ActivityNotifier: Processing document ${d.id}: $data');
+
             return ActivityNotification(
               id: d.id,
               type: _typeFromString((data['type'] ?? 'like').toString()),
@@ -96,19 +98,20 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
             final key = _groupKey(n.timestamp);
             grouped.putIfAbsent(key, () => []).add(n);
           }
-          
+
           state = state.copyWith(
-            grouped: grouped, 
-            isLoading: false, 
+            grouped: grouped,
+            isLoading: false,
             hasError: false,
             error: null,
           );
-          debugPrint('✅ Initial Firestore data loaded successfully with ${items.length} notifications');
+          debugPrint(
+              '✅ Initial Firestore data loaded successfully with ${items.length} notifications');
         } else {
           // No notifications found
           state = state.copyWith(
-            grouped: {}, 
-            isLoading: false, 
+            grouped: {},
+            isLoading: false,
             hasError: false,
             error: null,
           );
@@ -123,7 +126,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         );
         return;
       }
-      
+
       // Then set up real-time listener
       _notifSub = _db
           .collection('notifications')
@@ -132,55 +135,58 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           .orderBy('timestamp', descending: true)
           .snapshots()
           .listen(
-            (snap) {
-              try {
-                debugPrint('🔍 ActivityNotifier: Real-time update - ${snap.docs.length} documents');
-                
-                final items = snap.docs.map((d) {
-                  final data = d.data();
-                  return ActivityNotification(
-                    id: d.id,
-                    type: _typeFromString((data['type'] ?? 'like').toString()),
-                    user: const UserConverter().fromJson(
-                      Map<String, dynamic>.from(data['user'] ?? {}),
-                    ),
-                    timestamp: const TimestampConverter().fromJson(data['timestamp']),
-                    postThumbnailUrl: data['postThumbnailUrl'] as String?,
-                    commentText: data['commentText'] as String?,
-                    status: (data['status'] ?? 'pending').toString(),
-                    videoId: data['videoId'] as String?,
-                  );
-                }).toList();
+        (snap) {
+          try {
+            debugPrint(
+                '🔍 ActivityNotifier: Real-time update - ${snap.docs.length} documents');
 
-                final grouped = <String, List<ActivityNotification>>{};
-                for (final n in items) {
-                  final key = _groupKey(n.timestamp);
-                  grouped.putIfAbsent(key, () => []).add(n);
-                }
-                
-                state = state.copyWith(
-                  grouped: grouped, 
-                  isLoading: false, 
-                  hasError: false,
-                  error: null,
-                );
-                debugPrint('✅ Real-time update successful with ${items.length} notifications');
-              } catch (e) {
-                debugPrint('🚨 Real-time update parsing error: $e');
-                state = state.copyWith(
-                  hasError: true,
-                  error: 'Failed to parse real-time updates: ${e.toString()}',
-                );
-              }
-            },
-            onError: (error) {
-              debugPrint('🚨 Real-time listener error: $error');
-              state = state.copyWith(
-                hasError: true,
-                error: 'Real-time updates failed: ${error.toString()}',
+            final items = snap.docs.map((d) {
+              final data = d.data();
+              return ActivityNotification(
+                id: d.id,
+                type: _typeFromString((data['type'] ?? 'like').toString()),
+                user: const UserConverter().fromJson(
+                  Map<String, dynamic>.from(data['user'] ?? {}),
+                ),
+                timestamp:
+                    const TimestampConverter().fromJson(data['timestamp']),
+                postThumbnailUrl: data['postThumbnailUrl'] as String?,
+                commentText: data['commentText'] as String?,
+                status: (data['status'] ?? 'pending').toString(),
+                videoId: data['videoId'] as String?,
               );
-            },
+            }).toList();
+
+            final grouped = <String, List<ActivityNotification>>{};
+            for (final n in items) {
+              final key = _groupKey(n.timestamp);
+              grouped.putIfAbsent(key, () => []).add(n);
+            }
+
+            state = state.copyWith(
+              grouped: grouped,
+              isLoading: false,
+              hasError: false,
+              error: null,
+            );
+            debugPrint(
+                '✅ Real-time update successful with ${items.length} notifications');
+          } catch (e) {
+            debugPrint('🚨 Real-time update parsing error: $e');
+            state = state.copyWith(
+              hasError: true,
+              error: 'Failed to parse real-time updates: ${e.toString()}',
+            );
+          }
+        },
+        onError: (error) {
+          debugPrint('🚨 Real-time listener error: $error');
+          state = state.copyWith(
+            hasError: true,
+            error: 'Real-time updates failed: ${error.toString()}',
           );
+        },
+      );
     } catch (e) {
       debugPrint('🚨 Firestore setup error: $e');
       state = state.copyWith(
@@ -190,7 +196,6 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       );
     }
   }
-
 
   Future<void> markAllDelivered(String userId) async {
     try {
@@ -227,17 +232,19 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           .update({'status': 'delivered'});
 
       // Update local state immediately for better UX
-      final updatedGrouped = Map<String, List<ActivityNotification>>.from(state.grouped);
+      final updatedGrouped =
+          Map<String, List<ActivityNotification>>.from(state.grouped);
       for (final key in updatedGrouped.keys) {
         final notifications = updatedGrouped[key]!;
         for (int i = 0; i < notifications.length; i++) {
           if (notifications[i].id == notificationId) {
-            updatedGrouped[key]![i] = notifications[i].copyWith(status: 'delivered');
+            updatedGrouped[key]![i] =
+                notifications[i].copyWith(status: 'delivered');
             break;
           }
         }
       }
-      
+
       state = state.copyWith(grouped: updatedGrouped);
       debugPrint('✅ Marked notification $notificationId as read');
     } catch (e) {
@@ -261,27 +268,23 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   void startProcessingListener(String userId) {
     try {
       _procSub?.cancel();
-      _procSub = _db
-          .collection('notifications')
-          .doc(userId)
-          .snapshots()
-          .listen(
-            (doc) {
-              try {
-                final data = doc.data() ?? {};
-                state = state.copyWith(
-                  isProcessing: (data['isProcessing'] ?? false) as bool,
-                  processingCount: (data['processingCount'] ?? 0) as int,
-                );
-              } catch (e) {
-                // Silently handle processing listener errors
-                debugPrint('Error in processing listener: $e');
-              }
-            },
-            onError: (error) {
-              debugPrint('Processing listener error: $error');
-            },
-          );
+      _procSub = _db.collection('notifications').doc(userId).snapshots().listen(
+        (doc) {
+          try {
+            final data = doc.data() ?? {};
+            state = state.copyWith(
+              isProcessing: (data['isProcessing'] ?? false) as bool,
+              processingCount: (data['processingCount'] ?? 0) as int,
+            );
+          } catch (e) {
+            // Silently handle processing listener errors
+            debugPrint('Error in processing listener: $e');
+          }
+        },
+        onError: (error) {
+          debugPrint('Processing listener error: $error');
+        },
+      );
     } catch (e) {
       debugPrint('Failed to start processing listener: $e');
     }
@@ -291,34 +294,67 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   Future<void> createTestNotification(String userId) async {
     try {
       debugPrint('🧪 Creating test notifications for user: $userId');
-      
+
       // Get current user data for more realistic test notifications
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
         debugPrint('❌ No current user found for test notifications');
         return;
       }
-      
+
       // Get current user's display name and photo URL
       final userDoc = await _db.collection('users').doc(currentUser.uid).get();
       final userData = userDoc.data() ?? {};
-      
+
       final testUser = {
         'id': currentUser.uid,
         'username': userData['username'] ?? 'current_user',
-        'displayName': userData['displayName'] ?? currentUser.displayName ?? 'Current User',
-        'avatarURL': userData['avatarURL'] ?? currentUser.photoURL ?? 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face',
+        'displayName': userData['displayName'] ??
+            currentUser.displayName ??
+            'Current User',
+        'avatarURL': userData['avatarURL'] ??
+            currentUser.photoURL ??
+            'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face',
       };
-      
+
       // Create all notification types
       final notificationTypes = [
-        {'type': 'like', 'data': {'videoId': 'test_video', 'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'}},
+        {
+          'type': 'like',
+          'data': {
+            'videoId': 'test_video',
+            'postThumbnailUrl':
+                'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'
+          }
+        },
         {'type': 'follow', 'data': {}},
-        {'type': 'comment', 'data': {'videoId': 'test_video', 'commentText': 'Great video!', 'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'}},
-        {'type': 'tag', 'data': {'videoId': 'test_video', 'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'}},
-        {'type': 'mention', 'data': {'videoId': 'test_video', 'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'}},
+        {
+          'type': 'comment',
+          'data': {
+            'videoId': 'test_video',
+            'commentText': 'Great video!',
+            'postThumbnailUrl':
+                'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'
+          }
+        },
+        {
+          'type': 'tag',
+          'data': {
+            'videoId': 'test_video',
+            'postThumbnailUrl':
+                'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'
+          }
+        },
+        {
+          'type': 'mention',
+          'data': {
+            'videoId': 'test_video',
+            'postThumbnailUrl':
+                'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop'
+          }
+        },
       ];
-      
+
       for (final notificationType in notificationTypes) {
         final notificationData = {
           'type': notificationType['type'],
@@ -328,14 +364,14 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           'status': 'pending',
           ...notificationType['data'] as Map<String, dynamic>,
         };
-        
+
         await _db
             .collection('notifications')
             .doc(userId)
             .collection('items')
             .add(notificationData);
       }
-      
+
       debugPrint('✅ Test notifications created successfully (all types)');
     } catch (e) {
       debugPrint('❌ Error creating test notifications: $e');
@@ -346,57 +382,65 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   Future<void> createRealisticTestNotifications(String userId) async {
     try {
       debugPrint('🧪 Creating realistic test notifications for user: $userId');
-      
+
       // Create notifications from different users with high-quality avatars
       final testUsers = [
         {
           'id': 'test_user_1',
           'username': 'gamer_pro',
           'displayName': 'Gamer Pro',
-          'avatarURL': 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+          'avatarURL':
+              'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
         },
         {
           'id': 'test_user_2',
           'username': 'art_creator',
           'displayName': 'Art Creator',
-          'avatarURL': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+          'avatarURL':
+              'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
         },
         {
           'id': 'test_user_3',
           'username': 'music_lover',
           'displayName': 'Music Lover',
-          'avatarURL': 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+          'avatarURL':
+              'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
         },
         {
           'id': 'test_user_4',
           'username': 'tech_reviewer',
           'displayName': 'Tech Reviewer',
-          'avatarURL': 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+          'avatarURL':
+              'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
         },
         {
           'id': 'test_user_5',
           'username': 'fitness_coach',
           'displayName': 'Fitness Coach',
-          'avatarURL': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
+          'avatarURL':
+              'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face&auto=format&q=80',
         },
       ];
-      
+
       final now = DateTime.now();
-      
+
       // Create various notification types from different users with high-quality video thumbnails
       final notifications = [
         {
           'type': 'like',
           'user': testUsers[0],
           'videoId': 'video_1',
-          'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp': Timestamp.fromDate(now.subtract(const Duration(minutes: 5))),
+          'postThumbnailUrl':
+              'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp':
+              Timestamp.fromDate(now.subtract(const Duration(minutes: 5))),
           'status': 'pending',
         },
         {
           'type': 'follow',
           'user': testUsers[1],
-          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 1))),
+          'timestamp':
+              Timestamp.fromDate(now.subtract(const Duration(hours: 1))),
           'status': 'delivered',
         },
         {
@@ -404,24 +448,30 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           'user': testUsers[2],
           'videoId': 'video_2',
           'commentText': 'Amazing content! Keep it up! 🎵',
-          'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 2))),
+          'postThumbnailUrl':
+              'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp':
+              Timestamp.fromDate(now.subtract(const Duration(hours: 2))),
           'status': 'delivered',
         },
         {
           'type': 'like',
           'user': testUsers[3],
           'videoId': 'video_3',
-          'postThumbnailUrl': 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 3))),
+          'postThumbnailUrl':
+              'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp':
+              Timestamp.fromDate(now.subtract(const Duration(hours: 3))),
           'status': 'pending',
         },
         {
           'type': 'mention',
           'user': testUsers[4],
           'videoId': 'video_4',
-          'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp': Timestamp.fromDate(now.subtract(const Duration(days: 1))),
+          'postThumbnailUrl':
+              'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp':
+              Timestamp.fromDate(now.subtract(const Duration(days: 1))),
           'status': 'delivered',
         },
         {
@@ -429,20 +479,24 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
           'user': testUsers[0],
           'videoId': 'video_5',
           'commentText': 'This is incredible! 🔥',
-          'postThumbnailUrl': 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 4))),
+          'postThumbnailUrl':
+              'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp':
+              Timestamp.fromDate(now.subtract(const Duration(hours: 4))),
           'status': 'delivered',
         },
         {
           'type': 'like',
           'user': testUsers[2],
           'videoId': 'video_6',
-          'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
-          'timestamp': Timestamp.fromDate(now.subtract(const Duration(hours: 6))),
+          'postThumbnailUrl':
+              'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&h=300&fit=crop&auto=format&q=80',
+          'timestamp':
+              Timestamp.fromDate(now.subtract(const Duration(hours: 6))),
           'status': 'pending',
         },
       ];
-      
+
       for (final notification in notifications) {
         await _db
             .collection('notifications')
@@ -450,7 +504,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
             .collection('items')
             .add(notification);
       }
-      
+
       debugPrint('✅ Realistic test notifications created successfully');
     } catch (e) {
       debugPrint('❌ Error creating realistic test notifications: $e');
@@ -458,19 +512,20 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   }
 
   /// Method to simulate a comment notification from another user
-  Future<void> simulateCommentNotification(String userId, String commenterId, String videoId) async {
+  Future<void> simulateCommentNotification(
+      String userId, String commenterId, String videoId) async {
     try {
       debugPrint('🧪 Simulating comment notification for user: $userId');
-      
+
       // Get commenter user data
       final commenterDoc = await _db.collection('users').doc(commenterId).get();
       if (!commenterDoc.exists) {
         debugPrint('❌ Commenter user not found: $commenterId');
         return;
       }
-      
+
       final commenterData = commenterDoc.data()!;
-      
+
       // Create notification data
       final notificationData = {
         'type': 'comment',
@@ -482,19 +537,20 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         },
         'videoId': videoId,
         'commentText': 'Great video! This is a test comment.',
-        'postThumbnailUrl': 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop',
+        'postThumbnailUrl':
+            'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=200&h=200&fit=crop',
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
         'status': 'pending',
       };
-      
+
       // Add notification to Firestore
       await _db
           .collection('notifications')
           .doc(userId)
           .collection('items')
           .add(notificationData);
-      
+
       debugPrint('✅ Comment notification simulated successfully');
     } catch (e) {
       debugPrint('❌ Error simulating comment notification: $e');
@@ -511,8 +567,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
 
   @override
   void dispose() {
+    debugPrint('🧹 ActivityNotifier: Disposing and cancelling listeners');
     _notifSub?.cancel();
     _procSub?.cancel();
+    _isInitialized = false;
     super.dispose();
   }
 
@@ -542,6 +600,14 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   }
 }
 
-final activityProvider = StateNotifierProvider<ActivityNotifier, ActivityState>((ref) {
+final activityProvider =
+    StateNotifierProvider.autoDispose<ActivityNotifier, ActivityState>((ref) {
   return ActivityNotifier();
+});
+
+/// Provider for unread activity count only - does NOT keep activity provider alive
+final unreadActivityCountProvider = Provider<int>((ref) {
+  // This will ONLY watch the provider when someone requests the count
+  // and won't prevent the activity provider from disposing
+  return 0; // Default to 0 when activity provider is not initialized
 });

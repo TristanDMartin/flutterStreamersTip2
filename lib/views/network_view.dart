@@ -12,7 +12,7 @@ import '../models/user_status.dart';
 import '../services/follows_service.dart';
 import '../services/migration_service.dart';
 import '../services/performance_monitoring_service.dart';
-import '../services/network_analytics_service.dart';
+import '../services/global_playback_manager.dart';
 import '../widgets/streamer_card_view.dart';
 import '../providers/status_provider.dart';
 
@@ -25,7 +25,8 @@ class NetworkView extends ConsumerStatefulWidget {
   ConsumerState<NetworkView> createState() => _NetworkViewState();
 }
 
-class _NetworkViewState extends ConsumerState<NetworkView> {
+class _NetworkViewState extends ConsumerState<NetworkView>
+    with AutomaticKeepAliveClientMixin {
   network_models.NetworkTab _selectedTab =
       network_models.NetworkTab.connections;
   final ScrollController _listController = ScrollController();
@@ -56,6 +57,9 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
   StreamSubscription<QuerySnapshot>? _followingSubscription;
 
   @override
+  bool get wantKeepAlive => false; // Don't keep alive when not visible
+
+  @override
   void initState() {
     super.initState();
 
@@ -68,27 +72,19 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
       }
     }
 
-    // Set up global error handling
-    FlutterError.onError = (FlutterErrorDetails details) {
-      try {
-        NetworkAnalyticsService.trackError(
-            'flutter_error', details.exception.toString());
-      } catch (e) {
-        debugPrint('❌ Error tracking error: $e');
-      }
-    };
-
-    // Initialize performance monitoring
-    PerformanceMonitoringService().startMonitoring();
+    // ❌ REMOVED: Global error handler override - now handled at app level
 
     // Initialize network connectivity monitoring
     _initializeConnectivityMonitoring();
 
-    // Initialize real-time relationship listeners
-    _initializeRelationshipListeners();
-
     // Load users from clean relationship service
     _loadUsersFromFollowsService();
+
+    // Start monitoring when view initializes
+    PerformanceMonitoringService().startMonitoring();
+
+    // Initialize real-time relationship listeners
+    _initializeRelationshipListeners();
   }
 
   /// Initialize network connectivity monitoring
@@ -311,13 +307,19 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
 
   @override
   void dispose() {
+    // Stop performance monitoring
     PerformanceMonitoringService().stopMonitoring();
+
+    // Dispose controllers
     _listController.dispose();
     _searchController.dispose();
-    _searchTimer?.cancel(); // Cancel search timer
-    _connectivitySubscription?.cancel(); // Cancel connectivity subscription
-    _followersSubscription?.cancel(); // Cancel followers listener
-    _followingSubscription?.cancel(); // Cancel following listener
+
+    // Cancel all timers and subscriptions
+    _searchTimer?.cancel();
+    _connectivitySubscription?.cancel();
+    _followersSubscription?.cancel();
+    _followingSubscription?.cancel();
+
     super.dispose();
   }
 
@@ -480,272 +482,295 @@ class _NetworkViewState extends ConsumerState<NetworkView> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
     const bg = LinearGradient(
       colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     );
 
-    return Container(
-      decoration: const BoxDecoration(gradient: bg),
-      child: SafeArea(
-        child: Column(
-          children: [
-            // Top row with network status, search and sort icons
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // User status indicator - sync with ProfileView
-                  Consumer(
-                    builder: (context, ref, child) {
-                      final statusAsync = ref.watch(statusNotifierProvider);
+    return WillPopScope(
+      onWillPop: () async {
+        debugPrint(
+            '🔄 NetworkView: WillPop triggered - resuming HomeView video');
+        // Resume video playback when returning to HomeView
+        try {
+          final playbackManager = GlobalPlaybackManager.instance;
+          playbackManager.unblock();
+          // Schedule resume for after the pop completes
+          Future.delayed(const Duration(milliseconds: 150), () {
+            debugPrint('▶️ NetworkView: Calling resumeAfterTabSwitch()');
+            playbackManager.resumeAfterTabSwitch();
+          });
+        } catch (e) {
+          debugPrint('❌ NetworkView: Error resuming video: $e');
+        }
+        return true; // Allow the pop to proceed
+      },
+      child: Container(
+        decoration: const BoxDecoration(gradient: bg),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Top row with network status, search and sort icons
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // User status indicator - sync with ProfileView
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final statusAsync = ref.watch(statusNotifierProvider);
 
-                      return statusAsync.when(
-                        data: (presence) {
-                          final statusColor = _getStatusColor(presence.status);
-                          final statusText = presence.status.displayName;
-                          final statusIcon = _getStatusIcon(presence.status);
+                        return statusAsync.when(
+                          data: (presence) {
+                            final statusColor =
+                                _getStatusColor(presence.status);
+                            final statusText = presence.status.displayName;
+                            final statusIcon = _getStatusIcon(presence.status);
 
-                          return Container(
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: statusColor.withValues(alpha: 0.4),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    statusIcon,
+                                    color: statusColor,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    statusText,
+                                    style: TextStyle(
+                                      color: statusColor,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                          loading: () => Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: statusColor.withValues(alpha: 0.2),
+                              color: Colors.grey.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: statusColor.withValues(alpha: 0.4),
+                                color: Colors.grey.withValues(alpha: 0.4),
                                 width: 1,
                               ),
                             ),
-                            child: Row(
+                            child: const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  statusIcon,
-                                  color: statusColor,
-                                  size: 16,
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.grey),
+                                  ),
                                 ),
-                                const SizedBox(width: 4),
+                                SizedBox(width: 4),
                                 Text(
-                                  statusText,
+                                  'Loading...',
                                   style: TextStyle(
-                                    color: statusColor,
+                                    color: Colors.grey,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ],
                             ),
-                          );
-                        },
-                        loading: () => Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.grey.withValues(alpha: 0.4),
-                              width: 1,
+                          ),
+                          error: (error, stack) => Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.red.withValues(alpha: 0.4),
+                                width: 1,
+                              ),
                             ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.grey),
-                                ),
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Loading...',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        error: (error, stack) => Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.red.withValues(alpha: 0.4),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.error,
-                                color: Colors.red,
-                                size: 16,
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Error',
-                                style: TextStyle(
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.error,
                                   color: Colors.red,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                                  size: 16,
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  // Search and sort icons
-                  Row(
-                    children: [
-                      // Manual refresh button
-                      GestureDetector(
-                        onTap: () {
-                          debugPrint('🔄 Manual refresh triggered');
-                          _refreshDataInstantly();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          margin: const EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                                color: Colors.green.withValues(alpha: 0.4)),
-                          ),
-                          child: const Icon(
-                            Icons.refresh,
-                            color: Colors.green,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                      // Debug button
-                      GestureDetector(
-                        onTap: () async {
-                          debugPrint('🔧 Debug: Testing FollowsService...');
-                          final followsSvc = FollowsService();
-
-                          // Test all three tabs
-                          final connections =
-                              await followsSvc.getUsersForTab('connections');
-                          final followers =
-                              await followsSvc.getUsersForTab('followers');
-                          final following =
-                              await followsSvc.getUsersForTab('following');
-
-                          debugPrint('🔧 Debug Results:');
-                          debugPrint('  Connections: ${connections.length}');
-                          debugPrint('  Followers: ${followers.length}');
-                          debugPrint('  Following: ${following.length}');
-
-                          // Show results in UI
-                          if (mounted && context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                    'Debug: C:${connections.length} F:${followers.length} Fo:${following.length}'),
-                                duration: const Duration(seconds: 3),
-                              ),
-                            );
-                          }
-
-                          // Force refresh
-                          _refreshDataInstantly();
-
-                          // Also test the real-time listeners
-                          debugPrint(
-                              '🔧 Debug: Testing real-time listeners...');
-                          _initializeRelationshipListeners();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          margin: const EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                                color: Colors.orange.withValues(alpha: 0.4)),
-                          ),
-                          child: const Icon(
-                            Icons.bug_report,
-                            color: Colors.orange,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                      // Sort button
-                      GestureDetector(
-                        onTap: _showSortOptions,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          margin: const EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              width: 1,
+                                SizedBox(width: 4),
+                                Text(
+                                  'Error',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          child: const Icon(
-                            Icons.sort,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                      // Search button
-                      GestureDetector(
-                        onTap: _toggleSearch,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              width: 1,
+                        );
+                      },
+                    ),
+                    // Search and sort icons
+                    Row(
+                      children: [
+                        // Manual refresh button
+                        GestureDetector(
+                          onTap: () {
+                            debugPrint('🔄 Manual refresh triggered');
+                            _refreshDataInstantly();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            margin: const EdgeInsets.only(right: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: Colors.green.withValues(alpha: 0.4)),
+                            ),
+                            child: const Icon(
+                              Icons.refresh,
+                              color: Colors.green,
+                              size: 20,
                             ),
                           ),
-                          child: Icon(
-                            _isSearchVisible ? Icons.close : Icons.search,
-                            color: Colors.white,
-                            size: 20,
+                        ),
+                        // Debug button
+                        GestureDetector(
+                          onTap: () async {
+                            debugPrint('🔧 Debug: Testing FollowsService...');
+                            final followsSvc = FollowsService();
+
+                            // Test all three tabs
+                            final connections =
+                                await followsSvc.getUsersForTab('connections');
+                            final followers =
+                                await followsSvc.getUsersForTab('followers');
+                            final following =
+                                await followsSvc.getUsersForTab('following');
+
+                            debugPrint('🔧 Debug Results:');
+                            debugPrint('  Connections: ${connections.length}');
+                            debugPrint('  Followers: ${followers.length}');
+                            debugPrint('  Following: ${following.length}');
+
+                            // Show results in UI
+                            if (mounted && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      'Debug: C:${connections.length} F:${followers.length} Fo:${following.length}'),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            }
+
+                            // Force refresh
+                            _refreshDataInstantly();
+
+                            // Also test the real-time listeners
+                            debugPrint(
+                                '🔧 Debug: Testing real-time listeners...');
+                            _initializeRelationshipListeners();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            margin: const EdgeInsets.only(right: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: Colors.orange.withValues(alpha: 0.4)),
+                            ),
+                            child: const Icon(
+                              Icons.bug_report,
+                              color: Colors.orange,
+                              size: 20,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        // Sort button
+                        GestureDetector(
+                          onTap: _showSortOptions,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            margin: const EdgeInsets.only(right: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                width: 1,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.sort,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                        // Search button
+                        GestureDetector(
+                          onTap: _toggleSearch,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                width: 1,
+                              ),
+                            ),
+                            child: Icon(
+                              _isSearchVisible ? Icons.close : Icons.search,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // Search bar (conditional)
-            if (_isSearchVisible) _buildSearchBar(),
+              // Search bar (conditional)
+              if (_isSearchVisible) _buildSearchBar(),
 
-            // Tab buttons with swipe functionality
-            _buildTabButtons(),
+              // Tab buttons with swipe functionality
+              _buildTabButtons(),
 
-            // Main content area
-            Expanded(
-              child: _buildMainContent(),
-            ),
-          ],
+              // Main content area
+              Expanded(
+                child: _buildMainContent(),
+              ),
+            ],
+          ),
         ),
       ),
     );

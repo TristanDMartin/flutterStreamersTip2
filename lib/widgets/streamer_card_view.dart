@@ -963,81 +963,88 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildFrontView() {
-    return Container(
-      // FIXED: Remove SafeArea to allow manual control
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF6137EB), // Purple
-            Color(0xFF1C135D), // Dark purple
-          ],
+    return Stack(
+      children: [
+        // Background gradient - respects safe area
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF6137EB), // Purple
+                Color(0xFF1C135D), // Dark purple
+              ],
+            ),
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          _buildTopBar(),
-          const SizedBox(height: 8), // Add spacing after top bar
-          _buildProfileSection(),
-          _buildStatisticsRow(),
-          _buildActionButtons(),
-          const SizedBox(height: 24), // Spacing between buttons and tabs
-          _buildContentTabs(),
-          _buildContentArea(),
-        ],
-      ),
+        // Main content with proper safe area handling
+        SafeArea(
+          child: Column(
+            children: [
+              _buildTopBar(),
+              const SizedBox(height: 8), // Add spacing after top bar
+              _buildProfileSection(),
+              _buildStatisticsRow(),
+              _buildActionButtons(),
+              const SizedBox(height: 24), // Spacing between buttons and tabs
+              _buildContentTabs(),
+              _buildContentArea(),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildTopBar() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Back button
-            GestureDetector(
-              onTap: widget.onDismiss,
-              child: const Icon(
-                Icons.arrow_back,
-                color: Colors.white,
-                size: 24,
-              ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Back button
+          InstantResponseButton(
+            onPressed: widget.onDismiss,
+            hapticType: HapticFeedbackType.lightImpact,
+            child: const Icon(
+              Icons.arrow_back,
+              color: Colors.white,
+              size: 24,
             ),
-            // Center: No title, clean gradient background
-            const SizedBox(width: 40), // Spacer for center
-            // Right side action buttons
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: () => _flipCard(),
+          ),
+          // Center: No title, clean gradient background
+          const SizedBox(width: 40), // Spacer for center
+          // Right side action buttons
+          Row(
+            children: [
+              InstantResponseButton(
+                onPressed: () => _flipCard(),
+                hapticType: HapticFeedbackType.lightImpact,
+                child: const Icon(
+                  Icons.flip,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              InstantResponseButton(
+                onPressed: () => _showShareSheet(context),
+                hapticType: HapticFeedbackType.lightImpact,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
                   child: const Icon(
-                    Icons.flip,
+                    Icons.more_horiz,
                     color: Colors.white,
                     size: 24,
                   ),
                 ),
-                const SizedBox(width: 16),
-                InstantResponseButton(
-                  onPressed: () => _showShareSheet(context),
-                  hapticType: HapticFeedbackType.lightImpact,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    child: const Icon(
-                      Icons.more_horiz,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -2524,76 +2531,101 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildBackView() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Color(0xFF6137EB),
-            Color(0xFF1C135D),
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
-      child: Stack(
-        children: [
-          // Header with navigation buttons
-          _buildHeader(),
-          // Main content
-          Padding(
-            padding:
-                const EdgeInsets.only(top: 80), // Space for the header buttons
-            child: CustomScrollView(
-              slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                SliverToBoxAdapter(child: _buildIdentity()),
-                const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                SliverToBoxAdapter(child: _buildTags()),
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                SliverToBoxAdapter(
-                    child: _buildSectionHeader('Bio', _showBio,
-                        () => setState(() => _showBio = !_showBio))),
-                if (_showBio) SliverToBoxAdapter(child: _buildBioBody()),
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                SliverToBoxAdapter(
-                    child: _buildSectionHeader(
-                        'Platforms',
-                        _showPlatforms,
-                        () =>
-                            setState(() => _showPlatforms = !_showPlatforms))),
-                if (_showPlatforms)
-                  SliverToBoxAdapter(child: _buildPlatforms(_platforms)),
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                SliverToBoxAdapter(
-                    child: _buildSectionHeader('Calendar', _showCalendar,
-                        () => setState(() => _showCalendar = !_showCalendar))),
-                if (_showCalendar)
-                  SliverToBoxAdapter(child: _buildCalendar(_calendarEvents)),
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+    return Stack(
+      children: [
+        // Background gradient - respects safe area
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFF6137EB),
+                Color(0xFF1C135D),
               ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
             ),
           ),
-        ],
-      ),
+        ),
+        // Main content with proper safe area handling
+        SafeArea(
+          child: Stack(
+            children: [
+              // Header with navigation buttons
+              _buildHeader(),
+              // Main content
+              Padding(
+                padding: const EdgeInsets.only(
+                    top: 80), // Space for the header buttons
+                child: CustomScrollView(
+                  slivers: [
+                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                    SliverToBoxAdapter(child: _buildIdentity()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                    SliverToBoxAdapter(child: _buildTags()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                    SliverToBoxAdapter(
+                        child: _buildSectionHeader('Bio', _showBio,
+                            () => setState(() => _showBio = !_showBio))),
+                    if (_showBio) SliverToBoxAdapter(child: _buildBioBody()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                    SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                            'Platforms',
+                            _showPlatforms,
+                            () => setState(
+                                () => _showPlatforms = !_showPlatforms))),
+                    if (_showPlatforms)
+                      SliverToBoxAdapter(child: _buildPlatforms(_platforms)),
+                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                    SliverToBoxAdapter(
+                        child: _buildSectionHeader(
+                            'Calendar',
+                            _showCalendar,
+                            () => setState(
+                                () => _showCalendar = !_showCalendar))),
+                    if (_showCalendar)
+                      SliverToBoxAdapter(
+                          child: _buildCalendar(_calendarEvents)),
+                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildHeader() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            IconButton(
-              onPressed: _flipCard,
-              icon: const Icon(Icons.flip, color: Colors.white, size: 24),
-              tooltip: 'Flip',
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Back button (same as front view)
+          InstantResponseButton(
+            onPressed: widget.onDismiss,
+            hapticType: HapticFeedbackType.lightImpact,
+            child: const Icon(
+              Icons.arrow_back,
+              color: Colors.white,
+              size: 24,
             ),
-          ],
-        ),
+          ),
+          // Right side: Flip button
+          InstantResponseButton(
+            onPressed: _flipCard,
+            hapticType: HapticFeedbackType.lightImpact,
+            child: const Icon(
+              Icons.flip,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ],
       ),
     );
   }

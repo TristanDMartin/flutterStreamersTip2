@@ -19,6 +19,7 @@ import '../services/engagement_analytics_service.dart';
 import '../services/unified_algorithm_service.dart';
 import '../services/global_playback_manager.dart';
 import '../services/streamers_tip_like_service.dart';
+import '../services/favorites_service_optimized.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
@@ -92,6 +93,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setupFavoritesManager();
       _loadUserLikedVideos(); // TikTok-style: Load liked videos for heart state
+      _loadUserFavorites(); // Load user's bookmarked videos
       _loadVideos();
       _initializeVideoService();
     });
@@ -184,6 +186,26 @@ class _HomeViewState extends ConsumerState<HomeView>
       log('✅ HomeView: Liked videos loaded successfully');
     } catch (e) {
       log('❌ HomeView: Error loading liked videos: $e');
+      // Don't block app startup if this fails
+    }
+  }
+
+  /// Load user's bookmarked videos for favorites tab
+  Future<void> _loadUserFavorites() async {
+    try {
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        log('⚠️ HomeView: No user logged in, skipping favorites load');
+        return;
+      }
+
+      log('🔄 HomeView: Loading favorites for user ${currentUser.uid}');
+
+      await FavoritesServiceOptimized().forceSync();
+
+      log('✅ HomeView: Favorites loaded successfully');
+    } catch (e) {
+      log('❌ HomeView: Error loading favorites: $e');
       // Don't block app startup if this fails
     }
   }
@@ -435,13 +457,19 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   /// SIMPLE: Pause all other videos when scrolling within same tab
   void _pauseAllOtherVideos(int currentIndex) {
+    if (!mounted) return;
+
     log('⏸️ HomeView: Pausing all other videos, current index: $currentIndex');
 
-    // 🔊 AUDIO FIX: Use GlobalPlaybackManager to pause all videos
-    final playbackManager = ref.read(globalPlaybackManagerProvider);
-    playbackManager.pauseAll();
+    try {
+      // 🔊 AUDIO FIX: Use GlobalPlaybackManager to pause all videos
+      final playbackManager = ref.read(globalPlaybackManagerProvider);
+      playbackManager.pauseAll();
 
-    log('✅ HomeView: All other videos paused, only current video should play');
+      log('✅ HomeView: All other videos paused, only current video should play');
+    } catch (e) {
+      log('❌ HomeView: Error pausing other videos: $e');
+    }
   }
 
   /// Handle left swipe gesture to open StreamerCardView
@@ -521,6 +549,11 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   void _pauseAllHomeViewVideos() {
     log('⏸️ HomeView: Pausing all videos before navigation');
+    if (!mounted) {
+      log('⚠️ HomeView: Widget not mounted, skipping pause');
+      return;
+    }
+
     try {
       // 🔊 AUDIO FIX: Use GlobalPlaybackManager for consistent audio control
       final playbackManager = ref.read(globalPlaybackManagerProvider);
@@ -543,15 +576,19 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   // Handler methods for extracted components
   void _handleFeedTabChange(FeedTab newTab) {
+    if (!mounted) return;
+
     log('🔄 HomeView: Switching from ${ref.read(activeFeedProvider).displayName} to ${newTab.displayName}');
 
     // Use the single source of truth provider
     switchFeed(ref, newTab);
 
     // Reset current index and trigger video loading
-    setState(() {
-      _currentIndex = 0;
-    });
+    if (mounted) {
+      setState(() {
+        _currentIndex = 0;
+      });
+    }
 
     // Load videos for the new feed
     if (newTab == FeedTab.following) {
@@ -579,15 +616,22 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _navigateToDiscover() {
+    if (!mounted) return;
+
     HapticFeedback.lightImpact();
     _pauseAllHomeViewVideos();
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const DiscoverView()),
-    );
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const DiscoverView()),
+      );
+    }
   }
 
   void _navigateToNetwork() {
+    if (!mounted) return;
+
     HapticFeedback.lightImpact();
     _pauseAllHomeViewVideos();
     _navigateToNetworkViewWithTab('discover');

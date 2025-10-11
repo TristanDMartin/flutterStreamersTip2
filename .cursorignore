@@ -1,0 +1,16 @@
+# Ignore duplicate nested project folder
+flutterST/
+
+# Build artifacts
+build/
+.dart_tool/
+
+# IDE
+.idea/
+*.iml
+
+# Large binaries
+*.apk
+*.ipa
+*.aab
+

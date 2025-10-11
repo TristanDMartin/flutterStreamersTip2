@@ -27,6 +27,7 @@ import '../widgets/comments_view2.dart';
 import '../widgets/streamer_card_view.dart';
 import '../services/follow_button_service.dart';
 import '../services/unified_algorithm_service.dart';
+import '../services/unified_bookmark_service.dart';
 
 // DEPRECATED: GlobalVideoController replaced by UnifiedVideoControlService
 // This class is kept for backward compatibility but delegates to UnifiedVideoControlService
@@ -46,6 +47,7 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
       onShowStreamerCard; // Optional - falls back to internal method
   final bool isLiked;
   final bool isBookmarked;
+  final bool showHUD; // NEW: Control whether to show HUD overlays
 
   VideoPlayerViewOptimized({
     super.key,
@@ -62,6 +64,7 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
     this.onShowStreamerCard, // Now optional
     this.isLiked = false,
     this.isBookmarked = false,
+    this.showHUD = true, // Default to true for backward compatibility
   });
 
   @override
@@ -83,10 +86,16 @@ class _VideoPlayerViewOptimizedState
   bool _audioUnmuted =
       false; // Track if audio has been unmuted by user interaction
   bool _isDisposed = false; // Track if this widget's controller is disposed
+  bool _isBookmarked =
+      false; // Local bookmark state that syncs with FavoritesService
 
   // Production-ready controller management
   final VideoControllerRegistry _registry = VideoControllerRegistry();
   final ProductionLoggingService _logger = ProductionLoggingService();
+  late UnifiedBookmarkService _bookmarkService;
+
+  // Stream subscription for bookmark state changes
+  StreamSubscription<BookmarkEvent>? _bookmarkSubscription;
 
   // 🚀 VIRAL ALGORITHM: Watch time tracking
   Timer? _watchTimeTracker;
@@ -109,7 +118,42 @@ class _VideoPlayerViewOptimizedState
     log('🎯 Watch time tracking stopped for video ${widget.video.id}');
   }
 
-  /// 🚀 VIRAL ALGORITHM: Track watch progress
+  /// Initialize bookmark state from UnifiedBookmarkService and listen to changes
+  void _initializeBookmarkState() {
+    _bookmarkService = UnifiedBookmarkService.instance;
+
+    // Initialize current state
+    _isBookmarked = _bookmarkService.isBookmarked(widget.video.id);
+
+    // Listen to bookmark state changes to prevent memory leaks
+    _bookmarkSubscription = _bookmarkService.eventStream.listen((event) {
+      if (event.videoId == widget.video.id) {
+        switch (event.type) {
+          case BookmarkEventType.toggle:
+          case BookmarkEventType.success:
+            if (mounted) {
+              setState(() {
+                _isBookmarked = event.isBookmarked ?? false;
+              });
+            }
+            break;
+          case BookmarkEventType.error:
+            // Revert optimistic update on error
+            if (mounted) {
+              setState(() {
+                _isBookmarked = _bookmarkService.isBookmarked(widget.video.id);
+              });
+            }
+            break;
+        }
+      }
+    });
+
+    debugPrint(
+        '📚 VideoPlayerView: Initialized bookmark state for video ${widget.video.id}: $_isBookmarked');
+  }
+
+  // 🚀 VIRAL ALGORITHM: Track watch progress
   void _trackWatchProgress() {
     if (_videoPlayerController == null ||
         !_videoPlayerController!.value.isInitialized) {
@@ -263,6 +307,9 @@ class _VideoPlayerViewOptimizedState
     // Removed WidgetsBinding observer - GlobalPlaybackManager handles lifecycle
     // WidgetsBinding.instance.addObserver(this);
 
+    // Initialize bookmark state from FavoritesService
+    _initializeBookmarkState();
+
     // TIKTOK-STYLE: Initialize video immediately for instant playback
     _initializeVideo();
   }
@@ -271,6 +318,10 @@ class _VideoPlayerViewOptimizedState
   void dispose() {
     // Removed WidgetsBinding observer - GlobalPlaybackManager handles lifecycle
     // WidgetsBinding.instance.removeObserver(this);
+
+    // 🔖 MEMORY LEAK FIX: Clean up bookmark subscription
+    _bookmarkSubscription?.cancel();
+    _bookmarkSubscription = null;
 
     // 🚀 VIRAL ALGORITHM: Stop watch time tracking
     _stopWatchTimeTracking();
@@ -330,7 +381,8 @@ class _VideoPlayerViewOptimizedState
   @override
   void didUpdateWidget(covariant VideoPlayerViewOptimized oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_videoPlayerController == null || !_isInitialized) return;
+    if (_videoPlayerController == null || !_isInitialized || _isDisposed)
+      return;
 
     // Check if we should pause all videos (when leaving HomeView)
     final homeState = ref.read(homeProvider);
@@ -442,10 +494,15 @@ class _VideoPlayerViewOptimizedState
       log('🎵 VideoPlayer: Registered controller with PlaybackManager for video ${widget.video.id}');
 
       // 🔒 SAFETY: Register with VideoControllerRegistry for safety checks
-      _registry.register(widget.video.id, _videoPlayerController!);
-      _registry
-          .markVisible(widget.video.id); // Mark as visible for current video
-      log('🔒 VideoPlayer: Registered controller with Registry for safety checks: ${widget.video.id}');
+      final registrationSuccess =
+          _registry.register(widget.video.id, _videoPlayerController!);
+      if (registrationSuccess) {
+        _registry
+            .markVisible(widget.video.id); // Mark as visible for current video
+        log('🔒 VideoPlayer: Registered controller with Registry for safety checks: ${widget.video.id}');
+      } else {
+        log('⚠️ VideoPlayer: Controller registration failed for video ${widget.video.id}');
+      }
 
       _isInitialized = true;
       _logger.debug('Video initialized successfully: ${widget.video.id}',
@@ -704,7 +761,7 @@ class _VideoPlayerViewOptimizedState
   }
 
   Future<void> _handleFavoriteChanged() async {
-    // Production-ready favorite toggle with error handling and analytics
+    // Production-ready favorite toggle with unified bookmark service
     if (_isBookmarkLoading) return; // Prevent multiple rapid taps
 
     setState(() {
@@ -712,29 +769,75 @@ class _VideoPlayerViewOptimizedState
     });
 
     try {
-      // Call the async favorite update method
-      if (widget.homeViewModel.updateVideoFavoriteState != null) {
-        await widget.homeViewModel.updateVideoFavoriteState!(widget.video.id);
-      }
-      setState(() {});
+      final bookmarkService = UnifiedBookmarkService.instance;
+      final result = await bookmarkService.toggleBookmark(widget.video.id);
 
-      // Track analytics
-      // AnalyticsService.instance.trackEvent('bookmark_toggled', parameters: {
-      //   'video_id': widget.video.id,
-      //   'is_favorited': widget.isBookmarked,
-      //   'creator_id': widget.video.creator.id,
-      // });
+      if (result.success) {
+        _isBookmarked = result.isBookmarked!;
+        setState(() {});
+
+        debugPrint(
+            '✅ VideoPlayerView: Bookmark toggled for video ${widget.video.id}: $_isBookmarked');
+
+        // Track analytics
+        // AnalyticsService.instance.trackEvent('bookmark_toggled', parameters: {
+        //   'video_id': widget.video.id,
+        //   'is_favorited': _isBookmarked,
+        //   'creator_id': widget.video.creator.id,
+        // });
+      } else {
+        // Show user-friendly error message
+        if (mounted) {
+          String errorMessage = 'Failed to update bookmark';
+          if (result.error?.contains('Maximum bookmarks limit reached') ==
+              true) {
+            errorMessage = 'Bookmark limit reached (1000 videos)';
+          } else if (result.error?.contains('PERMISSION_DENIED') == true) {
+            errorMessage = 'Unable to save bookmark - check connection';
+          } else if (result.error?.contains('User not authenticated') == true) {
+            errorMessage = 'Please log in to save bookmarks';
+          } else {
+            errorMessage = 'Failed to update bookmark';
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+
+        // Revert bookmark state on error
+        _isBookmarked = bookmarkService.isBookmarked(widget.video.id);
+        setState(() {});
+      }
     } catch (e) {
-      // Show error to user
+      // Show user-friendly error message
       if (mounted) {
+        String errorMessage = 'Failed to update bookmark';
+        if (e.toString().contains('Video not found')) {
+          errorMessage = 'Video no longer available in feed';
+        } else if (e.toString().contains('PERMISSION_DENIED')) {
+          errorMessage = 'Unable to save bookmark - check connection';
+        } else {
+          errorMessage = 'Failed to update bookmark';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update bookmark: ${e.toString()}'),
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 2),
           ),
         );
       }
+
+      // Revert bookmark state on error
+      _isBookmarked =
+          UnifiedBookmarkService.instance.isBookmarked(widget.video.id);
+      setState(() {});
 
       // Log error for debugging
       log('❌ Error toggling bookmark for video ${widget.video.id}: $e');
@@ -1106,6 +1209,11 @@ class _VideoPlayerViewOptimizedState
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
 
+    // Initialize bookmark state on first build
+    if (!_isInitialized) {
+      _initializeBookmarkState();
+    }
+
     return Consumer(
       builder: (context, ref, child) {
         // Video playback is now managed by the PlaybackCoordinator block/unblock system
@@ -1129,16 +1237,19 @@ class _VideoPlayerViewOptimizedState
                 ),
               ),
 
-              // UI Overlay (positioned above gesture detector)
-              _buildUIOverlay(),
+              // HUD Overlays - only show if showHUD is true
+              if (widget.showHUD) ...[
+                // UI Overlay (positioned above gesture detector)
+                _buildUIOverlay(),
 
-              // Action buttons overlay (positioned above gesture detector)
-              _buildActionButtons(),
+                // Action buttons overlay (positioned above gesture detector)
+                _buildActionButtons(),
 
-              // Play/Pause indicator overlay
-              if (_showPlayPauseIndicatorOverlay) _buildPlayPauseIndicator(),
+                // Play/Pause indicator overlay
+                if (_showPlayPauseIndicatorOverlay) _buildPlayPauseIndicator(),
 
-              // Heart animations now handled by EnhancedLikeButton
+                // Heart animations now handled by EnhancedLikeButton
+              ],
             ],
           ),
         );
@@ -1249,18 +1360,62 @@ class _VideoPlayerViewOptimizedState
     }
 
     // Video is ready - show the actual video player
-    return FittedBox(
-      fit: BoxFit.cover,
-      alignment: Alignment.center,
-      child: SizedBox(
-        width: _videoPlayerController!.value.size.width,
-        height: _videoPlayerController!.value.size.height,
-        child: VideoPlayer(
-          _videoPlayerController!,
-          key: ValueKey(_videoPlayerController!.dataSource),
+    // Additional safety check before creating VideoPlayer widget
+    if (_videoPlayerController == null || _isDisposed) {
+      log('⚠️ Controller became null/disposed during build, showing black screen');
+      return Container(
+        color: Colors.black,
+        width: double.infinity,
+        height: double.infinity,
+        child: widget.isCurrentVideo
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+            : null,
+      );
+    }
+
+    try {
+      return FittedBox(
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        child: SizedBox(
+          width: _videoPlayerController!.value.size.width,
+          height: _videoPlayerController!.value.size.height,
+          child: VideoPlayer(
+            _videoPlayerController!,
+            key: ValueKey(_videoPlayerController!.dataSource),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      log('❌ VideoPlayer widget error: $e - showing black screen');
+      // Controller might be in invalid state, trigger reinitialization
+      _videoPlayerController = null;
+      _isInitialized = false;
+      _isDisposed = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.isCurrentVideo) {
+          _initializeVideo();
+        }
+      });
+      return Container(
+        color: Colors.black,
+        width: double.infinity,
+        height: double.infinity,
+        child: widget.isCurrentVideo
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+            : null,
+      );
+    }
   }
 
   Widget _buildUIOverlay() {
@@ -1474,14 +1629,10 @@ class _VideoPlayerViewOptimizedState
             _buildActionButton(
               icon: _isBookmarkLoading
                   ? Icons.hourglass_empty
-                  : (widget.isBookmarked
-                      ? Icons.bookmark
-                      : Icons.bookmark_border),
-              count: _isBookmarkLoading
-                  ? '...'
-                  : (widget.video.isFavorited ? '1' : '0'),
+                  : (_isBookmarked ? Icons.bookmark : Icons.bookmark_border),
+              count: _isBookmarkLoading ? '...' : (_isBookmarked ? '1' : '0'),
               onTap: _isBookmarkLoading ? null : _handleBookmark,
-              isActive: widget.isBookmarked,
+              isActive: _isBookmarked,
               isLoading: _isBookmarkLoading,
             ),
             const SizedBox(height: 16),

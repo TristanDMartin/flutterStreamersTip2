@@ -16,7 +16,6 @@ import 'profile_back_view.dart';
 import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
-import '../services/global_post_count_fix.dart';
 import 'setup_hashtag_permissions_widget.dart';
 import 'tiktok_account_switch_button.dart';
 
@@ -46,6 +45,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   // Test flag to show if stats are loading
   bool _statsLoaded = false;
+  bool _isLoadingStats =
+      false; // 🔴 FIX #2: Prevent multiple simultaneous loads
+  bool _isDisposed = false; // 🔴 FIX #2: Track disposal state
 
   // Stream subscriptions for stats
   StreamSubscription<QuerySnapshot>? _followersSubscription;
@@ -57,6 +59,17 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   bool _isFront = true;
   ProfileUpdateService? _profileUpdateService;
   Map<String, dynamic>? _cachedUserData;
+
+  // 🔴 FIX #1 & #5: Cache avatar URL and data dirty flag
+  String? _lastSavedAvatarUrl;
+  bool _userDataDirty = true;
+
+  // 🔴 FIX #3: Debounce timer for profile updates
+  Timer? _rebuildDebounceTimer;
+
+  // 🔴 FIX #4: Cache fix status per user (static to persist across instances)
+  static final Map<String, DateTime> _lastFixTimestamp = {};
+  static const Duration _fixCooldown = Duration(minutes: 5);
 
   @override
   void initState() {
@@ -81,20 +94,28 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     // Listen for profile updates
     _profileUpdateService?.addProfileViewListener(_onProfileUpdated);
 
-    // Load stats
+    // Load stats - this sets up real-time listeners including post count
     _loadStats();
 
-    // Fix post count for any user if needed (global fix)
-    _fixUserPostCountIfNeeded();
+    // Auto-reconcile post count if needed (silent background fix with 5-min cooldown)
+    // This ensures accuracy while allowing real-time updates to work
+    _autoReconcilePostCountIfNeeded();
   }
 
   @override
   void dispose() {
+    // 🔴 FIX #2: Mark as disposed first
+    _isDisposed = true;
+
+    // 🔴 FIX #3: Cancel debounce timer
+    _rebuildDebounceTimer?.cancel();
+    _rebuildDebounceTimer = null;
+
     _profileUpdateService?.removeProfileViewListener(_onProfileUpdated);
     _segmentedController.dispose();
     _flipController.dispose();
 
-    // Cancel stats subscriptions
+    // 🔴 FIX #2: Cancel stats subscriptions asynchronously
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
     _postsSubscription?.cancel();
@@ -102,152 +123,161 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     super.dispose();
   }
 
+  // 🔴 FIX #3: Debounced profile update callback
   void _onProfileUpdated() {
-    if (mounted) {
-      setState(() {
-        // Trigger rebuild when profile data is updated
-        // The ProfileUpdateService will have the latest user data
-      });
-    }
+    // Debounce rebuilds to prevent spam
+    _rebuildDebounceTimer?.cancel();
+    _rebuildDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (mounted && !_isDisposed) {
+        // 🔴 FIX #5: Mark data as dirty
+        _userDataDirty = true;
+        setState(() {
+          // Trigger rebuild when profile data is updated
+        });
+      }
+    });
   }
 
-  /// Fix post count for any user using the global fix service
-  Future<void> _fixUserPostCountIfNeeded() async {
+  /// 🔴 FIX #4: Fix post count with cooldown timer
+  Future<void> _autoReconcilePostCountIfNeeded() async {
     try {
-      if (kDebugMode) {
-        debugPrint(
-            '🌍 PROFILE: Auto-fixing post count for user ${widget.user.id}');
-      }
+      // Only auto-reconcile for current user
+      if (!widget.isCurrentUser) return;
 
-      final globalFix = GlobalPostCountFix();
-      final success = await globalFix.fixUserPostCount(widget.user.id);
-
-      if (success) {
+      // Check if we recently reconciled this user's count
+      final lastFix = _lastFixTimestamp[widget.user.id];
+      if (lastFix != null &&
+          DateTime.now().difference(lastFix) < _fixCooldown) {
         if (kDebugMode) {
           debugPrint(
-              '🌍 PROFILE: Successfully fixed post count for user ${widget.user.id}');
+              '📊 PROFILE: Skipping auto-reconciliation for user ${widget.user.id} (recently reconciled)');
         }
-        // Refresh stats to show updated count
-        _loadStats();
-      } else {
-        if (kDebugMode) {
-          debugPrint(
-              '🌍 PROFILE: Failed to fix post count for user ${widget.user.id}');
-        }
+        return;
       }
-    } catch (e) {
+
       if (kDebugMode) {
         debugPrint(
-            '🌍 PROFILE: Error fixing post count for user ${widget.user.id}: $e');
+            '📊 PROFILE: Auto-reconciling post count for user ${widget.user.id}');
       }
-    }
-  }
 
-  /// Manually reconcile post count using PostCounterService
-  Future<void> _reconcilePostCount() async {
-    try {
-      debugPrint(
-          '🔄 PROFILE: Manually reconciling post count for user ${widget.user.id}');
-
+      // Use PostCounterService for reconciliation
       final postCounterService = PostCounterService();
       final reconciledCount =
           await postCounterService.reconcilePostCount(widget.user.id);
 
-      debugPrint('✅ PROFILE: Reconciled post count: $reconciledCount');
+      if (reconciledCount >= 0) {
+        // Cache the reconciliation timestamp
+        _lastFixTimestamp[widget.user.id] = DateTime.now();
 
-      // Show success message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Post count synced: $reconciledCount posts'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (kDebugMode) {
+          debugPrint(
+              '✅ PROFILE: Auto-reconciled post count for user ${widget.user.id}: $reconciledCount posts');
+        }
 
-        // Refresh stats to show updated count
-        _loadStats();
+        // The PostCounterService.watchPostCount will automatically update the UI
+        // No need to manually reload stats
+      } else {
+        if (kDebugMode) {
+          debugPrint(
+              '⚠️ PROFILE: Auto-reconciliation failed for user ${widget.user.id}');
+        }
       }
     } catch (e) {
-      debugPrint('❌ PROFILE: Error reconciling post count: $e');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error syncing post count: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (kDebugMode) {
+        debugPrint(
+            '❌ PROFILE: Error auto-reconciling post count for user ${widget.user.id}: $e');
       }
     }
   }
 
-  void _loadStats() {
-    if (widget.user.id.isEmpty) {
+  // 🔴 FIX #2: Properly managed stats loading with async cleanup
+  Future<void> _loadStats() async {
+    if (widget.user.id.isEmpty || _isLoadingStats || _isDisposed) {
       return;
     }
 
-    setState(() {
-      _statsLoaded = true;
-    });
+    _isLoadingStats = true;
 
-    // Cancel existing subscriptions
-    _postsSubscription?.cancel();
-    _followersSubscription?.cancel();
-    _followingSubscription?.cancel();
+    try {
+      setState(() {
+        _statsLoaded = true;
+      });
 
-    // Load posts count using PostCounterService for real-time updates
-    final postCounterService = PostCounterService();
-    _postsSubscription =
-        postCounterService.watchPostCount(widget.user.id).listen(
-      (postCount) {
-        if (mounted) {
-          setState(() {
-            _postsCount = postCount;
-          });
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          debugPrint('❌ ProfileView: Error watching post count: $error');
-        }
-      },
-    );
+      // Cancel existing subscriptions and wait for cleanup
+      await _postsSubscription?.cancel();
+      await _followersSubscription?.cancel();
+      await _followingSubscription?.cancel();
 
-    // Load followers count from new follows collection
-    _followersSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .where('followedId', isEqualTo: widget.user.id)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        if (mounted) {
-          setState(() {
-            _followersCount = snapshot.docs.length;
-          });
-        }
-      },
-      onError: (error) {
-        // Handle error silently in production
-      },
-    );
+      _postsSubscription = null;
+      _followersSubscription = null;
+      _followingSubscription = null;
 
-    // Load following count from new follows collection
-    _followingSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .where('followerId', isEqualTo: widget.user.id)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        if (mounted) {
-          setState(() {
-            _followingCount = snapshot.docs.length;
-          });
-        }
-      },
-      onError: (error) {
-        // Handle error silently in production
-      },
-    );
+      // Small delay to ensure cleanup
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Load posts count using PostCounterService for real-time updates
+      final postCounterService = PostCounterService();
+      _postsSubscription =
+          postCounterService.watchPostCount(widget.user.id).listen(
+        (postCount) {
+          if (mounted && !_isDisposed) {
+            setState(() {
+              _postsCount = postCount;
+            });
+          }
+        },
+        onError: (error) {
+          if (kDebugMode) {
+            debugPrint('❌ ProfileView: Error watching post count: $error');
+          }
+        },
+        cancelOnError: false, // Don't auto-cancel on error
+      );
+
+      // Load followers count from new follows collection
+      _followersSubscription = FirebaseFirestore.instance
+          .collection('follows')
+          .where('followedId', isEqualTo: widget.user.id)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          if (mounted && !_isDisposed) {
+            setState(() {
+              _followersCount = snapshot.docs.length;
+            });
+          }
+        },
+        onError: (error) {
+          if (kDebugMode) {
+            debugPrint('❌ ProfileView: Error watching followers: $error');
+          }
+        },
+        cancelOnError: false,
+      );
+
+      // Load following count from new follows collection
+      _followingSubscription = FirebaseFirestore.instance
+          .collection('follows')
+          .where('followerId', isEqualTo: widget.user.id)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          if (mounted && !_isDisposed) {
+            setState(() {
+              _followingCount = snapshot.docs.length;
+            });
+          }
+        },
+        onError: (error) {
+          if (kDebugMode) {
+            debugPrint('❌ ProfileView: Error watching following: $error');
+          }
+        },
+        cancelOnError: false,
+      );
+    } finally {
+      _isLoadingStats = false;
+    }
   }
 
   void _flipCard() {
@@ -390,8 +420,13 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     }
   }
 
-  /// Get the current user data, either from widget or from ProfileUpdateService
-  Map<String, dynamic> get _currentUserData {
+  /// 🔴 FIX #1 & #5: Cached user data method (no longer a getter)
+  Map<String, dynamic> _getCurrentUserData() {
+    // Only recompute if data is dirty
+    if (!_userDataDirty && _cachedUserData != null) {
+      return _cachedUserData!;
+    }
+
     try {
       // Check if this is the current user by comparing user IDs
       final currentUserId = _profileUpdateService?.currentUser?.uid;
@@ -407,15 +442,20 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
               'ProfileView: Using ProfileUpdateService data: ${_cachedUserData?.keys}');
         }
 
-        // Save main user avatar for persistence
+        // 🔴 FIX #1: Only save avatar if changed
         final avatarUrl =
             _cachedUserData?['avatarURL'] ?? widget.user.avatarURL;
-        if (avatarUrl != null && avatarUrl.isNotEmpty) {
+        if (avatarUrl != null &&
+            avatarUrl.isNotEmpty &&
+            avatarUrl != _lastSavedAvatarUrl) {
           UnifiedAvatarService().saveMainUserAvatar(avatarUrl);
+          _lastSavedAvatarUrl = avatarUrl;
         }
 
+        _userDataDirty = false;
         return _cachedUserData!;
       }
+
       // Otherwise use the widget user data
       _cachedUserData = widget.user.toMap();
       if (kDebugMode) {
@@ -423,34 +463,44 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             'ProfileView: Using widget user data: ${_cachedUserData?.keys}');
       }
 
-      // Save main user avatar for persistence if this is the current user
-      if (isCurrentUser && widget.user.avatarURL?.isNotEmpty == true) {
+      // 🔴 FIX #1: Only save avatar if changed
+      if (isCurrentUser &&
+          widget.user.avatarURL?.isNotEmpty == true &&
+          widget.user.avatarURL != _lastSavedAvatarUrl) {
         UnifiedAvatarService().saveMainUserAvatar(widget.user.avatarURL!);
+        _lastSavedAvatarUrl = widget.user.avatarURL;
       }
 
+      _userDataDirty = false;
       return _cachedUserData!;
     } catch (e, stackTrace) {
       if (kDebugMode) {
         debugPrint('❌ ProfileView: Error getting user data: $e');
         debugPrint('❌ ProfileView: Stack trace: $stackTrace');
       }
+      _userDataDirty = false;
       // Fallback to basic user data
-      return {
-        'id': widget.user.id,
-        'displayName': widget.user.displayName,
-        'username': widget.user.username,
-        'bio': widget.user.bio ?? '',
-        'avatarUrl': widget.user.avatarURL,
-        'followers': 0,
-        'following': 0,
-        'videos': 0,
-        'hashtags': <String>[],
-        'platforms': <Map<String, dynamic>>[],
-        'calendarEvents': <Map<String, dynamic>>[],
-        'status': 'offline',
-        'isOnline': false,
-      };
+      return _createFallbackUserData();
     }
+  }
+
+  /// Create fallback user data
+  Map<String, dynamic> _createFallbackUserData() {
+    return {
+      'id': widget.user.id,
+      'displayName': widget.user.displayName,
+      'username': widget.user.username,
+      'bio': widget.user.bio ?? '',
+      'avatarUrl': widget.user.avatarURL,
+      'followers': 0,
+      'following': 0,
+      'videos': 0,
+      'hashtags': <String>[],
+      'platforms': <Map<String, dynamic>>[],
+      'calendarEvents': <Map<String, dynamic>>[],
+      'status': 'offline',
+      'isOnline': false,
+    };
   }
 
   void _onTabSelected(int index) {
@@ -465,13 +515,18 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
   @override
   Widget build(BuildContext context) {
-    // Ensure stats are loaded when widget builds
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        // debugPrint('🔧 ProfileView: Widget built, calling _loadStats()');
-        _loadStats();
-      }
-    });
+    // 🔴 FIX #5: Cache user data at top of build method
+    final userData = _getCurrentUserData();
+
+    // Ensure stats are loaded when widget builds (only once)
+    if (!_statsLoaded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isLoadingStats) {
+          // debugPrint('🔧 ProfileView: Widget built, calling _loadStats()');
+          _loadStats();
+        }
+      });
+    }
 
     // debugPrint('🔧 ProfileView: Building ProfileViewOptimized for user: ${widget.user.id}');
 
@@ -505,11 +560,11 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
               ..setEntry(3, 2, 0.001)
               ..rotateY(_flipAnimation.value * 3.14159),
             child: isShowingFront
-                ? _buildFrontView()
+                ? _buildFrontView(userData)
                 : Transform(
                     alignment: Alignment.center,
                     transform: Matrix4.identity()..rotateY(3.14159),
-                    child: _buildBackView(),
+                    child: _buildBackView(userData),
                   ),
           );
         },
@@ -517,7 +572,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
   }
 
-  Widget _buildFrontView() {
+  Widget _buildFrontView(Map<String, dynamic> userData) {
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -598,9 +653,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
             child: Column(
               children: [
                 const SizedBox(height: 24),
-                _buildProfileHeader(),
+                _buildProfileHeader(userData),
                 const SizedBox(height: 24),
-                _buildProfileContent(),
+                _buildProfileContent(userData),
                 const SizedBox(height: 24),
               ],
             ),
@@ -610,19 +665,19 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
   }
 
-  Widget _buildBackView() {
+  Widget _buildBackView(Map<String, dynamic> userData) {
     return ProfileBackView(
-      user: _currentUserData,
+      user: userData,
       onFlip: _flipCard,
     );
   }
 
-  Widget _buildProfileHeader() {
+  Widget _buildProfileHeader(Map<String, dynamic> userData) {
     return Column(
       children: [
-        _buildAvatarWithGradientRing(),
+        _buildAvatarWithGradientRing(userData),
         const SizedBox(height: 16),
-        _buildNameAndHandle(),
+        _buildNameAndHandle(userData),
         const SizedBox(height: 24),
         _buildStatsRow(),
         const SizedBox(height: 24),
@@ -632,7 +687,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
   }
 
-  Widget _buildAvatarWithGradientRing() {
+  Widget _buildAvatarWithGradientRing(Map<String, dynamic> userData) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -659,10 +714,10 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                 color: Colors.black.withValues(alpha: 0.2),
               ),
               child: ClipOval(
-                child: _currentUserData['avatarURL'] != null &&
-                        _currentUserData['avatarURL'].toString().isNotEmpty
+                child: userData['avatarURL'] != null &&
+                        userData['avatarURL'].toString().isNotEmpty
                     ? Image.network(
-                        _currentUserData['avatarURL'],
+                        userData['avatarURL'],
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
                             const Icon(
@@ -685,7 +740,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
           Consumer(
             builder: (context, ref, child) {
               final statusAsync =
-                  ref.watch(userStatusProvider(_currentUserData['id'] ?? ''));
+                  ref.watch(userStatusProvider(userData['id'] ?? ''));
 
               return statusAsync.when(
                 data: (presence) {
@@ -722,11 +777,11 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
   }
 
-  Widget _buildNameAndHandle() {
+  Widget _buildNameAndHandle(Map<String, dynamic> userData) {
     return Column(
       children: [
         Text(
-          _currentUserData['displayName'] ?? 'Unknown User',
+          userData['displayName'] ?? 'Unknown User',
           style: const TextStyle(
             color: Colors.white,
             fontSize: 34,
@@ -736,7 +791,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         ),
         const SizedBox(height: 4),
         Text(
-          '@${_currentUserData['username'] ?? 'unknown'}',
+          '@${userData['username'] ?? 'unknown'}',
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.75),
             fontSize: 18,
@@ -779,21 +834,6 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                 _buildStatItem('Following', _followingCount.toString()),
               ],
             ),
-            const SizedBox(height: 16),
-            // Debug button to manually reconcile post count
-            if (widget.isCurrentUser)
-              ElevatedButton(
-                onPressed: () async {
-                  await _reconcilePostCount();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                ),
-                child: const Text('🔄 Sync Post Count'),
-              ),
           ],
         );
       },
@@ -827,6 +867,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   Widget _buildPrimaryButtonsRow() {
+    // Get fresh user data for navigation
+    final userData = _getCurrentUserData();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -839,7 +882,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => EditProfileView(
-                      user: _currentUserData,
+                      user: userData,
                       onUserUpdated: (updatedUser) {
                         // Profile update is handled by ProfileUpdateService
                         // The service will automatically trigger a rebuild
@@ -860,7 +903,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => ShareProfileView(
-                      user: _currentUserData,
+                      user: userData,
                       dismiss: () => Navigator.of(context).pop(),
                     ),
                   ),
@@ -1001,7 +1044,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
   }
 
-  Widget _buildProfileContent() {
+  Widget _buildProfileContent(Map<String, dynamic> userData) {
     return Column(
       children: [
         _buildSegments(),

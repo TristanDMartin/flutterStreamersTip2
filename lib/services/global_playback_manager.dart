@@ -42,6 +42,9 @@ class GlobalPlaybackManager {
   /// Mute state tracking: videoId -> isMuted
   final Map<String, bool> _muteStates = {};
 
+  /// Disposal tracking: videoId -> isDisposed
+  final Map<String, bool> _disposedControllers = {};
+
   /// Whether we're in a paused state (tab switching, etc.)
   bool _isPaused = false;
 
@@ -96,6 +99,17 @@ class GlobalPlaybackManager {
   /// Get current block reason
   String? get blockReason => _blockReason;
 
+  /// Check if a controller is safe to use (not disposed and valid)
+  bool _isControllerSafe(String videoId, VideoPlayerController controller) {
+    // Check if already marked as disposed
+    if (_disposedControllers[videoId] == true) {
+      return false;
+    }
+
+    // Check if controller is valid
+    return controller.value.isInitialized && !controller.value.hasError;
+  }
+
   // ============================================
   // STREAMS
   // ============================================
@@ -144,14 +158,14 @@ class GlobalPlaybackManager {
     final controller = _controllerPool[videoId];
     if (controller != null) {
       try {
-        // 🔒 SAFETY: Check if controller is still valid
-        if (controller.value.isInitialized && !controller.value.hasError) {
+        // 🔒 SAFETY: Check if controller is safe to use
+        if (_isControllerSafe(videoId, controller)) {
           controller.setVolume(1.0); // Unmute
           _muteStates[videoId] = false;
           controller.play();
           log('🎵 PlaybackManager: Playing video $videoId');
         } else {
-          log('⚠️ PlaybackManager: Controller for video $videoId is not valid');
+          log('⚠️ PlaybackManager: Controller for video $videoId is not safe to use');
         }
       } catch (e) {
         log('❌ PlaybackManager: Error playing video $videoId: $e');
@@ -175,14 +189,14 @@ class GlobalPlaybackManager {
     for (final entry in _controllerPool.entries) {
       final controller = entry.value;
       try {
-        // 🔒 SAFETY: Check if controller is still valid
-        if (controller.value.isInitialized && !controller.value.hasError) {
+        // 🔒 SAFETY: Check if controller is safe to use
+        if (_isControllerSafe(entry.key, controller)) {
           controller.setVolume(0.0); // Mute
           _muteStates[entry.key] = true;
           controller.pause();
           log('⏸️ PlaybackManager: Paused video ${entry.key}');
         } else {
-          log('⚠️ PlaybackManager: Controller for video ${entry.key} is not valid');
+          log('⚠️ PlaybackManager: Controller for video ${entry.key} is not safe to use');
         }
       } catch (e) {
         log('❌ PlaybackManager: Error pausing video ${entry.key}: $e');
@@ -266,12 +280,13 @@ class GlobalPlaybackManager {
 
     if (controller != null) {
       try {
-        // 🔒 SAFETY: Check if controller is still valid before disposing
-        if (controller.value.isInitialized && !controller.value.hasError) {
+        // 🔒 SAFETY: Check if controller is safe to dispose
+        if (_isControllerSafe(videoId, controller)) {
           controller.dispose();
+          _disposedControllers[videoId] = true; // Mark as disposed
           log('🗑️ PlaybackManager: Disposed controller for video $videoId');
         } else {
-          log('⚠️ PlaybackManager: Controller for video $videoId was already disposed or has error');
+          log('⚠️ PlaybackManager: Controller for video $videoId already disposed or invalid');
         }
       } catch (e) {
         log('❌ PlaybackManager: Error disposing controller for video $videoId: $e');
@@ -285,8 +300,15 @@ class GlobalPlaybackManager {
 
     for (final entry in _controllerPool.entries) {
       try {
-        entry.value.dispose();
-        log('🗑️ PlaybackManager: Disposed controller for video ${entry.key}');
+        final controller = entry.value;
+        // 🔒 SAFETY: Check if controller is safe to dispose
+        if (_isControllerSafe(entry.key, controller)) {
+          controller.dispose();
+          _disposedControllers[entry.key] = true; // Mark as disposed
+          log('🗑️ PlaybackManager: Disposed controller for video ${entry.key}');
+        } else {
+          log('⚠️ PlaybackManager: Controller for video ${entry.key} already disposed or invalid');
+        }
       } catch (e) {
         log('❌ PlaybackManager: Error disposing controller for video ${entry.key}: $e');
       }
@@ -295,6 +317,7 @@ class GlobalPlaybackManager {
     _controllerPool.clear();
     _controllerOwners.clear();
     _muteStates.clear();
+    _disposedControllers.clear();
     _activeVideoId = null;
     _activeOwner = null;
     _isPaused = false;
@@ -322,17 +345,18 @@ class GlobalPlaybackManager {
     log('▶️ PlaybackManager: Resuming after tab switch');
     _isPaused = false;
 
-    // Resume the active video if we have one and not blocked
+    // First, try to resume the active video if we have one and not blocked
     if (_activeVideoId != null && _blockLevel == 0) {
       final controller = _controllerPool[_activeVideoId];
       if (controller != null) {
         try {
-          // 🔒 SAFETY: Check if controller is still valid
-          if (controller.value.isInitialized && !controller.value.hasError) {
+          // 🔒 SAFETY: Check if controller is safe to use
+          if (_isControllerSafe(_activeVideoId!, controller)) {
             controller.setVolume(1.0);
             _muteStates[_activeVideoId!] = false;
             controller.play();
             log('▶️ PlaybackManager: Resumed active video $_activeVideoId');
+            return; // Successfully resumed active video
           } else {
             log('⚠️ PlaybackManager: Active video controller $_activeVideoId is not valid');
           }
@@ -341,6 +365,30 @@ class GlobalPlaybackManager {
         }
       }
     }
+
+    // If active video couldn't be resumed, find any valid video to resume
+    log('🔄 PlaybackManager: Active video failed, looking for any valid video to resume...');
+    for (final entry in _controllerPool.entries) {
+      final videoId = entry.key;
+      final controller = entry.value;
+
+      try {
+        if (_isControllerSafe(videoId, controller) &&
+            !controller.value.isPlaying) {
+          // Found a valid paused video, resume it
+          controller.setVolume(1.0);
+          _muteStates[videoId] = false;
+          controller.play();
+          _activeVideoId = videoId; // Update active video
+          log('▶️ PlaybackManager: Resumed fallback video $videoId');
+          return;
+        }
+      } catch (e) {
+        log('❌ PlaybackManager: Error resuming fallback video $videoId: $e');
+      }
+    }
+
+    log('⚠️ PlaybackManager: No valid videos found to resume');
   }
 
   // ============================================

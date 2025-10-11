@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/post_counter_reconciliation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/post_counter_service.dart';
 import '../services/debug_post_count.dart';
 
 /// Widget to fix post count discrepancies
@@ -14,7 +15,7 @@ class PostCountFixWidget extends StatefulWidget {
 }
 
 class _PostCountFixWidgetState extends State<PostCountFixWidget> {
-  final PostCounterReconciliation _reconciliation = PostCounterReconciliation();
+  final PostCounterService _postCounter = PostCounterService();
   final DebugPostCount _debug = DebugPostCount();
   bool _isFixing = false;
   String _status = '';
@@ -33,20 +34,19 @@ class _PostCountFixWidgetState extends State<PostCountFixWidget> {
     });
 
     try {
-      final analysis =
-          await _reconciliation.analyzeUserPosts('current_user_id');
-      if (analysis.containsKey('error')) {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) {
         setState(() {
-          _status = 'Error: ${analysis['error']}';
+          _status = 'Error: Not authenticated';
         });
         return;
       }
 
+      final stats = await _postCounter.getPostCountStats(userId);
+
       setState(() {
-        _currentCount = analysis['currentCounter'] ?? 0;
-        _actualCount = analysis['countablePosts'] ?? 0;
-        _status =
-            'Current counter: $_currentCount, Actual posts: $_actualCount';
+        _currentCount = stats['currentCount'] ?? 0;
+        _status = 'Current counter: $_currentCount posts';
       });
     } catch (e) {
       setState(() {
@@ -62,21 +62,26 @@ class _PostCountFixWidgetState extends State<PostCountFixWidget> {
     });
 
     try {
-      final success = await _reconciliation.quickFixCurrentUser();
-
-      if (success) {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) {
         setState(() {
-          _status = '✅ Post count fixed successfully!';
+          _status = '❌ Not authenticated';
+          _isFixing = false;
         });
-
-        // Reload status to show updated count
-        await Future.delayed(const Duration(seconds: 1));
-        await _loadCurrentStatus();
-      } else {
-        setState(() {
-          _status = '❌ Failed to fix post count';
-        });
+        return;
       }
+
+      final count = await _postCounter.reconcilePostCount(userId);
+
+      setState(() {
+        _currentCount = count;
+        _actualCount = count;
+        _status = '✅ Post count fixed to $count posts!';
+      });
+
+      // Reload status to show updated count
+      await Future.delayed(const Duration(seconds: 1));
+      await _loadCurrentStatus();
     } catch (e) {
       setState(() {
         _status = '❌ Error: $e';

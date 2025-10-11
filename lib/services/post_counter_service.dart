@@ -31,8 +31,10 @@ class PostCounterService {
   ];
 
   static const List<String> _countablePrivacyLevels = [
-    'public',
-    'followers',
+    'everyone', // Maps to 'Everyone' privacy level
+    'connections', // Maps to 'Connections' privacy level
+    'public', // Legacy support
+    'followers', // Legacy support
   ];
 
   /// Increment post count when a post is published

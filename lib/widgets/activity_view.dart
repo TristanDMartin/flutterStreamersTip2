@@ -4,12 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../providers/activity_provider.dart';
+import '../providers/home_provider.dart' as hp;
 import '../services/auth_service.dart';
+import '../services/notification_navigation_service.dart';
+import '../services/follows_service.dart';
 import '../widgets/activity_row_view.dart';
 import '../models/activity_notification.dart';
-import '../models/user_model.dart' as user_model;
 import '../models/user.dart';
 import '../widgets/streamer_card_view.dart';
+import '../widgets/cleanup_mock_notifications_button.dart';
 import 'discover_view.dart';
 // import '../widgets/post_detail_view.dart'; // Removed - unused
 import 'instant_response_button.dart';
@@ -113,14 +116,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     super.dispose();
   }
 
-  @override
-  void activate() {
-    super.activate();
-    // Re-initialize when user navigates back to ActivityView
-    if (_isInitialized) {
-      _initializeActivityView();
-    }
-  }
+  // ❌ REMOVED: activate() override - caused duplicate initialization
 
   @override
   Widget build(BuildContext context) {
@@ -147,15 +143,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       if (prev?.isLoading == true && next.isLoading == false) {
         _fadeController.forward();
       }
-      if (next.hasError && next.error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(next.error!),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      // ❌ REMOVED: SnackBar error display - errors shown in _buildErrorState() instead
     });
 
     // Activity data is initialized in initState
@@ -169,33 +157,51 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           '🔍 ActivityView: ${state.grouped.length} sections, ${filteredGrouped.length} filtered');
     }
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: _backgroundGradient,
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(state),
-              _buildFilterChips(),
-              if (state.isProcessing)
-                _buildProcessingIndicator(state.processingCount),
-              Expanded(
-                child: FadeTransition(
-                  opacity: _fadeController,
-                  child: state.isLoading
-                      ? _buildSkeletonLoading()
-                      : state.hasError
-                          ? _buildErrorState(state.error ?? 'Unknown error')
-                          : filteredGrouped.isEmpty
-                              ? _buildEmptyState()
-                              : _buildActivityList(titles, filteredGrouped),
+    return WillPopScope(
+      onWillPop: () async {
+        debugPrint(
+            '🔄 ActivityView: Popped - letting parent view control playback');
+        // ✅ FIX: Don't resume video here - let the view we're returning to control playback
+        // This prevents audio bleeding when returning to DiscoverView or other non-HomeView pages
+        // MainTabView will handle video resume when user actually navigates back to HomeView
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            Container(
+              decoration: const BoxDecoration(
+                gradient: _backgroundGradient,
+              ),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    _buildHeader(state),
+                    _buildFilterChips(),
+                    if (state.isProcessing)
+                      _buildProcessingIndicator(state.processingCount),
+                    Expanded(
+                      child: FadeTransition(
+                        opacity: _fadeController,
+                        child: state.isLoading
+                            ? _buildSkeletonLoading()
+                            : state.hasError
+                                ? _buildErrorState(
+                                    state.error ?? 'Unknown error')
+                                : filteredGrouped.isEmpty
+                                    ? _buildEmptyState()
+                                    : _buildActivityList(
+                                        titles, filteredGrouped),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+            // Temporary cleanup button (remove after cleaning)
+            if (kDebugMode) const CleanupMockNotificationsButton(),
+          ],
         ),
       ),
     );
@@ -919,8 +925,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                   child: ActivityRowView(
                     notification: notification,
-                    onProfileTap: (user) =>
-                        _handleProfileTap(user as user_model.User),
+                    onProfileTap: (user) => _handleProfileTap(user),
                     onPostTap: _handlePostTap,
                     onFollowAction: _handleFollowAction,
                     onCardTap: _handleNotificationTap,
@@ -1119,18 +1124,16 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return count;
   }
 
-  void _handleProfileTap(user_model.User user) {
+  void _handleProfileTap(User user) {
     HapticFeedback.lightImpact();
 
-    // Show StreamerCardView as modal (matching HomeView/ProfileView pattern)
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      isDismissible: true,
-      enableDrag: true,
-      builder: (context) {
-        return StreamerCardView(
+    debugPrint(
+        '👆 ActivityView: Profile tap - userId: ${user.id}, username: ${user.username}');
+
+    // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => StreamerCardView(
           userId: user.id,
           currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
           onDismiss: () => Navigator.of(context).pop(),
@@ -1152,8 +1155,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             // Handle share action
             HapticFeedback.lightImpact();
           },
-        );
-      },
+        ),
+        fullscreenDialog: true,
+      ),
     );
   }
 
@@ -1163,13 +1167,22 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     // Mark notification as read
     _markNotificationAsRead(notification);
 
-    // _navigateWithSlideTransition(
-    //   PostDetailView(notification: notification),
-    //   const Offset(0.0, 1.0),
-    //   fullscreenDialog: true,
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Post detail view coming soon!')),
+    // Check if videoId exists
+    if (notification.videoId == null || notification.videoId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Video not available')),
+      );
+      return;
+    }
+
+    // Navigate to video using notification navigation service
+    final navigationService = NotificationNavigationService();
+    final homeViewModel = ref.read(hp.homeProvider.notifier);
+
+    navigationService.navigateToVideo(
+      context: context,
+      videoId: notification.videoId!,
+      homeViewModel: homeViewModel,
     );
   }
 
@@ -1186,13 +1199,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         if (notification.postThumbnailUrl != null) {
           _handlePostTap(notification);
         } else {
-          _handleProfileTap(notification.user as user_model.User);
+          _handleProfileTap(notification.user);
         }
         break;
       case ActivityNotificationType.follow:
       case ActivityNotificationType.mention:
       case ActivityNotificationType.tag:
-        _handleProfileTap(notification.user as user_model.User);
+        _handleProfileTap(notification.user);
         break;
     }
   }
@@ -1208,11 +1221,78 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     }
   }
 
-  void _handleFollowAction(User user) {
+  void _handleFollowAction(User user) async {
     HapticFeedback.lightImpact();
 
-    // Navigate to StreamerCardView
-    _handleProfileTap(user as user_model.User);
+    try {
+      // Optimistic UI feedback - show loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('Following @${user.username}...'),
+            ],
+          ),
+          backgroundColor: const Color(0xFF9248D2),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+
+      // Call FollowsService to follow the user
+      final followsService = FollowsService();
+      final success = await followsService.followUser(user.id);
+
+      if (success) {
+        if (!mounted) return;
+
+        // Show success feedback
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Text('Now following @${user.username}'),
+              ],
+            ),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        if (!mounted) return;
+
+        // Show error feedback
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Unable to follow. Please try again.'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ ActivityView: Error following user: $e');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('An error occurred. Please try again.'),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   BoxDecoration _buildContainerDecoration({

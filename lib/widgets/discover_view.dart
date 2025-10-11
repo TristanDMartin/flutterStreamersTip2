@@ -148,16 +148,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     HapticFeedback.lightImpact();
     LoggingService.instance
         .debug('Creator tapped: ${creator.username}', tag: 'DiscoverView');
-    
-    // Show StreamerCardView as modal (matching HomeView/ProfileView pattern)
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      isDismissible: true,
-      enableDrag: true,
-      builder: (context) {
-        return StreamerCardView(
+
+    // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => StreamerCardView(
           userId: creator.id,
           currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
           onDismiss: () => Navigator.of(context).pop(),
@@ -170,7 +165,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             );
           },
           onMessage: (userId) {
-            // Handle message action  
+            // Handle message action
             HapticFeedback.lightImpact();
             LoggingService.instance.debug(
               'Message action for user: $userId',
@@ -185,8 +180,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Handle share action
             HapticFeedback.lightImpact();
           },
-        );
-      },
+        ),
+        fullscreenDialog: true,
+      ),
     );
   }
 
@@ -346,6 +342,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         'Bell icon tapped - navigating to ActivityView',
         tag: 'DiscoverView');
     try {
+      // Mark all notifications as read when opening ActivityView
+      final currentUser = fa.FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        final activityNotifier = ref.read(activityProvider.notifier);
+        activityNotifier.markAllDelivered(currentUser.uid);
+        LoggingService.instance
+            .debug('Marked all notifications as read', tag: 'DiscoverView');
+      }
+
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) {

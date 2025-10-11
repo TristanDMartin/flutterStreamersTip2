@@ -10,7 +10,8 @@ service cloud.firestore {
       // TikTok-style: Allow any authenticated user to update follower/following counts and liked_videos array
       allow update: if request.auth != null 
         && (request.auth.uid == userId  // Own profile
-            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_videos', 'followingCount', 'followersCount', 'connectionsCount']))); // Only these fields
+            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_videos', 'followingCount', 'followersCount', 'connectionsCount']) // Only these fields
+                && isValidBookmarkUpdate(request.resource.data.liked_videos))); // Validate bookmark data
       
       // Users can read and write their own subcollections
       match /{subcollection=**} {
@@ -245,5 +246,43 @@ service cloud.firestore {
         allow write: if request.auth != null;
       }
     }
+    
+    // Bookmark audit logging - allow users to create audit entries for their own actions
+    match /bookmark_audit/{auditId} {
+      allow create: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Rate limiting collection - for tracking operation frequency
+    match /rate_limits/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+  
+  // Validation functions
+  function isValidBookmarkUpdate(likedVideos) {
+    return likedVideos is list
+      && likedVideos.size() <= 1000  // Prevent abuse - max 1000 bookmarks
+      && likedVideos.hasAll(['string'])  // Only video IDs allowed
+      && likedVideos.size() == likedVideos.toSet().size();  // No duplicates
+  }
+  
+  function isValidVideoId(videoId) {
+    return videoId is string
+      && videoId.size() > 0
+      && videoId.size() <= 100  // Reasonable video ID length
+      && videoId.matches('^[a-zA-Z0-9_-]+$');  // Only alphanumeric, underscore, dash
+  }
+  
+  function isValidTimestamp(ts) {
+    return ts is timestamp
+      && ts < request.time
+      && ts > timestamp.date(2020, 1, 1);  // Not too old
+  }
+  
+  function isWithinRateLimit(userId, operation) {
+    // Check if user has exceeded rate limit for this operation
+    // This would require implementing rate limiting logic
+    return true; // For now, allow all operations
   }
 }

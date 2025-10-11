@@ -151,7 +151,7 @@ async function cancelNotificationTask(taskId) {
 // Post counting rules
 const COUNTABLE_STATUSES = ['published', 'public'];
 const EXCLUDED_STATUSES = ['draft', 'scheduled', 'archived', 'deleted', 'hidden', 'moderation', 'private'];
-const COUNTABLE_PRIVACY_LEVELS = ['public', 'followers'];
+const COUNTABLE_PRIVACY_LEVELS = ['everyone', 'connections', 'public', 'followers'];
 
 function shouldCountPost(status, privacy) {
   const statusLower = status ? status.toLowerCase() : 'draft';
@@ -338,3 +338,186 @@ async function reconcileUserPostCount(userId) {
   console.log(`✅ Reconciled post count for user ${userId}: ${actualCount} posts`);
   return actualCount;
 }
+
+// ============================================================================
+// NOTIFICATION TRIGGERS - Create notifications for likes, comments, follows
+// ============================================================================
+
+// Trigger: When a video is liked
+exports.onLikeCreate = functions.firestore
+  .document('likes/{videoId}/byUser/{userId}')
+  .onCreate(async (snap, context) => {
+    const { videoId, userId } = context.params;
+    const likeData = snap.data();
+    const likerId = userId;
+
+    console.log(`👍 Like created: Video ${videoId} by user ${likerId}`);
+
+    try {
+      // Get video data to find the owner
+      const videoDoc = await admin.firestore().collection('videos').doc(videoId).get();
+      if (!videoDoc.exists) {
+        console.log(`❌ Video ${videoId} not found`);
+        return null;
+      }
+
+      const videoData = videoDoc.data();
+      const videoOwnerId = videoData.userId;
+
+      // Don't notify if user likes their own video
+      if (likerId === videoOwnerId) {
+        console.log(`ℹ️ User liked their own video, skipping notification`);
+        return null;
+      }
+
+      // Get liker's user data
+      const likerDoc = await admin.firestore().collection('users').doc(likerId).get();
+      if (!likerDoc.exists) {
+        console.log(`❌ Liker user ${likerId} not found`);
+        return null;
+      }
+
+      const likerData = likerDoc.data();
+
+      // Create notification
+      await admin.firestore()
+        .collection('notifications')
+        .doc(videoOwnerId)
+        .collection('items')
+        .add({
+          type: 'like',
+          videoId: videoId,
+          user: {
+            id: likerId,
+            displayName: likerData.displayName || 'Unknown',
+            username: likerData.username || 'unknown',
+            avatarUrl: likerData.avatarURL || null,
+          },
+          postThumbnailUrl: videoData.thumbnailUrl || null,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          status: 'delivered',
+        });
+
+      console.log(`✅ Like notification created for user ${videoOwnerId}`);
+      return null;
+    } catch (error) {
+      console.error(`❌ Error creating like notification:`, error);
+      return null;
+    }
+  });
+
+// Trigger: When a comment is created
+exports.onCommentCreate = functions.firestore
+  .document('videos/{videoId}/comments/{commentId}')
+  .onCreate(async (snap, context) => {
+    const { videoId, commentId } = context.params;
+    const commentData = snap.data();
+    const commenterId = commentData.userId;
+
+    console.log(`💬 Comment created: Video ${videoId} by user ${commenterId}`);
+
+    try {
+      // Get video data to find the owner
+      const videoDoc = await admin.firestore().collection('videos').doc(videoId).get();
+      if (!videoDoc.exists) {
+        console.log(`❌ Video ${videoId} not found`);
+        return null;
+      }
+
+      const videoData = videoDoc.data();
+      const videoOwnerId = videoData.userId;
+
+      // Don't notify if user comments on their own video
+      if (commenterId === videoOwnerId) {
+        console.log(`ℹ️ User commented on their own video, skipping notification`);
+        return null;
+      }
+
+      // Get commenter's user data
+      const commenterDoc = await admin.firestore().collection('users').doc(commenterId).get();
+      if (!commenterDoc.exists) {
+        console.log(`❌ Commenter user ${commenterId} not found`);
+        return null;
+      }
+
+      const commenterData = commenterDoc.data();
+
+      // Create notification
+      await admin.firestore()
+        .collection('notifications')
+        .doc(videoOwnerId)
+        .collection('items')
+        .add({
+          type: 'comment',
+          videoId: videoId,
+          commentId: commentId,
+          commentText: commentData.text || '',
+          user: {
+            id: commenterId,
+            displayName: commenterData.displayName || 'Unknown',
+            username: commenterData.username || 'unknown',
+            avatarUrl: commenterData.avatarURL || null,
+          },
+          postThumbnailUrl: videoData.thumbnailUrl || null,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          status: 'delivered',
+        });
+
+      console.log(`✅ Comment notification created for user ${videoOwnerId}`);
+      return null;
+    } catch (error) {
+      console.error(`❌ Error creating comment notification:`, error);
+      return null;
+    }
+  });
+
+// Trigger: When a user follows another user
+exports.onFollowCreate = functions.firestore
+  .document('follows/{followId}')
+  .onCreate(async (snap, context) => {
+    const followData = snap.data();
+    const followerId = followData.followerId;
+    const followedId = followData.followedId;
+
+    console.log(`👥 Follow created: ${followerId} -> ${followedId}`);
+
+    try {
+      // Don't notify if user somehow follows themselves
+      if (followerId === followedId) {
+        console.log(`ℹ️ User tried to follow themselves, skipping notification`);
+        return null;
+      }
+
+      // Get follower's user data
+      const followerDoc = await admin.firestore().collection('users').doc(followerId).get();
+      if (!followerDoc.exists) {
+        console.log(`❌ Follower user ${followerId} not found`);
+        return null;
+      }
+
+      const followerData = followerDoc.data();
+
+      // Create notification
+      await admin.firestore()
+        .collection('notifications')
+        .doc(followedId)
+        .collection('items')
+        .add({
+          type: 'follow',
+          user: {
+            id: followerId,
+            displayName: followerData.displayName || 'Unknown',
+            username: followerData.username || 'unknown',
+            avatarUrl: followerData.avatarURL || null,
+          },
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          status: 'delivered',
+        });
+
+      console.log(`✅ Follow notification created for user ${followedId}`);
+      return null;
+    } catch (error) {
+      console.error(`❌ Error creating follow notification:`, error);
+      return null;
+    }
+  });

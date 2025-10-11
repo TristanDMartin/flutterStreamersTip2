@@ -14,6 +14,20 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
+
+    debugPrint('🔍 NavigationObserver: didPop');
+    if (route.settings.name != null || previousRoute?.settings.name != null) {
+      debugPrint(
+          '   - Popped route: ${route.settings.name} (${route.runtimeType})');
+      debugPrint(
+          '   - Previous route: ${previousRoute?.settings.name} (${previousRoute?.runtimeType})');
+    }
+
+    // ✅ FIX: Don't auto-resume video here
+    // Let _handleRouteChange determine if we should resume based on route type
+    // This prevents audio bleeding when returning to DiscoverView or other non-HomeView routes
+    // Only resume when actually returning to HomeView (handled in _handleRouteChange)
+
     _handleRouteChange(previousRoute, isForeground: true);
   }
 
@@ -85,6 +99,10 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
           '🚫 NavigationObserver: Blocking playback for non-home route: $owner');
     } else if (isHomeRoute && isForeground) {
       _manager.unblock();
+      // 🔥 FIX: Force resume video playback when returning to home
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _manager.resumeAfterTabSwitch();
+      });
       debugPrint(
           '✅ NavigationObserver: Unblocking playback for home route: $owner');
     }

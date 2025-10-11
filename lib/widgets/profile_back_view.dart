@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
 import '../models/calendar_event.dart';
 import '../services/robust_auth_service.dart';
 import 'brand_icons.dart';
@@ -40,6 +41,34 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     return widget.user;
   }
 
+  /// Safely parse date from various formats
+  DateTime _parseDate(dynamic dateValue) {
+    if (dateValue == null) {
+      return DateTime.now();
+    }
+
+    if (dateValue is Timestamp) {
+      return dateValue.toDate();
+    }
+
+    if (dateValue is DateTime) {
+      return dateValue;
+    }
+
+    if (dateValue is String) {
+      try {
+        return DateTime.parse(dateValue);
+      } catch (e) {
+        debugPrint('❌ ProfileBackView: Error parsing date string: $dateValue');
+        return DateTime.now();
+      }
+    }
+
+    debugPrint(
+        '❌ ProfileBackView: Unknown date type: ${dateValue.runtimeType}');
+    return DateTime.now();
+  }
+
   @override
   Widget build(BuildContext context) {
     try {
@@ -68,7 +97,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                     id: eventMap['id'] as String,
                     title: eventMap['title'] as String,
                     description: eventMap['description'] as String,
-                    date: (eventMap['date'] as Timestamp).toDate(),
+                    date: _parseDate(eventMap['date']),
                   );
                 }
                 return null;
@@ -444,16 +473,47 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               meta: _formatDate(e.date),
               onDelete: () async {
                 debugPrint('🗑️ Deleting calendar event: ${e.title}');
-                final List<CalendarEvent> updatedEvents =
-                    events.where((x) => x.id != e.id).toList();
+
+                // Optimistic UI update
+                setState(() {
+                  // Remove from local events list immediately
+                  events.removeWhere((x) => x.id == e.id);
+                });
 
                 try {
                   final authService = ref.read(robustAuthServiceProvider);
-                  await authService.updateUserCalendarEvents(updatedEvents);
-                  debugPrint(
-                      '✅ Calendar event deleted successfully - StreamBuilder will auto-update');
+                  await authService.updateUserCalendarEvents(events);
+                  debugPrint('✅ Calendar event deleted successfully');
+
+                  // Show success feedback
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Event deleted successfully'),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 } catch (error) {
                   debugPrint('❌ Error deleting calendar event: $error');
+
+                  // Revert optimistic update on error
+                  setState(() {
+                    // Re-add the event to the list
+                    events.add(e);
+                  });
+
+                  // Show error feedback
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to delete event: $error'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
                 }
               },
             ),
@@ -813,66 +873,67 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
     if (url != null && url.isNotEmpty) {
       try {
-        // Ensure URL has proper protocol
-        String finalUrl = url;
-        if (!finalUrl.startsWith('http://') &&
-            !finalUrl.startsWith('https://')) {
-          finalUrl = 'https://$finalUrl';
-        }
+        // Add timeout to prevent hanging
+        await Future.any([
+          _launchUrlWithTimeout(url),
+          Future.delayed(const Duration(seconds: 10), () {
+            throw TimeoutException(
+                'URL launch timed out', const Duration(seconds: 10));
+          }),
+        ]);
 
-        debugPrint('🔍 Final URL to launch: $finalUrl');
-        final uri = Uri.parse(finalUrl);
-
-        // Try different launch modes
-        bool canLaunch = await canLaunchUrl(uri);
-        debugPrint('🔍 Can launch URL: $canLaunch');
-
-        if (canLaunch) {
-          await launchUrl(
-            uri,
-            mode: LaunchMode.externalApplication,
-          );
-          debugPrint(
-              '🔗 Successfully opened ${_getPlatformDisplayName(platformType)}: $finalUrl');
+        _showSuccessSnackBar(
+            'Opening ${_getPlatformDisplayName(platformType)}...');
+      } catch (e) {
+        debugPrint('❌ Error launching platform URL: $e');
+        _showErrorSnackBar('Cannot open this link');
+      }
+    } else if (username.isNotEmpty) {
+      // Fallback logic with timeout
+      try {
+        final constructedUrl = _constructPlatformUrl(platformType, username);
+        if (constructedUrl != null) {
+          await Future.any([
+            _launchUrlWithTimeout(constructedUrl),
+            Future.delayed(const Duration(seconds: 10), () {
+              throw TimeoutException(
+                  'URL launch timed out', const Duration(seconds: 10));
+            }),
+          ]);
           _showSuccessSnackBar(
               'Opening ${_getPlatformDisplayName(platformType)}...');
         } else {
-          // Try with platform default mode
-          try {
-            await launchUrl(
-              uri,
-              mode: LaunchMode.platformDefault,
-            );
-            debugPrint(
-                '🔗 Successfully opened with platform default: $finalUrl');
-            _showSuccessSnackBar(
-                'Opening ${_getPlatformDisplayName(platformType)}...');
-          } catch (e) {
-            debugPrint('❌ Cannot launch URL in any mode: $finalUrl, error: $e');
-            _showErrorSnackBar('Cannot open this link');
-          }
+          _showErrorSnackBar('No link available for this platform');
         }
       } catch (e) {
-        debugPrint('❌ Error launching platform URL: $e');
-        _showErrorSnackBar('Error opening link: ${e.toString()}');
-      }
-    } else if (username.isNotEmpty) {
-      // Fallback: try to construct URL from username if no URL is provided
-      debugPrint('🔍 No URL provided, constructing from username: $username');
-      final constructedUrl = _constructPlatformUrl(platformType, username);
-      debugPrint('🔍 Constructed URL: $constructedUrl');
-      if (constructedUrl != null) {
-        await _launchPlatformUrl({
-          'url': constructedUrl,
-          'type': platformType,
-          'username': username,
-        });
-      } else {
-        _showErrorSnackBar('No link available for this platform');
+        debugPrint('❌ Error launching constructed URL: $e');
+        _showErrorSnackBar('Cannot open this link');
       }
     } else {
       debugPrint('❌ No URL or username provided for platform: $platformType');
       _showErrorSnackBar('No link available for this platform');
+    }
+  }
+
+  Future<void> _launchUrlWithTimeout(String url) async {
+    String finalUrl = url;
+    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      finalUrl = 'https://$finalUrl';
+    }
+
+    debugPrint('🔍 Final URL to launch: $finalUrl');
+    final uri = Uri.parse(finalUrl);
+
+    // Try different launch modes
+    bool canLaunch = await canLaunchUrl(uri);
+    debugPrint('🔍 Can launch URL: $canLaunch');
+
+    if (canLaunch) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      debugPrint('🔗 Successfully opened with external app: $finalUrl');
+    } else {
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
+      debugPrint('🔗 Successfully opened with platform default: $finalUrl');
     }
   }
 
