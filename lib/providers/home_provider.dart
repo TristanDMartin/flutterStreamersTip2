@@ -255,10 +255,37 @@ class HomeViewModel extends StateNotifier<HomeState> {
     }
   }
 
+  /// Wait for authentication to be ready
+  Future<void> _waitForAuthentication() async {
+    final auth = FirebaseAuth.instance;
+
+    // If already authenticated, return immediately
+    if (auth.currentUser != null) {
+      log('✅ Authentication ready: ${auth.currentUser!.uid}');
+      return;
+    }
+
+    log('⏳ Waiting for authentication...');
+
+    // Wait up to 10 seconds for authentication
+    for (int i = 0; i < 50; i++) {
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (auth.currentUser != null) {
+        log('✅ Authentication ready after ${i * 200}ms: ${auth.currentUser!.uid}');
+        return;
+      }
+    }
+
+    log('⚠️ Authentication timeout - proceeding without auth');
+  }
+
   /// Load cached videos for instant display
   Future<void> _loadCachedVideos() async {
     try {
       log('🚀 Starting instant play - loading real videos from VideoService...');
+
+      // Wait for authentication to be ready
+      await _waitForAuthentication();
 
       // Load real videos from VideoService instead of sample videos
       await _videoService.loadAllVideos();
@@ -549,6 +576,22 @@ class HomeViewModel extends StateNotifier<HomeState> {
         categoryId: 'entertainment',
       ),
     ];
+  }
+
+  /// Force refresh videos from database
+  Future<void> forceRefreshVideos() async {
+    log('🔄 Force refreshing videos...');
+
+    // Reset state to force reload
+    state = state.copyWith(
+      hasLoaded: false,
+      isLoading: true,
+      forYouVideos: [],
+      followingVideos: [],
+    );
+
+    // Reload videos
+    await loadVideos();
   }
 
   // MARK: - Feed Switching (Hard refresh per feed)

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/comment.dart';
 import '../services/comments_service.dart';
+import 'status_aware_avatar.dart';
 
-class OptimizedCommentTile extends StatefulWidget {
+class OptimizedCommentTile extends ConsumerStatefulWidget {
   final Comment comment;
   final String videoId;
   final VoidCallback? onReply;
@@ -20,10 +22,11 @@ class OptimizedCommentTile extends StatefulWidget {
   });
 
   @override
-  State<OptimizedCommentTile> createState() => _OptimizedCommentTileState();
+  ConsumerState<OptimizedCommentTile> createState() =>
+      _OptimizedCommentTileState();
 }
 
-class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
+class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
   bool _isLiked = false;
   int _likeCount = 0;
   bool _isLoading = false;
@@ -76,7 +79,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
         _isLiked = !_isLiked;
         _likeCount += _isLiked ? 1 : -1;
       });
-    // print('Error toggling like: $e');
+      // print('Error toggling like: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -94,24 +97,22 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar
-              CircleAvatar(
+              // Avatar with online status
+              StatusAwareAvatar(
+                userId: widget.comment.user.id,
+                avatarURL: widget.comment.user.avatarURL,
                 radius: 18,
+                showOnlineIndicator: true,
                 backgroundColor: const Color(0xFF9248D2),
-                backgroundImage: widget.comment.user.avatarURL != null
-                    ? NetworkImage(widget.comment.user.avatarURL!)
-                    : null,
-                child: widget.comment.user.avatarURL == null
-                    ? Text(
-                        widget.comment.user.username.isNotEmpty
-                            ? widget.comment.user.username[0].toUpperCase()
-                            : 'U',
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                      )
-                    : null,
+                placeholder: Text(
+                  widget.comment.user.username.isNotEmpty
+                      ? widget.comment.user.username[0].toUpperCase()
+                      : 'U',
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
               ),
               const SizedBox(width: 12),
-              
+
               // Comment content
               Expanded(
                 child: Column(
@@ -139,7 +140,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    
+
                     // Comment text
                     Text(
                       widget.comment.text,
@@ -149,7 +150,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    
+
                     // Action buttons
                     Row(
                       children: [
@@ -157,7 +158,8 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                           GestureDetector(
                             onTap: widget.onReply,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
                                 color: Colors.grey[800],
                                 borderRadius: BorderRadius.circular(12),
@@ -177,9 +179,10 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                           GestureDetector(
                             onTap: widget.onDelete,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha:0.2),
+                                color: Colors.red.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Text(
@@ -198,7 +201,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                   ],
                 ),
               ),
-              
+
               // Like button and count
               Column(
                 children: [
@@ -215,7 +218,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                           Positioned.fill(
                             child: Container(
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha:0.3),
+                                color: Colors.black.withValues(alpha: 0.3),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Center(
@@ -224,7 +227,8 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
                                   height: 12,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.red),
                                   ),
                                 ),
                               ),
@@ -245,7 +249,7 @@ class _OptimizedCommentTileState extends State<OptimizedCommentTile> {
               ),
             ],
           ),
-          
+
           // Replies
           if (widget.showReplies && (widget.comment.replies?.length ?? 0) > 0)
             Padding(
@@ -321,7 +325,7 @@ class _OptimizedReplyTileState extends State<OptimizedReplyTile> {
         _isLiked = !_isLiked;
         _likeCount += _isLiked ? 1 : -1;
       });
-    // print('Error toggling like: $e');
+      // print('Error toggling like: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -403,7 +407,7 @@ class _OptimizedReplyTileState extends State<OptimizedReplyTile> {
                       Positioned.fill(
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha:0.3),
+                            color: Colors.black.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Center(
@@ -412,7 +416,8 @@ class _OptimizedReplyTileState extends State<OptimizedReplyTile> {
                               height: 8,
                               child: CircularProgressIndicator(
                                 strokeWidth: 1,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.red),
                               ),
                             ),
                           ),

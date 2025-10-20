@@ -34,7 +34,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   final AuthRateLimitingService _rateLimiter = AuthRateLimitingService();
   final UsernameLockService _usernameLockService = UsernameLockService();
   final TikTokAccountSwitcher _accountSwitcher = TikTokAccountSwitcher();
-  
+
   User? _currentUser;
   bool _isLoggedIn = false;
   bool _isCheckingAuth = false;
@@ -44,7 +44,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   Timer? _debounceTimer;
   Timer? _minimumSpinnerTimer;
   bool _isMinimumSpinnerActive = false;
-  
+
   // Constants
   static const Duration _debounceDelay = Duration(milliseconds: 400);
   static const Duration _minimumSpinnerTime = Duration(milliseconds: 2500);
@@ -53,7 +53,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   bool get isLoggedIn => _isLoggedIn;
   bool get isCheckingAuth => _isCheckingAuth;
   bool get isRequestInFlight => _currentRequestId != null;
-  
+
   // Get current user profile data from Firestore
   Map<String, dynamic>? _currentUserProfile;
   Map<String, dynamic>? get currentUserProfile => _currentUserProfile;
@@ -61,13 +61,14 @@ class RobustAuthenticationService extends ChangeNotifier {
   RobustAuthenticationService() {
     // Set initial loading state
     _isCheckingAuth = true;
-    
+
     // Check initial authentication state asynchronously
     _checkInitialAuthState();
-    
+
     // Listen to authentication state changes
     _auth.authStateChanges().listen((firebase_auth.User? user) {
-      debugPrint("🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
+      debugPrint(
+          "🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
       if (user != null) {
         debugPrint("👤 User: ${user.email} (${user.uid})");
         _handleUserSignIn(user);
@@ -105,8 +106,8 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Generate a unique request ID
   String _generateRequestId() {
-    return DateTime.now().millisecondsSinceEpoch.toString() + 
-           (1000 + (DateTime.now().microsecond % 9000)).toString();
+    return DateTime.now().millisecondsSinceEpoch.toString() +
+        (1000 + (DateTime.now().microsecond % 9000)).toString();
   }
 
   /// Start minimum spinner timer
@@ -122,7 +123,8 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   /// Check if we should show loading state
-  bool get shouldShowLoading => isRequestInFlight || _isMinimumSpinnerActive || _isCheckingAuth;
+  bool get shouldShowLoading =>
+      isRequestInFlight || _isMinimumSpinnerActive || _isCheckingAuth;
 
   /// Debounced authentication with single-flight protection
   Future<AuthRequestResult> _debouncedAuth(
@@ -131,13 +133,13 @@ class RobustAuthenticationService extends ChangeNotifier {
   ) async {
     // Cancel any existing debounce timer
     _debounceTimer?.cancel();
-    
+
     // Generate new request ID
     final requestId = _generateRequestId();
-    
+
     // Wait for the debounce delay
     await Future.delayed(_debounceDelay);
-    
+
     // Check if this is still the latest request
     if (_currentRequestId != null && _currentRequestId != requestId) {
       // print("🚫 Ignoring stale request: $requestId (current: $_currentRequestId)");
@@ -147,15 +149,15 @@ class RobustAuthenticationService extends ChangeNotifier {
         error: 'Request cancelled',
       );
     }
-    
+
     _currentRequestId = requestId;
     _startMinimumSpinner();
     notifyListeners();
-    
+
     try {
       // print("🚀 Starting $requestType authentication (request: $requestId)");
       final result = await authFunction(requestId);
-      
+
       // Only process if this is still the current request
       if (_currentRequestId == requestId) {
         _currentRequestId = null;
@@ -168,7 +170,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       } else {
         // print("🚫 Ignoring stale response for request: $requestId");
       }
-      
+
       return result;
     } catch (e) {
       // Only process if this is still the current request
@@ -177,7 +179,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         // print("❌ $requestType authentication error: $e (request: $requestId)");
         notifyListeners();
       }
-      
+
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -188,8 +190,8 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Sign in with email (debounced, single-flight)
   Future<AuthRequestResult> signInWithEmail(
-    String email, 
-    String password, 
+    String email,
+    String password,
     String requestId,
   ) async {
     try {
@@ -199,21 +201,18 @@ class RobustAuthenticationService extends ChangeNotifier {
         return AuthRequestResult(
           requestId: requestId,
           success: false,
-          error: message ?? 'Too many authentication attempts. Please try again later.',
+          error: message ??
+              'Too many authentication attempts. Please try again later.',
         );
       }
-      
-      
+
       final userCredential = await _auth.signInWithEmailAndPassword(
-        email: email, 
-        password: password
-      );
-      
-      
+          email: email, password: password);
+
       if (userCredential.user != null) {
         // Record successful authentication
         await _rateLimiter.recordSuccess();
-        
+
         // User will be handled by auth state listener
         return AuthRequestResult(
           requestId: requestId,
@@ -223,7 +222,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       } else {
         // Record failed attempt
         await _rateLimiter.recordAttempt();
-        
+
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -233,7 +232,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     } catch (e) {
       // Record failed attempt
       await _rateLimiter.recordAttempt();
-      
+
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -244,8 +243,8 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Sign in with username (debounced, single-flight)
   Future<AuthRequestResult> signInWithUsername(
-    String username, 
-    String password, 
+    String username,
+    String password,
     String requestId,
   ) async {
     try {
@@ -255,18 +254,18 @@ class RobustAuthenticationService extends ChangeNotifier {
         return AuthRequestResult(
           requestId: requestId,
           success: false,
-          error: message ?? 'Too many authentication attempts. Please try again later.',
+          error: message ??
+              'Too many authentication attempts. Please try again later.',
         );
       }
-      
-      
+
       // First, find the user by username in Firestore (try both cases)
       QuerySnapshot usersQuery = await _firestore
           .collection('users')
           .where('username', isEqualTo: username)
           .limit(1)
           .get();
-      
+
       // If not found with original case, try lowercase
       if (usersQuery.docs.isEmpty) {
         usersQuery = await _firestore
@@ -275,7 +274,7 @@ class RobustAuthenticationService extends ChangeNotifier {
             .limit(1)
             .get();
       }
-      
+
       // If still not found, try uppercase
       if (usersQuery.docs.isEmpty) {
         usersQuery = await _firestore
@@ -284,44 +283,43 @@ class RobustAuthenticationService extends ChangeNotifier {
             .limit(1)
             .get();
       }
-      
+
       if (usersQuery.docs.isEmpty) {
         // Record failed attempt
         await _rateLimiter.recordAttempt();
-        
+
         // Debug information removed for production
-        
+
         return AuthRequestResult(
           requestId: requestId,
           success: false,
           error: 'Username not found',
         );
       }
-      
+
       final userDoc = usersQuery.docs.first;
       final userData = userDoc.data();
       final email = (userData as Map<String, dynamic>)['email'] as String?;
-      
+
       if (email == null || email.isEmpty) {
         // Record failed attempt
         await _rateLimiter.recordAttempt();
-        
+
         return AuthRequestResult(
           requestId: requestId,
           success: false,
           error: 'No email associated with this username',
         );
       }
-      
-    // print("📧 Found email for username $username: $email (request: $requestId)");
-      
+
+      // print("📧 Found email for username $username: $email (request: $requestId)");
+
       // Now sign in with the email and password
       return await signInWithEmail(email, password, requestId);
-      
     } catch (e) {
       // Record failed attempt
       await _rateLimiter.recordAttempt();
-      
+
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -333,13 +331,13 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Sign in with Google (debounced, single-flight)
   Future<AuthRequestResult> signInWithGoogle(String requestId) async {
     try {
-    // print("🔐 Starting Google Sign-In process (request: $requestId)");
-      
+      // print("🔐 Starting Google Sign-In process (request: $requestId)");
+
       // First, sign out any existing Google session to avoid conflicts
       await _googleSignIn.signOut();
-      
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      
+
       if (googleUser == null) {
         return AuthRequestResult(
           requestId: requestId,
@@ -347,12 +345,13 @@ class RobustAuthenticationService extends ChangeNotifier {
           error: 'Google sign-in cancelled',
         );
       }
-      
-    // print("✅ Google Sign-In successful for: ${googleUser.email}");
-      
+
+      // print("✅ Google Sign-In successful for: ${googleUser.email}");
+
       try {
-        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-        
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
+
         if (googleAuth.accessToken == null || googleAuth.idToken == null) {
           return AuthRequestResult(
             requestId: requestId,
@@ -360,17 +359,17 @@ class RobustAuthenticationService extends ChangeNotifier {
             error: 'Failed to get Google authentication tokens',
           );
         }
-        
+
         final credential = firebase_auth.GoogleAuthProvider.credential(
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
         );
-        
-    // print("🔐 Signing in to Firebase with Google credential");
+
+        // print("🔐 Signing in to Firebase with Google credential");
         final userCredential = await _auth.signInWithCredential(credential);
-        
+
         if (userCredential.user != null) {
-    // print("✅ Firebase authentication successful for: ${userCredential.user!.email}");
+          // print("✅ Firebase authentication successful for: ${userCredential.user!.email}");
           // The auth state listener will handle the rest
           return AuthRequestResult(
             requestId: requestId,
@@ -394,10 +393,9 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
     } catch (e) {
-      
       // Use Google Services fix for error handling
       String errorMessage = GoogleServicesFix.getGoogleServicesErrorMessage(e);
-      
+
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -407,26 +405,54 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   /// Public debounced methods
-  Future<AuthRequestResult> debouncedSignInWithEmail(String email, String password) {
-    return _debouncedAuth('email', (requestId) => signInWithEmail(email, password, requestId));
+  Future<AuthRequestResult> debouncedSignInWithEmail(
+      String email, String password) {
+    return _debouncedAuth(
+        'email', (requestId) => signInWithEmail(email, password, requestId));
   }
 
-  Future<AuthRequestResult> debouncedSignInWithUsername(String username, String password) {
-    return _debouncedAuth('username', (requestId) => signInWithUsername(username, password, requestId));
+  Future<AuthRequestResult> debouncedSignInWithUsername(
+      String username, String password) {
+    return _debouncedAuth('username',
+        (requestId) => signInWithUsername(username, password, requestId));
   }
 
   Future<AuthRequestResult> debouncedSignInWithGoogle() {
     return _debouncedAuth('google', (requestId) => signInWithGoogle(requestId));
   }
 
+  Future<AuthRequestResult> debouncedSignUpWithEmail({
+    required String email,
+    required String password,
+    required String displayName,
+    required String username,
+  }) {
+    return _debouncedAuth('signup', (requestId) async {
+      try {
+        await signUpWithEmail(email, password, displayName, username);
+        return AuthRequestResult(
+          requestId: requestId,
+          success: true,
+          user: _currentUser,
+        );
+      } catch (e) {
+        return AuthRequestResult(
+          requestId: requestId,
+          success: false,
+          error: e.toString(),
+        );
+      }
+    });
+  }
+
   /// Quick test login with your credentials for testing
   Future<AuthRequestResult> quickTestLogin() async {
     final requestId = _generateRequestId();
     _currentRequestId = requestId;
-    
+
     // cspell:ignore technqs
     // print("🧪 Quick test login with technqs credentials");
-    
+
     try {
       // First try to sign in
       try {
@@ -434,13 +460,13 @@ class RobustAuthenticationService extends ChangeNotifier {
           email: 'technqs@example.com', // cspell:ignore technqs Ntizzle
           password: 'Ntizzle1@1988',
         );
-        
+
         if (userCredential.user != null) {
-    // print("✅ Quick test login successful");
+          // print("✅ Quick test login successful");
           await _handleUserSignIn(userCredential.user!);
           _isLoggedIn = true;
           notifyListeners();
-          
+
           return AuthRequestResult(
             requestId: requestId,
             success: true,
@@ -448,33 +474,34 @@ class RobustAuthenticationService extends ChangeNotifier {
           );
         }
       } catch (signInError) {
-    // print("⚠️ Sign in failed, trying to create account: $signInError");
-        
+        // print("⚠️ Sign in failed, trying to create account: $signInError");
+
         // If sign in fails, try to create the account
         try {
           final userCredential = await _auth.createUserWithEmailAndPassword(
             email: 'technqs@example.com', // cspell:ignore technqs Ntizzle
             password: 'Ntizzle1@1988',
           );
-          
+
           if (userCredential.user != null) {
-    // print("✅ Test account created successfully");
-            
+            // print("✅ Test account created successfully");
+
             // Update display name
-            await userCredential.user!.updateDisplayName('technqs'); // cspell:ignore technqs
-            
+            await userCredential.user!
+                .updateDisplayName('technqs'); // cspell:ignore technqs
+
             // Create user document in Firestore
             await _createUserDocument(
               userCredential.user!,
               displayName: 'technqs', // cspell:ignore technqs
               username: 'technqs', // cspell:ignore technqs
             );
-            
+
             // Handle sign in
             await _handleUserSignIn(userCredential.user!);
             _isLoggedIn = true;
             notifyListeners();
-            
+
             return AuthRequestResult(
               requestId: requestId,
               success: true,
@@ -482,7 +509,7 @@ class RobustAuthenticationService extends ChangeNotifier {
             );
           }
         } catch (createError) {
-    // print("❌ Account creation failed: $createError");
+          // print("❌ Account creation failed: $createError");
           return AuthRequestResult(
             requestId: requestId,
             success: false,
@@ -490,15 +517,15 @@ class RobustAuthenticationService extends ChangeNotifier {
           );
         }
       }
-      
-    // print("❌ Quick test login failed - no user returned");
+
+      // print("❌ Quick test login failed - no user returned");
       return AuthRequestResult(
         requestId: requestId,
         success: false,
         error: 'No user returned from Firebase',
       );
     } catch (e) {
-    // print("❌ Quick test login error: $e");
+      // print("❌ Quick test login error: $e");
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -511,9 +538,9 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<AuthRequestResult> bypassLogin() async {
     final requestId = _generateRequestId();
     _currentRequestId = requestId;
-    
+
     // print("🚀 Bypass login - creating mock user for development");
-    
+
     try {
       // Create a mock user for development
       const mockUser = User(
@@ -530,22 +557,22 @@ class RobustAuthenticationService extends ChangeNotifier {
         followingCount: 0,
         calendarEvents: [],
       );
-      
+
       _currentUser = mockUser;
       _isLoggedIn = true;
       notifyListeners();
-      
-    // print("✅ Bypass login successful - mock user created");
-    // print("🔔 Mock user ID: ${mockUser.id}");
-    // print("🔔 Mock user display name: ${mockUser.displayName}");
-      
+
+      // print("✅ Bypass login successful - mock user created");
+      // print("🔔 Mock user ID: ${mockUser.id}");
+      // print("🔔 Mock user display name: ${mockUser.displayName}");
+
       return AuthRequestResult(
         requestId: requestId,
         success: true,
         user: _currentUser,
       );
     } catch (e) {
-    // print("❌ Bypass login error: $e");
+      // print("❌ Bypass login error: $e");
       return AuthRequestResult(
         requestId: requestId,
         success: false,
@@ -558,10 +585,10 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<bool> mockFollowUser(String targetUserId) async {
     // print("🔔 Mock follow user called for: $targetUserId");
     // print("🔔 Current user: ${_currentUser?.displayName} (${_currentUser?.id})");
-    
+
     // Simulate a successful follow operation
     await Future.delayed(const Duration(milliseconds: 500));
-    
+
     // print("✅ Mock follow successful for: $targetUserId");
     return true;
   }
@@ -570,52 +597,54 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<bool> mockUnfollowUser(String targetUserId) async {
     // print("🔔 Mock unfollow user called for: $targetUserId");
     // print("🔔 Current user: ${_currentUser?.displayName} (${_currentUser?.id})");
-    
+
     // Simulate a successful unfollow operation
     await Future.delayed(const Duration(milliseconds: 500));
-    
+
     // print("✅ Mock unfollow successful for: $targetUserId");
     return true;
   }
 
   /// Sign up with email and password
-  Future<void> signUpWithEmail(String email, String password, String displayName, String username) async {
+  Future<void> signUpWithEmail(String email, String password,
+      String displayName, String username) async {
     debugPrint("📝 Signing up with email: $email");
-    
+
     try {
       // Validate username first
-      final usernameValidation = await _usernameLockService.validateUsername(username);
+      final usernameValidation =
+          await _usernameLockService.validateUsername(username);
       if (!usernameValidation.isValid) {
         throw Exception(usernameValidation.errorMessage ?? 'Invalid username');
       }
-      
+
       // Check if user already exists and handle account deletion scenarios
       await _handleExistingUserCheck(email);
-      
+
       // Create user with Firebase Auth
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      
+
       if (userCredential.user != null) {
         debugPrint("✅ User created successfully");
-        
+
         // Update display name
         await userCredential.user!.updateDisplayName(displayName);
-        
+
         // Create user document in Firestore
         await _createUserDocument(
           userCredential.user!,
           displayName: displayName,
           username: username,
         );
-        
+
         // Handle sign in
         await _handleUserSignIn(userCredential.user!);
         _isLoggedIn = true;
         notifyListeners();
-        
+
         debugPrint("✅ Sign up completed successfully");
       } else {
         throw Exception('No user returned from Firebase');
@@ -636,7 +665,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           .where('email', isEqualTo: email)
           .limit(1)
           .get();
-      
+
       if (userQuery.docs.isNotEmpty) {
         debugPrint("⚠️ User with email $email still exists in Firestore");
         // Optionally delete the Firestore document if it exists
@@ -650,10 +679,11 @@ class RobustAuthenticationService extends ChangeNotifier {
   }
 
   /// Create user document in Firestore
-  Future<void> _createUserDocument(firebase_auth.User firebaseUser, {required String displayName, required String username}) async {
+  Future<void> _createUserDocument(firebase_auth.User firebaseUser,
+      {required String displayName, required String username}) async {
     try {
       final userRef = _firestore.collection("users").doc(firebaseUser.uid);
-      
+
       await userRef.set({
         'id': firebaseUser.uid,
         'email': firebaseUser.email,
@@ -666,10 +696,10 @@ class RobustAuthenticationService extends ChangeNotifier {
         'updatedAt': FieldValue.serverTimestamp(),
         'isDeleted': false,
       });
-      
-    // print("✅ User document created in Firestore");
+
+      // print("✅ User document created in Firestore");
     } catch (e) {
-    // print("❌ Error creating user document: $e");
+      // print("❌ Error creating user document: $e");
       rethrow;
     }
   }
@@ -679,16 +709,15 @@ class RobustAuthenticationService extends ChangeNotifier {
     debugPrint("🔐 _handleUserSignIn called for user: ${firebaseUser.uid}");
     debugPrint("👤 User email: ${firebaseUser.email ?? 'nil'}");
     debugPrint("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
-    
+
     try {
       final userRef = _firestore.collection("users").doc(firebaseUser.uid);
       final snapshot = await userRef.get();
-      
-      
+
       if (snapshot.exists) {
         debugPrint("🔐 User document found in Firestore");
         final data = snapshot.data()!;
-        
+
         // Decode hashtags - handle both List and String formats
         var hashtags = <String>[];
         if (data['hashtags'] != null) {
@@ -699,25 +728,29 @@ class RobustAuthenticationService extends ChangeNotifier {
             hashtags = hashtagsData.split(',').map((e) => e.trim()).toList();
           }
         }
-        
+
         // Decode aiSelf
         String aiSelf = '';
         if (data['aiSelf'] != null) {
           aiSelf = data['aiSelf'] as String;
         }
-        
+
         // Decode calendarEvents
         var calendarEvents = <CalendarEvent>[];
         if (data['calendarEvents'] != null) {
           final eventsArray = data['calendarEvents'] as List<dynamic>;
-          calendarEvents = eventsArray.map((eventData) {
-            if (eventData is Map<String, dynamic>) {
-              return CalendarEvent.fromMap(eventData);
-            }
-            return null;
-          }).where((event) => event != null).cast<CalendarEvent>().toList();
+          calendarEvents = eventsArray
+              .map((eventData) {
+                if (eventData is Map<String, dynamic>) {
+                  return CalendarEvent.fromMap(eventData);
+                }
+                return null;
+              })
+              .where((event) => event != null)
+              .cast<CalendarEvent>()
+              .toList();
         }
-        
+
         final user = User(
           id: firebaseUser.uid,
           username: data['username'] ?? 'user',
@@ -729,37 +762,39 @@ class RobustAuthenticationService extends ChangeNotifier {
           aiSelf: aiSelf,
           calendarEvents: calendarEvents,
         );
-        
+
         _currentUser = user;
         _isLoggedIn = true;
         _isCheckingAuth = false;
         notifyListeners();
-        
+
         debugPrint("✅ User signed in successfully - isLoggedIn: $_isLoggedIn");
-        
+
         // Add account to TikTok account switcher for instant switching
         await _accountSwitcher.addCurrentAccount();
-        
+
         // Trigger comprehensive data refresh for the signed-in user
         await _accountSwitcher.triggerDataRefreshWithRef(null);
-        
+
         // Set up real-time listener for user data changes
         _setupUserDataListener(firebaseUser.uid);
-        
+
         // Ensure user document exists (handles any edge cases)
         await _ensureUserDocumentExists();
-        
       } else {
-        debugPrint("🔐 User document NOT found in Firestore - creating new user");
-        
+        debugPrint(
+            "🔐 User document NOT found in Firestore - creating new user");
+
         // For existing users who don't have a Firestore document, create one
         final baseUsername = firebaseUser.email?.split('@')[0] ?? 'user';
         final username = await _generateUniqueUsername(baseUsername);
-        
+
         final user = User(
           id: firebaseUser.uid,
           username: username,
-          displayName: firebaseUser.displayName ?? firebaseUser.email?.split('@')[0] ?? 'User',
+          displayName: firebaseUser.displayName ??
+              firebaseUser.email?.split('@')[0] ??
+              'User',
           bio: '',
           avatarURL: firebaseUser.photoURL,
           onlineStatus: 'online',
@@ -768,23 +803,24 @@ class RobustAuthenticationService extends ChangeNotifier {
           followerCount: 0,
           followingCount: 0,
         );
-        
+
         // Save the new user to Firestore
         await _saveUserToFirestore(user, email: firebaseUser.email);
-        
+
         _currentUser = user;
         _isLoggedIn = true;
         _isCheckingAuth = false;
         notifyListeners();
-        
-        debugPrint("✅ New user created and signed in successfully - isLoggedIn: $_isLoggedIn");
-        
+
+        debugPrint(
+            "✅ New user created and signed in successfully - isLoggedIn: $_isLoggedIn");
+
         // Add account to TikTok account switcher for instant switching
         await _accountSwitcher.addCurrentAccount();
-        
+
         // Trigger comprehensive data refresh for the signed-in user
         await _accountSwitcher.triggerDataRefreshWithRef(null);
-        
+
         // Set up real-time listener for the new user
         _setupUserDataListener(firebaseUser.uid);
       }
@@ -801,22 +837,21 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Set up real-time listener for user data changes
   void _setupUserDataListener(String userId) {
     // print("👂 Setting up real-time listener for user: $userId");
-    
-    _firestore.collection("users").doc(userId)
-        .snapshots()
-        .listen((snapshot) {
+
+    _firestore.collection("users").doc(userId).snapshots().listen((snapshot) {
       if (snapshot.exists && _currentUser != null) {
         final data = snapshot.data()!;
-        
+
         // Check if avatar URL has changed
         final newAvatarURLString = data['avatarURL'] as String? ?? '';
         final currentAvatarURLString = _currentUser!.avatarURL ?? '';
-        
-        if (newAvatarURLString != currentAvatarURLString && newAvatarURLString.isNotEmpty) {
-    // print("🔄 Avatar URL changed in Firestore - updating app");
-    // print("📸 Old: $currentAvatarURLString");
-    // print("📸 New: $newAvatarURLString");
-          
+
+        if (newAvatarURLString != currentAvatarURLString &&
+            newAvatarURLString.isNotEmpty) {
+          // print("🔄 Avatar URL changed in Firestore - updating app");
+          // print("📸 Old: $currentAvatarURLString");
+          // print("📸 New: $newAvatarURLString");
+
           _currentUser = User(
             id: _currentUser!.id,
             username: _currentUser!.username,
@@ -832,12 +867,12 @@ class RobustAuthenticationService extends ChangeNotifier {
           );
           notifyListeners();
         }
-        
+
         // Check for other user data changes
         final newDisplayName = data['displayName'] as String? ?? '';
         final newUsername = data['username'] as String? ?? '';
         final newBio = data['bio'] as String?;
-        
+
         // Handle hashtags update
         var newHashtags = <String>[];
         if (data['hashtags'] != null) {
@@ -848,13 +883,13 @@ class RobustAuthenticationService extends ChangeNotifier {
             newHashtags = hashtagsData.split(',').map((e) => e.trim()).toList();
           }
         }
-        
+
         if (newDisplayName != _currentUser!.displayName ||
             newUsername != _currentUser!.username ||
             newBio != _currentUser!.bio ||
             newHashtags.toString() != _currentUser!.hashtags.toString()) {
-    // print("🔄 User data changed in Firestore - updating app");
-          
+          // print("🔄 User data changed in Firestore - updating app");
+
           _currentUser = User(
             id: _currentUser!.id,
             username: newUsername,
@@ -878,15 +913,16 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<String> _generateUniqueUsername(String baseUsername) async {
     String username = baseUsername;
     int counter = 1;
-    
+
     while (true) {
       // Check if username is available (not taken and not reserved)
-      final isAvailable = await _usernameLockService.isUsernameAvailable(username);
-      
+      final isAvailable =
+          await _usernameLockService.isUsernameAvailable(username);
+
       if (isAvailable) {
         return username;
       }
-      
+
       username = '$baseUsername$counter';
       counter++;
     }
@@ -909,11 +945,11 @@ class RobustAuthenticationService extends ChangeNotifier {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
-      
+
       if (email != null) {
         userData['email'] = email;
       }
-      
+
       await _firestore.collection('users').doc(user.id).set(userData);
     } catch (e) {
       rethrow;
@@ -930,14 +966,14 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<void> signOut() async {
     try {
       debugPrint("🔐 Starting sign out process...");
-      
+
       // Check if user is already signed out
       if (_auth.currentUser == null) {
         debugPrint("⚠️ User already signed out, cleaning up state...");
         _cleanupAuthState();
         return;
       }
-      
+
       await _auth.signOut();
       await GoogleServicesFix.signOutFromGoogle();
       _cleanupAuthState();
@@ -949,7 +985,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       rethrow; // Re-throw the error so the UI can handle it
     }
   }
-  
+
   /// Clean up authentication state
   void _cleanupAuthState() {
     _currentUser = null;
@@ -965,25 +1001,27 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Update user calendar events in Firestore
   Future<void> updateUserCalendarEvents(List<dynamic> events) async {
     if (_currentUser == null) {
-    // print('❌ No current user to update calendar events');
+      // print('❌ No current user to update calendar events');
       return;
     }
 
     try {
-      final eventsData = events.map((event) => {
-        'id': event.id,
-        'title': event.title,
-        'description': event.description,
-        'date': Timestamp.fromDate(event.date),
-      }).toList();
+      final eventsData = events
+          .map((event) => {
+                'id': event.id,
+                'title': event.title,
+                'description': event.description,
+                'date': Timestamp.fromDate(event.date),
+              })
+          .toList();
 
       await _firestore.collection('users').doc(_currentUser!.id).update({
         'calendarEvents': eventsData,
       });
 
-    // print('✅ Calendar events successfully updated in Firestore');
+      // print('✅ Calendar events successfully updated in Firestore');
     } catch (e) {
-    // print('❌ Error updating calendar events in Firestore: $e');
+      // print('❌ Error updating calendar events in Firestore: $e');
       rethrow;
     }
   }
@@ -1001,6 +1039,7 @@ class RobustAuthenticationService extends ChangeNotifier {
 }
 
 // Provider for the robust authentication service
-final robustAuthServiceProvider = ChangeNotifierProvider<RobustAuthenticationService>((ref) {
+final robustAuthServiceProvider =
+    ChangeNotifierProvider<RobustAuthenticationService>((ref) {
   return RobustAuthenticationService();
 });

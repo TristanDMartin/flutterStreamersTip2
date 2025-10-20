@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
+import '../providers/follows_provider.dart';
 import '../models/trending_creator.dart';
 import 'category_card.dart';
 import 'recommended_content_card.dart';
@@ -157,12 +158,21 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
           onDismiss: () => Navigator.of(context).pop(),
           onFollow: (userId) async {
-            // Handle follow action
+            // Handle follow action using FollowsService
             HapticFeedback.lightImpact();
             LoggingService.instance.debug(
               'Follow action for user: $userId',
               tag: 'DiscoverView',
             );
+
+            // Use the FollowsService provider to follow the user
+            // This ensures EventTriggerService is properly initialized for notifications
+            final followsService = ref.read(followsServiceProvider);
+            final success = await followsService.followUser(userId);
+
+            if (!success) {
+              throw Exception('Failed to follow user');
+            }
           },
           onMessage: (userId) {
             // Handle message action
@@ -1060,7 +1070,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final userId = data['userId'] as String?;
+        // Support all field name variants for cross-platform compatibility
+        final userId = (data['userId'] ??
+            data['creatorId'] ??
+            data['creator_id']) as String?;
 
         if (userId == null) continue;
 

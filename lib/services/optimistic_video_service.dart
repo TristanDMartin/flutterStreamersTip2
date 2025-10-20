@@ -77,6 +77,9 @@ class OptimisticVideoService extends ChangeNotifier {
     // Create main video document
     await _firestore.collection('videos').doc(video.videoId).set({
       'userId': video.ownerId,
+      'creatorId': video.ownerId, // Add for web/cross-platform compatibility
+      'creator_id':
+          video.ownerId, // Snake case variant for website compatibility
       'caption': video.caption,
       'categories': video.categories,
       'createdAt': video.createdAt,

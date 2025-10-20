@@ -41,7 +41,7 @@ class StatusButton extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: _getStatusColor(status).withValues(alpha:0.2),
+          color: _getStatusColor(status).withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: _getStatusColor(status),
@@ -80,7 +80,7 @@ class StatusButton extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.grey.withValues(alpha:0.2),
+        color: Colors.grey.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: Colors.grey,
@@ -118,7 +118,7 @@ class StatusButton extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha:0.2),
+        color: Colors.red.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: Colors.red,
@@ -238,24 +238,29 @@ class StatusPickerModal extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             // Status options
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Column(
-                children: UserStatus.values.map((status) {
+                children: UserStatus.values.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final status = entry.value;
                   final isSelected = status == currentStatus;
+                  final isLast = index == UserStatus.values.length - 1;
                   return _buildStatusOption(
                     context,
                     status,
                     isSelected,
+                    isLast,
                     () => onStatusSelected(status),
                   );
                 }).toList(),
               ),
             ),
-            
-            const SizedBox(height: 20),
+
+            // Extra bottom padding to prevent cutoff on devices with home indicators
+            const SizedBox(height: 100),
           ],
         ),
       ),
@@ -266,21 +271,20 @@ class StatusPickerModal extends StatelessWidget {
     BuildContext context,
     UserStatus status,
     bool isSelected,
+    bool isLast,
     VoidCallback onTap,
   ) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: EdgeInsets.only(bottom: isLast ? 0 : 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected 
-              ? Colors.white.withValues(alpha:0.2)
+          color: isSelected
+              ? Colors.white.withValues(alpha: 0.2)
               : const Color(0xFF2C2C2E),
           borderRadius: BorderRadius.circular(12),
-          border: isSelected 
-              ? Border.all(color: Colors.white, width: 1)
-              : null,
+          border: isSelected ? Border.all(color: Colors.white, width: 1) : null,
         ),
         child: Row(
           children: [

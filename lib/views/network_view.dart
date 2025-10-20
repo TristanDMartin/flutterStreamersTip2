@@ -14,6 +14,7 @@ import '../services/migration_service.dart';
 import '../services/performance_monitoring_service.dart';
 import '../services/global_playback_manager.dart';
 import '../widgets/streamer_card_view.dart';
+import '../widgets/status_aware_avatar.dart';
 import '../providers/status_provider.dart';
 
 class NetworkView extends ConsumerStatefulWidget {
@@ -1084,21 +1085,12 @@ class _NetworkViewState extends ConsumerState<NetworkView>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
-                // Avatar
-                CircleAvatar(
-                  radius: 20, // Slightly smaller to fit the shorter height
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  backgroundImage:
-                      user.avatarURL != null && user.avatarURL!.isNotEmpty
-                          ? NetworkImage(user.avatarURL!)
-                          : null,
-                  child: user.avatarURL == null || user.avatarURL!.isEmpty
-                      ? Icon(
-                          Icons.person,
-                          color: Colors.white.withValues(alpha: 0.7),
-                          size: 20,
-                        )
-                      : null,
+                // Avatar with online status
+                StatusAwareAvatar(
+                  userId: user.id,
+                  avatarURL: user.avatarURL,
+                  radius: 20,
+                  showOnlineIndicator: true,
                 ),
                 const SizedBox(width: 12),
                 // User info

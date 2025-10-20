@@ -55,6 +55,14 @@ class _EditProfileViewState extends State<EditProfileView> {
     _checkNameChangeEligibility();
   }
 
+  @override
+  void dispose() {
+    // ✅ FIX #1: Clean up ProfileUpdateService to prevent memory leak
+    _profileUpdateService?.dispose();
+    _profileUpdateService = null;
+    super.dispose();
+  }
+
   /// Check if user can change their name (7-day cooldown) // cspell:ignore cooldown
   void _checkNameChangeEligibility() {
     final lastChange = _user['lastNameChangeDate'];
@@ -213,7 +221,10 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   void _showImagePicker() {
-    debugPrint('🖼️ EditProfileView: Opening image picker modal');
+    if (kDebugMode) {
+      // ✅ FIX #2: Wrap in kDebugMode
+      debugPrint('🖼️ EditProfileView: Opening image picker modal');
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -221,7 +232,10 @@ class _EditProfileViewState extends State<EditProfileView> {
       builder: (context) => ImagePickerWidget(
         onImageSelected: _handleImageSelected,
         onCancel: () {
-          debugPrint('❌ EditProfileView: Image picker cancelled');
+          if (kDebugMode) {
+            // ✅ FIX #2: Wrap in kDebugMode
+            debugPrint('❌ EditProfileView: Image picker cancelled');
+          }
           Navigator.pop(context);
         },
       ),
@@ -229,7 +243,10 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   void _handleImageSelected(File imageFile) {
-    debugPrint('📸 EditProfileView: Image selected: ${imageFile.path}');
+    if (kDebugMode) {
+      // ✅ FIX #2: Wrap in kDebugMode
+      debugPrint('📸 EditProfileView: Image selected: ${imageFile.path}');
+    }
     setState(() {
       _selectedImage = imageFile;
       _uploadError = null;
@@ -239,7 +256,10 @@ class _EditProfileViewState extends State<EditProfileView> {
   }
 
   Future<void> _uploadAvatar(File imageFile) async {
-    debugPrint('🔄 EditProfileView: Starting avatar upload process');
+    if (kDebugMode) {
+      // ✅ FIX #2: Wrap in kDebugMode
+      debugPrint('🔄 EditProfileView: Starting avatar upload process');
+    }
 
     setState(() {
       _isUploadingAvatar = true;
@@ -252,17 +272,33 @@ class _EditProfileViewState extends State<EditProfileView> {
         throw Exception('Selected image file does not exist');
       }
 
-      final fileSize = await imageFile.length();
-      debugPrint('📁 EditProfileView: File size: $fileSize bytes');
+      if (kDebugMode) {
+        // ✅ FIX #2: Wrap in kDebugMode
+        final fileSize = await imageFile.length();
+        debugPrint('📁 EditProfileView: File size: $fileSize bytes');
+      }
 
-      if (!mounted) return;
+      // ✅ FIX #4: Capture context BEFORE async operations
       final authService =
           ProviderScope.containerOf(context).read(authServiceProvider);
-      debugPrint(
-          '🔐 EditProfileView: AuthService obtained, starting upload...');
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+      if (!mounted) return;
+
+      if (kDebugMode) {
+        // ✅ FIX #2: Wrap in kDebugMode
+        debugPrint(
+            '🔐 EditProfileView: AuthService obtained, starting upload...');
+      }
 
       final downloadUrl = await authService.uploadAvatar(imageFile);
-      debugPrint('✅ EditProfileView: Upload completed, URL: $downloadUrl');
+
+      if (!mounted) return; // ✅ FIX #4: Check mounted after await
+
+      if (kDebugMode) {
+        // ✅ FIX #2: Wrap in kDebugMode
+        debugPrint('✅ EditProfileView: Upload completed, URL: $downloadUrl');
+      }
 
       setState(() {
         _user['avatarURL'] = downloadUrl;
@@ -272,31 +308,52 @@ class _EditProfileViewState extends State<EditProfileView> {
 
       // Update local callback
       widget.onUserUpdated(_user);
-      debugPrint('📱 EditProfileView: Local user data updated');
+
+      if (kDebugMode) {
+        // ✅ FIX #2: Wrap in kDebugMode
+        debugPrint('📱 EditProfileView: Local user data updated');
+      }
 
       // Update all profile views through ProfileUpdateService
       try {
         final profileUpdateService = ProfileUpdateService();
         await profileUpdateService.updateUserData({'avatarURL': downloadUrl});
-        debugPrint('✅ EditProfileView: Avatar updated in all profile views');
+
+        if (!mounted) return; // ✅ FIX #4: Check mounted after await
+
+        if (kDebugMode) {
+          // ✅ FIX #2: Wrap in kDebugMode
+          debugPrint('✅ EditProfileView: Avatar updated in all profile views');
+        }
       } catch (e) {
-        debugPrint(
-            '❌ EditProfileView: Error updating avatar in profile views: $e');
+        if (kDebugMode) {
+          // ✅ FIX #2: Wrap in kDebugMode
+          debugPrint(
+              '❌ EditProfileView: Error updating avatar in profile views: $e');
+        }
         // Don't show error to user for this secondary update
       }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Avatar updated successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+      // ✅ FIX #4: Use captured scaffold messenger instead of context
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Avatar updated successfully!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      if (kDebugMode) {
+        // ✅ FIX #2: Wrap in kDebugMode
         debugPrint('🎉 EditProfileView: Success message shown to user');
       }
     } catch (e) {
-      debugPrint('❌ EditProfileView: Avatar upload failed: $e');
+      if (kDebugMode) {
+        // ✅ FIX #2: Wrap in kDebugMode
+        debugPrint('❌ EditProfileView: Avatar upload failed: $e');
+      }
+
+      if (!mounted) return; // ✅ FIX #4: Check mounted before setState
 
       setState(() {
         _isUploadingAvatar = false;
@@ -330,10 +387,16 @@ class _EditProfileViewState extends State<EditProfileView> {
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
             action: SnackBarAction(
-              label: 'Diagnose',
+              label: _selectedImage != null
+                  ? 'Retry'
+                  : 'Diagnose', // ✅ FIX #5: Add retry option
               textColor: Colors.white,
               onPressed: () {
-                _runStorageDiagnostics();
+                if (_selectedImage != null) {
+                  _uploadAvatar(_selectedImage!); // ✅ FIX #5: Retry upload
+                } else {
+                  _runStorageDiagnostics();
+                }
               },
             ),
           ),
@@ -588,11 +651,17 @@ class _EditProfileViewState extends State<EditProfileView> {
               final profileUpdateService = ProfileUpdateService();
               await profileUpdateService
                   .updateUserData({'platforms': updatedPlatforms});
-              debugPrint(
-                  '✅ EditProfileView: Platforms updated in all profile views');
+              if (kDebugMode) {
+                // ✅ FIX #2: Wrap in kDebugMode
+                debugPrint(
+                    '✅ EditProfileView: Platforms updated in all profile views');
+              }
             } catch (e) {
-              debugPrint(
-                  '❌ EditProfileView: Error updating platforms in profile views: $e');
+              if (kDebugMode) {
+                // ✅ FIX #2: Wrap in kDebugMode
+                debugPrint(
+                    '❌ EditProfileView: Error updating platforms in profile views: $e');
+              }
             }
 
             // Show success message
@@ -683,7 +752,10 @@ class _EditProfileViewState extends State<EditProfileView> {
         onTap: _isUploadingAvatar
             ? null
             : () {
-                debugPrint('👆 EditProfileView: Avatar button tapped');
+                if (kDebugMode) {
+                  // ✅ FIX #2: Wrap in kDebugMode
+                  debugPrint('👆 EditProfileView: Avatar button tapped');
+                }
                 _showImagePicker();
               },
         child: Column(

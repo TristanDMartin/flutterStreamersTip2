@@ -184,6 +184,8 @@ class UnifiedVideoService {
       final videoData = {
         'id': videoId,
         'userId': userId,
+        'creatorId': userId, // Add for web/cross-platform compatibility
+        'creator_id': userId, // Snake case variant for website compatibility
         'videoUrl': videoUrl,
         'thumbnailUrl': thumbnailUrl,
         'thumbnails': {

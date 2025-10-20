@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
+import 'email_login_view.dart';
+import 'signup_view.dart';
 // import '../views/terms_of_service_view.dart'; // Removed - unused
 // import '../views/privacy_policy_view.dart'; // Removed - unused
-// import 'signup_view.dart'; // Removed - unused
-// import 'email_login_view.dart'; // Removed - unused
 
 class AuthModalView extends ConsumerStatefulWidget {
   final VoidCallback? dismiss;
@@ -25,19 +26,49 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   @override
   void initState() {
     super.initState();
+    _setSystemUIOverlayStyle();
+  }
+
+  void _setSystemUIOverlayStyle() {
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Color(0xFF1C135D),
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _resetSystemUIOverlayStyle();
+    super.dispose();
+  }
+
+  void _resetSystemUIOverlayStyle() {
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final authService = ref.watch(robustAuthServiceProvider);
-    
+
     // Listen to auth state changes to navigate when user signs in
     ref.listen(robustAuthServiceProvider, (previous, next) {
       // Check if user is now logged in
       if (next.isLoggedIn && mounted) {
         // User is authenticated, the AppStartupWrapper will handle navigation
         // No need to manually navigate here since the parent widget will rebuild
-        debugPrint("✅ User authenticated, AppStartupWrapper will handle navigation");
+        debugPrint(
+            "✅ User authenticated, AppStartupWrapper will handle navigation");
       }
     });
 
@@ -53,94 +84,99 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
             ),
           ),
           child: Stack(
-          children: [
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    // Header
-                    _buildHeader(),
-                    const Spacer(),
-                    // App Logo/Title
-                    _buildAppLogoSection(),
-                    const Spacer(),
-                    // Authentication Buttons
-                    _buildAuthButtons(authService),
-                    const Spacer(),
-                    // Terms and Privacy
-                    _buildTermsAndPrivacy(),
-                    // Sign Up
-                    _buildSignUpSection(),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            ),
-
-            // Loading Overlay
-            if (authService.shouldShowLoading)
-              Container(
-                color: Colors.black.withValues(alpha:0.3),
-                child: const Center(
+            children: [
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        "Signing in...",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      // Header
+                      _buildHeader(),
+                      const Spacer(),
+                      // App Logo/Title
+                      _buildAppLogoSection(),
+                      const Spacer(),
+                      // Authentication Buttons
+                      _buildAuthButtons(authService),
+                      const Spacer(),
+                      // Terms and Privacy
+                      _buildTermsAndPrivacy(),
+                      // Sign Up
+                      _buildSignUpSection(),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
               ),
 
-            // ===== Alert Dialog Overlay (added) =====
-            if (_showAlert) ...[
-              // Tap outside to dismiss
-              Positioned.fill(
-                child: GestureDetector(
-                  onTap: () => setState(() => _showAlert = false),
-                  child: Container(color: Colors.black54),
-                ),
-              ),
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: AlertDialog(
-                    backgroundColor: const Color(0xFF1C1C1E),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+              // Loading Overlay
+              if (authService.shouldShowLoading)
+                Container(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          "Signing in...",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
-                    title: const Text(
-                      "Notice",
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                    ),
-                    content: Text(
-                      _alertMessage.isEmpty ? "Something happened." : _alertMessage,
-                      style: const TextStyle(color: Colors.white70, height: 1.3),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => setState(() => _showAlert = false),
-                        child: const Text("OK"),
-                      ),
-                    ],
                   ),
                 ),
-              ),
+
+              // ===== Alert Dialog Overlay (added) =====
+              if (_showAlert) ...[
+                // Tap outside to dismiss
+                Positioned.fill(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _showAlert = false),
+                    child: Container(color: Colors.black54),
+                  ),
+                ),
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: AlertDialog(
+                      backgroundColor: const Color(0xFF1C1C1E),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      title: const Text(
+                        "Notice",
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w700),
+                      ),
+                      content: Text(
+                        _alertMessage.isEmpty
+                            ? "Something happened."
+                            : _alertMessage,
+                        style:
+                            const TextStyle(color: Colors.white70, height: 1.3),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => setState(() => _showAlert = false),
+                          child: const Text("OK"),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              // ===== End Alert Dialog Overlay =====
             ],
-            // ===== End Alert Dialog Overlay =====
-          ],
-        ),
+          ),
         ),
       ),
     );
@@ -240,15 +276,12 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           backgroundColor: Colors.white,
           textColor: Colors.black,
           onTap: () {
-            // Navigator.of(context).push(
-            //   MaterialPageRoute(
-            //     builder: (context) => EmailLoginView(
-            //       dismiss: () => Navigator.of(context).pop(),
-            //     ),
-            //   ),
-            // );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Email login feature coming soon!')),
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EmailLoginView(
+                  dismiss: () => Navigator.of(context).pop(),
+                ),
+              ),
             );
           },
           disabled: authService.shouldShowLoading,
@@ -265,8 +298,6 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           disabled: authService.shouldShowLoading,
         ),
         const SizedBox(height: 16),
-
-
       ],
     );
   }
@@ -288,11 +319,15 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           height: 48, // Match ProfileView button height
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF955CFF), Color(0xFF3D99F7)], // Match ProfileView gradient
+              colors: [
+                Color(0xFF955CFF),
+                Color(0xFF3D99F7)
+              ], // Match ProfileView gradient
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
-            borderRadius: BorderRadius.circular(24), // Match ProfileView pill shape
+            borderRadius:
+                BorderRadius.circular(24), // Match ProfileView pill shape
           ),
           child: Center(
             child: Row(
@@ -438,7 +473,6 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
       const SnackBar(content: Text('Privacy policy coming soon!')),
     );
   }
-
 }
 
 class _SignupLink extends StatelessWidget {
@@ -448,11 +482,8 @@ class _SignupLink extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextButton(
       onPressed: () {
-        // Navigator.of(context).push(
-        //   MaterialPageRoute(builder: (context) => const SignupView()),
-        // );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sign up feature coming soon!')),
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const SignupView()),
         );
       },
       child: const Text(

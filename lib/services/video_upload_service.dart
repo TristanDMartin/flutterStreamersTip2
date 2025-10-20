@@ -141,6 +141,8 @@ class VideoUploadService {
       final videoData = {
         'id': videoId,
         'userId': userId,
+        'creatorId': userId, // Add for web/cross-platform compatibility
+        'creator_id': userId, // Snake case variant for website compatibility
         'videoUrl': videoUrl,
         'thumbnailUrl':
             thumbnailUrl, // Keep legacy field for backward compatibility
@@ -322,6 +324,8 @@ class VideoUploadService {
       final videoData = {
         'id': videoId,
         'userId': userId,
+        'creatorId': userId, // Add for web/cross-platform compatibility
+        'creator_id': userId, // Snake case variant for website compatibility
         'videoUrl': videoUrl,
         'thumbnailUrl': thumbnailUrl,
         'caption': caption,

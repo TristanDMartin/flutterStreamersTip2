@@ -338,7 +338,7 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '@${bookmark.creatorId}',
+                          bookmark.creatorName,
                           style: const TextStyle(
                             color: Colors.grey,
                             fontSize: 14,
@@ -498,7 +498,7 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Creator: @${bookmark.creatorId}',
+              'Creator: ${bookmark.creatorName}',
               style: const TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 8),

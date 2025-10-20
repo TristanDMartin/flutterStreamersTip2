@@ -521,3 +521,195 @@ exports.onFollowCreate = functions.firestore
       return null;
     }
   });
+
+// ============================================================================
+// CROSS-PLATFORM SYNC - Keep mobile app and website in sync
+// ============================================================================
+
+/**
+ * Sync video stats to user profile when video is updated
+ * Ensures user's total stats match across all platforms
+ */
+exports.syncVideoStatsToProfile = functions.firestore
+  .document('videos/{videoId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    const videoId = context.params.videoId;
+    
+    // Get creator ID (support all field variants)
+    const creatorId = after.userId || after.creatorId || after.creator_id;
+    if (!creatorId) {
+      console.error(`❌ Video ${videoId} has no creator ID`);
+      return null;
+    }
+    
+    // Check if stats changed
+    const statsChanged = 
+      before.views !== after.views ||
+      before.likes !== after.likes ||
+      before.comments !== after.comments ||
+      before.shares !== after.shares;
+    
+    if (!statsChanged) {
+      return null; // No stats update needed
+    }
+    
+    console.log(`📊 Syncing stats for video ${videoId} to user ${creatorId} profile`);
+    
+    // Update user's total stats
+    const userRef = admin.firestore().collection('users').doc(creatorId);
+    
+    try {
+      await admin.firestore().runTransaction(async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        
+        if (!userDoc.exists) {
+          console.error(`❌ User ${creatorId} not found`);
+          return;
+        }
+        
+        const userData = userDoc.data();
+        
+        // Calculate deltas
+        const viewsDelta = (after.views || 0) - (before.views || 0);
+        const likesDelta = (after.likes || 0) - (before.likes || 0);
+        const commentsDelta = (after.comments || 0) - (before.comments || 0);
+        const sharesDelta = (after.shares || 0) - (before.shares || 0);
+        
+        // Update user's total stats
+        transaction.update(userRef, {
+          totalViews: (userData.totalViews || 0) + viewsDelta,
+          totalLikes: (userData.totalLikes || 0) + likesDelta,
+          totalComments: (userData.totalComments || 0) + commentsDelta,
+          totalShares: (userData.totalShares || 0) + sharesDelta,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      
+      console.log(`✅ Synced stats for user ${creatorId} from video ${videoId}`);
+    } catch (error) {
+      console.error(`❌ Error syncing stats: ${error}`);
+    }
+    
+    return null;
+  });
+
+/**
+ * Ensure creator fields are consistent when video is created/updated
+ * Fixes missing userId, creatorId, or creator_id fields
+ */
+exports.normalizeVideoCreatorFields = functions.firestore
+  .document('videos/{videoId}')
+  .onWrite(async (change, context) => {
+    const data = change.after.exists ? change.after.data() : null;
+    if (!data) return null; // Document deleted
+    
+    const videoId = context.params.videoId;
+    
+    // Get creator ID from any field variant
+    const creatorId = data.userId || data.creatorId || data.creator_id;
+    
+    if (!creatorId) {
+      console.error(`❌ Video ${videoId} has no creator ID in any field`);
+      return null;
+    }
+    
+    // Check if all three fields exist and match
+    const needsUpdate = 
+      data.userId !== creatorId ||
+      data.creatorId !== creatorId ||
+      data.creator_id !== creatorId;
+    
+    if (needsUpdate) {
+      console.log(`🔄 Normalizing creator fields for video ${videoId}`);
+      
+      try {
+        await change.after.ref.update({
+          userId: creatorId,
+          creatorId: creatorId,
+          creator_id: creatorId
+        });
+        
+        console.log(`✅ Creator fields normalized for video ${videoId}`);
+      } catch (error) {
+        console.error(`❌ Error normalizing creator fields: ${error}`);
+      }
+    }
+    
+    return null;
+  });
+
+/**
+ * Sync creator profile data to video documents for faster reads
+ * Updates all videos when a user's profile changes
+ */
+exports.syncCreatorProfileToVideos = functions.firestore
+  .document('users/{userId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    const userId = context.params.userId;
+    
+    // Check if profile data changed
+    const profileChanged = 
+      before.displayName !== after.displayName ||
+      before.username !== after.username ||
+      before.avatarURL !== after.avatarURL;
+    
+    if (!profileChanged) {
+      return null;
+    }
+    
+    console.log(`🔄 User ${userId} profile changed, updating videos...`);
+    
+    // Update all videos by this creator (support all field variants)
+    const videosQuery = admin.firestore()
+      .collection('videos')
+      .where('userId', '==', userId);
+    
+    const snapshot = await videosQuery.get();
+    
+    if (snapshot.empty) {
+      console.log(`ℹ️ No videos found for user ${userId}`);
+      return null;
+    }
+    
+    // Batch update all videos (max 500 per batch)
+    const batches = [];
+    let currentBatch = admin.firestore().batch();
+    let operationsInBatch = 0;
+    const MAX_BATCH_SIZE = 500;
+    
+    snapshot.docs.forEach((doc) => {
+      currentBatch.update(doc.ref, {
+        creatorName: after.displayName,
+        creatorUsername: after.username,
+        creatorAvatar: after.avatarURL,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      
+      operationsInBatch++;
+      
+      if (operationsInBatch >= MAX_BATCH_SIZE) {
+        batches.push(currentBatch);
+        currentBatch = admin.firestore().batch();
+        operationsInBatch = 0;
+      }
+    });
+    
+    // Add remaining operations
+    if (operationsInBatch > 0) {
+      batches.push(currentBatch);
+    }
+    
+    // Commit all batches
+    try {
+      await Promise.all(batches.map(batch => batch.commit()));
+      console.log(`✅ Updated ${snapshot.docs.length} videos for user ${userId} in ${batches.length} batch(es)`);
+    } catch (error) {
+      console.error(`❌ Error updating videos: ${error}`);
+    }
+    
+    return null;
+  });

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import 'real_user_data_service.dart';
@@ -9,12 +10,22 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   VideoService() : super([]);
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final RealUserDataService _userDataService = RealUserDataService();
 
   /// Load all videos from Firestore and store them in memory
   Future<void> loadAllVideos() async {
     try {
       debugPrint('🎬 VideoService: Loading all videos...');
+
+      // Check authentication first
+      final user = _auth.currentUser;
+      if (user == null) {
+        debugPrint(
+            '❌ VideoService: User not authenticated, cannot load videos');
+        return;
+      }
+      debugPrint('✅ VideoService: User authenticated: ${user.uid}');
 
       // Get all videos ordered by creation date (newest first)
       final snapshot = await _firestore
@@ -48,9 +59,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           continue;
         }
 
-        final userId = data['userId'] as String?;
+        // Support all field name variants for cross-platform compatibility
+        final userId = (data['userId'] ??
+            data['creatorId'] ??
+            data['creator_id']) as String?;
         if (userId == null) {
-          debugPrint('🎬 VideoService: Skipping video ${doc.id} - no userId');
+          debugPrint(
+              '🎬 VideoService: Skipping video ${doc.id} - no userId/creatorId/creator_id field');
           continue;
         }
 
@@ -161,6 +176,27 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           '✅ VideoService: Loaded ${deduplicatedVideos.length} unique videos (removed ${videos.length - deduplicatedVideos.length} duplicates)');
     } catch (e) {
       debugPrint('❌ VideoService: Error loading videos: $e');
+
+      // If it's a permission error, wait a bit and retry (auth might be initializing)
+      if (e.toString().contains('permission-denied')) {
+        debugPrint(
+            '🔄 VideoService: Permission denied, waiting for auth and retrying...');
+        await Future.delayed(const Duration(seconds: 2));
+
+        // Retry once
+        try {
+          final user = _auth.currentUser;
+          if (user != null) {
+            debugPrint(
+                '🔄 VideoService: Retrying with authenticated user: ${user.uid}');
+            await loadAllVideos();
+            return;
+          }
+        } catch (retryError) {
+          debugPrint('❌ VideoService: Retry failed: $retryError');
+        }
+      }
+
       state = [];
     }
   }

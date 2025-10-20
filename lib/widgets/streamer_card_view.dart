@@ -17,6 +17,7 @@ import 'brand_icons.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/chat_service.dart';
 import '../services/follows_service.dart';
+import '../providers/follows_provider.dart';
 import '../services/follow_button_service.dart';
 import 'chat_view.dart';
 
@@ -48,7 +49,7 @@ class StreamerCardView extends ConsumerStatefulWidget {
 class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     with TickerProviderStateMixin {
   late AnimationController _flipController;
-  final FollowsService _followsService = FollowsService();
+  late final FollowsService _followsService;
   late Animation<double> _flipAnimation;
   bool _isFront = true;
 
@@ -108,9 +109,21 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _isFollowingOperation = false;
   bool _isUnfollowingOperation = false;
 
+  // ✅ FIX #6: Debouncing timer for batched rebuilds
+  Timer? _rebuildDebouncer;
+
   @override
   void initState() {
     super.initState();
+
+    // Initialize FollowsService with EventTriggerService for notifications
+    _followsService = ref.read(followsServiceProvider);
+
+    // Debug Firestore data
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _debugFirestoreData();
+    });
+
     _bookmarkService = EnhancedBookmarkService();
     _initializeBookmarks();
     _flipController = AnimationController(
@@ -125,8 +138,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       curve: Curves.easeInOut,
     ));
 
-    // Load user data first, then relationship status will be checked when user data loads
-    _loadUserData();
+    // ✅ FIX #4: Schedule async load to avoid blocking initState
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserData();
+    });
   }
 
   // MARK: - Data Loading
@@ -163,9 +178,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
   }
 
-  void _loadUserData() {
-    // Cancel existing subscription if any
-    _userDataSubscription?.cancel();
+  Future<void> _loadUserData() async {
+    // ✅ FIX #4: Wait for existing subscription to fully cancel to prevent race conditions
+    await _userDataSubscription?.cancel();
+    _userDataSubscription = null;
+
+    // Small delay to ensure cleanup
+    await Future.delayed(const Duration(milliseconds: 50));
 
     _userDataSubscription = FirebaseFirestore.instance
         .collection('users')
@@ -174,18 +193,22 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         .listen((snapshot) {
       if (mounted) {
         if (snapshot.exists) {
-          setState(() {
-            _userData = snapshot.data();
-            _isLoading = false;
-            _error = null;
-          });
+          // ✅ FIX #2: Update data WITHOUT triggering setState yet
+          _userData = snapshot.data();
+          _isLoading = false;
+          _error = null;
+
+          // Load all dependent data synchronously (no setState in these methods)
           _loadStats();
           _checkRelationshipStatus();
           _loadPlatforms();
           _loadCalendarEvents();
-
-          // 🎯 FOLLOW LOGIC: Update follow button state using centralized service
           _updateFollowButtonState();
+
+          // ✅ Single setState at the end to trigger one rebuild
+          setState(() {
+            // Data already updated above, this just triggers rebuild
+          });
         } else {
           // Fall back to sample data for sample users
           _loadSampleUserData();
@@ -282,12 +305,15 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   void _loadStats() {
     if (_userData == null) return;
 
-    // Cancel existing subscriptions
+    // ✅ MATCHED TO PROFILEVIEW: Use live queries from follows collection
+    // This ensures real-time accuracy and matches ProfileView behavior
+
+    // Cancel existing subscriptions to prevent memory leaks
     _userStatsSubscription?.cancel();
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
 
-    // Load stats from user document (denormalized counters)
+    // Load posts count from user document (denormalized)
     _userStatsSubscription = FirebaseFirestore.instance
         .collection('users')
         .doc(widget.userId)
@@ -297,52 +323,65 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         final data = snapshot.data()!;
         setState(() {
           _postsCount = data['postCount'] ?? 0;
-          _followersCount = data['followerCount'] ?? 0;
-          _followingCount = data['followingCount'] ?? 0;
         });
 
         if (kDebugMode) {
-          debugPrint(
-              "📊 StreamerCardView: Stats loaded - Posts: $_postsCount, Followers: $_followersCount, Following: $_followingCount");
+          debugPrint("📊 StreamerCardView: Posts count loaded: $_postsCount");
         }
       }
     });
 
-    // Also listen to followers collection for real-time updates
+    // ✅ MATCHED TO PROFILEVIEW: Live followers count from follows collection
     _followersSubscription = FirebaseFirestore.instance
         .collection('follows')
         .where('followedId', isEqualTo: widget.userId)
         .snapshots()
-        .listen((snapshot) {
-      if (mounted) {
-        setState(() {
-          _followersCount = snapshot.docs.length;
-        });
+        .listen(
+      (snapshot) {
+        if (mounted) {
+          setState(() {
+            _followersCount = snapshot.docs.length;
+          });
 
-        if (kDebugMode) {
-          debugPrint(
-              "📊 StreamerCardView: Followers count updated from follows collection: $_followersCount");
+          if (kDebugMode) {
+            debugPrint(
+                "📊 StreamerCardView: Followers count updated: $_followersCount");
+          }
         }
-      }
-    });
+      },
+      onError: (error) {
+        if (kDebugMode) {
+          debugPrint('❌ StreamerCardView: Error watching followers: $error');
+        }
+      },
+      cancelOnError: false,
+    );
 
-    // Also listen to following collection for real-time updates
+    // ✅ MATCHED TO PROFILEVIEW: Live following count from follows collection
     _followingSubscription = FirebaseFirestore.instance
         .collection('follows')
         .where('followerId', isEqualTo: widget.userId)
         .snapshots()
-        .listen((snapshot) {
-      if (mounted) {
-        setState(() {
-          _followingCount = snapshot.docs.length;
-        });
+        .listen(
+      (snapshot) {
+        if (mounted) {
+          setState(() {
+            _followingCount = snapshot.docs.length;
+          });
 
-        if (kDebugMode) {
-          debugPrint(
-              "📊 StreamerCardView: Following count updated from follows collection: $_followingCount");
+          if (kDebugMode) {
+            debugPrint(
+                "📊 StreamerCardView: Following count updated: $_followingCount");
+          }
         }
-      }
-    });
+      },
+      onError: (error) {
+        if (kDebugMode) {
+          debugPrint('❌ StreamerCardView: Error watching following: $error');
+        }
+      },
+      cancelOnError: false,
+    );
   }
 
   void _checkRelationshipStatus() {
@@ -386,27 +425,47 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         .where('followerId', isEqualTo: widget.currentUserId)
         .where('followedId', isEqualTo: widget.userId)
         .snapshots()
-        .listen((snapshot) {
-      if (mounted) {
-        final wasFollowing = _isFollowing;
-        setState(() {
-          _isFollowing = snapshot.docs.isNotEmpty;
-          _updateConnectionStatus();
-        });
+        .listen(
+      (snapshot) {
+        if (mounted) {
+          final wasFollowing = _isFollowing;
+          setState(() {
+            _isFollowing = snapshot.docs.isNotEmpty;
+            _updateConnectionStatus();
+          });
 
+          if (kDebugMode) {
+            debugPrint(
+                "🔄 StreamerCardView: Following listener updated - wasFollowing: $wasFollowing, isFollowing: $_isFollowing, docs count: ${snapshot.docs.length}");
+            debugPrint(
+                "🔄 StreamerCardView: Connection state after following update - isConnected: $_isConnected");
+            debugPrint(
+                "🔄 StreamerCardView: Query details - followerId: ${widget.currentUserId}, followedId: ${widget.userId}");
+            if (snapshot.docs.isNotEmpty) {
+              debugPrint(
+                  "🔄 StreamerCardView: Found follow document: ${snapshot.docs.first.id}");
+            }
+          }
+        }
+      },
+      onError: (error) {
+        // ✅ FIX #3: Proper error handling with cleanup
         if (kDebugMode) {
           debugPrint(
-              "🔄 StreamerCardView: Following listener updated - wasFollowing: $wasFollowing, isFollowing: $_isFollowing, docs count: ${snapshot.docs.length}");
-          debugPrint(
-              "🔄 StreamerCardView: Connection state after following update - isConnected: $_isConnected");
+              "❌ StreamerCardView: Error in following relationship listener: $error");
         }
-      }
-    }, onError: (error) {
-      if (kDebugMode) {
-        debugPrint(
-            "❌ StreamerCardView: Error in following relationship listener: $error");
-      }
-    });
+        // Cancel subscription and set safe fallback state
+        _followingRelationshipSubscription?.cancel();
+        _followingRelationshipSubscription = null;
+        if (mounted) {
+          setState(() {
+            _isFollowing = false;
+          });
+        }
+      },
+      cancelOnError:
+          true, // ✅ FIX #3: Auto-cancel on error to prevent memory leaks
+    );
 
     // Listen for changes in this user's following list (to check if they follow current user)
     _followedByRelationshipSubscription = FirebaseFirestore.instance
@@ -414,38 +473,160 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         .where('followerId', isEqualTo: widget.userId)
         .where('followedId', isEqualTo: widget.currentUserId)
         .snapshots()
-        .listen((snapshot) {
-      if (mounted) {
-        final wasFollowedByStreamer = _isFollowedByStreamer;
-        setState(() {
-          _isFollowedByStreamer = snapshot.docs.isNotEmpty;
-          _updateConnectionStatus();
-        });
+        .listen(
+      (snapshot) {
+        if (mounted) {
+          final wasFollowedByStreamer = _isFollowedByStreamer;
+          setState(() {
+            _isFollowedByStreamer = snapshot.docs.isNotEmpty;
+            _updateConnectionStatus();
+          });
 
+          if (kDebugMode) {
+            debugPrint(
+                "🔄 StreamerCardView: Followed by streamer listener updated - wasFollowedByStreamer: $wasFollowedByStreamer, isFollowedByStreamer: $_isFollowedByStreamer, docs count: ${snapshot.docs.length}");
+            debugPrint(
+                "🔄 StreamerCardView: Connection state after followed by update - isConnected: $_isConnected");
+            debugPrint(
+                "🔄 StreamerCardView: Reverse query details - followerId: ${widget.userId}, followedId: ${widget.currentUserId}");
+            if (snapshot.docs.isNotEmpty) {
+              debugPrint(
+                  "🔄 StreamerCardView: Found reverse follow document: ${snapshot.docs.first.id}");
+            }
+          }
+        }
+      },
+      onError: (error) {
+        // ✅ FIX #3: Proper error handling with cleanup
         if (kDebugMode) {
           debugPrint(
-              "🔄 StreamerCardView: Followed by streamer listener updated - wasFollowedByStreamer: $wasFollowedByStreamer, isFollowedByStreamer: $_isFollowedByStreamer, docs count: ${snapshot.docs.length}");
-          debugPrint(
-              "🔄 StreamerCardView: Connection state after followed by update - isConnected: $_isConnected");
+              "❌ StreamerCardView: Error in followed by relationship listener: $error");
+        }
+        // Cancel subscription and set safe fallback state
+        _followedByRelationshipSubscription?.cancel();
+        _followedByRelationshipSubscription = null;
+        if (mounted) {
+          setState(() {
+            _isFollowedByStreamer = false;
+          });
+        }
+      },
+      cancelOnError:
+          true, // ✅ FIX #3: Auto-cancel on error to prevent memory leaks
+    );
+  }
+
+  /// Debug function to check what's actually in Firestore
+  Future<void> _debugFirestoreData() async {
+    if (!kDebugMode) return;
+
+    try {
+      debugPrint("🔍 StreamerCardView: DEBUG - Checking Firestore data");
+      debugPrint("🔍 Current User ID: ${widget.currentUserId}");
+      debugPrint("🔍 Target User ID: ${widget.userId}");
+
+      // Check if current user follows target user
+      final followingQuery = await FirebaseFirestore.instance
+          .collection('follows')
+          .where('followerId', isEqualTo: widget.currentUserId)
+          .where('followedId', isEqualTo: widget.userId)
+          .get();
+
+      debugPrint(
+          "🔍 Following query result: ${followingQuery.docs.length} docs");
+      for (var doc in followingQuery.docs) {
+        debugPrint("🔍 Following doc: ${doc.id} - ${doc.data()}");
+      }
+
+      // Check if target user follows current user
+      final followedByQuery = await FirebaseFirestore.instance
+          .collection('follows')
+          .where('followerId', isEqualTo: widget.userId)
+          .where('followedId', isEqualTo: widget.currentUserId)
+          .get();
+
+      debugPrint(
+          "🔍 Followed by query result: ${followedByQuery.docs.length} docs");
+      for (var doc in followedByQuery.docs) {
+        debugPrint("🔍 Followed by doc: ${doc.id} - ${doc.data()}");
+      }
+
+      // Check all follows documents for these users
+      final allFollowsQuery =
+          await FirebaseFirestore.instance.collection('follows').get();
+
+      debugPrint(
+          "🔍 All follows collection: ${allFollowsQuery.docs.length} total docs");
+      for (var doc in allFollowsQuery.docs) {
+        final data = doc.data();
+        if (data['followerId'] == widget.currentUserId ||
+            data['followedId'] == widget.currentUserId ||
+            data['followerId'] == widget.userId ||
+            data['followedId'] == widget.userId) {
+          debugPrint("🔍 Relevant follow doc: ${doc.id} - ${data}");
         }
       }
-    }, onError: (error) {
-      if (kDebugMode) {
-        debugPrint(
-            "❌ StreamerCardView: Error in followed by relationship listener: $error");
+
+      // 🔧 FIX: Check for documents with wrong field names and fix them
+      await _fixIncorrectFollowDocuments();
+    } catch (e) {
+      debugPrint("🔍 Error checking Firestore data: $e");
+    }
+  }
+
+  /// Fix follow documents that have incorrect field names
+  Future<void> _fixIncorrectFollowDocuments() async {
+    try {
+      debugPrint(
+          "🔧 StreamerCardView: Checking for documents with incorrect field names...");
+
+      // Check for the reverse follow document with wrong field names
+      final incorrectDocId = '${widget.userId}_${widget.currentUserId}';
+      final docRef =
+          FirebaseFirestore.instance.collection('follows').doc(incorrectDocId);
+      final doc = await docRef.get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+
+        // Check if it has 'followingId' instead of 'followedId'
+        if (data.containsKey('followingId') &&
+            !data.containsKey('followedId')) {
+          debugPrint("🔧 Found document with incorrect field names: ${doc.id}");
+          debugPrint("🔧 Current data: $data");
+
+          // Fix the document by updating field names
+          await docRef.update({
+            'followedId': data['followingId'],
+            'followerId': data['followerId'],
+            'createdAt': data['createdAt'] ?? FieldValue.serverTimestamp(),
+          });
+
+          // Remove the incorrect field
+          await docRef.update({
+            'followingId': FieldValue.delete(),
+            'isActive': FieldValue.delete(),
+          });
+
+          debugPrint("✅ Fixed document field names: ${doc.id}");
+        }
       }
-    });
+    } catch (e) {
+      debugPrint("🔧 Error fixing follow documents: $e");
+    }
   }
 
   void _updateConnectionStatus() {
     final previousConnected = _isConnected;
     _isConnected = _isFollowing && _isFollowedByStreamer;
 
-    if (kDebugMode && previousConnected != _isConnected) {
+    if (kDebugMode) {
       debugPrint(
-          "🔄 StreamerCardView: Connection status changed from $previousConnected to $_isConnected");
-      debugPrint(
-          "🔄 StreamerCardView: _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer");
+          "🔄 StreamerCardView: _updateConnectionStatus - _isFollowing: $_isFollowing, _isFollowedByStreamer: $_isFollowedByStreamer, _isConnected: $_isConnected");
+      if (previousConnected != _isConnected) {
+        debugPrint(
+            "🔄 StreamerCardView: Connection status changed from $previousConnected to $_isConnected");
+      }
     }
   }
 
@@ -489,6 +670,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   @override
   void dispose() {
+    // ✅ FIX #6: Cancel debounce timer
+    _rebuildDebouncer?.cancel();
+
     _flipController.dispose();
 
     // Cancel all Firestore subscriptions to prevent memory leaks
@@ -1201,19 +1385,22 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   String _getFollowButtonText() {
-    // 🎯 FOLLOW LOGIC: Use centralized service state
-    if (_followButtonState == null) return 'Follow';
-
-    switch (_followButtonState!) {
-      case FollowButtonState.self:
-        return 'You';
-      case FollowButtonState.connected:
-        return 'Connected';
-      case FollowButtonState.following:
-        return 'Following';
-      case FollowButtonState.follow:
-        return 'Follow';
+    // 🎯 FOLLOW LOGIC: Use local state that's updated by real-time listeners
+    // Check if viewing own profile
+    if (widget.currentUserId == widget.userId) {
+      return 'You';
     }
+
+    // Use the same logic as _getConnectionStatusText for consistency
+    if (_isConnected) {
+      return 'Connected'; // Mutual follow
+    } else if (_isFollowing && _isFollowedByStreamer) {
+      return 'Connected'; // Both follow each other
+    } else if (_isFollowing) {
+      return 'Following'; // You follow them
+    }
+
+    return 'Follow'; // Not following
   }
 
   /// Get connection status text for NetworkView-style display
@@ -1246,8 +1433,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       return null;
     }
 
-    // 🎯 FOLLOW LOGIC: Hide button for self state
-    if (_followButtonState == FollowButtonState.self) {
+    // 🎯 FOLLOW LOGIC: Hide button for viewing own profile
+    if (widget.currentUserId == widget.userId) {
       return null;
     }
 
@@ -1332,6 +1519,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   /// Show options menu for connected users (Message, Manage Connection, Report)
   /// NOTE: Currently not used for single-tap behavior (immediate unfollow)
   /// Keeping for potential future use (long-press, menu button, etc.)
+  // ignore: unused_element
   void _showConnectedUserOptions() {
     showModalBottomSheet<void>(
       context: context,
@@ -1791,6 +1979,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           setState(() {
             _isFollowingOperation = false;
           });
+
+          // Update follow button state to reflect the new relationship
+          await _updateFollowButtonState();
         }
 
         if (kDebugMode) {
@@ -1845,13 +2036,16 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             "✅ StreamerCardView: Successfully followed user via FollowsService");
       }
 
-      // Create follow notification
-      await _createFollowNotification();
+      // Note: FollowsService already triggers EventTriggerService which creates the notification
+      // No need to create it again here
 
       if (mounted) {
         setState(() {
           _isFollowingOperation = false;
         });
+
+        // Update follow button state to reflect the new relationship
+        await _updateFollowButtonState();
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1941,6 +2135,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         debugPrint(
             "✅ StreamerCardView: Successfully unfollowed user via FollowsService");
       }
+
+      // Update follow button state to reflect the new relationship
+      await _updateFollowButtonState();
 
       // Remove follow notification
       await _removeFollowNotification();
@@ -2741,10 +2938,17 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
-    debugPrint(
-        '🔗 _buildPlatforms: Building platforms section with ${platforms.length} platforms');
+    if (kDebugMode) {
+      // ✅ FIX #5: Wrap in kDebugMode
+      debugPrint(
+          '🔗 _buildPlatforms: Building platforms section with ${platforms.length} platforms');
+    }
     if (platforms.isEmpty) {
-      debugPrint('🔗 _buildPlatforms: No platforms found, showing empty state');
+      if (kDebugMode) {
+        // ✅ FIX #5: Wrap in kDebugMode
+        debugPrint(
+            '🔗 _buildPlatforms: No platforms found, showing empty state');
+      }
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
         child: Text(
@@ -2976,157 +3180,235 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     }
   }
 
+  /// ✅ FIX #2: Optimized to only setState when platforms actually change
   void _loadPlatforms() {
-    debugPrint('🔗 _loadPlatforms: Starting to load platforms');
-    if (_userData != null && _userData!['platforms'] != null) {
-      debugPrint('🔗 _loadPlatforms: User data has platforms field');
-      try {
-        final platformsData = _userData!['platforms'];
-        debugPrint('🔗 _loadPlatforms: Platforms data: $platformsData');
-        if (platformsData is List) {
-          debugPrint(
-              '🔗 _loadPlatforms: Platforms is a List with ${platformsData.length} items');
-          setState(() {
-            _platforms = platformsData
-                .map((platform) {
-                  if (platform is Map<String, dynamic>) {
-                    return {
-                      'id': platform['id']?.toString() ?? '',
-                      'type': platform['type']?.toString() ?? '',
-                      'username': platform['username']?.toString() ?? '',
-                      'followers':
-                          (platform['followers'] as num?)?.toInt() ?? 0,
-                      'url': platform['url']?.toString(),
-                    };
-                  }
-                  return null;
-                })
-                .where((platform) => platform != null)
-                .cast<Map<String, dynamic>>()
-                .toList();
-          });
-        } else {
-          // If platforms is not a list, initialize as empty
-          setState(() {
-            _platforms = [];
-          });
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          // debugPrint('Error loading platforms: $e');
-        }
-        setState(() {
+    if (_userData == null || _userData!['platforms'] == null) {
+      // Only setState if platforms were previously non-empty
+      if (_platforms.isNotEmpty) {
+        _platforms = [];
+      }
+      return;
+    }
+
+    try {
+      final platformsData = _userData!['platforms'];
+      if (platformsData is! List) {
+        if (_platforms.isNotEmpty) {
           _platforms = [];
-        });
+        }
+        return;
+      }
+
+      final newPlatforms = platformsData
+          .where((p) => p is Map<String, dynamic>)
+          .map((platform) => {
+                'id': platform['id']?.toString() ?? '',
+                'type': platform['type']?.toString() ?? '',
+                'username': platform['username']?.toString() ?? '',
+                'followers': (platform['followers'] as num?)?.toInt() ?? 0,
+                'url': platform['url']?.toString(),
+              })
+          .toList();
+
+      // ✅ Only update if platforms actually changed (no unnecessary setState)
+      if (!_platformsEqual(newPlatforms, _platforms)) {
+        _platforms = newPlatforms;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ StreamerCardView: Error loading platforms: $e');
+      }
+      if (_platforms.isNotEmpty) {
+        _platforms = [];
       }
     }
   }
 
+  /// Helper to compare platform lists
+  bool _platformsEqual(
+      List<Map<String, dynamic>> a, List<Map<String, dynamic>> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i]['id'] != b[i]['id'] || a[i]['url'] != b[i]['url']) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// ✅ FIX #3: Optimized to only update when calendar events actually change
   void _loadCalendarEvents() {
-    if (_userData != null && _userData!['calendarEvents'] != null) {
-      try {
-        final eventsData = _userData!['calendarEvents'];
-        if (eventsData is List) {
-          setState(() {
-            _calendarEvents = eventsData
-                .map((eventData) {
-                  if (eventData is Map<String, dynamic> &&
-                      eventData['id'] != null &&
-                      eventData['title'] != null &&
-                      eventData['description'] != null &&
-                      eventData['date'] != null) {
-                    try {
-                      return CalendarEvent(
-                        id: eventData['id'] as String,
-                        title: eventData['title'] as String,
-                        description: eventData['description'] as String,
-                        date: (eventData['date'] as Timestamp).toDate(),
-                      );
-                    } catch (e) {
-                      if (kDebugMode) {
-                        // debugPrint('Error creating CalendarEvent: $e');
-                      }
-                      return null;
-                    }
-                  }
-                  return null;
-                })
-                .where((event) => event != null)
-                .cast<CalendarEvent>()
-                .toList();
-          });
-        } else {
-          // If calendarEvents is not a list, initialize as empty
-          setState(() {
-            _calendarEvents = [];
-          });
+    if (_userData == null || _userData!['calendarEvents'] == null) {
+      // Only update if events were previously non-empty
+      if (_calendarEvents.isNotEmpty) {
+        _calendarEvents = [];
+      }
+      return;
+    }
+
+    try {
+      final eventsData = _userData!['calendarEvents'];
+      if (eventsData is! List) {
+        if (_calendarEvents.isNotEmpty) {
+          _calendarEvents = [];
         }
+        return;
+      }
+
+      final newEvents = eventsData
+          .where((e) =>
+              e is Map<String, dynamic> &&
+              e['id'] != null &&
+              e['title'] != null &&
+              e['description'] != null &&
+              e['date'] != null)
+          .map((eventData) {
+            try {
+              return CalendarEvent(
+                id: eventData['id'] as String,
+                title: eventData['title'] as String,
+                description: eventData['description'] as String,
+                date: _parseDate(
+                    eventData['date']), // ✅ FIX #3: Safe date parsing
+              );
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint(
+                    '❌ StreamerCardView: Error creating CalendarEvent: $e');
+              }
+              return null;
+            }
+          })
+          .where((event) => event != null)
+          .cast<CalendarEvent>()
+          .toList();
+
+      // ✅ Only update if events actually changed (no unnecessary setState)
+      if (!_eventsEqual(newEvents, _calendarEvents)) {
+        _calendarEvents = newEvents;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ StreamerCardView: Error loading calendar events: $e');
+      }
+      if (_calendarEvents.isNotEmpty) {
+        _calendarEvents = [];
+      }
+    }
+  }
+
+  /// Helper to compare calendar event lists
+  bool _eventsEqual(List<CalendarEvent> a, List<CalendarEvent> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].date != b[i].date) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// ✅ FIX #3: Safely parse date from various formats (copied from ProfileBackView)
+  DateTime _parseDate(dynamic dateValue) {
+    if (dateValue == null) {
+      return DateTime.now();
+    }
+
+    if (dateValue is Timestamp) {
+      return dateValue.toDate();
+    }
+
+    if (dateValue is DateTime) {
+      return dateValue;
+    }
+
+    if (dateValue is String) {
+      try {
+        return DateTime.parse(dateValue);
       } catch (e) {
         if (kDebugMode) {
-          // debugPrint('Error loading calendar events: $e');
+          debugPrint(
+              '❌ StreamerCardView: Error parsing date string: $dateValue');
         }
-        setState(() {
-          _calendarEvents = [];
-        });
+        return DateTime.now();
       }
     }
+
+    if (kDebugMode) {
+      debugPrint(
+          '❌ StreamerCardView: Unknown date type: ${dateValue.runtimeType}');
+    }
+    return DateTime.now();
   }
 
-  void _launchPlatformUrl(Map<String, dynamic> platform) async {
+  /// ✅ FIX #4: Added timeout protection to prevent UI freeze
+  Future<void> _launchPlatformUrl(Map<String, dynamic> platform) async {
     final url = platform['url'] as String?;
-    debugPrint('🔗 StreamerCardView: Attempting to launch URL: $url');
+    final platformType = platform['type'] as String?;
 
-    if (url != null && url.isNotEmpty) {
-      try {
-        final uri = Uri.parse(url);
-        debugPrint('🔗 StreamerCardView: Parsed URI: $uri');
+    if (url == null || url.isEmpty) return;
 
-        final canLaunch = await canLaunchUrl(uri);
-        debugPrint('🔗 StreamerCardView: Can launch URL: $canLaunch');
+    try {
+      // ✅ FIX #4: Add timeout to prevent hanging (10 seconds)
+      await Future.any([
+        _launchUrlWithTimeout(url),
+        Future.delayed(const Duration(seconds: 10), () {
+          throw TimeoutException(
+              'URL launch timed out', const Duration(seconds: 10));
+        }),
+      ]);
 
-        if (canLaunch) {
-          debugPrint('🔗 StreamerCardView: Launching URL...');
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-          debugPrint('🔗 StreamerCardView: URL launched successfully');
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'Opening ${_getPlatformDisplayName(platform['type'])}...'),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          }
-        } else {
-          debugPrint('🔗 StreamerCardView: Cannot launch URL');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Could not open platform URL'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        debugPrint('🔗 StreamerCardView: Error launching URL: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error opening URL: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      // Show success feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('Opening ${_getPlatformDisplayName(platformType)}...'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
-    } else {
-      debugPrint('🔗 StreamerCardView: No URL provided');
+    } catch (e) {
+      if (kDebugMode) {
+        // ✅ FIX #5: Wrap in kDebugMode
+        debugPrint('❌ StreamerCardView: Error launching URL: $e');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cannot open this link'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  String _getPlatformDisplayName(String platformType) {
+  /// ✅ FIX #4: Helper method for URL launching with proper error handling
+  Future<void> _launchUrlWithTimeout(String url) async {
+    String finalUrl = url;
+    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      finalUrl = 'https://$finalUrl';
+    }
+
+    if (kDebugMode) {
+      // ✅ FIX #5: Wrap in kDebugMode
+      debugPrint('🔗 StreamerCardView: Launching URL: $finalUrl');
+    }
+
+    final uri = Uri.parse(finalUrl);
+    final canLaunch = await canLaunchUrl(uri);
+
+    if (canLaunch) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
+    }
+  }
+
+  String _getPlatformDisplayName(String? platformType) {
+    if (platformType == null) return 'Platform';
     switch (platformType.toLowerCase()) {
       case 'twitch':
         return 'Twitch';

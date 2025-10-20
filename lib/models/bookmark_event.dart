@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class BookmarkEvent {
   final String eventId;
   final String creatorId;
+  final String creatorName;
   final String title;
   final DateTime startAt;
   final DateTime notifyAt;
@@ -14,6 +15,7 @@ class BookmarkEvent {
   const BookmarkEvent({
     required this.eventId,
     required this.creatorId,
+    required this.creatorName,
     required this.title,
     required this.startAt,
     required this.notifyAt,
@@ -27,6 +29,7 @@ class BookmarkEvent {
     return BookmarkEvent(
       eventId: map['eventId'] as String,
       creatorId: map['creatorId'] as String,
+      creatorName: map['creatorName'] as String? ?? map['creatorId'] as String,
       title: map['title'] as String,
       startAt: (map['startAt'] as Timestamp).toDate(),
       notifyAt: (map['notifyAt'] as Timestamp).toDate(),
@@ -41,6 +44,7 @@ class BookmarkEvent {
     return {
       'eventId': eventId,
       'creatorId': creatorId,
+      'creatorName': creatorName,
       'title': title,
       'startAt': Timestamp.fromDate(startAt),
       'notifyAt': Timestamp.fromDate(notifyAt),
@@ -54,6 +58,7 @@ class BookmarkEvent {
   BookmarkEvent copyWith({
     String? eventId,
     String? creatorId,
+    String? creatorName,
     String? title,
     DateTime? startAt,
     DateTime? notifyAt,
@@ -65,6 +70,7 @@ class BookmarkEvent {
     return BookmarkEvent(
       eventId: eventId ?? this.eventId,
       creatorId: creatorId ?? this.creatorId,
+      creatorName: creatorName ?? this.creatorName,
       title: title ?? this.title,
       startAt: startAt ?? this.startAt,
       notifyAt: notifyAt ?? this.notifyAt,
@@ -118,7 +124,7 @@ class BookmarkEvent {
 
   @override
   String toString() {
-    return 'BookmarkEvent(eventId: $eventId, creatorId: $creatorId, title: $title, startAt: $startAt, notifyAt: $notifyAt, notify: $notify, createdAt: $createdAt, scheduledTaskId: $scheduledTaskId, source: $source)';
+    return 'BookmarkEvent(eventId: $eventId, creatorId: $creatorId, creatorName: $creatorName, title: $title, startAt: $startAt, notifyAt: $notifyAt, notify: $notify, createdAt: $createdAt, scheduledTaskId: $scheduledTaskId, source: $source)';
   }
 }
 

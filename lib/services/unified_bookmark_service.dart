@@ -22,10 +22,6 @@ class UnifiedBookmarkService extends ChangeNotifier {
   final StreamController<BookmarkEvent> _eventController =
       StreamController<BookmarkEvent>.broadcast();
 
-  // Configuration
-  static const int _maxBookmarks = 1000;
-  static const int _maxRetries = 3;
-
   // Getters
   Stream<BookmarkEvent> get eventStream => _eventController.stream;
   Map<String, BookmarkState> get bookmarkStates => Map.from(_bookmarkStates);

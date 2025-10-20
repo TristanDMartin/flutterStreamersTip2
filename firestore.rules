@@ -11,7 +11,8 @@ service cloud.firestore {
       allow update: if request.auth != null 
         && (request.auth.uid == userId  // Own profile
             || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_videos', 'followingCount', 'followersCount', 'connectionsCount']) // Only these fields
-                && isValidBookmarkUpdate(request.resource.data.liked_videos))); // Validate bookmark data
+                && (!('liked_videos' in request.resource.data.diff(resource.data).affectedKeys()) 
+                    || isValidBookmarkUpdate(request.resource.data.liked_videos)))); // Validate bookmark data only if liked_videos is being updated
       
       // Users can read and write their own subcollections
       match /{subcollection=**} {
@@ -35,12 +36,18 @@ service cloud.firestore {
       // Users can only read their own notifications
       allow read: if request.auth != null && request.auth.uid == userId;
       
+      // Allow querying/listing notifications for checking duplicates
+      allow list: if request.auth != null;
+      
       // Any authenticated user can create notifications for any user
       // This allows the notification system to work
       allow create: if request.auth != null;
       
       // Users can only update their own notifications
       allow update: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow deleting notifications (for cleanup)
+      allow delete: if request.auth != null;
       
       // Users can read and write notification items
       match /items/{itemId} {
@@ -53,6 +60,9 @@ service cloud.firestore {
         
         // Users can only update their own notification items
         allow update: if request.auth != null && request.auth.uid == userId;
+        
+        // Allow deleting notifications (for cleanup)
+        allow delete: if request.auth != null;
       }
     }
     

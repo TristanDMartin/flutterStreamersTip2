@@ -5,7 +5,8 @@ import 'push_notification_service.dart';
 
 class NotificationService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final PushNotificationService _pushNotificationService = PushNotificationService();
+  final PushNotificationService _pushNotificationService =
+      PushNotificationService();
   bool _hasUnreadNotifications = false;
 
   bool get hasUnreadNotifications => _hasUnreadNotifications;
@@ -14,7 +15,7 @@ class NotificationService {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) return;
-      
+
       // Mark all notifications as read for the current user
       final batch = _db.batch();
       final notificationsRef = _db
@@ -22,12 +23,12 @@ class NotificationService {
           .doc(currentUser.uid)
           .collection('items')
           .where('isRead', isEqualTo: false);
-      
+
       final snapshot = await notificationsRef.get();
       for (final doc in snapshot.docs) {
         batch.update(doc.reference, {'isRead': true});
       }
-      
+
       await batch.commit();
       _hasUnreadNotifications = false;
       debugPrint('✅ Marked all notifications as read');
@@ -65,7 +66,7 @@ class NotificationService {
           .collection('items')
           .orderBy('timestamp', descending: true)
           .get();
-      
+
       return snapshot.docs.map((doc) {
         final data = doc.data();
         return {
@@ -88,9 +89,9 @@ class NotificationService {
       // Get follower user data
       final followerDoc = await _db.collection('users').doc(followerId).get();
       if (!followerDoc.exists) return;
-      
+
       final followerData = followerDoc.data()!;
-      
+
       // Create notification for the user being followed
       await _db
           .collection('notifications')
@@ -106,16 +107,17 @@ class NotificationService {
         },
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'pending',
+        'status': 'delivered',
       });
-      
+
       debugPrint('✅ Follow notification created: $followerId -> $followingId');
-      
+
       // Send push notification
       await _pushNotificationService.sendNotificationToUser(
         userId: followingId,
         title: 'New Follower',
-        body: '${followerData['displayName'] ?? 'Someone'} started following you',
+        body:
+            '${followerData['displayName'] ?? 'Someone'} started following you',
         type: 'follow',
         data: {
           'followerId': followerId,
@@ -135,24 +137,26 @@ class NotificationService {
     String? postThumbnailUrl,
   }) async {
     try {
-      debugPrint('🔔 NotificationService.handleLikeEvent called: $likerId -> $videoOwnerId for video $videoId');
-      
+      debugPrint(
+          '🔔 NotificationService.handleLikeEvent called: $likerId -> $videoOwnerId for video $videoId');
+
       // Don't create notification if user is liking their own video
       if (likerId == videoOwnerId) {
         debugPrint('🔔 Skipping notification - user liking their own video');
         return;
       }
-      
+
       // Get liker user data
       final likerDoc = await _db.collection('users').doc(likerId).get();
       if (!likerDoc.exists) {
         debugPrint('🔔 Skipping notification - liker user not found: $likerId');
         return;
       }
-      
+
       final likerData = likerDoc.data()!;
-      debugPrint('🔔 Got liker data: ${likerData['username']} (${likerData['displayName']})');
-      
+      debugPrint(
+          '🔔 Got liker data: ${likerData['username']} (${likerData['displayName']})');
+
       // Create notification for the video owner
       final notificationData = {
         'type': 'like',
@@ -166,18 +170,20 @@ class NotificationService {
         'postThumbnailUrl': postThumbnailUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'pending',
+        'status': 'delivered',
       };
-      
-      debugPrint('🔔 Creating notification in Firestore: notifications/$videoOwnerId/items');
+
+      debugPrint(
+          '🔔 Creating notification in Firestore: notifications/$videoOwnerId/items');
       await _db
           .collection('notifications')
           .doc(videoOwnerId)
           .collection('items')
           .add(notificationData);
-      
-      debugPrint('✅ Like notification created successfully: $likerId -> $videoOwnerId for video $videoId');
-      
+
+      debugPrint(
+          '✅ Like notification created successfully: $likerId -> $videoOwnerId for video $videoId');
+
       // Send push notification
       await _pushNotificationService.sendNotificationToUser(
         userId: videoOwnerId,
@@ -206,13 +212,13 @@ class NotificationService {
     try {
       // Don't create notification if user is commenting on their own video
       if (commenterId == videoOwnerId) return;
-      
+
       // Get commenter user data
       final commenterDoc = await _db.collection('users').doc(commenterId).get();
       if (!commenterDoc.exists) return;
-      
+
       final commenterData = commenterDoc.data()!;
-      
+
       // Create notification for the video owner
       await _db
           .collection('notifications')
@@ -231,16 +237,18 @@ class NotificationService {
         'postThumbnailUrl': postThumbnailUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'pending',
+        'status': 'delivered',
       });
-      
-      debugPrint('✅ Comment notification created: $commenterId -> $videoOwnerId for video $videoId');
-      
+
+      debugPrint(
+          '✅ Comment notification created: $commenterId -> $videoOwnerId for video $videoId');
+
       // Send push notification
       await _pushNotificationService.sendNotificationToUser(
         userId: videoOwnerId,
         title: 'New Comment',
-        body: '${commenterData['displayName'] ?? 'Someone'} commented: "${commentText.length > 50 ? '${commentText.substring(0, 50)}...' : commentText}"',
+        body:
+            '${commenterData['displayName'] ?? 'Someone'} commented: "${commentText.length > 50 ? '${commentText.substring(0, 50)}...' : commentText}"',
         type: 'comment',
         data: {
           'commenterId': commenterId,
@@ -265,9 +273,9 @@ class NotificationService {
       // Get tagger user data
       final taggerDoc = await _db.collection('users').doc(taggerId).get();
       if (!taggerDoc.exists) return;
-      
+
       final taggerData = taggerDoc.data()!;
-      
+
       // Create notification for the tagged user
       await _db
           .collection('notifications')
@@ -285,16 +293,18 @@ class NotificationService {
         'postThumbnailUrl': postThumbnailUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'pending',
+        'status': 'delivered',
       });
-      
-      debugPrint('✅ Tag notification created: $taggerId -> $taggedUserId for video $videoId');
-      
+
+      debugPrint(
+          '✅ Tag notification created: $taggerId -> $taggedUserId for video $videoId');
+
       // Send push notification
       await _pushNotificationService.sendNotificationToUser(
         userId: taggedUserId,
         title: 'You Were Tagged',
-        body: '${taggerData['displayName'] ?? 'Someone'} tagged you in their video',
+        body:
+            '${taggerData['displayName'] ?? 'Someone'} tagged you in their video',
         type: 'tag',
         data: {
           'taggerId': taggerId,
@@ -318,9 +328,9 @@ class NotificationService {
       // Get mentioner user data
       final mentionerDoc = await _db.collection('users').doc(mentionerId).get();
       if (!mentionerDoc.exists) return;
-      
+
       final mentionerData = mentionerDoc.data()!;
-      
+
       // Create notification for the mentioned user
       await _db
           .collection('notifications')
@@ -338,16 +348,18 @@ class NotificationService {
         'postThumbnailUrl': postThumbnailUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'pending',
+        'status': 'delivered',
       });
-      
-      debugPrint('✅ Mention notification created: $mentionerId -> $mentionedUserId for video $videoId');
-      
+
+      debugPrint(
+          '✅ Mention notification created: $mentionerId -> $mentionedUserId for video $videoId');
+
       // Send push notification
       await _pushNotificationService.sendNotificationToUser(
         userId: mentionedUserId,
         title: 'You Were Mentioned',
-        body: '${mentionerData['displayName'] ?? 'Someone'} mentioned you in their video',
+        body:
+            '${mentionerData['displayName'] ?? 'Someone'} mentioned you in their video',
         type: 'mention',
         data: {
           'mentionerId': mentionerId,
@@ -361,10 +373,11 @@ class NotificationService {
     }
   }
 
-  Future<void> processBatchNotifications(List<Map<String, dynamic>> notifications) async {
+  Future<void> processBatchNotifications(
+      List<Map<String, dynamic>> notifications) async {
     try {
       final batch = _db.batch();
-      
+
       for (final notification in notifications) {
         final userId = notification['userId'] as String;
         final docRef = _db
@@ -372,10 +385,10 @@ class NotificationService {
             .doc(userId)
             .collection('items')
             .doc();
-        
+
         batch.set(docRef, notification);
       }
-      
+
       await batch.commit();
       debugPrint('✅ Processed batch of ${notifications.length} notifications');
     } catch (e) {

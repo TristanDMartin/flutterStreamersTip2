@@ -155,6 +155,13 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
       if (userDoc.exists && userDoc.data() != null) {
         final userData = userDoc.data()!;
         final currentAvatarUrl = userData['avatarURL'] as String?;
+
+        // ✅ Get online status (check multiple fields for compatibility)
+        final onlineStatus = userData['status'] as String? ??
+            userData['userStatus'] as String? ??
+            userData['onlineStatus'] as String? ??
+            (userData['isOnline'] == true ? 'online' : 'offline');
+
         if (currentAvatarUrl != null && currentAvatarUrl.isNotEmpty) {
           return app_user.User(
             id: user.id,
@@ -162,7 +169,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
             displayName: user.displayName,
             bio: user.bio,
             avatarURL: currentAvatarUrl,
-            onlineStatus: user.onlineStatus,
+            onlineStatus: onlineStatus, // ✅ Use enriched online status
             hashtags: user.hashtags,
             aiSelf: user.aiSelf,
             postCount: user.postCount,

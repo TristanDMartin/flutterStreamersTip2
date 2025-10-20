@@ -5,11 +5,11 @@ import '../models/user_model.dart' as user_model;
 import 'event_trigger_service.dart';
 
 /// Service for managing follow relationships using the correct data model
-/// 
+///
 /// Data Model:
 /// - follows/{followerId}_{followedId} - single collection for all follow relationships
 /// - users/{userId} - denormalized counters (followersCount, followingCount, connectionsCount)
-/// 
+///
 /// Tab Logic:
 /// - Connections: U -> X and X -> U (mutual follows)
 /// - Followers: X -> U and NOT U -> X (one-way followers)
@@ -43,29 +43,28 @@ class FollowsService {
     }
 
     try {
-      final batch = _firestore.batch();
       final currentUserId = currentUser.uid;
-      
+
+      // First, ensure user documents have the required counter fields
+      await _ensureCounterFields(currentUserId);
+      await _ensureCounterFields(targetUserId);
+
       // Create the follow relationship
       final followDocId = '${currentUserId}_$targetUserId';
       final followRef = _firestore.collection('follows').doc(followDocId);
-      
-      batch.set(followRef, {
-        'followerId': currentUserId,
-        'followedId': targetUserId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
 
       // Check if the target user already follows the current user (mutual follow)
       final reverseFollowDocId = '${targetUserId}_$currentUserId';
-      final reverseFollowRef = _firestore.collection('follows').doc(reverseFollowDocId);
-      
+      final reverseFollowRef =
+          _firestore.collection('follows').doc(reverseFollowDocId);
+
       // We need to check this in a transaction to ensure consistency
-      return await _firestore.runTransaction<bool>((transaction) async {
+      final success =
+          await _firestore.runTransaction<bool>((transaction) async {
         // Check if reverse follow exists
         final reverseFollowDoc = await transaction.get(reverseFollowRef);
         final isMutual = reverseFollowDoc.exists;
-        
+
         // Create the follow relationship
         transaction.set(followRef, {
           'followerId': currentUserId,
@@ -102,19 +101,22 @@ class FollowsService {
           );
         }
 
-        // Trigger follow event for notifications
-        if (_eventTriggerService != null) {
-          debugPrint('🔔 FollowsService: Triggering follow event notification');
-          await _eventTriggerService!.triggerFollowEvent(
-            followerId: currentUserId,
-            followingId: targetUserId,
-          );
-        } else {
-          debugPrint('⚠️ FollowsService: EventTriggerService not set - no notification will be created');
-        }
-
         return true;
       });
+
+      // Trigger follow event for notifications AFTER transaction completes
+      if (success && _eventTriggerService != null) {
+        debugPrint('🔔 FollowsService: Triggering follow event notification');
+        await _eventTriggerService!.triggerFollowEvent(
+          followerId: currentUserId,
+          followingId: targetUserId,
+        );
+      } else if (success && _eventTriggerService == null) {
+        debugPrint(
+            '⚠️ FollowsService: EventTriggerService not set - no notification will be created');
+      }
+
+      return success;
     } catch (e) {
       debugPrint('❌ FollowsService: Error following user: $e');
       return false;
@@ -132,20 +134,25 @@ class FollowsService {
 
     try {
       final currentUserId = currentUser.uid;
-      
+
+      // First, ensure user documents have the required counter fields
+      await _ensureCounterFields(currentUserId);
+      await _ensureCounterFields(targetUserId);
+
       return await _firestore.runTransaction<bool>((transaction) async {
         // Check if reverse follow exists (mutual relationship)
         final reverseFollowDocId = '${targetUserId}_$currentUserId';
-        final reverseFollowRef = _firestore.collection('follows').doc(reverseFollowDocId);
+        final reverseFollowRef =
+            _firestore.collection('follows').doc(reverseFollowDocId);
         final reverseFollowDoc = await transaction.get(reverseFollowRef);
         final isMutual = reverseFollowDoc.exists;
-        
+
         // Remove the follow relationship
         final followDocId = '${currentUserId}_$targetUserId';
         final followRef = _firestore.collection('follows').doc(followDocId);
         transaction.delete(followRef);
 
-        // Update counters
+        // Update counters with safe field handling
         if (isMutual) {
           // Breaking mutual relationship - move to followers/following
           transaction.update(
@@ -182,6 +189,34 @@ class FollowsService {
     }
   }
 
+  /// Ensure user document has required counter fields
+  Future<void> _ensureCounterFields(String userId) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return;
+
+      final data = userDoc.data()!;
+      final Map<String, dynamic> updates = {};
+
+      if (!data.containsKey('followingCount')) {
+        updates['followingCount'] = 0;
+      }
+      if (!data.containsKey('followersCount')) {
+        updates['followersCount'] = 0;
+      }
+      if (!data.containsKey('connectionsCount')) {
+        updates['connectionsCount'] = 0;
+      }
+
+      if (updates.isNotEmpty) {
+        await _firestore.collection('users').doc(userId).update(updates);
+        debugPrint('✅ Added missing counter fields for user: $userId');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Could not ensure counter fields for user $userId: $e');
+    }
+  }
+
   /// Get users for a specific tab using the correct logic
   Future<List<user_model.User>> getUsersForTab(String tab) async {
     final currentUser = _auth.currentUser;
@@ -192,13 +227,13 @@ class FollowsService {
 
     try {
       final currentUserId = currentUser.uid;
-      
+
       // Get all follows where current user is the follower
       final followingQuery = await _firestore
           .collection('follows')
           .where('followerId', isEqualTo: currentUserId)
           .get();
-      
+
       // Get all follows where current user is the followed
       final followersQuery = await _firestore
           .collection('follows')
@@ -206,8 +241,12 @@ class FollowsService {
           .get();
 
       // Extract user IDs
-      final followingIds = followingQuery.docs.map((doc) => doc.data()['followedId'] as String).toSet();
-      final followerIds = followersQuery.docs.map((doc) => doc.data()['followerId'] as String).toSet();
+      final followingIds = followingQuery.docs
+          .map((doc) => doc.data()['followedId'] as String)
+          .toSet();
+      final followerIds = followersQuery.docs
+          .map((doc) => doc.data()['followerId'] as String)
+          .toSet();
 
       debugPrint('📊 FollowsService: Following IDs: ${followingIds.length}');
       debugPrint('📊 FollowsService: Follower IDs: ${followerIds.length}');
@@ -218,17 +257,20 @@ class FollowsService {
         case 'connections':
           // Mutual follows: U -> X and X -> U
           targetUserIds = followingIds.intersection(followerIds);
-          debugPrint('🔗 FollowsService: Connections (mutual): ${targetUserIds.length}');
+          debugPrint(
+              '🔗 FollowsService: Connections (mutual): ${targetUserIds.length}');
           break;
         case 'followers':
           // One-way followers: X -> U and NOT U -> X
           targetUserIds = followerIds.difference(followingIds);
-          debugPrint('👥 FollowsService: Followers (one-way): ${targetUserIds.length}');
+          debugPrint(
+              '👥 FollowsService: Followers (one-way): ${targetUserIds.length}');
           break;
         case 'following':
           // One-way following: U -> X and NOT X -> U
           targetUserIds = followingIds.difference(followerIds);
-          debugPrint('➡️ FollowsService: Following (one-way): ${targetUserIds.length}');
+          debugPrint(
+              '➡️ FollowsService: Following (one-way): ${targetUserIds.length}');
           break;
         default:
           debugPrint('❌ FollowsService: Unknown tab: $tab');
@@ -246,9 +288,12 @@ class FollowsService {
           .where(FieldPath.documentId, whereIn: targetUserIds.toList())
           .get();
 
-      final users = usersQuery.docs.map((doc) => user_model.User.fromMap(doc.data())).toList();
-      
-      debugPrint('✅ FollowsService: Retrieved ${users.length} users for tab $tab');
+      final users = usersQuery.docs
+          .map((doc) => user_model.User.fromMap(doc.data()))
+          .toList();
+
+      debugPrint(
+          '✅ FollowsService: Retrieved ${users.length} users for tab $tab');
       return users;
     } catch (e) {
       debugPrint('❌ FollowsService: Error getting users for tab $tab: $e');
@@ -263,7 +308,8 @@ class FollowsService {
 
     try {
       final followDocId = '${currentUser.uid}_$targetUserId';
-      final followDoc = await _firestore.collection('follows').doc(followDocId).get();
+      final followDoc =
+          await _firestore.collection('follows').doc(followDocId).get();
       return followDoc.exists;
     } catch (e) {
       debugPrint('❌ FollowsService: Error checking follow status: $e');
@@ -278,7 +324,8 @@ class FollowsService {
 
     try {
       final followDocId = '${targetUserId}_${currentUser.uid}';
-      final followDoc = await _firestore.collection('follows').doc(followDocId).get();
+      final followDoc =
+          await _firestore.collection('follows').doc(followDocId).get();
       return followDoc.exists;
     } catch (e) {
       debugPrint('❌ FollowsService: Error checking follow status: $e');
@@ -294,12 +341,12 @@ class FollowsService {
     try {
       final followDocId = '${currentUser.uid}_$targetUserId';
       final reverseFollowDocId = '${targetUserId}_${currentUser.uid}';
-      
+
       final results = await Future.wait([
         _firestore.collection('follows').doc(followDocId).get(),
         _firestore.collection('follows').doc(reverseFollowDocId).get(),
       ]);
-      
+
       return results[0].exists && results[1].exists;
     } catch (e) {
       debugPrint('❌ FollowsService: Error checking mutual follow: $e');
@@ -315,10 +362,7 @@ class FollowsService {
     }
 
     // Simple implementation - refresh data every time follows collection changes
-    return _firestore
-        .collection('follows')
-        .snapshots()
-        .asyncMap((_) async {
+    return _firestore.collection('follows').snapshots().asyncMap((_) async {
       return await getUsersForTab(tab);
     });
   }

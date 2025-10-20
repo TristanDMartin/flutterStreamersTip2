@@ -9,7 +9,8 @@ import '../models/calendar_event.dart';
 /// Enhanced BookmarkService with notification scheduling and FCM integration
 /// Implements the complete bookmark → notify → manage flow
 class EnhancedBookmarkService {
-  static final EnhancedBookmarkService _instance = EnhancedBookmarkService._internal();
+  static final EnhancedBookmarkService _instance =
+      EnhancedBookmarkService._internal();
   factory EnhancedBookmarkService() => _instance;
   EnhancedBookmarkService._internal();
 
@@ -19,13 +20,17 @@ class EnhancedBookmarkService {
 
   // Local state management
   final Set<String> _bookmarkedEventIds = <String>{};
-  final Map<String, BookmarkEvent> _bookmarkedEvents = <String, BookmarkEvent>{};
-  
+  final Map<String, BookmarkEvent> _bookmarkedEvents =
+      <String, BookmarkEvent>{};
+
   // Stream controllers for reactive updates
-  final StreamController<Set<String>> _bookmarksController = 
+  final StreamController<Set<String>> _bookmarksController =
       StreamController<Set<String>>.broadcast();
-  final StreamController<List<BookmarkEvent>> _bookmarkedEventsController = 
+  final StreamController<List<BookmarkEvent>> _bookmarkedEventsController =
       StreamController<List<BookmarkEvent>>.broadcast();
+
+  // Real-time listener
+  StreamSubscription<QuerySnapshot>? _bookmarksSubscription;
 
   // State
   bool _isLoading = false;
@@ -39,26 +44,27 @@ class EnhancedBookmarkService {
 
   // Streams
   Stream<Set<String>> get bookmarksStream => _bookmarksController.stream;
-  Stream<List<BookmarkEvent>> get bookmarkedEventsStream => _bookmarkedEventsController.stream;
+  Stream<List<BookmarkEvent>> get bookmarkedEventsStream =>
+      _bookmarkedEventsController.stream;
 
   /// Initialize the service and load bookmarks
   Future<void> initialize() async {
     if (_isInitialized) return;
-    
+
     _isLoading = true;
     _notifyBookmarksChanged();
-    
+
     try {
       final currentUser = _auth.currentUser;
       if (currentUser != null) {
         await _registerFCMToken();
         await _loadBookmarks(currentUser.uid);
       }
-      
+
       _isInitialized = true;
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: Error initializing: $e');
+        // print('❌ EnhancedBookmarkService: Error initializing: $e');
       }
     } finally {
       _isLoading = false;
@@ -87,11 +93,11 @@ class EnhancedBookmarkService {
       });
 
       if (kDebugMode) {
-    // print('✅ EnhancedBookmarkService: FCM token registered');
+        // print('✅ EnhancedBookmarkService: FCM token registered');
       }
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: Failed to register FCM token: $e');
+        // print('❌ EnhancedBookmarkService: Failed to register FCM token: $e');
       }
     }
   }
@@ -102,31 +108,77 @@ class EnhancedBookmarkService {
   }
 
   /// Load bookmarks from Firebase
+  /// Load bookmarks with real-time sync
   Future<void> _loadBookmarks(String userId) async {
     try {
-      final snapshot = await _firestore
+      debugPrint(
+          '📡 EnhancedBookmarkService: Setting up real-time listener for user: $userId');
+
+      // Cancel existing subscription if any
+      _bookmarksSubscription?.cancel();
+
+      // Set up real-time listener
+      _bookmarksSubscription = _firestore
           .collection('users')
           .doc(userId)
           .collection('bookmarks')
           .orderBy('notifyAt', descending: false)
-          .get();
+          .snapshots()
+          .listen(
+        (snapshot) async {
+          debugPrint(
+              '📡 Received ${snapshot.docs.length} bookmarks from Firestore');
 
-      _bookmarkedEventIds.clear();
-      _bookmarkedEvents.clear();
+          _bookmarkedEventIds.clear();
+          _bookmarkedEvents.clear();
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final bookmark = BookmarkEvent.fromMap(data);
-        
-        _bookmarkedEventIds.add(bookmark.eventId);
-        _bookmarkedEvents[bookmark.eventId] = bookmark;
-      }
+          for (final doc in snapshot.docs) {
+            try {
+              final data = doc.data();
 
-      _notifyBookmarksChanged();
+              // Check if creatorName exists, if not fetch it
+              if (data['creatorName'] == null && data['creatorId'] != null) {
+                try {
+                  final creatorDoc = await _firestore
+                      .collection('users')
+                      .doc(data['creatorId'] as String)
+                      .get();
+
+                  if (creatorDoc.exists) {
+                    final creatorData = creatorDoc.data();
+                    data['creatorName'] =
+                        creatorData?['displayName'] as String? ??
+                            creatorData?['username'] as String? ??
+                            data['creatorId'] as String;
+
+                    // Update Firestore with the creator name for future
+                    doc.reference.update({'creatorName': data['creatorName']});
+                  }
+                } catch (e) {
+                  debugPrint('⚠️ Could not fetch creator name: $e');
+                  data['creatorName'] = data['creatorId']; // Fallback
+                }
+              }
+
+              final bookmark = BookmarkEvent.fromMap(data);
+
+              _bookmarkedEventIds.add(bookmark.eventId);
+              _bookmarkedEvents[bookmark.eventId] = bookmark;
+            } catch (e) {
+              debugPrint('❌ Error parsing bookmark: $e');
+            }
+          }
+
+          _notifyBookmarksChanged();
+          debugPrint(
+              '✅ Bookmarked events updated: ${_bookmarkedEventIds.length}');
+        },
+        onError: (error) {
+          debugPrint('❌ EnhancedBookmarkService: Listener error: $error');
+        },
+      );
     } catch (e) {
-      if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: Error loading bookmarks: $e');
-      }
+      debugPrint('❌ EnhancedBookmarkService: Error setting up listener: $e');
     }
   }
 
@@ -134,6 +186,7 @@ class EnhancedBookmarkService {
   Future<bool> bookmarkEvent({
     required String eventId,
     required String creatorId,
+    String? creatorName,
     required String title,
     required DateTime startAt,
     DateTime? notifyAt,
@@ -142,14 +195,14 @@ class EnhancedBookmarkService {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
       if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: No authenticated user');
+        // print('❌ EnhancedBookmarkService: No authenticated user');
       }
       return false;
     }
 
     if (_bookmarkedEventIds.contains(eventId)) {
       if (kDebugMode) {
-    // print('✅ EnhancedBookmarkService: Event already bookmarked: $eventId');
+        // print('✅ EnhancedBookmarkService: Event already bookmarked: $eventId');
       }
       return true; // Already bookmarked
     }
@@ -161,9 +214,27 @@ class EnhancedBookmarkService {
       final now = DateTime.now();
       final notificationTime = notifyAt ?? startAt;
 
+      // Fetch creator name if not provided
+      String finalCreatorName = creatorName ?? creatorId;
+      if (creatorName == null) {
+        try {
+          final creatorDoc =
+              await _firestore.collection('users').doc(creatorId).get();
+          if (creatorDoc.exists) {
+            final creatorData = creatorDoc.data();
+            finalCreatorName = creatorData?['displayName'] as String? ??
+                creatorData?['username'] as String? ??
+                creatorId;
+          }
+        } catch (e) {
+          debugPrint('⚠️ Could not fetch creator name: $e');
+        }
+      }
+
       final bookmarkData = {
         'eventId': eventId,
         'creatorId': creatorId,
+        'creatorName': finalCreatorName,
         'title': title,
         'startAt': Timestamp.fromDate(startAt),
         'notifyAt': Timestamp.fromDate(notificationTime),
@@ -173,9 +244,9 @@ class EnhancedBookmarkService {
       };
 
       if (kDebugMode) {
-    // print('📝 EnhancedBookmarkService: Saving bookmark for event: $eventId');
-    // print('📝 EnhancedBookmarkService: User ID: ${currentUser.uid}');
-    // print('📝 EnhancedBookmarkService: Creator ID: $creatorId');
+        // print('📝 EnhancedBookmarkService: Saving bookmark for event: $eventId');
+        // print('📝 EnhancedBookmarkService: User ID: ${currentUser.uid}');
+        // print('📝 EnhancedBookmarkService: Creator ID: $creatorId');
       }
 
       // Use merge to avoid overwriting existing data
@@ -190,6 +261,7 @@ class EnhancedBookmarkService {
       final bookmark = BookmarkEvent(
         eventId: eventId,
         creatorId: creatorId,
+        creatorName: finalCreatorName,
         title: title,
         startAt: startAt,
         notifyAt: notificationTime,
@@ -202,19 +274,19 @@ class EnhancedBookmarkService {
       _bookmarkedEvents[eventId] = bookmark;
 
       _notifyBookmarksChanged();
-      
+
       if (kDebugMode) {
-    // print('✅ EnhancedBookmarkService: Successfully bookmarked event: $title');
+        // print('✅ EnhancedBookmarkService: Successfully bookmarked event: $title');
       }
-      
+
       return true;
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: Error bookmarking event: $e');
-    // print('❌ EnhancedBookmarkService: Error type: ${e.runtimeType}');
+        // print('❌ EnhancedBookmarkService: Error bookmarking event: $e');
+        // print('❌ EnhancedBookmarkService: Error type: ${e.runtimeType}');
         if (e is FirebaseException) {
-    // print('❌ EnhancedBookmarkService: Firebase error code: ${e.code}');
-    // print('❌ EnhancedBookmarkService: Firebase error message: ${e.message}');
+          // print('❌ EnhancedBookmarkService: Firebase error code: ${e.code}');
+          // print('❌ EnhancedBookmarkService: Firebase error message: ${e.message}');
         }
       }
       return false;
@@ -256,15 +328,15 @@ class EnhancedBookmarkService {
       _bookmarkedEvents.remove(eventId);
 
       _notifyBookmarksChanged();
-      
+
       if (kDebugMode) {
-    // print('✅ EnhancedBookmarkService: Deleted bookmark: $eventId');
+        // print('✅ EnhancedBookmarkService: Deleted bookmark: $eventId');
       }
-      
+
       return true;
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: Error deleting bookmark: $e');
+        // print('❌ EnhancedBookmarkService: Error deleting bookmark: $e');
       }
       return false;
     } finally {
@@ -297,19 +369,20 @@ class EnhancedBookmarkService {
 
       // Update local state
       if (_bookmarkedEvents.containsKey(eventId)) {
-        _bookmarkedEvents[eventId] = _bookmarkedEvents[eventId]!.copyWith(notify: notify);
+        _bookmarkedEvents[eventId] =
+            _bookmarkedEvents[eventId]!.copyWith(notify: notify);
       }
 
       _notifyBookmarksChanged();
-      
+
       if (kDebugMode) {
-    // print('✅ EnhancedBookmarkService: Toggled notification for $eventId: $notify');
+        // print('✅ EnhancedBookmarkService: Toggled notification for $eventId: $notify');
       }
-      
+
       return true;
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: Error toggling notification: $e');
+        // print('❌ EnhancedBookmarkService: Error toggling notification: $e');
       }
       return false;
     } finally {
@@ -391,7 +464,7 @@ class EnhancedBookmarkService {
           .toList();
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: Error getting bookmarks: $e');
+        // print('❌ EnhancedBookmarkService: Error getting bookmarks: $e');
       }
       return [];
     }
@@ -404,7 +477,7 @@ class EnhancedBookmarkService {
       return bookmarks.map((bookmark) => bookmark.eventId).toSet();
     } catch (e) {
       if (kDebugMode) {
-    // print('❌ EnhancedBookmarkService: Error fetching bookmarked event IDs: $e');
+        // print('❌ EnhancedBookmarkService: Error fetching bookmarked event IDs: $e');
       }
       return <String>{};
     }
@@ -426,6 +499,7 @@ class EnhancedBookmarkService {
 
   /// Dispose resources
   void dispose() {
+    _bookmarksSubscription?.cancel();
     _bookmarksController.close();
     _bookmarkedEventsController.close();
   }
