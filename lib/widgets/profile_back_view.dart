@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../models/calendar_event.dart';
 import '../services/robust_auth_service.dart';
+import '../services/profile_update_service.dart';
+import '../services/calendar_cleanup_service.dart';
 import 'brand_icons.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
@@ -22,23 +24,70 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   bool isPlatformsExpanded = true;
   bool isCalendarExpanded = true;
   String? _selectedHashtag;
+  StreamSubscription<DocumentSnapshot>? _userDataSubscription;
+  Map<String, dynamic>? _liveUserData;
 
   @override
   void initState() {
     super.initState();
-    // ProfileBackView doesn't need to listen for updates since it displays static user data
-    // This prevents infinite loading loops
+    _setupRealtimeListener();
+    _runCalendarCleanup();
+  }
+
+  /// Run calendar cleanup on initialization
+  void _runCalendarCleanup() {
+    final userId = widget.user['id'] as String?;
+    if (userId != null && userId.isNotEmpty) {
+      // Run cleanup in background (non-blocking)
+      CalendarCleanupService().cleanupExpiredEvents(userId).then((_) {
+        debugPrint('✅ Calendar cleanup completed');
+      }).catchError((error) {
+        debugPrint('⚠️ Calendar cleanup error: $error');
+      });
+    }
   }
 
   @override
   void dispose() {
+    _userDataSubscription?.cancel();
     super.dispose();
   }
 
-  /// Get the current user data from widget
+  /// Set up real-time listener for user data changes (e.g., from website)
+  void _setupRealtimeListener() {
+    final userId = widget.user['id'] as String?;
+    if (userId == null || userId.isEmpty) {
+      debugPrint('⚠️ ProfileBackView: No user ID, skipping real-time listener');
+      return;
+    }
+
+    debugPrint(
+        '👂 ProfileBackView: Setting up real-time listener for user: $userId');
+
+    _userDataSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (snapshot.exists && mounted) {
+          debugPrint(
+              '📡 ProfileBackView: Received user data update from Firestore');
+          setState(() {
+            _liveUserData = snapshot.data();
+          });
+        }
+      },
+      onError: (error) {
+        debugPrint('❌ ProfileBackView: Error listening to user data: $error');
+      },
+    );
+  }
+
+  /// Get the current user data (prioritize live data from Firestore)
   Map<String, dynamic> get _currentUserData {
-    // ProfileBackView displays static user data from the widget
-    return widget.user;
+    // Use live data if available (from Firestore listener), otherwise use widget data
+    return _liveUserData ?? widget.user;
   }
 
   /// Safely parse date from various formats
@@ -474,38 +523,35 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               onDelete: () async {
                 debugPrint('🗑️ Deleting calendar event: ${e.title}');
 
-                // Optimistic UI update
+                // Save reference for potential rollback
+                final originalEvents = List<CalendarEvent>.from(events);
+
+                // Optimistic UI update - INSTANT deletion from UI
                 setState(() {
-                  // Remove from local events list immediately
                   events.removeWhere((x) => x.id == e.id);
                 });
 
-                try {
-                  final authService = ref.read(robustAuthServiceProvider);
-                  await authService.updateUserCalendarEvents(events);
-                  debugPrint('✅ Calendar event deleted successfully');
+                // Save to Firestore and WAIT for completion
+                final authService = ref.read(robustAuthServiceProvider);
+                authService.updateUserCalendarEvents(events).then((_) async {
+                  debugPrint('✅ Calendar event deleted from Firestore');
 
-                  // Show success feedback
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Event deleted successfully'),
-                        backgroundColor: Colors.green,
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                } catch (error) {
+                  // NOW refresh ProfileUpdateService after save completes
+                  // This ensures we get the updated data, not stale data
+                  await ProfileUpdateService().initialize();
+                  debugPrint(
+                      '✅ ProfileUpdateService refreshed with deleted event');
+                }).catchError((error) {
                   debugPrint('❌ Error deleting calendar event: $error');
 
                   // Revert optimistic update on error
-                  setState(() {
-                    // Re-add the event to the list
-                    events.add(e);
-                  });
-
-                  // Show error feedback
                   if (mounted) {
+                    setState(() {
+                      events.clear();
+                      events.addAll(originalEvents);
+                    });
+
+                    // Show error feedback
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Failed to delete event: $error'),
@@ -514,7 +560,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                       ),
                     );
                   }
-                }
+                });
               },
             ),
           const SizedBox(height: 16),
@@ -775,44 +821,43 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                   debugPrint(
                                       '📅 Total events after adding: ${next.length}');
 
-                                  try {
-                                    // Persist to backend via AuthenticationService
-                                    await authService
-                                        .updateUserCalendarEvents(next);
+                                  // Dismiss sheet immediately for instant feel
+                                  navigator.pop();
+
+                                  // Show optimistic success message
+                                  scaffoldMessenger.showSnackBar(
+                                    const SnackBar(
+                                      content:
+                                          Text('Event added to your profile'),
+                                      backgroundColor: Color(0xFF3D99F7),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+
+                                  // Save to Firestore and WAIT for completion
+                                  authService
+                                      .updateUserCalendarEvents(next)
+                                      .then((_) async {
                                     debugPrint(
-                                        '📅 Successfully saved to Firestore - StreamBuilder will auto-update');
+                                        '✅ Calendar event saved to Firestore');
 
-                                    // Dismiss sheet
-                                    navigator.pop();
-
-                                    // Show success toast (optional)
-                                    scaffoldMessenger.showSnackBar(
-                                      const SnackBar(
-                                        content:
-                                            Text('Event added to your profile'),
-                                        backgroundColor: Color(0xFF3D99F7),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  } catch (e) {
+                                    // NOW refresh ProfileUpdateService after save completes
+                                    await ProfileUpdateService().initialize();
+                                    debugPrint(
+                                        '✅ ProfileUpdateService refreshed with new event');
+                                  }).catchError((e) {
                                     debugPrint(
                                         '❌ Error saving calendar event: $e');
-                                    // Show error with retry option
+                                    // Show error feedback
                                     scaffoldMessenger.showSnackBar(
                                       SnackBar(
                                         content:
                                             Text('Failed to save event: $e'),
                                         backgroundColor: Colors.red,
-                                        action: SnackBarAction(
-                                          label: 'Retry',
-                                          textColor: Colors.white,
-                                          onPressed: () {
-                                            // Retry logic could go here
-                                          },
-                                        ),
+                                        duration: const Duration(seconds: 3),
                                       ),
                                     );
-                                  }
+                                  });
                                 }
                               }
                             : null,

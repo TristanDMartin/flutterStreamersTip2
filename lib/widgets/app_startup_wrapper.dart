@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
+import '../services/calendar_cleanup_service.dart';
 import '../widgets/auth_modal_view.dart';
 import '../pages/main_tab_view.dart';
 
@@ -24,6 +26,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
   @override
   void initState() {
     super.initState();
+    _setSystemUIOverlayStyle();
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -45,7 +48,30 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
   void dispose() {
     _fadeController.dispose();
     _splashTimer?.cancel();
+    _resetSystemUIOverlayStyle();
     super.dispose();
+  }
+
+  void _setSystemUIOverlayStyle() {
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Color(0xFF1C135D),
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
+  }
+
+  void _resetSystemUIOverlayStyle() {
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
   }
 
   void _startSplashCountdown() {
@@ -60,9 +86,27 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
           setState(() {
             _showSplash = false;
           });
+
+          // Run calendar cleanup on app startup
+          _runCalendarCleanup();
         }
       }
     });
+  }
+
+  /// Run calendar cleanup for logged-in user
+  void _runCalendarCleanup() {
+    final authService = ref.read(robustAuthServiceProvider);
+    final currentUser = authService.currentUser;
+
+    if (currentUser != null) {
+      // Run cleanup in background (non-blocking)
+      CalendarCleanupService().cleanupExpiredEvents(currentUser.id).then((_) {
+        debugPrint('✅ App startup: Calendar cleanup completed');
+      }).catchError((error) {
+        debugPrint('⚠️ App startup: Calendar cleanup error: $error');
+      });
+    }
   }
 
   @override
