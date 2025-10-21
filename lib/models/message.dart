@@ -10,10 +10,10 @@ class Message with _$Message {
   const factory Message({
     String? id,
     String? chatId,
-    required String text,
-    required String from,
-    required String to,
-    @TimestampConverter() required DateTime timestamp,
+    @Default('') String text,
+    @Default('') String from,
+    @Default('') String to,
+    @TimestampConverter() DateTime? timestamp,
     @Default(false) bool isRead,
     @Default([]) List<String> recipients,
     @Default([]) List<String> readBy,
@@ -22,7 +22,8 @@ class Message with _$Message {
     @Default(false) bool isDeviceGif,
   }) = _Message;
 
-  factory Message.fromJson(Map<String, dynamic> json) => _$MessageFromJson(json);
+  factory Message.fromJson(Map<String, dynamic> json) =>
+      _$MessageFromJson(json);
 }
 
 // Extension for computed properties

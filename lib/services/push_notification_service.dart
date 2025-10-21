@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,44 +8,49 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/logging_service.dart';
 
 class PushNotificationService {
-  static final PushNotificationService _instance = PushNotificationService._internal();
+  static final PushNotificationService _instance =
+      PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  
+
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+
   StreamSubscription<RemoteMessage>? _messageSubscription;
   StreamSubscription<RemoteMessage>? _backgroundMessageSubscription;
-  
+
   String? _fcmToken;
 
   /// Initialize push notification service
   Future<void> initialize() async {
     try {
-      LoggingService.instance.debug('🔔 Initializing push notification service', tag: 'PushNotificationService');
-      
+      LoggingService.instance.debug('🔔 Initializing push notification service',
+          tag: 'PushNotificationService');
+
       // Request permission
       await _requestPermission();
-      
+
       // Initialize local notifications
       await _initializeLocalNotifications();
-      
+
       // Get FCM token
       await _getFCMToken();
-      
+
       // Set up message handlers
       await _setupMessageHandlers();
-      
+
       // Listen to token refresh
       _messaging.onTokenRefresh.listen(_onTokenRefresh);
-      
-      LoggingService.instance.debug('✅ Push notification service initialized', tag: 'PushNotificationService');
+
+      LoggingService.instance.debug('✅ Push notification service initialized',
+          tag: 'PushNotificationService');
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error initializing push notifications', tag: 'PushNotificationService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error initializing push notifications',
+          tag: 'PushNotificationService', error: e, stackTrace: stackTrace);
     }
   }
 
@@ -60,34 +66,39 @@ class PushNotificationService {
         provisional: false,
         sound: true,
       );
-      
-      LoggingService.instance.debug('Notification permission status: ${settings.authorizationStatus}', tag: 'PushNotificationService');
+
+      LoggingService.instance.debug(
+          'Notification permission status: ${settings.authorizationStatus}',
+          tag: 'PushNotificationService');
     } catch (e) {
-      LoggingService.instance.error('Error requesting notification permission', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error requesting notification permission',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
   /// Initialize local notifications
   Future<void> _initializeLocalNotifications() async {
     try {
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidSettings =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
       const iosSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
         requestSoundPermission: true,
       );
-      
+
       const initSettings = InitializationSettings(
         android: androidSettings,
         iOS: iosSettings,
       );
-      
+
       await _localNotifications.initialize(
         initSettings,
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
     } catch (e) {
-      LoggingService.instance.error('Error initializing local notifications', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error initializing local notifications',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
@@ -96,11 +107,13 @@ class PushNotificationService {
     try {
       _fcmToken = await _messaging.getToken();
       if (_fcmToken != null) {
-        LoggingService.instance.debug('FCM Token: $_fcmToken', tag: 'PushNotificationService');
+        LoggingService.instance
+            .debug('FCM Token: $_fcmToken', tag: 'PushNotificationService');
         await _saveTokenToFirestore(_fcmToken!);
       }
     } catch (e) {
-      LoggingService.instance.error('Error getting FCM token', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error getting FCM token',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
@@ -110,53 +123,96 @@ class PushNotificationService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
+      // Save to both locations for compatibility
+      // 1. Save to user document (for backwards compatibility)
       await _firestore.collection('users').doc(currentUser.uid).update({
         'fcmToken': token,
         'lastTokenUpdate': FieldValue.serverTimestamp(),
       });
+
+      // 2. Save to deviceTokens subcollection (for Cloud Functions)
+      await _firestore
+          .collection('users')
+          .doc(currentUser.uid)
+          .collection('deviceTokens')
+          .doc(token)
+          .set({
+        'createdAt': FieldValue.serverTimestamp(),
+        'platform': _getPlatform(),
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      LoggingService.instance.debug('✅ FCM token saved to both locations',
+          tag: 'PushNotificationService');
     } catch (e) {
-      LoggingService.instance.error('Error saving FCM token', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error saving FCM token',
+          tag: 'PushNotificationService', error: e);
     }
+  }
+
+  /// Get platform name
+  String _getPlatform() {
+    if (Platform.isIOS) {
+      return 'ios';
+    } else if (Platform.isAndroid) {
+      return 'android';
+    } else if (Platform.isMacOS) {
+      return 'macos';
+    } else if (Platform.isWindows) {
+      return 'windows';
+    } else if (Platform.isLinux) {
+      return 'linux';
+    }
+    return 'unknown';
   }
 
   /// Set up message handlers
   Future<void> _setupMessageHandlers() async {
     try {
       // Handle foreground messages
-      _messageSubscription = FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
-      
+      _messageSubscription =
+          FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+
       // Handle background messages
-      _backgroundMessageSubscription = FirebaseMessaging.onMessageOpenedApp.listen(_handleBackgroundMessage);
-      
+      _backgroundMessageSubscription =
+          FirebaseMessaging.onMessageOpenedApp.listen(_handleBackgroundMessage);
+
       // Handle notification tap when app is terminated
       final initialMessage = await _messaging.getInitialMessage();
       if (initialMessage != null) {
         _handleNotificationTap(initialMessage);
       }
     } catch (e) {
-      LoggingService.instance.error('Error setting up message handlers', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error setting up message handlers',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
   /// Handle foreground messages
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
     try {
-      LoggingService.instance.debug('Received foreground message: ${message.messageId}', tag: 'PushNotificationService');
-      
+      LoggingService.instance.debug(
+          'Received foreground message: ${message.messageId}',
+          tag: 'PushNotificationService');
+
       // Show local notification
       await _showLocalNotification(message);
     } catch (e) {
-      LoggingService.instance.error('Error handling foreground message', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error handling foreground message',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
   /// Handle background messages
   Future<void> _handleBackgroundMessage(RemoteMessage message) async {
     try {
-      LoggingService.instance.debug('Received background message: ${message.messageId}', tag: 'PushNotificationService');
+      LoggingService.instance.debug(
+          'Received background message: ${message.messageId}',
+          tag: 'PushNotificationService');
       _handleNotificationTap(message);
     } catch (e) {
-      LoggingService.instance.error('Error handling background message', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error handling background message',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
@@ -165,9 +221,10 @@ class PushNotificationService {
     try {
       final data = message.data;
       final type = data['type'] ?? 'general';
-      
-      LoggingService.instance.debug('Notification tapped: $type', tag: 'PushNotificationService');
-      
+
+      LoggingService.instance
+          .debug('Notification tapped: $type', tag: 'PushNotificationService');
+
       // Navigate based on notification type
       switch (type) {
         case 'chat':
@@ -186,7 +243,8 @@ class PushNotificationService {
           _navigateToHome();
       }
     } catch (e) {
-      LoggingService.instance.error('Error handling notification tap', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error handling notification tap',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
@@ -195,12 +253,13 @@ class PushNotificationService {
     try {
       final payload = response.payload;
       if (payload == null) return;
-      
+
       final data = jsonDecode(payload) as Map<String, dynamic>;
       final type = data['type'] ?? 'general';
-      
-      LoggingService.instance.debug('Local notification tapped: $type', tag: 'PushNotificationService');
-      
+
+      LoggingService.instance.debug('Local notification tapped: $type',
+          tag: 'PushNotificationService');
+
       // Navigate based on notification type
       switch (type) {
         case 'chat':
@@ -219,7 +278,8 @@ class PushNotificationService {
           _navigateToHome();
       }
     } catch (e) {
-      LoggingService.instance.error('Error handling local notification tap: $e', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error handling local notification tap: $e',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
@@ -257,7 +317,8 @@ class PushNotificationService {
         payload: jsonEncode(message.data),
       );
     } catch (e) {
-      LoggingService.instance.error('Error showing local notification', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error('Error showing local notification',
+          tag: 'PushNotificationService', error: e);
     }
   }
 
@@ -293,7 +354,8 @@ class PushNotificationService {
       );
 
       // Generate unique ID for each notification
-      final notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+      final notificationId =
+          DateTime.now().millisecondsSinceEpoch.remainder(100000);
 
       await _localNotifications.show(
         notificationId,
@@ -303,9 +365,13 @@ class PushNotificationService {
         payload: jsonEncode(data),
       );
 
-      LoggingService.instance.debug('✅ Local notification shown: $title', tag: 'PushNotificationService');
+      LoggingService.instance.debug('✅ Local notification shown: $title',
+          tag: 'PushNotificationService');
     } catch (e) {
-      LoggingService.instance.error('Error showing local notification directly: $e', tag: 'PushNotificationService', error: e);
+      LoggingService.instance.error(
+          'Error showing local notification directly: $e',
+          tag: 'PushNotificationService',
+          error: e);
     }
   }
 
@@ -321,15 +387,17 @@ class PushNotificationService {
       // Get user's FCM token
       final userDoc = await _firestore.collection('users').doc(userId).get();
       if (!userDoc.exists) {
-        LoggingService.instance.error('User not found: $userId', tag: 'PushNotificationService');
+        LoggingService.instance
+            .error('User not found: $userId', tag: 'PushNotificationService');
         return false;
       }
 
       final userData = userDoc.data()!;
       final fcmToken = userData['fcmToken'] as String?;
-      
+
       if (fcmToken == null) {
-        LoggingService.instance.error('User has no FCM token: $userId', tag: 'PushNotificationService');
+        LoggingService.instance.error('User has no FCM token: $userId',
+            tag: 'PushNotificationService');
         return false;
       }
 
@@ -345,10 +413,12 @@ class PushNotificationService {
         },
       );
 
-      LoggingService.instance.debug('✅ Notification sent to user: $userId', tag: 'PushNotificationService');
+      LoggingService.instance.debug('✅ Notification sent to user: $userId',
+          tag: 'PushNotificationService');
       return true;
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error sending notification to user', tag: 'PushNotificationService', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error('Error sending notification to user',
+          tag: 'PushNotificationService', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -361,18 +431,19 @@ class PushNotificationService {
     Map<String, dynamic>? data,
   }) async {
     try {
-      LoggingService.instance.debug('Sending FCM notification to: $token', tag: 'PushNotificationService');
-      
+      LoggingService.instance.debug('Sending FCM notification to: $token',
+          tag: 'PushNotificationService');
+
       // For now, we'll use local notifications as a fallback since direct FCM requires server-side implementation
       // In production, this should be done via Cloud Functions
-      
+
       // Show local notification immediately
       await _showLocalNotificationDirect(
         title: title,
         body: body,
         data: data ?? {},
       );
-      
+
       // Also store in Firestore for persistence
       await _firestore.collection('notifications').add({
         'userId': _auth.currentUser?.uid,
@@ -383,10 +454,12 @@ class PushNotificationService {
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
       });
-      
-      LoggingService.instance.debug('✅ Local notification sent successfully', tag: 'PushNotificationService');
+
+      LoggingService.instance.debug('✅ Local notification sent successfully',
+          tag: 'PushNotificationService');
     } catch (e) {
-      LoggingService.instance.error('Error sending FCM notification: $e', tag: 'PushNotificationService');
+      LoggingService.instance.error('Error sending FCM notification: $e',
+          tag: 'PushNotificationService');
     }
   }
 
@@ -452,29 +525,33 @@ class PushNotificationService {
 
   /// Navigation methods (to be implemented based on your routing)
   void _navigateToChat(String roomId) {
-    LoggingService.instance.debug('Navigate to chat: $roomId', tag: 'PushNotificationService');
+    LoggingService.instance
+        .debug('Navigate to chat: $roomId', tag: 'PushNotificationService');
     // Implement navigation to chat room
   }
 
   void _navigateToVideo(String videoId) {
-    LoggingService.instance.debug('Navigate to video: $videoId', tag: 'PushNotificationService');
+    LoggingService.instance
+        .debug('Navigate to video: $videoId', tag: 'PushNotificationService');
     // Implement navigation to video
   }
 
   void _navigateToProfile(String userId) {
-    LoggingService.instance.debug('Navigate to profile: $userId', tag: 'PushNotificationService');
+    LoggingService.instance
+        .debug('Navigate to profile: $userId', tag: 'PushNotificationService');
     // Implement navigation to profile
   }
 
   void _navigateToHome() {
-    LoggingService.instance.debug('Navigate to home', tag: 'PushNotificationService');
+    LoggingService.instance
+        .debug('Navigate to home', tag: 'PushNotificationService');
     // Implement navigation to home
   }
 
-
   /// Handle token refresh
   void _onTokenRefresh(String token) {
-    LoggingService.instance.debug('FCM token refreshed: $token', tag: 'PushNotificationService');
+    LoggingService.instance
+        .debug('FCM token refreshed: $token', tag: 'PushNotificationService');
     _fcmToken = token;
     _saveTokenToFirestore(token);
   }

@@ -713,3 +713,170 @@ exports.syncCreatorProfileToVideos = functions.firestore
     
     return null;
   });
+
+// ============================================================================
+// CHAT MESSAGE NOTIFICATIONS - Unread counts and push notifications
+// ============================================================================
+
+/**
+ * Automatically increment unread counts when messages are created
+ * Works for both Flutter app and website
+ */
+exports.onMessageCreate = functions.firestore
+  .document('chats/{chatId}/messages/{messageId}')
+  .onCreate(async (snap, context) => {
+    try {
+      const messageData = snap.data();
+      const chatId = context.params.chatId;
+      const messageId = context.params.messageId;
+      
+      // Support both 'from' and 'senderId' fields
+      const senderId = messageData.from || messageData.senderId;
+      
+      if (!senderId) {
+        console.error(`❌ Message ${messageId} has no sender ID`);
+        return null;
+      }
+      
+      console.log(`📱 New message created: ${messageId} in chat: ${chatId} from ${senderId}`);
+      
+      // Get the chat document to find participants
+      const chatRef = admin.firestore().doc(`chats/${chatId}`);
+      const chatDoc = await chatRef.get();
+      
+      if (!chatDoc.exists) {
+        console.error(`❌ Chat document ${chatId} does not exist`);
+        return null;
+      }
+      
+      const chatData = chatDoc.data();
+      const participants = chatData.participants || [];
+      
+      // Find the recipient (the other participant)
+      const recipientId = participants.find(id => id !== senderId);
+      
+      if (!recipientId) {
+        console.error(`❌ No recipient found for message from ${senderId}`);
+        return null;
+      }
+      
+      console.log(`📱 Incrementing unread count for recipient: ${recipientId}`);
+      
+      // Update chat document with incremented unread count and last message info
+      const updateData = {
+        [`unreadCount_${recipientId}`]: admin.firestore.FieldValue.increment(1),
+        lastMessage: messageData.text || messageData.gifUrl || 'New message',
+        lastTimestamp: admin.firestore.FieldValue.serverTimestamp()
+      };
+      
+      await chatRef.update(updateData);
+      
+      console.log(`✅ Unread count incremented for ${recipientId} in chat ${chatId}`);
+      
+      // Send push notification to the recipient
+      await sendMessagePushNotification(recipientId, senderId, messageData, chatId);
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error in onMessageCreate:', error);
+      return null;
+    }
+  });
+
+/**
+ * Send push notification for new message
+ */
+async function sendMessagePushNotification(recipientId, senderId, messageData, chatId) {
+  try {
+    // Get recipient's FCM tokens from deviceTokens subcollection
+    const tokensSnapshot = await admin.firestore()
+      .collection('users')
+      .doc(recipientId)
+      .collection('deviceTokens')
+      .get();
+    
+    if (tokensSnapshot.empty) {
+      console.log(`📱 No FCM tokens found for user ${recipientId}`);
+      return;
+    }
+    
+    const tokens = tokensSnapshot.docs.map(doc => doc.id);
+    
+    // Get sender's display name
+    const senderDoc = await admin.firestore().doc(`users/${senderId}`).get();
+    const senderData = senderDoc.exists ? senderDoc.data() : {};
+    const senderName = senderData.displayName || senderData.username || 'Someone';
+    
+    // Get message text
+    const messageText = messageData.text || (messageData.gifUrl ? 'Sent a GIF' : 'Sent a message');
+    const truncatedText = messageText.length > 100 ? messageText.substring(0, 100) + '...' : messageText;
+    
+    // Create notification payload
+    const message = {
+      notification: {
+        title: `New message from ${senderName}`,
+        body: truncatedText,
+      },
+      data: {
+        type: 'chat',
+        chatId: chatId,
+        senderId: senderId,
+        recipientId: recipientId,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      },
+      tokens: tokens,
+    };
+    
+    // Send push notification to each token individually
+    try {
+      let successCount = 0;
+      const failedTokens = [];
+      
+      for (const token of tokens) {
+        try {
+          await admin.messaging().send({
+            notification: message.notification,
+            data: message.data,
+            token: token,
+            android: {
+              priority: 'high',
+            },
+            apns: {
+              payload: {
+                aps: {
+                  badge: 1,
+                  sound: 'default',
+                }
+              }
+            }
+          });
+          successCount++;
+        } catch (tokenError) {
+          console.log(`❌ Failed to send to token (will remove): ${tokenError.code}`);
+          failedTokens.push(token);
+        }
+      }
+      
+      console.log(`✅ Push notification sent to ${successCount}/${tokens.length} devices for user ${recipientId}`);
+      
+      // Remove invalid tokens
+      if (failedTokens.length > 0) {
+        const batch = admin.firestore().batch();
+        failedTokens.forEach(token => {
+          batch.delete(admin.firestore()
+            .collection('users')
+            .doc(recipientId)
+            .collection('deviceTokens')
+            .doc(token));
+        });
+        await batch.commit();
+        
+        console.log(`🧹 Removed ${failedTokens.length} invalid tokens`);
+      }
+    } catch (error) {
+      console.error('❌ Error sending push notification:', error);
+    }
+  } catch (error) {
+    console.error('❌ Error in sendMessagePushNotification:', error);
+  }
+}

@@ -77,6 +77,9 @@ service cloud.firestore {
         (request.auth.uid == resource.data.followerId || 
          request.auth.uid == resource.data.followingId);
       
+      // Allow querying/listing relationships for authenticated users
+      allow list: if request.auth != null;
+      
       // Allow deleting relationships where user is the follower
       allow delete: if request.auth != null && 
         request.auth.uid == resource.data.followerId;
@@ -116,12 +119,16 @@ service cloud.firestore {
     // Users can read public videos
     match /videos/{videoId} {
       allow read: if request.auth != null;
+      allow list: if request.auth != null;
       // Allow creating videos for any authenticated user
       allow create: if request.auth != null;
-      // Allow updating videos for any authenticated user
-      allow update: if request.auth != null;
-      // Allow deleting videos for any authenticated user
-      allow delete: if request.auth != null;
+      // Allow updating videos - owner can update anything, others can only update stats
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.userId ||
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['views', 'likes', 'likeCount', 'comments', 'commentCount', 'shares', 'isLiked', 'lastViewedAt', 'lastLikedAt', 'lastUnlikedAt']));
+      // Allow deleting videos - only owner
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
     }
     
     // Users can read public likes and write their own likes
@@ -158,12 +165,15 @@ service cloud.firestore {
     // Users can read all engagement analytics and write their own
     match /engagement_analytics/{analyticsId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow list: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
     }
     
     // TikTok-style: Engagement tracking for algorithm
     match /engagement/{engagementId} {
       allow read: if request.auth != null;
+      allow list: if request.auth != null;
       allow create: if request.auth != null;
       allow update: if request.auth != null;
       allow delete: if request.auth != null;
@@ -172,6 +182,7 @@ service cloud.firestore {
     // TikTok-style: User retention profiles for algorithm
     match /user_retention_profiles/{userId} {
       allow read: if request.auth != null;
+      allow list: if request.auth != null;
       allow create: if request.auth != null;
       allow update: if request.auth != null;
       allow delete: if request.auth != null && request.auth.uid == userId;
@@ -187,15 +198,35 @@ service cloud.firestore {
       allow read, update: if request.auth != null && 
         request.auth.uid in resource.data.participants;
       
+      // Allow listing chats for authenticated users
+      allow list: if request.auth != null;
+      
       // Allow deleting chats if the user is a participant
       allow delete: if request.auth != null && 
         request.auth.uid in resource.data.participants;
-    }
-    
-    // Users can read and write messages in chats they participate in
-    match /chats/{chatId}/messages/{messageId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      
+      // Users can read and write messages in chats they participate in
+      match /messages/{messageId} {
+        // Allow reading messages if user is a participant in parent chat
+        allow read: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        
+        // Allow listing messages if user is a participant in parent chat
+        allow list: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        
+        // Allow creating messages if user is the sender (use 'from' field from Message model)
+        allow create: if request.auth != null && 
+          request.auth.uid == request.resource.data.from;
+        
+        // Allow updating messages if user is a participant (for read receipts)
+        allow update: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        
+        // Allow deleting messages if user is the sender (use 'from' field)
+        allow delete: if request.auth != null && 
+          request.auth.uid == resource.data.from;
+      }
     }
     
     // Note: All user subcollections are now handled by the wildcard pattern above
@@ -213,7 +244,9 @@ service cloud.firestore {
       allow read: if request.auth != null && 
         (request.auth.uid == resource.data.senderId || 
          request.auth.uid == resource.data.receiverId);
-      allow write: if request.auth != null && 
+      allow list: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
         (request.auth.uid == resource.data.senderId || 
          request.auth.uid == resource.data.receiverId);
     }
@@ -266,6 +299,113 @@ service cloud.firestore {
     // Rate limiting collection - for tracking operation frequency
     match /rate_limits/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Creator stats - analytics data for content creators
+    match /creator_stats/{userId} {
+      // Allow reading your own stats or public stats
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Allow writing your own stats
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+      
+      // Follower history subcollection
+      match /follower_history/{entryId} {
+        allow read: if request.auth != null;
+        allow list: if request.auth != null;
+        allow create, update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Video stats subcollection
+      match /video_stats/{entryId} {
+        allow read: if request.auth != null;
+        allow list: if request.auth != null;
+        allow create, update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Allow other subcollections
+      match /{subcollection=**} {
+        allow read: if request.auth != null;
+        allow create, update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Invites - user invitation system
+    match /invites/{inviteId} {
+      // Allow reading all invites for authenticated users
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Allow creating invites
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.inviterId;
+      // Allow updating invites - inviter or invitee can update
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.inviterId || 
+         request.auth.uid == resource.data.inviteeId);
+      // Allow deleting own invites
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.inviterId;
+    }
+    
+    // Reports - content/user reporting system
+    match /reports/{reportId} {
+      // Only allow reading your own reports or if you're admin (for moderation)
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.reporterId;
+      allow list: if request.auth != null;
+      // Anyone can create a report
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.reporterId;
+      // Cannot update or delete reports (immutable for integrity)
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Tags - user/content tagging system
+    match /tags/{tagId} {
+      // Anyone can read tags
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Anyone can create tags
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.taggerId;
+      // Can update your own tags
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.taggerId;
+      // Can delete your own tags
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.taggerId;
+    }
+    
+    // Mentions - user mention system
+    match /mentions/{mentionId} {
+      // Anyone can read mentions
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Anyone can create mentions
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.mentionerId;
+      // Can update your own mentions
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.mentionerId;
+      // Can delete your own mentions
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.mentionerId;
+    }
+    
+    // Moderation - content moderation system
+    match /moderation/{moderationId} {
+      // Only allow reading moderation data for the content owner
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // System can create moderation entries
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
     }
   }
   

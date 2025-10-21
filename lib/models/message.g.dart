@@ -10,9 +10,9 @@ _$MessageImpl _$$MessageImplFromJson(Map<String, dynamic> json) =>
     _$MessageImpl(
       id: json['id'] as String?,
       chatId: json['chatId'] as String?,
-      text: json['text'] as String,
-      from: json['from'] as String,
-      to: json['to'] as String,
+      text: json['text'] as String? ?? '',
+      from: json['from'] as String? ?? '',
+      to: json['to'] as String? ?? '',
       timestamp: const TimestampConverter().fromJson(json['timestamp']),
       isRead: json['isRead'] as bool? ?? false,
       recipients: (json['recipients'] as List<dynamic>?)
@@ -35,7 +35,8 @@ Map<String, dynamic> _$$MessageImplToJson(_$MessageImpl instance) =>
       'text': instance.text,
       'from': instance.from,
       'to': instance.to,
-      'timestamp': const TimestampConverter().toJson(instance.timestamp),
+      'timestamp': _$JsonConverterToJson<Object?, DateTime>(
+          instance.timestamp, const TimestampConverter().toJson),
       'isRead': instance.isRead,
       'recipients': instance.recipients,
       'readBy': instance.readBy,
@@ -43,3 +44,9 @@ Map<String, dynamic> _$$MessageImplToJson(_$MessageImpl instance) =>
       'messageType': instance.messageType,
       'isDeviceGif': instance.isDeviceGif,
     };
+
+Json? _$JsonConverterToJson<Json, Value>(
+  Value? value,
+  Json? Function(Value value) toJson,
+) =>
+    value == null ? null : toJson(value);

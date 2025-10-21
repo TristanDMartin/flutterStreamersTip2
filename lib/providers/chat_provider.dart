@@ -8,15 +8,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import '../models/chat.dart';
-import '../services/push_notification_service.dart';
 import '../models/message.dart';
 import '../services/auth_service.dart';
 
 class ChatNotifier extends StateNotifier<ChatState> {
   final Chat chat;
-  final PushNotificationService _pushNotificationService = PushNotificationService();
   final AuthenticationService authService;
-  StreamSubscription<QuerySnapshot>? _messageListener; // kept for API compatibility
+  StreamSubscription<QuerySnapshot>?
+      _messageListener; // kept for API compatibility
 
   // Persistence key
   String get _messagesKey => "ChatNotifier_messages_${chat.id ?? "unknown"}";
@@ -37,10 +36,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (!validateChat()) return;
     _setupMessageListener(chatId: chat.id!);
   }
-  Future<void> _createChatInFirestore() async {} // ignore: unused_element
-  void _subscribe() {} // ignore: unused_element
-  Future<bool> _ensureChatExists({required String chatId}) async => true; // ignore: unused_element
-  Future<bool> _createChatDocument({required String chatId}) async => true; // ignore: unused_element
 
   void _setupMessageListener({required String chatId}) {
     _messageListener?.cancel();
@@ -59,7 +54,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
           final parsed = Message.fromJson(data);
           return parsed.copyWith(id: d.id);
         }).toList();
-        state = state.copyWith(messages: firebaseMessages, isLoading: false, error: null);
+        state = state.copyWith(
+            messages: firebaseMessages, isLoading: false, error: null);
         await _saveMessages();
       },
       onError: (e) {
@@ -68,15 +64,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
     );
   }
 
-  void _checkChatDocumentPermissions({required String chatId}) {} // ignore: unused_element
-
   Future<void> send() async {
     final trimmedText = state.composedText.trim();
     if (trimmedText.isEmpty) return;
-    
+
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      state = state.copyWith(error: "You need to be signed in to send messages");
+      state =
+          state.copyWith(error: "You need to be signed in to send messages");
       return;
     }
     if (chat.id == null || chat.id!.isEmpty) {
@@ -91,7 +86,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
     );
 
     if (otherId.isEmpty) {
-      state = state.copyWith(error: "Invalid chat participants. Please try again.");
+      state =
+          state.copyWith(error: "Invalid chat participants. Please try again.");
       return;
     }
 
@@ -99,6 +95,42 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
+      // Ensure chat document exists with proper participants array
+      final chatDocRef =
+          FirebaseFirestore.instance.collection("chats").doc(chatId);
+      final chatDocSnapshot = await chatDocRef.get();
+
+      if (!chatDocSnapshot.exists) {
+        // Create chat document if it doesn't exist
+        debugPrint('ChatNotifier: Creating chat document $chatId');
+        await chatDocRef.set({
+          "participants": [currentUser.uid, otherId],
+          "lastMessage": "",
+          "lastTimestamp": FieldValue.serverTimestamp(),
+          "chatType": "direct",
+        });
+
+        // Wait for Firestore to propagate the document
+        await Future.delayed(const Duration(milliseconds: 500));
+        debugPrint('ChatNotifier: Chat document created and propagated');
+      } else {
+        // Verify participants array includes both users
+        final data = chatDocSnapshot.data();
+        final participants = List<String>.from(data?['participants'] ?? []);
+
+        if (!participants.contains(currentUser.uid) ||
+            !participants.contains(otherId)) {
+          debugPrint('ChatNotifier: Updating participants for chat $chatId');
+          await chatDocRef.update({
+            "participants": FieldValue.arrayUnion([currentUser.uid, otherId]),
+          });
+
+          // Wait for Firestore to propagate the update
+          await Future.delayed(const Duration(milliseconds: 300));
+          debugPrint('ChatNotifier: Participants updated and propagated');
+        }
+      }
+
       // Send message
       await FirebaseFirestore.instance
           .collection("chats")
@@ -121,31 +153,27 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
 
-      // Send push notification to the recipient
+      // Mark chat as read when opening (reset unread count)
       try {
-        await _pushNotificationService.sendNotificationToUser(
-          userId: otherId,
-          title: 'New Message',
-          body: trimmedText.length > 50 ? '${trimmedText.substring(0, 50)}...' : trimmedText,
-          type: 'chat',
-          data: {
-            'chatId': chatId,
-            'senderId': currentUser.uid,
-            'messageText': trimmedText,
-          },
-        );
+        await FirebaseFirestore.instance
+            .collection("chats")
+            .doc(chatId)
+            .update({
+          "unreadCount_${currentUser.uid}": 0,
+        });
+        debugPrint('✅ Chat marked as read for current user');
       } catch (e) {
-        debugPrint('❌ Error sending push notification: $e');
-        // Don't fail the message send if push notification fails
+        debugPrint('❌ Error marking chat as read: $e');
       }
 
       // Clear composed text and loading state
       state = state.copyWith(composedText: "", isLoading: false);
     } catch (e) {
       String errorMessage = "Failed to send message";
-      
+
       if (e.toString().contains('permission-denied')) {
-        errorMessage = "You don't have permission to send messages in this chat";
+        errorMessage =
+            "You don't have permission to send messages in this chat";
       } else if (e.toString().contains('not-found')) {
         errorMessage = "Chat not found. Please refresh and try again";
       } else if (e.toString().contains('unavailable')) {
@@ -155,17 +183,19 @@ class ChatNotifier extends StateNotifier<ChatState> {
       } else {
         errorMessage = "Failed to send message: ${e.toString()}";
       }
-      
+
+      debugPrint('ChatNotifier: Error sending message: $e');
       state = state.copyWith(isLoading: false, error: errorMessage);
     }
   }
 
   Future<void> sendGif(String gifUrl) async {
     debugPrint('ChatNotifier: sendGif called with URL: $gifUrl');
-    
+
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      state = state.copyWith(error: "You need to be signed in to send messages");
+      state =
+          state.copyWith(error: "You need to be signed in to send messages");
       return;
     }
     if (chat.id == null || chat.id!.isEmpty) {
@@ -180,7 +210,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
     );
 
     if (otherId.isEmpty) {
-      state = state.copyWith(error: "Invalid chat participants. Please try again.");
+      state =
+          state.copyWith(error: "Invalid chat participants. Please try again.");
       return;
     }
 
@@ -194,6 +225,38 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
+      // Ensure chat document exists with proper participants array
+      final chatDocRef =
+          FirebaseFirestore.instance.collection("chats").doc(chatId);
+      final chatDocSnapshot = await chatDocRef.get();
+
+      if (!chatDocSnapshot.exists) {
+        debugPrint('ChatNotifier: Creating chat document $chatId');
+        await chatDocRef.set({
+          "participants": [currentUser.uid, otherId],
+          "lastMessage": "",
+          "lastTimestamp": FieldValue.serverTimestamp(),
+          "chatType": "direct",
+        });
+
+        // Wait for Firestore to propagate
+        await Future.delayed(const Duration(milliseconds: 500));
+      } else {
+        final data = chatDocSnapshot.data();
+        final participants = List<String>.from(data?['participants'] ?? []);
+
+        if (!participants.contains(currentUser.uid) ||
+            !participants.contains(otherId)) {
+          debugPrint('ChatNotifier: Updating participants for chat $chatId');
+          await chatDocRef.update({
+            "participants": FieldValue.arrayUnion([currentUser.uid, otherId]),
+          });
+
+          // Wait for Firestore to propagate
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+      }
+
       await FirebaseFirestore.instance
           .collection("chats")
           .doc(chatId)
@@ -215,14 +278,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastMessage": "[GIF]",
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
-      
+
       state = state.copyWith(isLoading: false);
       debugPrint('ChatNotifier: GIF sent successfully');
     } catch (e) {
       String errorMessage = "Failed to send GIF";
-      
+
       if (e.toString().contains('permission-denied')) {
-        errorMessage = "You don't have permission to send messages in this chat";
+        errorMessage =
+            "You don't have permission to send messages in this chat";
       } else if (e.toString().contains('not-found')) {
         errorMessage = "Chat not found. Please refresh and try again";
       } else if (e.toString().contains('unavailable')) {
@@ -234,7 +298,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       } else {
         errorMessage = "Failed to send GIF: ${e.toString()}";
       }
-      
+
       state = state.copyWith(isLoading: false, error: errorMessage);
       debugPrint('ChatNotifier: Error sending GIF: $e');
     }
@@ -252,7 +316,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> sendDeviceGif(File gifFile) async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      state = state.copyWith(error: "You need to be signed in to send messages");
+      state =
+          state.copyWith(error: "You need to be signed in to send messages");
       return;
     }
     if (chat.id == null || chat.id!.isEmpty) {
@@ -270,12 +335,42 @@ class ChatNotifier extends StateNotifier<ChatState> {
       // Show loading state
       state = state.copyWith(isLoading: true, error: null);
 
+      // Ensure chat document exists with proper participants array
+      final chatDocRef =
+          FirebaseFirestore.instance.collection("chats").doc(chatId);
+      final chatDocSnapshot = await chatDocRef.get();
+
+      if (!chatDocSnapshot.exists) {
+        debugPrint('ChatNotifier: Creating chat document $chatId');
+        await chatDocRef.set({
+          "participants": [currentUser.uid, otherId],
+          "lastMessage": "",
+          "lastTimestamp": FieldValue.serverTimestamp(),
+          "chatType": "direct",
+        });
+
+        // Wait for Firestore to propagate
+        await Future.delayed(const Duration(milliseconds: 500));
+      } else {
+        final data = chatDocSnapshot.data();
+        final participants = List<String>.from(data?['participants'] ?? []);
+
+        if (!participants.contains(currentUser.uid) ||
+            !participants.contains(otherId)) {
+          debugPrint('ChatNotifier: Updating participants for chat $chatId');
+          await chatDocRef.update({
+            "participants": FieldValue.arrayUnion([currentUser.uid, otherId]),
+          });
+
+          // Wait for Firestore to propagate
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+      }
+
       // Upload GIF to Firebase Storage
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('chat_gifs')
-          .child('${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}.gif');
-      
+      final storageRef = FirebaseStorage.instance.ref().child('chat_gifs').child(
+          '${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}.gif');
+
       final uploadTask = storageRef.putFile(gifFile);
       final snapshot = await uploadTask;
       final gifUrl = await snapshot.ref.getDownloadURL();
@@ -307,6 +402,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       // Clear loading state
       state = state.copyWith(isLoading: false);
     } catch (e) {
+      debugPrint('ChatNotifier: Error sending device GIF: $e');
       state = state.copyWith(
         isLoading: false,
         error: "Failed to send device GIF: ${e.toString()}",
@@ -322,12 +418,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
   String getOtherParticipant() {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return 'Unknown';
-    
+
     final otherId = chat.participants.firstWhere(
       (id) => id != currentUser.uid,
       orElse: () => "",
     );
-    
+
     return otherId.isNotEmpty ? 'User $otherId' : 'Unknown';
   }
 
@@ -349,7 +445,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final data = prefs.getString(_messagesKey);
       if (data == null) return;
       final List<dynamic> decoded = jsonDecode(data) as List<dynamic>;
-      final messages = decoded.map((e) => Message.fromJson(e as Map<String, dynamic>)).toList();
+      final messages = decoded
+          .map((e) => Message.fromJson(e as Map<String, dynamic>))
+          .toList();
       state = state.copyWith(messages: messages);
     } catch (_) {}
   }
@@ -357,7 +455,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> _saveMessages() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final encoded = jsonEncode(state.messages.map((m) => m.toJson()).toList());
+      final encoded =
+          jsonEncode(state.messages.map((m) => m.toJson()).toList());
       await prefs.setString(_messagesKey, encoded);
     } catch (_) {}
   }
@@ -422,6 +521,7 @@ class ChatState {
 }
 
 // Provider for individual chat state
-final chatProvider = StateNotifierProvider.family<ChatNotifier, ChatState, Chat>((ref, chat) {
+final chatProvider =
+    StateNotifierProvider.family<ChatNotifier, ChatState, Chat>((ref, chat) {
   return ChatNotifier(chat, ref.read(authServiceProvider));
 });

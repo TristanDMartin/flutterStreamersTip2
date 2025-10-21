@@ -1238,7 +1238,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
     );
   }
 
-  String _formatTimestamp(DateTime timestamp) {
+  String _formatTimestamp(DateTime? timestamp) {
+    if (timestamp == null) return 'Just now';
+
     final hour = timestamp.hour;
     final minute = timestamp.minute;
     final period = hour >= 12 ? 'PM' : 'AM';
@@ -1269,13 +1271,20 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final previousMessage = messages[index - 1];
 
     // Show avatar if the previous message is from a different user
-    // or if there's a time gap of more than 5 minutes
-    return chatNotifier.isFromCurrentUser(currentMessage) !=
-            chatNotifier.isFromCurrentUser(previousMessage) ||
-        currentMessage.timestamp
-                .difference(previousMessage.timestamp)
-                .inMinutes >
-            5;
+    if (chatNotifier.isFromCurrentUser(currentMessage) !=
+        chatNotifier.isFromCurrentUser(previousMessage)) {
+      return true;
+    }
+
+    // Show avatar if there's a time gap of more than 5 minutes
+    if (currentMessage.timestamp != null && previousMessage.timestamp != null) {
+      return currentMessage.timestamp!
+              .difference(previousMessage.timestamp!)
+              .inMinutes >
+          5;
+    }
+
+    return false;
   }
 
   // Input Bar

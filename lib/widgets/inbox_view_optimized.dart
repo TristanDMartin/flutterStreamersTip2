@@ -8,6 +8,7 @@ import '../models/user.dart' as app_user;
 import '../services/inbox_service_optimized.dart';
 import '../services/logging_service.dart';
 import '../services/offline_inbox_service.dart';
+import '../services/chat_service.dart';
 import '../providers/unread_messages_provider.dart';
 import 'chat_view.dart';
 import 'new_message_view.dart';
@@ -1567,15 +1568,24 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
       debugPrint('InboxView: Opening chat with user: $otherUserId');
 
+      // Ensure chat document exists in Firestore BEFORE opening ChatView
+      // This is the Instagram/TikTok pattern - create chat proactively
+      final chatService = ChatService.shared;
+      final ensuredChat = await chatService.fetchOrCreateChat(otherUserId);
+
+      if (ensuredChat == null) {
+        throw Exception('Failed to create or fetch chat');
+      }
+
       // Mark messages as read when opening chat (non-blocking)
-      _inboxService.markAsRead(chat.id ?? '').catchError((error) {
+      _inboxService.markAsRead(ensuredChat.id ?? '').catchError((error) {
         debugPrint('InboxView: Error marking as read: $error');
       });
 
       // Update unread count
       if (mounted) {
         setState(() {
-          _unreadCounts[chat.id ?? ''] = 0;
+          _unreadCounts[ensuredChat.id ?? ''] = 0;
         });
       }
 
@@ -1589,7 +1599,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ChatView(
-              chat: chat,
+              chat: ensuredChat, // Use ensuredChat instead of chat
               otherUserId: otherUserId,
               otherUserName:
                   userProfile?.displayName ?? userProfile?.username ?? 'User',

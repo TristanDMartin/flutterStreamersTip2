@@ -26,7 +26,7 @@ mixin _$Message {
   String get from => throw _privateConstructorUsedError;
   String get to => throw _privateConstructorUsedError;
   @TimestampConverter()
-  DateTime get timestamp => throw _privateConstructorUsedError;
+  DateTime? get timestamp => throw _privateConstructorUsedError;
   bool get isRead => throw _privateConstructorUsedError;
   List<String> get recipients => throw _privateConstructorUsedError;
   List<String> get readBy => throw _privateConstructorUsedError;
@@ -50,7 +50,7 @@ abstract class $MessageCopyWith<$Res> {
       String text,
       String from,
       String to,
-      @TimestampConverter() DateTime timestamp,
+      @TimestampConverter() DateTime? timestamp,
       bool isRead,
       List<String> recipients,
       List<String> readBy,
@@ -77,7 +77,7 @@ class _$MessageCopyWithImpl<$Res, $Val extends Message>
     Object? text = null,
     Object? from = null,
     Object? to = null,
-    Object? timestamp = null,
+    Object? timestamp = freezed,
     Object? isRead = null,
     Object? recipients = null,
     Object? readBy = null,
@@ -106,10 +106,10 @@ class _$MessageCopyWithImpl<$Res, $Val extends Message>
           ? _value.to
           : to // ignore: cast_nullable_to_non_nullable
               as String,
-      timestamp: null == timestamp
+      timestamp: freezed == timestamp
           ? _value.timestamp
           : timestamp // ignore: cast_nullable_to_non_nullable
-              as DateTime,
+              as DateTime?,
       isRead: null == isRead
           ? _value.isRead
           : isRead // ignore: cast_nullable_to_non_nullable
@@ -151,7 +151,7 @@ abstract class _$$MessageImplCopyWith<$Res> implements $MessageCopyWith<$Res> {
       String text,
       String from,
       String to,
-      @TimestampConverter() DateTime timestamp,
+      @TimestampConverter() DateTime? timestamp,
       bool isRead,
       List<String> recipients,
       List<String> readBy,
@@ -176,7 +176,7 @@ class __$$MessageImplCopyWithImpl<$Res>
     Object? text = null,
     Object? from = null,
     Object? to = null,
-    Object? timestamp = null,
+    Object? timestamp = freezed,
     Object? isRead = null,
     Object? recipients = null,
     Object? readBy = null,
@@ -205,10 +205,10 @@ class __$$MessageImplCopyWithImpl<$Res>
           ? _value.to
           : to // ignore: cast_nullable_to_non_nullable
               as String,
-      timestamp: null == timestamp
+      timestamp: freezed == timestamp
           ? _value.timestamp
           : timestamp // ignore: cast_nullable_to_non_nullable
-              as DateTime,
+              as DateTime?,
       isRead: null == isRead
           ? _value.isRead
           : isRead // ignore: cast_nullable_to_non_nullable
@@ -243,10 +243,10 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
   const _$MessageImpl(
       {this.id,
       this.chatId,
-      required this.text,
-      required this.from,
-      required this.to,
-      @TimestampConverter() required this.timestamp,
+      this.text = '',
+      this.from = '',
+      this.to = '',
+      @TimestampConverter() this.timestamp,
       this.isRead = false,
       final List<String> recipients = const [],
       final List<String> readBy = const [],
@@ -264,14 +264,17 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
   @override
   final String? chatId;
   @override
+  @JsonKey()
   final String text;
   @override
+  @JsonKey()
   final String from;
   @override
+  @JsonKey()
   final String to;
   @override
   @TimestampConverter()
-  final DateTime timestamp;
+  final DateTime? timestamp;
   @override
   @JsonKey()
   final bool isRead;
@@ -384,10 +387,10 @@ abstract class _Message implements Message {
   const factory _Message(
       {final String? id,
       final String? chatId,
-      required final String text,
-      required final String from,
-      required final String to,
-      @TimestampConverter() required final DateTime timestamp,
+      final String text,
+      final String from,
+      final String to,
+      @TimestampConverter() final DateTime? timestamp,
       final bool isRead,
       final List<String> recipients,
       final List<String> readBy,
@@ -409,7 +412,7 @@ abstract class _Message implements Message {
   String get to;
   @override
   @TimestampConverter()
-  DateTime get timestamp;
+  DateTime? get timestamp;
   @override
   bool get isRead;
   @override

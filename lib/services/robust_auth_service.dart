@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -974,6 +975,9 @@ class RobustAuthenticationService extends ChangeNotifier {
         return;
       }
 
+      // Remove FCM token before signing out
+      await _removeCurrentDeviceToken();
+
       await _auth.signOut();
       await GoogleServicesFix.signOutFromGoogle();
       _cleanupAuthState();
@@ -983,6 +987,34 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Still cleanup state even if there was an error
       _cleanupAuthState();
       rethrow; // Re-throw the error so the UI can handle it
+    }
+  }
+
+  /// Remove current device's FCM token from Firestore
+  Future<void> _removeCurrentDeviceToken() async {
+    try {
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) return;
+
+      // Get current FCM token
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (fcmToken == null) {
+        debugPrint("⚠️ No FCM token to remove");
+        return;
+      }
+
+      // Remove from deviceTokens subcollection
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('deviceTokens')
+          .doc(fcmToken)
+          .delete();
+
+      debugPrint("🧹 Removed FCM token for user $userId on logout");
+    } catch (e) {
+      debugPrint("⚠️ Error removing FCM token on logout: $e");
+      // Don't fail logout if token removal fails
     }
   }
 
