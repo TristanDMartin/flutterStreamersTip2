@@ -18,6 +18,10 @@ _$ActivityNotificationImpl _$$ActivityNotificationImplFromJson(
       commentText: json['commentText'] as String?,
       status: json['status'] as String? ?? 'pending',
       videoId: json['videoId'] as String?,
+      chatId: json['chatId'] as String?,
+      milestoneType: json['milestoneType'] as String?,
+      milestoneValue: (json['milestoneValue'] as num?)?.toInt(),
+      parentCommentId: json['parentCommentId'] as String?,
     );
 
 Map<String, dynamic> _$$ActivityNotificationImplToJson(
@@ -31,6 +35,10 @@ Map<String, dynamic> _$$ActivityNotificationImplToJson(
       'commentText': instance.commentText,
       'status': instance.status,
       'videoId': instance.videoId,
+      'chatId': instance.chatId,
+      'milestoneType': instance.milestoneType,
+      'milestoneValue': instance.milestoneValue,
+      'parentCommentId': instance.parentCommentId,
     };
 
 const _$ActivityNotificationTypeEnumMap = {
@@ -39,4 +47,8 @@ const _$ActivityNotificationTypeEnumMap = {
   ActivityNotificationType.comment: 'comment',
   ActivityNotificationType.tag: 'tag',
   ActivityNotificationType.mention: 'mention',
+  ActivityNotificationType.commentReply: 'commentReply',
+  ActivityNotificationType.newVideo: 'newVideo',
+  ActivityNotificationType.milestone: 'milestone',
+  ActivityNotificationType.liveStream: 'liveStream',
 };

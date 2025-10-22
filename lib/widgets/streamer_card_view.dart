@@ -82,9 +82,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _isFollowedByStreamer = false;
   bool _isConnected = false;
 
-  // 🎯 FOLLOW LOGIC: Use centralized FollowButtonService
-  FollowButtonState? _followButtonState;
-
   // Stats
   int _postsCount = 0;
   int _followersCount = 0;
@@ -1369,16 +1366,10 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (widget.currentUserId == null) return;
 
     try {
-      final state = await FollowButtonService.instance.getButtonState(
+      await FollowButtonService.instance.getButtonState(
         viewerId: widget.currentUserId!,
         creatorId: widget.userId,
       );
-
-      if (mounted) {
-        setState(() {
-          _followButtonState = state;
-        });
-      }
     } catch (e) {
       debugPrint('❌ StreamerCard: Error updating follow button state: $e');
     }
@@ -2457,36 +2448,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   // MARK: - Helper Methods for Follow/Unfollow Operations
-
-  Future<void> _createFollowNotification() async {
-    try {
-      if (kDebugMode) {
-        debugPrint("🔘 StreamerCardView: Creating follow notification");
-      }
-
-      final notificationDoc =
-          await FirebaseFirestore.instance.collection('notifications').add({
-        'userId': widget.userId,
-        'type': 'follow',
-        'fromUserId': widget.currentUserId!,
-        'fromUserName':
-            'Current User', // User name placeholder - actual name retrieval to be implemented
-        'timestamp': FieldValue.serverTimestamp(),
-        'read': false,
-      });
-
-      if (kDebugMode) {
-        debugPrint(
-            "✅ StreamerCardView: Successfully created follow notification: ${notificationDoc.id}");
-      }
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint(
-            "❌ StreamerCardView: Error creating follow notification: $error");
-      }
-      // Don't throw here - notification is not critical for follow operation
-    }
-  }
 
   Future<void> _removeFollowNotification() async {
     try {

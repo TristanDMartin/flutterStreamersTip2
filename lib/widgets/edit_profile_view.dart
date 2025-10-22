@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'edit_field_view.dart';
 import 'links_edit_view.dart';
@@ -10,8 +11,10 @@ import '../services/auth_service.dart';
 import '../services/profile_update_service.dart';
 import '../services/content_moderation_service.dart';
 import '../services/storage_diagnostic_service.dart';
+import '../services/admin_service.dart';
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
+import 'advanced_admin_panel.dart';
 
 class EditProfileView extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -37,6 +40,7 @@ class _EditProfileViewState extends State<EditProfileView> {
   DateTime? _lastNameChangeDate;
   bool _canChangeName = true;
   ProfileUpdateService? _profileUpdateService;
+  bool _isAdmin = false;
 
   // Gradient colors matching your design system
   static const List<Color> _gradientColors = [
@@ -53,6 +57,16 @@ class _EditProfileViewState extends State<EditProfileView> {
     _user = Map.from(widget.user);
     _profileUpdateService = ProfileUpdateService();
     _checkNameChangeEligibility();
+    _checkAdminStatus();
+  }
+
+  Future<void> _checkAdminStatus() async {
+    final isAdmin = await AdminService.instance.isCurrentUserAdmin();
+    if (mounted) {
+      setState(() {
+        _isAdmin = isAdmin;
+      });
+    }
   }
 
   @override
@@ -739,7 +753,25 @@ class _EditProfileViewState extends State<EditProfileView> {
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(width: 48), // Balance the back button
+          if (_isAdmin)
+            IconButton(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AdvancedAdminPanel(),
+                  ),
+                );
+              },
+              icon: const Icon(
+                Icons.admin_panel_settings,
+                color: Colors.white,
+                size: 24,
+              ),
+            )
+          else
+            const SizedBox(width: 48), // Balance the back button
         ],
       ),
     );

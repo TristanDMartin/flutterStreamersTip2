@@ -30,6 +30,10 @@ mixin _$ActivityNotification {
   String? get commentText => throw _privateConstructorUsedError;
   String get status => throw _privateConstructorUsedError;
   String? get videoId => throw _privateConstructorUsedError;
+  String? get chatId => throw _privateConstructorUsedError;
+  String? get milestoneType => throw _privateConstructorUsedError;
+  int? get milestoneValue => throw _privateConstructorUsedError;
+  String? get parentCommentId => throw _privateConstructorUsedError;
 
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
   @JsonKey(ignore: true)
@@ -51,7 +55,11 @@ abstract class $ActivityNotificationCopyWith<$Res> {
       String? postThumbnailUrl,
       String? commentText,
       String status,
-      String? videoId});
+      String? videoId,
+      String? chatId,
+      String? milestoneType,
+      int? milestoneValue,
+      String? parentCommentId});
 }
 
 /// @nodoc
@@ -76,6 +84,10 @@ class _$ActivityNotificationCopyWithImpl<$Res,
     Object? commentText = freezed,
     Object? status = null,
     Object? videoId = freezed,
+    Object? chatId = freezed,
+    Object? milestoneType = freezed,
+    Object? milestoneValue = freezed,
+    Object? parentCommentId = freezed,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -110,6 +122,22 @@ class _$ActivityNotificationCopyWithImpl<$Res,
           ? _value.videoId
           : videoId // ignore: cast_nullable_to_non_nullable
               as String?,
+      chatId: freezed == chatId
+          ? _value.chatId
+          : chatId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      milestoneType: freezed == milestoneType
+          ? _value.milestoneType
+          : milestoneType // ignore: cast_nullable_to_non_nullable
+              as String?,
+      milestoneValue: freezed == milestoneValue
+          ? _value.milestoneValue
+          : milestoneValue // ignore: cast_nullable_to_non_nullable
+              as int?,
+      parentCommentId: freezed == parentCommentId
+          ? _value.parentCommentId
+          : parentCommentId // ignore: cast_nullable_to_non_nullable
+              as String?,
     ) as $Val);
   }
 }
@@ -130,7 +158,11 @@ abstract class _$$ActivityNotificationImplCopyWith<$Res>
       String? postThumbnailUrl,
       String? commentText,
       String status,
-      String? videoId});
+      String? videoId,
+      String? chatId,
+      String? milestoneType,
+      int? milestoneValue,
+      String? parentCommentId});
 }
 
 /// @nodoc
@@ -152,6 +184,10 @@ class __$$ActivityNotificationImplCopyWithImpl<$Res>
     Object? commentText = freezed,
     Object? status = null,
     Object? videoId = freezed,
+    Object? chatId = freezed,
+    Object? milestoneType = freezed,
+    Object? milestoneValue = freezed,
+    Object? parentCommentId = freezed,
   }) {
     return _then(_$ActivityNotificationImpl(
       id: null == id
@@ -186,6 +222,22 @@ class __$$ActivityNotificationImplCopyWithImpl<$Res>
           ? _value.videoId
           : videoId // ignore: cast_nullable_to_non_nullable
               as String?,
+      chatId: freezed == chatId
+          ? _value.chatId
+          : chatId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      milestoneType: freezed == milestoneType
+          ? _value.milestoneType
+          : milestoneType // ignore: cast_nullable_to_non_nullable
+              as String?,
+      milestoneValue: freezed == milestoneValue
+          ? _value.milestoneValue
+          : milestoneValue // ignore: cast_nullable_to_non_nullable
+              as int?,
+      parentCommentId: freezed == parentCommentId
+          ? _value.parentCommentId
+          : parentCommentId // ignore: cast_nullable_to_non_nullable
+              as String?,
     ));
   }
 }
@@ -201,7 +253,11 @@ class _$ActivityNotificationImpl implements _ActivityNotification {
       this.postThumbnailUrl,
       this.commentText,
       this.status = 'pending',
-      this.videoId});
+      this.videoId,
+      this.chatId,
+      this.milestoneType,
+      this.milestoneValue,
+      this.parentCommentId});
 
   factory _$ActivityNotificationImpl.fromJson(Map<String, dynamic> json) =>
       _$$ActivityNotificationImplFromJson(json);
@@ -225,10 +281,18 @@ class _$ActivityNotificationImpl implements _ActivityNotification {
   final String status;
   @override
   final String? videoId;
+  @override
+  final String? chatId;
+  @override
+  final String? milestoneType;
+  @override
+  final int? milestoneValue;
+  @override
+  final String? parentCommentId;
 
   @override
   String toString() {
-    return 'ActivityNotification(id: $id, type: $type, user: $user, timestamp: $timestamp, postThumbnailUrl: $postThumbnailUrl, commentText: $commentText, status: $status, videoId: $videoId)';
+    return 'ActivityNotification(id: $id, type: $type, user: $user, timestamp: $timestamp, postThumbnailUrl: $postThumbnailUrl, commentText: $commentText, status: $status, videoId: $videoId, chatId: $chatId, milestoneType: $milestoneType, milestoneValue: $milestoneValue, parentCommentId: $parentCommentId)';
   }
 
   @override
@@ -246,13 +310,32 @@ class _$ActivityNotificationImpl implements _ActivityNotification {
             (identical(other.commentText, commentText) ||
                 other.commentText == commentText) &&
             (identical(other.status, status) || other.status == status) &&
-            (identical(other.videoId, videoId) || other.videoId == videoId));
+            (identical(other.videoId, videoId) || other.videoId == videoId) &&
+            (identical(other.chatId, chatId) || other.chatId == chatId) &&
+            (identical(other.milestoneType, milestoneType) ||
+                other.milestoneType == milestoneType) &&
+            (identical(other.milestoneValue, milestoneValue) ||
+                other.milestoneValue == milestoneValue) &&
+            (identical(other.parentCommentId, parentCommentId) ||
+                other.parentCommentId == parentCommentId));
   }
 
   @JsonKey(ignore: true)
   @override
-  int get hashCode => Object.hash(runtimeType, id, type, user, timestamp,
-      postThumbnailUrl, commentText, status, videoId);
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      type,
+      user,
+      timestamp,
+      postThumbnailUrl,
+      commentText,
+      status,
+      videoId,
+      chatId,
+      milestoneType,
+      milestoneValue,
+      parentCommentId);
 
   @JsonKey(ignore: true)
   @override
@@ -279,7 +362,11 @@ abstract class _ActivityNotification implements ActivityNotification {
       final String? postThumbnailUrl,
       final String? commentText,
       final String status,
-      final String? videoId}) = _$ActivityNotificationImpl;
+      final String? videoId,
+      final String? chatId,
+      final String? milestoneType,
+      final int? milestoneValue,
+      final String? parentCommentId}) = _$ActivityNotificationImpl;
 
   factory _ActivityNotification.fromJson(Map<String, dynamic> json) =
       _$ActivityNotificationImpl.fromJson;
@@ -302,6 +389,14 @@ abstract class _ActivityNotification implements ActivityNotification {
   String get status;
   @override
   String? get videoId;
+  @override
+  String? get chatId;
+  @override
+  String? get milestoneType;
+  @override
+  int? get milestoneValue;
+  @override
+  String? get parentCommentId;
   @override
   @JsonKey(ignore: true)
   _$$ActivityNotificationImplCopyWith<_$ActivityNotificationImpl>

@@ -880,3 +880,433 @@ async function sendMessagePushNotification(recipientId, senderId, messageData, c
     console.error('❌ Error in sendMessagePushNotification:', error);
   }
 }
+
+/**
+ * Send notification when someone replies to a comment
+ */
+exports.onCommentReply = functions.firestore
+  .document('videos/{videoId}/comments/{commentId}')
+  .onCreate(async (snap, context) => {
+    try {
+      const commentData = snap.data();
+      const { videoId, commentId } = context.params;
+      const parentCommentId = commentData.parentCommentId;
+      
+      // Only proceed if this is a reply (has parentCommentId)
+      if (!parentCommentId) {
+        console.log(`📝 New comment (not a reply), skipping reply notification`);
+        return null;
+      }
+      
+      console.log(`📝 Comment reply detected: ${commentId} replying to ${parentCommentId}`);
+      
+      // Get parent comment to find the original commenter
+      const parentCommentRef = admin.firestore()
+        .doc(`videos/${videoId}/comments/${parentCommentId}`);
+      const parentComment = await parentCommentRef.get();
+      
+      if (!parentComment.exists) {
+        console.log(`❌ Parent comment not found: ${parentCommentId}`);
+        return null;
+      }
+      
+      const parentCommentData = parentComment.data();
+      const parentAuthorId = parentCommentData.user?.id;
+      const replierId = commentData.user?.id;
+      
+      // Don't notify if replying to own comment
+      if (parentAuthorId === replierId) {
+        console.log(`📝 User replying to own comment, skipping notification`);
+        return null;
+      }
+      
+      // Get replier user data
+      const replierDoc = await admin.firestore()
+        .collection('users')
+        .doc(replierId)
+        .get();
+      
+      if (!replierDoc.exists) {
+        console.log(`❌ Replier user not found: ${replierId}`);
+        return null;
+      }
+      
+      const replierData = replierDoc.data();
+      
+      // Get video data for thumbnail
+      const videoDoc = await admin.firestore()
+        .collection('videos')
+        .doc(videoId)
+        .get();
+      
+      const videoData = videoDoc.exists ? videoDoc.data() : {};
+      
+      // Create notification for parent comment author
+      await admin.firestore()
+        .collection('notifications')
+        .doc(parentAuthorId)
+        .collection('items')
+        .add({
+          type: 'commentReply',
+          user: {
+            id: replierId,
+            username: replierData.username || 'Unknown',
+            displayName: replierData.displayName || 'Unknown',
+            avatarURL: replierData.avatarURL || replierData.avatarUrl || ''
+          },
+          videoId: videoId,
+          commentText: commentData.text || '',
+          parentCommentId: parentCommentId,
+          postThumbnailUrl: videoData.thumbnailURL || videoData.thumbnailUrl || '',
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          isRead: false,
+          status: 'delivered'
+        });
+      
+      console.log(`✅ Comment reply notification created: ${replierId} -> ${parentAuthorId}`);
+      
+      // Send push notification
+      const tokens = await getDeviceTokens(parentAuthorId);
+      if (tokens.length > 0) {
+        const message = {
+          notification: {
+            title: 'New Reply',
+            body: `${replierData.displayName || 'Someone'} replied to your comment`
+          },
+          data: {
+            type: 'commentReply',
+            replierId: replierId,
+            videoId: videoId,
+            commentId: commentId,
+            parentCommentId: parentCommentId
+          }
+        };
+        
+        await sendToTokens(tokens, message, parentAuthorId);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error in onCommentReply:', error);
+      return null;
+    }
+  });
+
+/**
+ * Send notifications to followers when a new video is published
+ */
+exports.onVideoPublish = functions.firestore
+  .document('videos/{videoId}')
+  .onCreate(async (snap, context) => {
+    try {
+      const videoData = snap.data();
+      const { videoId } = context.params;
+      const creatorId = videoData.userId || videoData.creatorId;
+      
+      console.log(`📹 New video published: ${videoId} by ${creatorId}`);
+      
+      // Only notify for published videos, not drafts
+      if (videoData.status === 'draft' || videoData.isDraft === true) {
+        console.log(`📹 Video is a draft, skipping follower notifications`);
+        return null;
+      }
+      
+      // Get creator data
+      const creatorDoc = await admin.firestore()
+        .collection('users')
+        .doc(creatorId)
+        .get();
+      
+      if (!creatorDoc.exists) {
+        console.log(`❌ Creator not found: ${creatorId}`);
+        return null;
+      }
+      
+      const creatorData = creatorDoc.data();
+      
+      // Get all followers
+      const followersSnapshot = await admin.firestore()
+        .collection('relationships')
+        .where('followingId', '==', creatorId)
+        .get();
+      
+      if (followersSnapshot.empty) {
+        console.log(`📹 No followers to notify for ${creatorId}`);
+        return null;
+      }
+      
+      console.log(`📹 Notifying ${followersSnapshot.size} followers`);
+      
+      // Create notifications in batches
+      const batch = admin.firestore().batch();
+      let notificationCount = 0;
+      
+      for (const doc of followersSnapshot.docs) {
+        const followerId = doc.data().followerId;
+        
+        // Create notification
+        const notifRef = admin.firestore()
+          .collection('notifications')
+          .doc(followerId)
+          .collection('items')
+          .doc();
+        
+        batch.set(notifRef, {
+          type: 'newVideo',
+          user: {
+            id: creatorId,
+            username: creatorData.username || 'Unknown',
+            displayName: creatorData.displayName || 'Unknown',
+            avatarURL: creatorData.avatarURL || creatorData.avatarUrl || ''
+          },
+          videoId: videoId,
+          postThumbnailUrl: videoData.thumbnailURL || videoData.thumbnailUrl || '',
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          isRead: false,
+          status: 'delivered'
+        });
+        
+        notificationCount++;
+        
+        // Commit batch every 500 writes (Firestore limit)
+        if (notificationCount % 500 === 0) {
+          await batch.commit();
+        }
+      }
+      
+      // Commit remaining writes
+      if (notificationCount % 500 !== 0) {
+        await batch.commit();
+      }
+      
+      console.log(`✅ Created ${notificationCount} new video notifications`);
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error in onVideoPublish:', error);
+      return null;
+    }
+  });
+
+/**
+ * Send milestone notifications when videos reach view/like milestones
+ */
+exports.onVideoMilestone = functions.firestore
+  .document('videos/{videoId}')
+  .onUpdate(async (change, context) => {
+    try {
+      const before = change.before.data();
+      const after = change.after.data();
+      const { videoId } = context.params;
+      const ownerId = after.userId || after.creatorId;
+      
+      const milestones = [100, 1000, 10000, 100000, 1000000];
+      
+      // Check view milestones
+      for (const milestone of milestones) {
+        if (before.views < milestone && after.views >= milestone) {
+          console.log(`🎉 Video ${videoId} reached ${milestone} views!`);
+          
+          await admin.firestore()
+            .collection('notifications')
+            .doc(ownerId)
+            .collection('items')
+            .add({
+              type: 'milestone',
+              user: {
+                id: ownerId,
+                username: after.creatorUsername || 'you',
+                displayName: after.creatorName || 'You',
+                avatarURL: after.creatorAvatar || ''
+              },
+              videoId: videoId,
+              milestoneType: 'views',
+              milestoneValue: milestone,
+              postThumbnailUrl: after.thumbnailURL || after.thumbnailUrl || '',
+              timestamp: admin.firestore.FieldValue.serverTimestamp(),
+              isRead: false,
+              status: 'delivered'
+            });
+          
+          console.log(`✅ View milestone notification created: ${milestone} views`);
+          
+          // Send push notification
+          const tokens = await getDeviceTokens(ownerId);
+          if (tokens.length > 0) {
+            const message = {
+              notification: {
+                title: '🎉 Milestone Reached!',
+                body: `Your video reached ${formatNumber(milestone)} views!`
+              },
+              data: {
+                type: 'milestone',
+                videoId: videoId,
+                milestoneType: 'views',
+                milestoneValue: String(milestone)
+              }
+            };
+            
+            await sendToTokens(tokens, message, ownerId);
+          }
+        }
+      }
+      
+      // Check like milestones
+      const likeMilestones = [10, 100, 1000, 10000, 100000];
+      for (const milestone of likeMilestones) {
+        if ((before.likes || before.likeCount || 0) < milestone && 
+            (after.likes || after.likeCount || 0) >= milestone) {
+          console.log(`🎉 Video ${videoId} reached ${milestone} likes!`);
+          
+          await admin.firestore()
+            .collection('notifications')
+            .doc(ownerId)
+            .collection('items')
+            .add({
+              type: 'milestone',
+              user: {
+                id: ownerId,
+                username: after.creatorUsername || 'you',
+                displayName: after.creatorName || 'You',
+                avatarURL: after.creatorAvatar || ''
+              },
+              videoId: videoId,
+              milestoneType: 'likes',
+              milestoneValue: milestone,
+              postThumbnailUrl: after.thumbnailURL || after.thumbnailUrl || '',
+              timestamp: admin.firestore.FieldValue.serverTimestamp(),
+              isRead: false,
+              status: 'delivered'
+            });
+          
+          console.log(`✅ Like milestone notification created: ${milestone} likes`);
+          
+          // Send push notification
+          const tokens = await getDeviceTokens(ownerId);
+          if (tokens.length > 0) {
+            const message = {
+              notification: {
+                title: '🎉 Milestone Reached!',
+                body: `Your video reached ${formatNumber(milestone)} likes!`
+              },
+              data: {
+                type: 'milestone',
+                videoId: videoId,
+                milestoneType: 'likes',
+                milestoneValue: String(milestone)
+              }
+            };
+            
+            await sendToTokens(tokens, message, ownerId);
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error in onVideoMilestone:', error);
+      return null;
+    }
+  });
+
+/**
+ * Send notifications when a calendar event (live stream) starts
+ */
+exports.onCalendarEventStart = functions.firestore
+  .document('users/{userId}/bookmarks/{eventId}')
+  .onUpdate(async (change, context) => {
+    try {
+      const before = change.before.data();
+      const after = change.after.data();
+      const { userId, eventId } = context.params;
+      
+      // Check if event just started (status changed to 'live')
+      if (before.status !== 'live' && after.status === 'live') {
+        console.log(`🔴 Live stream started: ${eventId} by ${userId}`);
+        
+        // Get streamer data
+        const streamerDoc = await admin.firestore()
+          .collection('users')
+          .doc(userId)
+          .get();
+        
+        if (!streamerDoc.exists) {
+          console.log(`❌ Streamer not found: ${userId}`);
+          return null;
+        }
+        
+        const streamerData = streamerDoc.data();
+        
+        // Get all followers
+        const followersSnapshot = await admin.firestore()
+          .collection('relationships')
+          .where('followingId', '==', userId)
+          .get();
+        
+        if (followersSnapshot.empty) {
+          console.log(`🔴 No followers to notify for ${userId}`);
+          return null;
+        }
+        
+        console.log(`🔴 Notifying ${followersSnapshot.size} followers about live stream`);
+        
+        // Create notifications in batches
+        const batch = admin.firestore().batch();
+        let notificationCount = 0;
+        
+        for (const doc of followersSnapshot.docs) {
+          const followerId = doc.data().followerId;
+          
+          // Create notification
+          const notifRef = admin.firestore()
+            .collection('notifications')
+            .doc(followerId)
+            .collection('items')
+            .doc();
+          
+          batch.set(notifRef, {
+            type: 'liveStream',
+            user: {
+              id: userId,
+              username: streamerData.username || 'Unknown',
+              displayName: streamerData.displayName || 'Unknown',
+              avatarURL: streamerData.avatarURL || streamerData.avatarUrl || ''
+            },
+            commentText: after.title || 'is live now!',
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            isRead: false,
+            status: 'delivered'
+          });
+          
+          notificationCount++;
+          
+          // Commit batch every 500 writes
+          if (notificationCount % 500 === 0) {
+            await batch.commit();
+          }
+        }
+        
+        // Commit remaining writes
+        if (notificationCount % 500 !== 0) {
+          await batch.commit();
+        }
+        
+        console.log(`✅ Created ${notificationCount} live stream notifications`);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error in onCalendarEventStart:', error);
+      return null;
+    }
+  });
+
+// Helper function to format numbers
+function formatNumber(num) {
+  if (num >= 1000000) {
+    return `${(num / 1000000).toFixed(1)}M`;
+  } else if (num >= 1000) {
+    return `${(num / 1000).toFixed(1)}K`;
+  }
+  return num.toString();
+}

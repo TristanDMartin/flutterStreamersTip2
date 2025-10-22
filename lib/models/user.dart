@@ -15,6 +15,8 @@ class User {
   final int followingCount;
   final List<CalendarEvent> calendarEvents;
   final UserPrivacy privacy;
+  final List<String> pinnedVideoIds;
+  final String role;
 
   const User({
     required this.id,
@@ -30,6 +32,8 @@ class User {
     this.followingCount = 0,
     this.calendarEvents = const <CalendarEvent>[],
     this.privacy = const UserPrivacy(),
+    this.pinnedVideoIds = const <String>[],
+    this.role = 'user',
   });
 
   factory User.fromMap(Map<String, dynamic> data) {
@@ -51,6 +55,8 @@ class User {
           [],
       privacy:
           UserPrivacy.fromMap(data['privacy'] as Map<String, dynamic>? ?? {}),
+      pinnedVideoIds: parseStringList(data['pinnedVideoIds']),
+      role: data['role'] ?? 'user',
     );
   }
 
@@ -70,6 +76,8 @@ class User {
       'followingCount': followingCount,
       'calendarEvents': calendarEvents.map((e) => e.toMap()).toList(),
       'privacy': privacy.toMap(),
+      'pinnedVideoIds': pinnedVideoIds,
+      'role': role,
     };
   }
 }

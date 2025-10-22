@@ -518,6 +518,30 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         } else {
           return 'mentioned you in a comment';
         }
+      case ActivityNotificationType.commentReply:
+        if (widget.notification.commentText != null) {
+          return 'replied to your comment: "${widget.notification.commentText}"';
+        } else {
+          return 'replied to your comment';
+        }
+      case ActivityNotificationType.newVideo:
+        return 'posted a new video';
+      case ActivityNotificationType.milestone:
+        if (widget.notification.milestoneType != null &&
+            widget.notification.milestoneValue != null) {
+          final formattedValue = _formatMilestone(
+            widget.notification.milestoneValue!,
+          );
+          return 'Your video reached $formattedValue ${widget.notification.milestoneType}! 🎉';
+        } else {
+          return 'reached a milestone! 🎉';
+        }
+      case ActivityNotificationType.liveStream:
+        if (widget.notification.commentText != null) {
+          return widget.notification.commentText!;
+        } else {
+          return 'is live now! 🔴';
+        }
     }
   }
 
@@ -548,6 +572,24 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         return const Color(0xFFFF9800); // Orange
       case ActivityNotificationType.mention:
         return const Color(0xFF9C27B0); // Purple
+      case ActivityNotificationType.commentReply:
+        return const Color(0xFF00BCD4); // Cyan
+      case ActivityNotificationType.newVideo:
+        return const Color(0xFF9248D2); // StreamersTip Purple
+      case ActivityNotificationType.milestone:
+        return const Color(0xFFFFC107); // Amber/Gold
+      case ActivityNotificationType.liveStream:
+        return const Color(0xFFF44336); // Red (live)
+    }
+  }
+
+  String _formatMilestone(int value) {
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(1)}M';
+    } else if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(1)}K';
+    } else {
+      return value.toString();
     }
   }
 

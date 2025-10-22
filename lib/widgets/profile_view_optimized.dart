@@ -16,7 +16,6 @@ import 'profile_back_view.dart';
 import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
-import 'setup_hashtag_permissions_widget.dart';
 import 'tiktok_account_switch_button.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
@@ -535,21 +534,6 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       extendBody: true,
       extendBodyBehindAppBar:
           true, // FIXED: Extend behind status bar for full gradient
-      floatingActionButton: widget.isCurrentUser
-          ? FloatingActionButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SetupHashtagPermissionsWidget(),
-                  ),
-                );
-              },
-              backgroundColor: Colors.orange,
-              child:
-                  const Icon(Icons.admin_panel_settings, color: Colors.white),
-            )
-          : null,
       body: AnimatedBuilder(
         animation: _flipAnimation,
         builder: (context, child) {

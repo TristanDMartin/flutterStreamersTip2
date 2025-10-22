@@ -5,7 +5,9 @@ service cloud.firestore {
   match /users/{userId} {
     // Allow unauthenticated reads for username lookups during login
     allow read: if true;
-    allow write: if request.auth != null && request.auth.uid == userId;
+    allow write: if request.auth != null && request.auth.uid == userId 
+      && (!request.resource.data.keys().hasAny(['pinnedVideoIds']) 
+          || request.resource.data.pinnedVideoIds.size() <= 3);
       
       // TikTok-style: Allow any authenticated user to update follower/following counts and liked_videos array
       allow update: if request.auth != null 
@@ -123,12 +125,30 @@ service cloud.firestore {
       // Allow creating videos for any authenticated user
       allow create: if request.auth != null;
       // Allow updating videos - owner can update anything, others can only update stats
+      // Owner can update: allowSave, allowRemix, visibility, status, isPinned, tags, playlistIds, caption, deletedAt
       allow update: if request.auth != null && 
         (request.auth.uid == resource.data.userId ||
          request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['views', 'likes', 'likeCount', 'comments', 'commentCount', 'shares', 'isLiked', 'lastViewedAt', 'lastLikedAt', 'lastUnlikedAt']));
+           .hasOnly(['views', 'likes', 'likeCount', 'comments', 'commentCount', 'shares', 'isLiked', 'lastViewedAt', 'lastLikedAt', 'lastUnlikedAt', 'isFavorited']));
       // Allow deleting videos - only owner
       allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // User favorites collections
+    match /user_favorites/{userId}/videos/{videoId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Reports collection
+    match /reports/{reportId} {
+      // Anyone can create reports
+      allow create: if request.auth != null;
+      // Only reporter can read their own reports
+      allow read: if request.auth != null && request.auth.uid == resource.data.reporterId;
+      // No updates or deletes allowed (data integrity)
+      allow update, delete: if false;
     }
     
     // Users can read public likes and write their own likes
@@ -406,6 +426,37 @@ service cloud.firestore {
       allow create: if request.auth != null;
       allow update: if request.auth != null;
       allow delete: if request.auth != null;
+    }
+    
+    // Admin logs - only admins can read/write
+    match /admin_logs/{logId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+    }
+    
+    // System settings - only admins can write
+    match /system/{settingId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Admin notifications subcollection under users
+    match /users/{userId}/admin_notifications/{notificationId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null;
+    }
+    
+    // Device tokens subcollection (already exists but ensuring it's documented)
+    match /users/{userId}/deviceTokens/{tokenId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User favorites subcollection
+    match /user_favorites/{userId}/videos/{videoId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
   }
   

@@ -1207,6 +1207,18 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       case ActivityNotificationType.tag:
         _handleProfileTap(notification.user);
         break;
+      case ActivityNotificationType.commentReply:
+      case ActivityNotificationType.newVideo:
+      case ActivityNotificationType.milestone:
+        if (notification.videoId != null) {
+          _handlePostTap(notification);
+        } else {
+          _handleProfileTap(notification.user);
+        }
+        break;
+      case ActivityNotificationType.liveStream:
+        _handleProfileTap(notification.user);
+        break;
     }
   }
 

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/home_video.dart';
+import '../models/user.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/video_service_provider.dart';
 import 'video_player_view_optimized.dart';
 import 'insights_view.dart';
+import 'video_options_bottom_sheet.dart';
 
 enum PlayerMode {
   homeFeed,
@@ -113,9 +116,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     ];
   }
 
-  /// Build action rail (like, comment, bookmark, share)
+  /// Build action rail (like, comment, bookmark, share, more options)
   Widget _buildActionRail(BuildContext context) {
     const gap = 16.0;
+    final currentUser = fa.FirebaseAuth.instance.currentUser;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -161,6 +165,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           onTap: () {
             // TODO: Implement share functionality
           },
+        ),
+        const SizedBox(height: gap),
+
+        // More Options button (context-aware)
+        _buildActionButton(
+          icon: Icons.more_horiz,
+          count: '',
+          onTap: () => _showMoreOptions(context, currentUser),
         ),
       ],
     );
@@ -387,6 +399,48 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         fullscreenDialog: true,
       ),
     );
+  }
+
+  /// Show More Options bottom sheet
+  void _showMoreOptions(BuildContext context, fa.User? currentUser) async {
+    if (_videos.isEmpty || currentUser == null) return;
+    final video = _videos[_currentIndex];
+    try {
+      final userDocSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+      if (!userDocSnap.exists) return;
+      final userData = userDocSnap.data();
+      if (userData == null) return;
+      final user = User.fromMap(userData);
+      if (!context.mounted) return;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => VideoOptionsBottomSheet(
+          video: video,
+          currentUser: user,
+          onVideoDeleted: () {
+            setState(() {
+              _videos.removeAt(_currentIndex);
+              if (_videos.isEmpty) {
+                Navigator.of(context).pop();
+              } else if (_currentIndex >= _videos.length) {
+                _currentIndex = _videos.length - 1;
+                _pageController.jumpToPage(_currentIndex);
+              }
+            });
+          },
+          onVideoUpdated: () {
+            setState(() {});
+          },
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error loading user data: $e');
+    }
   }
 
   @override
