@@ -49,7 +49,8 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   bool _isAnimating = false;
   bool _isProcessing = false;
   DateTime? _lastTapTime;
-  static const Duration _debounceDuration = Duration(milliseconds: 300);
+  static const Duration _debounceDuration =
+      Duration(milliseconds: 150); // Faster response
 
   @override
   void initState() {
@@ -73,9 +74,13 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
 
   /// Start listening to StreamersTipLikeService state changes
   void _startListeningToServiceChanges() {
-    // Check for state changes periodically (reduced from 100ms to 2000ms for performance)
+    // Use a more efficient approach with immediate updates after actions
+    _setupReactiveUpdates();
+
+    // Fallback polling for safety (less frequent)
     Future.doWhile(() async {
-      await Future.delayed(const Duration(milliseconds: 2000));
+      await Future.delayed(
+          const Duration(milliseconds: 1000)); // Reduced frequency
       if (mounted) {
         final streamersTipLikeService = StreamersTipLikeService();
         final currentState =
@@ -106,16 +111,41 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
     });
   }
 
+  /// Set up reactive updates for immediate state synchronization
+  void _setupReactiveUpdates() {
+    // Listen to service changes more efficiently
+    final streamersTipLikeService = StreamersTipLikeService();
+
+    // Add a listener for immediate updates
+    streamersTipLikeService.addListener(() {
+      if (mounted) {
+        final currentState =
+            streamersTipLikeService.getLikeState(widget.videoId);
+        if (_isLiked != currentState.isLiked ||
+            _likeCount != currentState.likeCount) {
+          setState(() {
+            _isLiked = currentState.isLiked;
+            _likeCount = currentState.likeCount;
+          });
+          debugPrint(
+              '🔄 REACTIVE: UI updated immediately - _isLiked: $_isLiked, _likeCount: $_likeCount');
+        }
+      }
+    });
+  }
+
   void _initializeAnimations() {
-    // Instagram-style heart animation controller - faster, more responsive
+    // TikTok-style heart animation controller - more responsive
     _heartAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 150), // Faster like Instagram
+      duration: const Duration(
+          milliseconds: 200), // Slightly longer for better visibility
       vsync: this,
     );
 
-    // Instagram-style sparkle animation controller - longer for more dramatic effect
+    // TikTok-style sparkle animation controller - balanced duration
     _sparkleController = AnimationController(
-      duration: const Duration(milliseconds: 600), // Longer sparkle duration
+      duration:
+          const Duration(milliseconds: 800), // Longer for more dramatic effect
       vsync: this,
     );
 
@@ -171,6 +201,10 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   Future<void> _loadPersistentState() async {
     try {
       final streamersTipLikeService = StreamersTipLikeService();
+
+      // Load the latest like count from Firebase first
+      await streamersTipLikeService.loadVideoLikeCount(widget.videoId);
+
       final state = streamersTipLikeService.getLikeState(widget.videoId);
 
       debugPrint(

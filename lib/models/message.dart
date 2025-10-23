@@ -20,6 +20,11 @@ class Message with _$Message {
     String? gifUrl,
     @Default('text') String messageType,
     @Default(false) bool isDeviceGif,
+    // Video share fields
+    String? videoId,
+    String? shareToken,
+    String? videoThumbnailUrl,
+    String? videoTitle,
   }) = _Message;
 
   factory Message.fromJson(Map<String, dynamic> json) =>

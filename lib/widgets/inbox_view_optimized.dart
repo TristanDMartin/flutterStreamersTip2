@@ -700,7 +700,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       itemCount: _filteredChats.length,
       itemBuilder: (context, index) {
         final chat = _filteredChats[index];
@@ -721,7 +721,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       itemCount: _filteredDrafts.length,
       itemBuilder: (context, index) {
         final draft = _filteredDrafts[index];
@@ -754,7 +754,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         'InboxView: Building chat tile for $otherUserId - userProfile: ${userProfile != null ? 'loaded' : 'null'}, name: $participantName');
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: isSelected
             ? _primaryColor.withValues(alpha: 0.15)
@@ -780,7 +780,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             _toggleSelection(chat.id ?? '');
           },
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Row(
               children: [
                 // Avatar with selection indicator and online status
@@ -897,6 +897,37 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               fontWeight: FontWeight.bold,
                             ),
                             textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    // Mute indicator
+                    if (currentUser != null &&
+                        chat.mutedBy.contains(currentUser.uid))
+                      Positioned(
+                        left: -4,
+                        top: -4,
+                        child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.volume_off,
+                            color: Colors.white,
+                            size: 10,
                           ),
                         ),
                       ),

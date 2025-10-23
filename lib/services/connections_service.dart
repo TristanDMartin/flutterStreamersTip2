@@ -61,7 +61,7 @@ class ConnectionsService {
     }
   }
 
-  /// Get total connections count
+  /// Get total connections count from ALL sources
   Future<int> getConnectionsTotal({bool forceRefresh = false}) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return 0;
@@ -74,18 +74,76 @@ class ConnectionsService {
     }
 
     try {
-      // Count total connections
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('connections')
-          .count()
-          .get();
+      log('📊 ConnectionsService: Counting total connections from all sources for $userId');
 
-      final total = snapshot.count ?? 0;
+      int total = 0;
+      final Set<String> uniqueUserIds = {}; // Prevent duplicates
+
+      // 1. Count connections from subcollection
+      try {
+        final connectionsSnapshot = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('connections')
+            .get();
+
+        for (final doc in connectionsSnapshot.docs) {
+          final connectionData = doc.data();
+          final connectedUserId = connectionData['userId'] ?? doc.id;
+          if (connectedUserId.isNotEmpty) {
+            uniqueUserIds.add(connectedUserId);
+          }
+        }
+
+        log('📊 ConnectionsService: Found ${uniqueUserIds.length} connections from subcollection');
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error counting from subcollection: $e');
+      }
+
+      // 2. Count connections from relationships (following)
+      try {
+        final followingQuery = await _firestore
+            .collection('relationships')
+            .where('followerId', isEqualTo: userId)
+            .get();
+
+        for (final doc in followingQuery.docs) {
+          final relationshipData = doc.data();
+          final connectedUserId = relationshipData['followingId'] ?? '';
+          if (connectedUserId.isNotEmpty) {
+            uniqueUserIds.add(connectedUserId);
+          }
+        }
+
+        log('📊 ConnectionsService: Found additional connections from relationships (following)');
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error counting from relationships (following): $e');
+      }
+
+      // 3. Count mutual connections (followers)
+      try {
+        final followersQuery = await _firestore
+            .collection('relationships')
+            .where('followingId', isEqualTo: userId)
+            .get();
+
+        for (final doc in followersQuery.docs) {
+          final relationshipData = doc.data();
+          final connectedUserId = relationshipData['followerId'] ?? '';
+          if (connectedUserId.isNotEmpty) {
+            uniqueUserIds.add(connectedUserId);
+          }
+        }
+
+        log('📊 ConnectionsService: Found mutual connections from relationships (followers)');
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error counting from relationships (followers): $e');
+      }
+
+      total = uniqueUserIds.length;
       _connectionsTotalCache[userId] = total;
 
-      log('📊 ConnectionsService: Total connections for $userId: $total');
+      log('📊 ConnectionsService: Total unique connections for $userId: $total');
       return total;
     } catch (e) {
       log('❌ ConnectionsService: Error counting connections: $e');
@@ -109,68 +167,204 @@ class ConnectionsService {
     try {
       log('🔍 ConnectionsService: Searching connections with query: "$query"');
 
-      // Search in connections collection
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(currentUser.uid)
-          .collection('connections')
-          .limit(50) // Get more for client-side filtering
-          .get();
-
       final connections = <ConnectionLite>[];
+      final Set<String> processedUserIds = {}; // Prevent duplicates
+      final String lowerQuery = query.toLowerCase();
 
-      for (final doc in snapshot.docs) {
-        final connectionData = doc.data();
-        final connectedUserId = connectionData['userId'] ?? doc.id;
+      // 1. Search in connections subcollection
+      try {
+        final snapshot = await _firestore
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('connections')
+            .limit(50)
+            .get();
 
-        // Get user details from connection data
-        String handle = connectionData['username'] ?? '';
-        String displayName =
-            connectionData['displayName'] ?? connectionData['name'] ?? handle;
-        String avatarUrl =
-            connectionData['avatarUrl'] ?? connectionData['avatar'] ?? '';
-        bool isOnline = connectionData['isOnline'] ??
-            connectionData['onlineStatus'] == 'online';
+        for (final doc in snapshot.docs) {
+          final connectionData = doc.data();
+          final connectedUserId = connectionData['userId'] ?? doc.id;
 
-        // If connection data is incomplete, fetch from users collection
-        if (handle.isEmpty || displayName.isEmpty) {
-          final userDoc =
-              await _firestore.collection('users').doc(connectedUserId).get();
+          if (processedUserIds.contains(connectedUserId)) continue;
+          processedUserIds.add(connectedUserId);
 
-          if (userDoc.exists) {
-            final userData = userDoc.data()!;
-            handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
-            displayName = displayName.isEmpty
-                ? (userData['displayName'] ?? userData['name'] ?? handle)
-                : displayName;
-            avatarUrl =
-                avatarUrl.isEmpty ? (userData['avatarUrl'] ?? '') : avatarUrl;
-            isOnline = userData['isOnline'] ?? false;
+          // Get user details from connection data
+          String handle = connectionData['username'] ?? '';
+          String displayName =
+              connectionData['displayName'] ?? connectionData['name'] ?? handle;
+          String avatarUrl =
+              connectionData['avatarURL'] ?? connectionData['avatarURL'] ?? '';
+          bool isOnline = connectionData['isOnline'] ??
+              connectionData['onlineStatus'] == 'online';
+
+          // If connection data is incomplete, fetch from users collection
+          if (handle.isEmpty || displayName.isEmpty || avatarUrl.isEmpty) {
+            final userDoc =
+                await _firestore.collection('users').doc(connectedUserId).get();
+
+            if (userDoc.exists) {
+              final userData = userDoc.data()!;
+              handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
+              displayName = displayName.isEmpty
+                  ? (userData['displayName'] ?? userData['name'] ?? handle)
+                  : displayName;
+              avatarUrl =
+                  avatarUrl.isEmpty ? (userData['avatarURL'] ?? '') : avatarUrl;
+              isOnline = userData['isOnline'] ?? false;
+
+              log('🔍 ConnectionsService: Fetched user data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
+            } else {
+              log('⚠️ ConnectionsService: User document not found for $connectedUserId');
+            }
+          }
+
+          // Client-side filtering
+          if (handle.toLowerCase().contains(lowerQuery) ||
+              displayName.toLowerCase().contains(lowerQuery)) {
+            connections.add(ConnectionLite(
+              userId: connectedUserId,
+              handle: handle,
+              displayName: displayName,
+              avatarUrl: avatarUrl,
+              isOnline: isOnline,
+              canDM: connectionData['canReceiveDMs'] ?? true,
+              lastInteractedAt:
+                  connectionData['lastInteraction']?.millisecondsSinceEpoch ??
+                      connectionData['lastSeen']?.millisecondsSinceEpoch,
+              rankingScore: _calculateRankingScore(connectionData, {}),
+            ));
           }
         }
-
-        // Client-side filtering
-        if (handle.toLowerCase().contains(query.toLowerCase()) ||
-            displayName.toLowerCase().contains(query.toLowerCase())) {
-          connections.add(ConnectionLite(
-            userId: connectedUserId,
-            handle: handle,
-            displayName: displayName,
-            avatarUrl: avatarUrl,
-            isOnline: isOnline,
-            canDM: connectionData['canReceiveDMs'] ?? true,
-            lastInteractedAt:
-                connectionData['lastInteraction']?.millisecondsSinceEpoch ??
-                    connectionData['lastSeen']?.millisecondsSinceEpoch,
-          ));
-        }
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error searching subcollection: $e');
       }
 
-      // Sort by handle for search results
-      connections.sort(
-          (a, b) => a.handle.toLowerCase().compareTo(b.handle.toLowerCase()));
+      // 2. Search in relationships (following)
+      try {
+        final followingQuery = await _firestore
+            .collection('relationships')
+            .where('followerId', isEqualTo: currentUser.uid)
+            .limit(50)
+            .get();
 
-      log('🔍 ConnectionsService: Found ${connections.length} matching connections');
+        for (final doc in followingQuery.docs) {
+          final relationshipData = doc.data();
+          final connectedUserId = relationshipData['followingId'] ?? '';
+
+          if (processedUserIds.contains(connectedUserId) ||
+              connectedUserId.isEmpty) continue;
+          processedUserIds.add(connectedUserId);
+
+          // Get user details from relationship data
+          String handle = relationshipData['username'] ?? '';
+          String displayName = relationshipData['displayName'] ??
+              relationshipData['name'] ??
+              handle;
+          String avatarUrl = relationshipData['avatarURL'] ??
+              relationshipData['avatarURL'] ??
+              '';
+
+          // If relationship data is incomplete, fetch from users collection
+          if (handle.isEmpty || displayName.isEmpty) {
+            final userDoc =
+                await _firestore.collection('users').doc(connectedUserId).get();
+
+            if (userDoc.exists) {
+              final userData = userDoc.data()!;
+              handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
+              displayName = displayName.isEmpty
+                  ? (userData['displayName'] ?? userData['name'] ?? handle)
+                  : displayName;
+              avatarUrl =
+                  avatarUrl.isEmpty ? (userData['avatarURL'] ?? '') : avatarUrl;
+            }
+          }
+
+          // Client-side filtering
+          if (handle.toLowerCase().contains(lowerQuery) ||
+              displayName.toLowerCase().contains(lowerQuery)) {
+            connections.add(ConnectionLite(
+              userId: connectedUserId,
+              handle: handle,
+              displayName: displayName,
+              avatarUrl: avatarUrl,
+              isOnline: false,
+              canDM: relationshipData['canDM'] ?? true,
+              lastInteractedAt:
+                  relationshipData['timestamp']?.millisecondsSinceEpoch,
+              rankingScore: _calculateRankingScore(relationshipData, {}),
+            ));
+          }
+        }
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error searching relationships (following): $e');
+      }
+
+      // 3. Search in mutual connections (followers)
+      try {
+        final followersQuery = await _firestore
+            .collection('relationships')
+            .where('followingId', isEqualTo: currentUser.uid)
+            .limit(50)
+            .get();
+
+        for (final doc in followersQuery.docs) {
+          final relationshipData = doc.data();
+          final connectedUserId = relationshipData['followerId'] ?? '';
+
+          if (processedUserIds.contains(connectedUserId) ||
+              connectedUserId.isEmpty) continue;
+          processedUserIds.add(connectedUserId);
+
+          // Get user details from relationship data
+          String handle = relationshipData['username'] ?? '';
+          String displayName = relationshipData['displayName'] ??
+              relationshipData['name'] ??
+              handle;
+          String avatarUrl = relationshipData['avatarURL'] ??
+              relationshipData['avatarURL'] ??
+              '';
+
+          // If relationship data is incomplete, fetch from users collection
+          if (handle.isEmpty || displayName.isEmpty) {
+            final userDoc =
+                await _firestore.collection('users').doc(connectedUserId).get();
+
+            if (userDoc.exists) {
+              final userData = userDoc.data()!;
+              handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
+              displayName = displayName.isEmpty
+                  ? (userData['displayName'] ?? userData['name'] ?? handle)
+                  : displayName;
+              avatarUrl =
+                  avatarUrl.isEmpty ? (userData['avatarURL'] ?? '') : avatarUrl;
+            }
+          }
+
+          // Client-side filtering
+          if (handle.toLowerCase().contains(lowerQuery) ||
+              displayName.toLowerCase().contains(lowerQuery)) {
+            connections.add(ConnectionLite(
+              userId: connectedUserId,
+              handle: handle,
+              displayName: displayName,
+              avatarUrl: avatarUrl,
+              isOnline: false,
+              canDM: relationshipData['canDM'] ?? true,
+              lastInteractedAt:
+                  relationshipData['timestamp']?.millisecondsSinceEpoch,
+              rankingScore: _calculateRankingScore(relationshipData, {}) +
+                  5.0, // Boost for mutual connections
+            ));
+          }
+        }
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error searching relationships (followers): $e');
+      }
+
+      // Sort by ranking score for search results
+      connections.sort((a, b) => b.rankingScore.compareTo(a.rankingScore));
+
+      log('🔍 ConnectionsService: Found ${connections.length} matching connections from all sources');
       return connections.take(limit).toList();
     } catch (e) {
       log('❌ ConnectionsService: Error searching connections: $e');
@@ -187,34 +381,62 @@ class ConnectionsService {
     try {
       log('📤 ConnectionsService: Sending DM share to $recipientId for video $videoId');
 
+      // Fetch video data for better display
+      String videoTitle = 'Shared a video';
+      String videoThumbnailUrl = '';
+
+      try {
+        final videoDoc =
+            await _firestore.collection('videos').doc(videoId).get();
+        if (videoDoc.exists) {
+          final videoData = videoDoc.data()!;
+          videoTitle =
+              videoData['caption'] ?? videoData['title'] ?? 'Shared a video';
+          videoThumbnailUrl = videoData['thumbnailUrl'] ?? '';
+          log('📤 ConnectionsService: Fetched video data - title: "$videoTitle", thumbnail: "$videoThumbnailUrl"');
+          log('📤 ConnectionsService: Full video data keys: ${videoData.keys.toList()}');
+          log('📤 ConnectionsService: Raw caption: "${videoData['caption']}", title: "${videoData['title']}"');
+        } else {
+          log('⚠️ ConnectionsService: Video document does not exist: $videoId');
+        }
+      } catch (e) {
+        log('⚠️ ConnectionsService: Could not fetch video data: $e');
+        // Continue with default values
+      }
+
       // Create DM share message
       final messageData = {
         'type': 'video_share',
-        'senderId': _auth.currentUser!.uid,
+        'messageType': 'video_share', // Add messageType for ChatView
+        'from': _auth.currentUser!.uid, // Use 'from' field for Firestore rules
+        'senderId': _auth.currentUser!.uid, // Keep for compatibility
         'recipientId': recipientId,
         'videoId': videoId,
         'shareToken': shareToken,
+        'videoTitle': videoTitle, // Real video title
+        'videoThumbnailUrl': videoThumbnailUrl, // Real thumbnail URL
+        'text': 'Shared a video', // Fallback text for compatibility
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
+        'readBy': [_auth.currentUser!.uid], // Mark as read by sender
       };
 
-      // Add to conversations collection
-      final conversationId =
-          _generateConversationId(_auth.currentUser!.uid, recipientId);
+      // Find or create chat in the chats collection
+      final chatId = await _findOrCreateChat(recipientId);
 
+      // Add message to the chat
       await _firestore
-          .collection('conversations')
-          .doc(conversationId)
+          .collection('chats')
+          .doc(chatId)
           .collection('messages')
           .add(messageData);
 
-      // Update conversation metadata
-      await _firestore.collection('conversations').doc(conversationId).set({
-        'participants': [_auth.currentUser!.uid, recipientId],
-        'lastMessage': messageData,
-        'lastActivity': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      // Update chat metadata
+      await _firestore.collection('chats').doc(chatId).update({
+        'lastMessage': 'Shared a video',
+        'lastTimestamp': FieldValue.serverTimestamp(),
+        'unreadCount': FieldValue.increment(1),
+      });
 
       // Update connection ranking (bump lastInteraction)
       await _firestore
@@ -227,8 +449,8 @@ class ConnectionsService {
         'lastSeen': FieldValue.serverTimestamp(),
       });
 
-      log('✅ ConnectionsService: DM share sent successfully');
-      return conversationId;
+      log('✅ ConnectionsService: DM share sent successfully to chat $chatId');
+      return chatId;
     } catch (e) {
       log('❌ ConnectionsService: Error sending DM share: $e');
       rethrow;
@@ -245,12 +467,12 @@ class ConnectionsService {
 
     for (final recipientId in recipientIds) {
       try {
-        final conversationId = await shareToConnection(
+        final chatId = await shareToConnection(
           recipientId: recipientId,
           videoId: videoId,
           shareToken: shareToken,
         );
-        results.add(conversationId);
+        results.add(chatId);
       } catch (e) {
         log('❌ ConnectionsService: Failed to share to $recipientId: $e');
         results.add(null);
@@ -273,71 +495,233 @@ class ConnectionsService {
     log('🗑️ ConnectionsService: Cleared cache for $userId');
   }
 
-  /// Fetch connections with server-side ranking
+  /// Fetch connections with server-side ranking from ALL sources
   Future<List<ConnectionLite>> _fetchConnectionsWithRanking(
       String userId, int limit) async {
     try {
-      // Get connections from the existing structure (no status filter needed)
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('connections')
-          .limit(limit * 2) // Get more for client-side filtering
-          .get();
+      log('🔄 ConnectionsService: Fetching ALL connections for $userId from multiple sources');
 
       final connections = <ConnectionLite>[];
+      final Set<String> processedUserIds = {}; // Prevent duplicates
 
-      for (final doc in snapshot.docs) {
-        final connectionData = doc.data();
+      // 1. Get connections from connections subcollection (app-created)
+      try {
+        final connectionsSnapshot = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('connections')
+            .limit(limit * 2)
+            .get();
 
-        // The connection document contains the user data directly
-        final connectedUserId = connectionData['userId'] ?? doc.id;
+        for (final doc in connectionsSnapshot.docs) {
+          final connectionData = doc.data();
+          final connectedUserId = connectionData['userId'] ?? doc.id;
 
-        // Try to get user details from connection data first
-        String handle = connectionData['username'] ?? '';
-        String displayName =
-            connectionData['displayName'] ?? connectionData['name'] ?? handle;
-        String avatarUrl =
-            connectionData['avatarUrl'] ?? connectionData['avatar'] ?? '';
-        bool isOnline = connectionData['isOnline'] ??
-            connectionData['onlineStatus'] == 'online';
+          if (processedUserIds.contains(connectedUserId)) continue;
+          processedUserIds.add(connectedUserId);
 
-        // If connection data is incomplete, fetch from users collection
-        if (handle.isEmpty || displayName.isEmpty) {
-          final userDoc =
-              await _firestore.collection('users').doc(connectedUserId).get();
+          // Try to get user details from connection data first
+          String handle = connectionData['username'] ?? '';
+          String displayName =
+              connectionData['displayName'] ?? connectionData['name'] ?? handle;
+          String avatarUrl =
+              connectionData['avatarURL'] ?? connectionData['avatarURL'] ?? '';
+          bool isOnline = connectionData['isOnline'] ??
+              connectionData['onlineStatus'] == 'online';
 
-          if (userDoc.exists) {
-            final userData = userDoc.data()!;
-            handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
-            displayName = displayName.isEmpty
-                ? (userData['displayName'] ?? userData['name'] ?? handle)
-                : displayName;
-            avatarUrl =
-                avatarUrl.isEmpty ? (userData['avatarUrl'] ?? '') : avatarUrl;
-            isOnline = userData['isOnline'] ?? false;
+          log('🔍 ConnectionsService: Connection data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
+          log('🔍 ConnectionsService: Raw connection data: ${connectionData.keys.toList()}');
+
+          // If connection data is incomplete, fetch from users collection
+          if (handle.isEmpty || displayName.isEmpty || avatarUrl.isEmpty) {
+            final userDoc =
+                await _firestore.collection('users').doc(connectedUserId).get();
+
+            if (userDoc.exists) {
+              final userData = userDoc.data()!;
+              handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
+              displayName = displayName.isEmpty
+                  ? (userData['displayName'] ?? userData['name'] ?? handle)
+                  : displayName;
+              avatarUrl =
+                  avatarUrl.isEmpty ? (userData['avatarURL'] ?? '') : avatarUrl;
+              isOnline = userData['isOnline'] ?? false;
+
+              log('🔍 ConnectionsService: Fetched user data for $connectedUserId - handle: $handle, avatarUrl: $avatarUrl');
+            } else {
+              log('⚠️ ConnectionsService: User document not found for $connectedUserId');
+            }
+          }
+
+          if (handle.isNotEmpty) {
+            // If still no avatar URL, try to construct a default one
+            if (avatarUrl.isEmpty) {
+              avatarUrl =
+                  'https://via.placeholder.com/120x120/4ECDC4/FFFFFF?text=${handle.substring(0, 1).toUpperCase()}';
+              log('🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
+            }
+
+            connections.add(ConnectionLite(
+              userId: connectedUserId,
+              handle: handle,
+              displayName: displayName,
+              avatarUrl: avatarUrl,
+              isOnline: isOnline,
+              canDM: connectionData['canReceiveDMs'] ?? true,
+              lastInteractedAt:
+                  connectionData['lastInteraction']?.millisecondsSinceEpoch ??
+                      connectionData['lastSeen']?.millisecondsSinceEpoch,
+              rankingScore: _calculateRankingScore(connectionData, {}),
+            ));
           }
         }
 
-        if (handle.isNotEmpty) {
-          connections.add(ConnectionLite(
-            userId: connectedUserId,
-            handle: handle,
-            displayName: displayName,
-            avatarUrl: avatarUrl,
-            isOnline: isOnline,
-            canDM: connectionData['canReceiveDMs'] ?? true,
-            lastInteractedAt:
-                connectionData['lastInteraction']?.millisecondsSinceEpoch ??
-                    connectionData['lastSeen']?.millisecondsSinceEpoch,
-            rankingScore: _calculateRankingScore(connectionData, {}),
-          ));
+        log('✅ ConnectionsService: Found ${connections.length} connections from subcollection');
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error fetching from connections subcollection: $e');
+      }
+
+      // 2. Get connections from relationships collection (website-created)
+      try {
+        final followingQuery = await _firestore
+            .collection('relationships')
+            .where('followerId', isEqualTo: userId)
+            .limit(limit * 2)
+            .get();
+
+        for (final doc in followingQuery.docs) {
+          final relationshipData = doc.data();
+          final connectedUserId = relationshipData['followingId'] ?? '';
+
+          if (processedUserIds.contains(connectedUserId) ||
+              connectedUserId.isEmpty) continue;
+          processedUserIds.add(connectedUserId);
+
+          // Get user details from relationship data
+          String handle = relationshipData['username'] ?? '';
+          String displayName = relationshipData['displayName'] ??
+              relationshipData['name'] ??
+              handle;
+          String avatarUrl = relationshipData['avatarURL'] ??
+              relationshipData['avatarURL'] ??
+              '';
+
+          // If relationship data is incomplete, fetch from users collection
+          if (handle.isEmpty || displayName.isEmpty) {
+            final userDoc =
+                await _firestore.collection('users').doc(connectedUserId).get();
+
+            if (userDoc.exists) {
+              final userData = userDoc.data()!;
+              handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
+              displayName = displayName.isEmpty
+                  ? (userData['displayName'] ?? userData['name'] ?? handle)
+                  : displayName;
+              avatarUrl =
+                  avatarUrl.isEmpty ? (userData['avatarURL'] ?? '') : avatarUrl;
+            }
+          }
+
+          if (handle.isNotEmpty) {
+            // If still no avatar URL, try to construct a default one
+            if (avatarUrl.isEmpty) {
+              avatarUrl =
+                  'https://via.placeholder.com/120x120/4ECDC4/FFFFFF?text=${handle.substring(0, 1).toUpperCase()}';
+              log('🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
+            }
+
+            connections.add(ConnectionLite(
+              userId: connectedUserId,
+              handle: handle,
+              displayName: displayName,
+              avatarUrl: avatarUrl,
+              isOnline: false, // Default to offline for relationships
+              canDM: relationshipData['canDM'] ?? true,
+              lastInteractedAt:
+                  relationshipData['timestamp']?.millisecondsSinceEpoch,
+              rankingScore: _calculateRankingScore(relationshipData, {}),
+            ));
+          }
         }
+
+        log('✅ ConnectionsService: Found additional connections from relationships collection');
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error fetching from relationships collection: $e');
+      }
+
+      // 3. Get mutual connections (both following each other)
+      try {
+        final followersQuery = await _firestore
+            .collection('relationships')
+            .where('followingId', isEqualTo: userId)
+            .limit(limit * 2)
+            .get();
+
+        for (final doc in followersQuery.docs) {
+          final relationshipData = doc.data();
+          final connectedUserId = relationshipData['followerId'] ?? '';
+
+          if (processedUserIds.contains(connectedUserId) ||
+              connectedUserId.isEmpty) continue;
+          processedUserIds.add(connectedUserId);
+
+          // Get user details from relationship data
+          String handle = relationshipData['username'] ?? '';
+          String displayName = relationshipData['displayName'] ??
+              relationshipData['name'] ??
+              handle;
+          String avatarUrl = relationshipData['avatarURL'] ??
+              relationshipData['avatarURL'] ??
+              '';
+
+          // If relationship data is incomplete, fetch from users collection
+          if (handle.isEmpty || displayName.isEmpty) {
+            final userDoc =
+                await _firestore.collection('users').doc(connectedUserId).get();
+
+            if (userDoc.exists) {
+              final userData = userDoc.data()!;
+              handle = handle.isEmpty ? (userData['username'] ?? '') : handle;
+              displayName = displayName.isEmpty
+                  ? (userData['displayName'] ?? userData['name'] ?? handle)
+                  : displayName;
+              avatarUrl =
+                  avatarUrl.isEmpty ? (userData['avatarURL'] ?? '') : avatarUrl;
+            }
+          }
+
+          if (handle.isNotEmpty) {
+            // If still no avatar URL, try to construct a default one
+            if (avatarUrl.isEmpty) {
+              avatarUrl =
+                  'https://via.placeholder.com/120x120/4ECDC4/FFFFFF?text=${handle.substring(0, 1).toUpperCase()}';
+              log('🔍 ConnectionsService: Using placeholder avatar for $handle: $avatarUrl');
+            }
+
+            connections.add(ConnectionLite(
+              userId: connectedUserId,
+              handle: handle,
+              displayName: displayName,
+              avatarUrl: avatarUrl,
+              isOnline: false, // Default to offline for relationships
+              canDM: relationshipData['canDM'] ?? true,
+              lastInteractedAt:
+                  relationshipData['timestamp']?.millisecondsSinceEpoch,
+              rankingScore: _calculateRankingScore(relationshipData, {}) +
+                  5.0, // Boost for mutual connections
+            ));
+          }
+        }
+
+        log('✅ ConnectionsService: Found mutual connections from followers');
+      } catch (e) {
+        log('⚠️ ConnectionsService: Error fetching mutual connections: $e');
       }
 
       // Sort by ranking score and return top connections
       connections.sort((a, b) => b.rankingScore.compareTo(a.rankingScore));
 
+      log('🎯 ConnectionsService: Total connections found: ${connections.length}');
       return connections.take(limit).toList();
     } catch (e) {
       log('❌ ConnectionsService: Error fetching connections with ranking: $e');
@@ -384,10 +768,43 @@ class ConnectionsService {
     return score;
   }
 
-  /// Generate conversation ID for two users
-  String _generateConversationId(String userId1, String userId2) {
-    final sortedIds = [userId1, userId2]..sort();
-    return '${sortedIds[0]}_${sortedIds[1]}';
+  /// Find or create chat between two users
+  Future<String> _findOrCreateChat(String otherUserId) async {
+    final currentUserId = _auth.currentUser!.uid;
+
+    try {
+      // First, try to find existing chat
+      final existingQuery = await _firestore
+          .collection('chats')
+          .where('participants', arrayContains: currentUserId)
+          .get();
+
+      for (final doc in existingQuery.docs) {
+        final participants =
+            List<String>.from(doc.data()['participants'] ?? []);
+        if (participants.contains(otherUserId)) {
+          log('📱 ConnectionsService: Found existing chat ${doc.id}');
+          return doc.id;
+        }
+      }
+
+      // Create new chat if none exists
+      log('📱 ConnectionsService: Creating new chat with $otherUserId');
+      final chatData = {
+        'participants': [currentUserId, otherUserId],
+        'lastMessage': '',
+        'lastTimestamp': FieldValue.serverTimestamp(),
+        'chatType': 'direct',
+        'unreadCount': 0,
+      };
+
+      final docRef = await _firestore.collection('chats').add(chatData);
+      log('📱 ConnectionsService: Created new chat ${docRef.id}');
+      return docRef.id;
+    } catch (e) {
+      log('❌ ConnectionsService: Error finding/creating chat: $e');
+      rethrow;
+    }
   }
 
   /// Create mock connections for testing (remove in production)

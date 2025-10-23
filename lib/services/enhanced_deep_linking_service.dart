@@ -1,0 +1,624 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'logging_service.dart';
+
+class EnhancedDeepLinkingService {
+  static final EnhancedDeepLinkingService _instance =
+      EnhancedDeepLinkingService._internal();
+  factory EnhancedDeepLinkingService() => _instance;
+  EnhancedDeepLinkingService._internal();
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Stream controller for deep link events
+  final StreamController<DeepLinkEvent> _deepLinkController =
+      StreamController<DeepLinkEvent>.broadcast();
+  Stream<DeepLinkEvent> get deepLinkStream => _deepLinkController.stream;
+
+  // Pending deep link storage
+  String? _pendingDeepLink;
+
+  /// Initialize enhanced deep linking
+  void initialize() {
+    LoggingService.instance.info(
+      '🔗 EnhancedDeepLinkingService: Initializing enhanced deep linking',
+      tag: 'EnhancedDeepLinkingService',
+    );
+  }
+
+  /// Handle incoming deep link with enhanced processing
+  Future<void> handleDeepLink(String link, BuildContext context) async {
+    try {
+      LoggingService.instance.info(
+        '🔗 EnhancedDeepLinkingService: Handling deep link: $link',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      final uri = Uri.parse(link);
+      final path = uri.path;
+      final queryParams = uri.queryParameters;
+
+      // Emit deep link event
+      _deepLinkController.add(DeepLinkEvent(
+        link: link,
+        path: path,
+        queryParams: queryParams,
+        timestamp: DateTime.now(),
+      ));
+
+      // Handle different deep link patterns with enhanced processing
+      if (path.startsWith('/invite/')) {
+        await _handleInviteLink(path, queryParams, context);
+      } else if (path.startsWith('/user/')) {
+        await _handleUserLink(path, queryParams, context);
+      } else if (path.startsWith('/video/')) {
+        await _handleVideoLink(path, queryParams, context);
+      } else if (path.startsWith('/hashtag/')) {
+        await _handleHashtagLink(path, queryParams, context);
+      } else if (path.startsWith('/profile/')) {
+        await _handleProfileLink(path, queryParams, context);
+      } else if (path.startsWith('/chat/')) {
+        await _handleChatLink(path, queryParams, context);
+      } else if (path.startsWith('/discover')) {
+        await _handleDiscoverLink(path, queryParams, context);
+      } else {
+        LoggingService.instance.warning(
+          'Unknown deep link pattern: $path',
+          tag: 'EnhancedDeepLinkingService',
+        );
+        await _handleUnknownLink(link, context);
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling deep link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(
+            context, 'Failed to open link: ${e.toString()}');
+      }
+    }
+  }
+
+  /// Handle invite deep link with enhanced validation
+  Future<void> _handleInviteLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
+    try {
+      final inviteCode = path.split('/invite/')[1];
+      if (inviteCode.isEmpty) {
+        throw Exception('Invalid invite code');
+      }
+
+      LoggingService.instance.info(
+        '🎫 EnhancedDeepLinkingService: Processing invite code: $inviteCode',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      // Check if user is authenticated
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        // Store invite code for later processing after login
+        await _storePendingInviteCode(inviteCode);
+
+        if (context.mounted) {
+          context.go('/login?invite=$inviteCode');
+        }
+        return;
+      }
+
+      // Process the invite code
+      final success = await _processInviteCode(inviteCode, currentUser.uid);
+
+      if (context.mounted) {
+        if (success) {
+          await _showDeepLinkSuccess(
+            context,
+            'Welcome! You\'ve joined with an invite code.',
+          );
+          context.go('/home');
+        } else {
+          await _showDeepLinkError(context, 'Invalid or expired invite code');
+          context.go('/home');
+        }
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling invite link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(context, 'Failed to process invite');
+      }
+    }
+  }
+
+  /// Handle user profile deep link with enhanced validation
+  Future<void> _handleUserLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
+    try {
+      final username = path.split('/user/')[1];
+      if (username.isEmpty) {
+        throw Exception('Invalid username');
+      }
+
+      LoggingService.instance.info(
+        '👤 EnhancedDeepLinkingService: Processing user link: $username',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      // Find user by username
+      final userQuery = await _firestore
+          .collection('users')
+          .where('username', isEqualTo: username)
+          .limit(1)
+          .get();
+
+      if (userQuery.docs.isEmpty) {
+        throw Exception('User not found');
+      }
+
+      final userId = userQuery.docs.first.id;
+
+      if (context.mounted) {
+        context.go('/profile/$userId');
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling user link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(context, 'User not found');
+      }
+    }
+  }
+
+  /// Handle video deep link with enhanced validation and analytics
+  Future<void> _handleVideoLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
+    try {
+      final videoId = path.split('/video/')[1];
+      if (videoId.isEmpty) {
+        throw Exception('Invalid video ID');
+      }
+
+      LoggingService.instance.info(
+        '🎬 EnhancedDeepLinkingService: Processing video link: $videoId',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      // Check if video exists and is accessible
+      final videoDoc = await _firestore.collection('videos').doc(videoId).get();
+      if (!videoDoc.exists) {
+        throw Exception('Video not found');
+      }
+
+      final videoData = videoDoc.data()!;
+
+      // Check if video is public or user has access
+      final privacy = videoData['privacy'] as String?;
+      final currentUser = _auth.currentUser;
+
+      if (privacy == 'private' && currentUser == null) {
+        throw Exception('Video is private and requires authentication');
+      }
+
+      // Track video view from deep link
+      await _trackVideoViewFromDeepLink(videoId, queryParams);
+
+      if (context.mounted) {
+        context.go('/video/$videoId');
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling video link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(context, 'Video not found or inaccessible');
+      }
+    }
+  }
+
+  /// Handle hashtag deep link
+  Future<void> _handleHashtagLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
+    try {
+      final hashtag = path.split('/hashtag/')[1];
+      if (hashtag.isEmpty) {
+        throw Exception('Invalid hashtag');
+      }
+
+      LoggingService.instance.info(
+        '🏷️ EnhancedDeepLinkingService: Processing hashtag link: $hashtag',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      if (context.mounted) {
+        context.go('/discover?hashtag=${Uri.encodeComponent(hashtag)}');
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling hashtag link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(context, 'Hashtag not found');
+      }
+    }
+  }
+
+  /// Handle profile deep link (alternative to user link)
+  Future<void> _handleProfileLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
+    try {
+      final userId = path.split('/profile/')[1];
+      if (userId.isEmpty) {
+        throw Exception('Invalid user ID');
+      }
+
+      LoggingService.instance.info(
+        '👤 EnhancedDeepLinkingService: Processing profile link: $userId',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      if (context.mounted) {
+        context.go('/profile/$userId');
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling profile link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(context, 'Profile not found');
+      }
+    }
+  }
+
+  /// Handle chat deep link
+  Future<void> _handleChatLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
+    try {
+      final chatId = path.split('/chat/')[1];
+      if (chatId.isEmpty) {
+        throw Exception('Invalid chat ID');
+      }
+
+      LoggingService.instance.info(
+        '💬 EnhancedDeepLinkingService: Processing chat link: $chatId',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      // Check if user is authenticated
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        if (context.mounted) {
+          context.go('/login?redirect=/chat/$chatId');
+        }
+        return;
+      }
+
+      if (context.mounted) {
+        context.go('/chat/$chatId');
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling chat link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(context, 'Chat not found');
+      }
+    }
+  }
+
+  /// Handle discover deep link
+  Future<void> _handleDiscoverLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
+    try {
+      LoggingService.instance.info(
+        '🔍 EnhancedDeepLinkingService: Processing discover link',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      if (context.mounted) {
+        context.go('/discover');
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling discover link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        await _showDeepLinkError(context, 'Failed to open discover');
+      }
+    }
+  }
+
+  /// Handle unknown deep link patterns
+  Future<void> _handleUnknownLink(String link, BuildContext context) async {
+    try {
+      LoggingService.instance.warning(
+        '❓ EnhancedDeepLinkingService: Unknown deep link pattern: $link',
+        tag: 'EnhancedDeepLinkingService',
+      );
+
+      // Try to extract video ID from various patterns
+      final videoIdMatch =
+          RegExp(r'video[\/\?]([a-zA-Z0-9_-]+)').firstMatch(link);
+      if (videoIdMatch != null) {
+        final videoId = videoIdMatch.group(1)!;
+        await _handleVideoLink('/video/$videoId', {}, context);
+        return;
+      }
+
+      // Try to extract user ID from various patterns
+      final userIdMatch =
+          RegExp(r'user[\/\?]([a-zA-Z0-9_-]+)').firstMatch(link);
+      if (userIdMatch != null) {
+        final userId = userIdMatch.group(1)!;
+        await _handleUserLink('/user/$userId', {}, context);
+        return;
+      }
+
+      // Default to home
+      if (context.mounted) {
+        context.go('/home');
+      }
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error handling unknown link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (context.mounted) {
+        context.go('/home');
+      }
+    }
+  }
+
+  /// Process invite code with enhanced validation
+  Future<bool> _processInviteCode(String inviteCode, String userId) async {
+    try {
+      // Find the invite
+      final inviteQuery = await _firestore
+          .collection('invites')
+          .where('inviteCode', isEqualTo: inviteCode)
+          .where('status', isEqualTo: 'sent')
+          .limit(1)
+          .get();
+
+      if (inviteQuery.docs.isEmpty) {
+        return false;
+      }
+
+      final inviteDoc = inviteQuery.docs.first;
+      final inviteData = inviteDoc.data();
+      final inviterId = inviteData['inviterId'] as String;
+
+      // Update invite status
+      await inviteDoc.reference.update({
+        'status': 'accepted',
+        'acceptedAt': FieldValue.serverTimestamp(),
+        'acceptedBy': userId,
+      });
+
+      // Create relationship
+      await _createInviteRelationship(inviterId, userId);
+
+      // Award points to inviter
+      await _awardInvitePoints(inviterId);
+
+      LoggingService.instance.info(
+        '✅ EnhancedDeepLinkingService: Processed invite code: $inviteCode',
+        tag: 'EnhancedDeepLinkingService',
+      );
+      return true;
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error processing invite code',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
+  }
+
+  /// Store pending invite code for later processing
+  Future<void> _storePendingInviteCode(String inviteCode) async {
+    try {
+      _pendingDeepLink = '/invite/$inviteCode';
+      LoggingService.instance.info(
+        '💾 EnhancedDeepLinkingService: Stored pending invite code: $inviteCode',
+        tag: 'EnhancedDeepLinkingService',
+      );
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error storing pending invite code',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+      );
+    }
+  }
+
+  /// Get pending deep link
+  String? getPendingDeepLink() {
+    return _pendingDeepLink;
+  }
+
+  /// Clear pending deep link
+  void clearPendingDeepLink() {
+    _pendingDeepLink = null;
+  }
+
+  /// Track video view from deep link
+  Future<void> _trackVideoViewFromDeepLink(
+      String videoId, Map<String, String> queryParams) async {
+    try {
+      // Track analytics for deep link video views
+      await _firestore.collection('analytics').add({
+        'type': 'video_view_deep_link',
+        'videoId': videoId,
+        'queryParams': queryParams,
+        'timestamp': FieldValue.serverTimestamp(),
+        'source': queryParams['utm_source'] ?? 'unknown',
+        'medium': queryParams['utm_medium'] ?? 'unknown',
+      });
+
+      LoggingService.instance.info(
+        '📊 EnhancedDeepLinkingService: Tracked video view from deep link: $videoId',
+        tag: 'EnhancedDeepLinkingService',
+      );
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error tracking video view from deep link',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+      );
+    }
+  }
+
+  /// Create invite relationship
+  Future<void> _createInviteRelationship(
+      String inviterId, String userId) async {
+    try {
+      await _firestore.collection('relationships').add({
+        'type': 'invite',
+        'fromUserId': inviterId,
+        'toUserId': userId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error creating invite relationship',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+      );
+    }
+  }
+
+  /// Award invite points
+  Future<void> _awardInvitePoints(String inviterId) async {
+    try {
+      await _firestore.collection('users').doc(inviterId).update({
+        'points':
+            FieldValue.increment(100), // Award 100 points for successful invite
+        'inviteCount': FieldValue.increment(1),
+      });
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error awarding invite points',
+        tag: 'EnhancedDeepLinkingService',
+        error: e,
+      );
+    }
+  }
+
+  /// Show deep link success message
+  Future<void> _showDeepLinkSuccess(
+      BuildContext context, String message) async {
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  /// Show deep link error message
+  Future<void> _showDeepLinkError(BuildContext context, String message) async {
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  /// Generate shareable deep link
+  String generateDeepLink({
+    required String type,
+    required String id,
+    Map<String, String>? queryParams,
+  }) {
+    final baseUrl = 'https://streamerstip.com';
+    final path = '/$type/$id';
+
+    if (queryParams != null && queryParams.isNotEmpty) {
+      final queryString = queryParams.entries
+          .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      return '$baseUrl$path?$queryString';
+    }
+
+    return '$baseUrl$path';
+  }
+
+  /// Generate app deep link
+  String generateAppDeepLink({
+    required String type,
+    required String id,
+    Map<String, String>? queryParams,
+  }) {
+    final baseUrl = 'streamerstip://';
+    final path = '$type/$id';
+
+    if (queryParams != null && queryParams.isNotEmpty) {
+      final queryString = queryParams.entries
+          .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      return '$baseUrl$path?$queryString';
+    }
+
+    return '$baseUrl$path';
+  }
+
+  /// Dispose resources
+  void dispose() {
+    _deepLinkController.close();
+  }
+}
+
+/// Deep link event model
+class DeepLinkEvent {
+  final String link;
+  final String path;
+  final Map<String, String> queryParams;
+  final DateTime timestamp;
+
+  DeepLinkEvent({
+    required this.link,
+    required this.path,
+    required this.queryParams,
+    required this.timestamp,
+  });
+}

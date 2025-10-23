@@ -14,10 +14,10 @@ import '../providers/home_provider.dart';
 import '../services/performance_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/robust_auth_service.dart';
-import '../services/share_service_optimized.dart';
+import '../services/report_service.dart';
 import '../widgets/enhanced_like_button.dart';
 import '../widgets/double_tap_gesture_detector.dart';
-import '../widgets/share_sheet_view.dart';
+import '../widgets/enhanced_share_sheet.dart';
 import '../services/streamers_tip_like_service.dart';
 import '../services/video_controller_registry.dart';
 import '../services/production_logging_service.dart';
@@ -980,7 +980,7 @@ class _VideoPlayerViewOptimizedState
         '📤 _handleShare: Opening ShareSheetView for video ${widget.video.id}');
     HapticFeedback.lightImpact();
 
-    // Open TikTok-style share sheet directly
+    // Open enhanced TikTok-style share sheet
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -988,20 +988,62 @@ class _VideoPlayerViewOptimizedState
       isDismissible: true,
       enableDrag: true,
       builder: (context) {
-        debugPrint('📤 _handleShare: Building ShareSheetView...');
-        return ShareSheetView(
+        debugPrint('📤 _handleShare: Building EnhancedShareSheet...');
+        return EnhancedShareSheet(
           video: widget.video,
-          payload: ShareServiceOptimized().getCachedPayload(widget.video.id),
-          onDismiss: () {
-            debugPrint('📤 _handleShare: ShareSheet dismissed');
+          onClose: () {
+            debugPrint('📤 _handleShare: EnhancedShareSheet dismissed');
+            Navigator.pop(context);
           },
-          onAction: (action) {
-            debugPrint('📤 _handleShare: ShareSheet action: $action');
-            ShareServiceOptimized().handleAction(
-              action,
-              widget.video.id,
-              widget.video.creator.id,
-            );
+          onReport: (videoId, creatorId) async {
+            debugPrint('📤 _handleShare: Report action for video $videoId');
+            try {
+              // Check if user has already reported this video
+              final hasReported =
+                  await ReportService().hasUserReportedVideo(videoId);
+              if (hasReported) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('You have already reported this video'),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+                return;
+              }
+
+              // Show success message
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'Thank you for your report. We\'ll review it shortly.'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            } catch (e) {
+              debugPrint('❌ Error handling report: $e');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error submitting report: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          },
+          onBlock: (videoId, creatorId) {
+            debugPrint('📤 _handleShare: Block action for video $videoId');
+            // TODO: Implement block functionality
+          },
+          onNotInterested: (videoId, creatorId) {
+            debugPrint(
+                '📤 _handleShare: Not interested action for video $videoId');
+            // TODO: Implement not interested functionality
+          },
+          onFavorite: (videoId, creatorId) {
+            debugPrint('📤 _handleShare: Favorite action for video $videoId');
+            // TODO: Implement favorite functionality
           },
         );
       },

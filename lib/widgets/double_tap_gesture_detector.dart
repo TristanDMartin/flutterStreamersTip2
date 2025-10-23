@@ -14,7 +14,7 @@ class DoubleTapGestureDetector extends StatefulWidget {
     required this.child,
     this.onSingleTap,
     this.onDoubleTap,
-    this.doubleTapDelay = const Duration(milliseconds: 250),
+    this.doubleTapDelay = const Duration(milliseconds: 200), // Faster response
   });
 
   @override

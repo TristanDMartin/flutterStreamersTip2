@@ -32,7 +32,12 @@ mixin _$Message {
   List<String> get readBy => throw _privateConstructorUsedError;
   String? get gifUrl => throw _privateConstructorUsedError;
   String get messageType => throw _privateConstructorUsedError;
-  bool get isDeviceGif => throw _privateConstructorUsedError;
+  bool get isDeviceGif =>
+      throw _privateConstructorUsedError; // Video share fields
+  String? get videoId => throw _privateConstructorUsedError;
+  String? get shareToken => throw _privateConstructorUsedError;
+  String? get videoThumbnailUrl => throw _privateConstructorUsedError;
+  String? get videoTitle => throw _privateConstructorUsedError;
 
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
   @JsonKey(ignore: true)
@@ -56,7 +61,11 @@ abstract class $MessageCopyWith<$Res> {
       List<String> readBy,
       String? gifUrl,
       String messageType,
-      bool isDeviceGif});
+      bool isDeviceGif,
+      String? videoId,
+      String? shareToken,
+      String? videoThumbnailUrl,
+      String? videoTitle});
 }
 
 /// @nodoc
@@ -84,6 +93,10 @@ class _$MessageCopyWithImpl<$Res, $Val extends Message>
     Object? gifUrl = freezed,
     Object? messageType = null,
     Object? isDeviceGif = null,
+    Object? videoId = freezed,
+    Object? shareToken = freezed,
+    Object? videoThumbnailUrl = freezed,
+    Object? videoTitle = freezed,
   }) {
     return _then(_value.copyWith(
       id: freezed == id
@@ -134,6 +147,22 @@ class _$MessageCopyWithImpl<$Res, $Val extends Message>
           ? _value.isDeviceGif
           : isDeviceGif // ignore: cast_nullable_to_non_nullable
               as bool,
+      videoId: freezed == videoId
+          ? _value.videoId
+          : videoId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      shareToken: freezed == shareToken
+          ? _value.shareToken
+          : shareToken // ignore: cast_nullable_to_non_nullable
+              as String?,
+      videoThumbnailUrl: freezed == videoThumbnailUrl
+          ? _value.videoThumbnailUrl
+          : videoThumbnailUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      videoTitle: freezed == videoTitle
+          ? _value.videoTitle
+          : videoTitle // ignore: cast_nullable_to_non_nullable
+              as String?,
     ) as $Val);
   }
 }
@@ -157,7 +186,11 @@ abstract class _$$MessageImplCopyWith<$Res> implements $MessageCopyWith<$Res> {
       List<String> readBy,
       String? gifUrl,
       String messageType,
-      bool isDeviceGif});
+      bool isDeviceGif,
+      String? videoId,
+      String? shareToken,
+      String? videoThumbnailUrl,
+      String? videoTitle});
 }
 
 /// @nodoc
@@ -183,6 +216,10 @@ class __$$MessageImplCopyWithImpl<$Res>
     Object? gifUrl = freezed,
     Object? messageType = null,
     Object? isDeviceGif = null,
+    Object? videoId = freezed,
+    Object? shareToken = freezed,
+    Object? videoThumbnailUrl = freezed,
+    Object? videoTitle = freezed,
   }) {
     return _then(_$MessageImpl(
       id: freezed == id
@@ -233,6 +270,22 @@ class __$$MessageImplCopyWithImpl<$Res>
           ? _value.isDeviceGif
           : isDeviceGif // ignore: cast_nullable_to_non_nullable
               as bool,
+      videoId: freezed == videoId
+          ? _value.videoId
+          : videoId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      shareToken: freezed == shareToken
+          ? _value.shareToken
+          : shareToken // ignore: cast_nullable_to_non_nullable
+              as String?,
+      videoThumbnailUrl: freezed == videoThumbnailUrl
+          ? _value.videoThumbnailUrl
+          : videoThumbnailUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      videoTitle: freezed == videoTitle
+          ? _value.videoTitle
+          : videoTitle // ignore: cast_nullable_to_non_nullable
+              as String?,
     ));
   }
 }
@@ -252,7 +305,11 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
       final List<String> readBy = const [],
       this.gifUrl,
       this.messageType = 'text',
-      this.isDeviceGif = false})
+      this.isDeviceGif = false,
+      this.videoId,
+      this.shareToken,
+      this.videoThumbnailUrl,
+      this.videoTitle})
       : _recipients = recipients,
         _readBy = readBy;
 
@@ -304,10 +361,19 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
   @override
   @JsonKey()
   final bool isDeviceGif;
+// Video share fields
+  @override
+  final String? videoId;
+  @override
+  final String? shareToken;
+  @override
+  final String? videoThumbnailUrl;
+  @override
+  final String? videoTitle;
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif)';
+    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle)';
   }
 
   @override
@@ -326,7 +392,11 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
       ..add(DiagnosticsProperty('readBy', readBy))
       ..add(DiagnosticsProperty('gifUrl', gifUrl))
       ..add(DiagnosticsProperty('messageType', messageType))
-      ..add(DiagnosticsProperty('isDeviceGif', isDeviceGif));
+      ..add(DiagnosticsProperty('isDeviceGif', isDeviceGif))
+      ..add(DiagnosticsProperty('videoId', videoId))
+      ..add(DiagnosticsProperty('shareToken', shareToken))
+      ..add(DiagnosticsProperty('videoThumbnailUrl', videoThumbnailUrl))
+      ..add(DiagnosticsProperty('videoTitle', videoTitle));
   }
 
   @override
@@ -349,7 +419,14 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
             (identical(other.messageType, messageType) ||
                 other.messageType == messageType) &&
             (identical(other.isDeviceGif, isDeviceGif) ||
-                other.isDeviceGif == isDeviceGif));
+                other.isDeviceGif == isDeviceGif) &&
+            (identical(other.videoId, videoId) || other.videoId == videoId) &&
+            (identical(other.shareToken, shareToken) ||
+                other.shareToken == shareToken) &&
+            (identical(other.videoThumbnailUrl, videoThumbnailUrl) ||
+                other.videoThumbnailUrl == videoThumbnailUrl) &&
+            (identical(other.videoTitle, videoTitle) ||
+                other.videoTitle == videoTitle));
   }
 
   @JsonKey(ignore: true)
@@ -367,7 +444,11 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
       const DeepCollectionEquality().hash(_readBy),
       gifUrl,
       messageType,
-      isDeviceGif);
+      isDeviceGif,
+      videoId,
+      shareToken,
+      videoThumbnailUrl,
+      videoTitle);
 
   @JsonKey(ignore: true)
   @override
@@ -396,7 +477,11 @@ abstract class _Message implements Message {
       final List<String> readBy,
       final String? gifUrl,
       final String messageType,
-      final bool isDeviceGif}) = _$MessageImpl;
+      final bool isDeviceGif,
+      final String? videoId,
+      final String? shareToken,
+      final String? videoThumbnailUrl,
+      final String? videoTitle}) = _$MessageImpl;
 
   factory _Message.fromJson(Map<String, dynamic> json) = _$MessageImpl.fromJson;
 
@@ -425,6 +510,14 @@ abstract class _Message implements Message {
   String get messageType;
   @override
   bool get isDeviceGif;
+  @override // Video share fields
+  String? get videoId;
+  @override
+  String? get shareToken;
+  @override
+  String? get videoThumbnailUrl;
+  @override
+  String? get videoTitle;
   @override
   @JsonKey(ignore: true)
   _$$MessageImplCopyWith<_$MessageImpl> get copyWith =>

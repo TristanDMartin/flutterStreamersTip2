@@ -94,13 +94,9 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                     HapticFeedback.lightImpact();
                     widget.onDiscoverTap();
                   },
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(
                       Icons.explore_outlined,
                       color: Colors.white,
                       size: 24,
@@ -129,10 +125,9 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
 
           // Dropdown overlay - LAST (top layer, absorbs its own taps)
           if (_isDropdownOpen)
-            GestureDetector(
-              behavior:
-                  HitTestBehavior.opaque, // Prevent taps from going through
-              onTap: () {}, // Absorb taps on dropdown area
+            Positioned(
+              top: 60, // Position right below the header (50px + 10px margin)
+              left: 16,
               child: FeedDropdownWidget(
                 activeTab: widget.activeTab,
                 isVisible: _isDropdownOpen,

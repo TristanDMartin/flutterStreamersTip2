@@ -1113,7 +1113,67 @@ class _ClickablePlatformRow extends StatelessWidget {
     required this.onTap,
   });
 
-  static String getPlatformDisplayName(String platformType) {
+  @override
+  Widget build(BuildContext context) {
+    final platformType = platform['type'] as String? ?? '';
+    final username = platform['username'] as String? ?? '';
+
+    return GestureDetector(
+      onTap: () {
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            BrandIcon(
+              platformType: platformType,
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _getPlatformDisplayName(platformType),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (username.isNotEmpty)
+                    Text(
+                      '@$username',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 14,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getPlatformDisplayName(String platformType) {
     switch (platformType.toLowerCase()) {
       case 'twitch':
         return 'Twitch';
@@ -1125,81 +1185,19 @@ class _ClickablePlatformRow extends StatelessWidget {
         return 'TikTok';
       case 'facebook':
         return 'Facebook';
-      case 'bluesky':
-        return 'Bluesky';
       case 'twitter':
         return 'Twitter';
       case 'instagram':
         return 'Instagram';
-      // cspell:ignore reddit
+      case 'bluesky':
+        return 'Bluesky';
       case 'reddit':
-        return 'RedNote';
+        return 'Reddit';
       case 'discord':
         return 'Discord';
       default:
         return platformType;
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final platformType = platform['type'] ?? '';
-    final username = platform['username'] ?? '';
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              BrandIcon(
-                platformType: platformType,
-                size: 40,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      getPlatformDisplayName(platformType),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                '@$username',
-                style: TextStyle(
-                  color: Colors.grey[400],
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.chevron_right,
-                color: Colors.white,
-                size: 16,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:giphy_picker/giphy_picker.dart'; // cspell:ignore giphy
-import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import 'dart:async';
@@ -14,6 +13,11 @@ import '../providers/chat_provider.dart';
 import '../providers/unread_messages_provider.dart';
 import '../config/giphy_config.dart'; // cspell:ignore giphy
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
+import '../services/report_service.dart';
+import '../services/user_blocking_service.dart';
+import '../services/notification_navigation_service.dart';
+import '../providers/home_provider.dart' as hp;
 
 // Provider for ChatNotifier
 final chatNotifierProvider =
@@ -43,10 +47,10 @@ class ChatView extends ConsumerStatefulWidget {
   ConsumerState<ChatView> createState() => _ChatViewState();
 }
 
-class _ChatViewState extends ConsumerState<ChatView> {
+class _ChatViewState extends ConsumerState<ChatView>
+    with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
-  final ImagePicker _imagePicker = ImagePicker();
   bool _isPickingGif = false;
   String _otherUserId = '';
   String _otherUserDisplayName = '';
@@ -55,15 +59,21 @@ class _ChatViewState extends ConsumerState<ChatView> {
   String? _currentUserAvatarURL;
   String _currentUserDisplayName = '';
   bool _otherUserIsOnline = false;
+  bool _isMuted = false;
 
   // Add stream subscription for user data
   StreamSubscription<DocumentSnapshot>? _otherUserSubscription;
   StreamSubscription<DocumentSnapshot>? _currentUserSubscription;
 
+  // Keyboard visibility tracking
+  bool _isKeyboardVisible = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadOtherUserData();
+    _checkMuteStatus();
 
     // Handle draft to send if provided
     if (widget.draftToSend != null) {
@@ -79,11 +89,22 @@ class _ChatViewState extends ConsumerState<ChatView> {
       }
     });
 
-    // Listen to keyboard changes to auto-scroll
+    // Listen to keyboard changes to auto-scroll - multiple attempts
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _scrollToBottom();
       }
+    });
+
+    // Additional scroll attempts to ensure we reach the bottom
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) _scrollToBottom();
+    });
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) _scrollToBottom();
+    });
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (mounted) _scrollToBottom();
     });
 
     // Listen for shared content from keyboards
@@ -92,6 +113,28 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   // Track previous message count for efficient auto-scroll
   int _previousMessageCount = 0;
+
+  void _checkForNewMessages(int currentMessageCount) {
+    if (currentMessageCount > _previousMessageCount) {
+      // New messages arrived, scroll to bottom
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _scrollToBottom();
+        }
+      });
+    }
+    _previousMessageCount = currentMessageCount;
+  }
+
+  /// Check if the current user has muted this chat
+  void _checkMuteStatus() {
+    final currentUserId = fa.FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId != null && widget.chat.mutedBy.contains(currentUserId)) {
+      _isMuted = true;
+    } else {
+      _isMuted = false;
+    }
+  }
 
   void _listenForSharedContent() {
     // This would typically be handled by a plugin like share_plus
@@ -210,266 +253,34 @@ class _ChatViewState extends ConsumerState<ChatView> {
     }
   }
 
-  void _showGifActionDialog(String gifUrl, String gifTitle) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(
-          gifTitle,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // GIF preview
-            Container(
-              height: 150,
-              width: 200,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  gifUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: Colors.grey.withValues(alpha: 0.3),
-                      child: const Center(
-                        child: Text(
-                          'GIF Preview',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'What would you like to do with this GIF?',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child:
-                const Text('Cancel', style: TextStyle(color: Colors.white70)),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await Clipboard.setData(ClipboardData(text: gifUrl));
-              if (mounted && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('GIF URL copied to clipboard!'),
-                    backgroundColor: Colors.green,
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
-            child:
-                const Text('Copy URL', style: TextStyle(color: Colors.orange)),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _handleGifUrl(gifUrl);
-            },
-            child: const Text('Send GIF',
-                style: TextStyle(color: Color(0xFF9248D2))),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showGifUrlCopyDialog() {
-    final TextEditingController urlController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Get GIF URL',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Enter a GIF URL to copy it to your clipboard:',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: urlController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'https://media.giphy.com/media/...',
-                hintStyle: TextStyle(color: Colors.white70),
-                border: OutlineInputBorder(),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Color(0xFF9248D2)),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child:
-                const Text('Cancel', style: TextStyle(color: Colors.white70)),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (urlController.text.isNotEmpty) {
-                await Clipboard.setData(
-                    ClipboardData(text: urlController.text.trim()));
-                if (mounted && context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('GIF URL copied to clipboard!'),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                }
-              }
-            },
-            child:
-                const Text('Copy', style: TextStyle(color: Color(0xFF9248D2))),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _handlePastedContent() async {
-    try {
-      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-      if (clipboardData?.text != null) {
-        final pastedText = clipboardData!.text!;
-        debugPrint('ChatView: Pasted content: $pastedText');
-
-        // Check if the pasted content is a GIF URL
-        if (_isGifUrl(pastedText)) {
-          await _handleGifUrl(pastedText);
-        } else {
-          // Show message that it's not a GIF URL
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Please paste a GIF URL (e.g., from Giphy)'),
-                backgroundColor: Colors.orange,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No content found in clipboard'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('ChatView: Error handling pasted content: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error pasting content: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
-
-  bool _isGifUrl(String text) {
-    // Check if the text is a GIF URL
-    final gifPatterns = [
-      RegExp(r'https?://.*\.gif(\?.*)?$', caseSensitive: false),
-      RegExp(r'https?://.*giphy\.com.*\.gif', caseSensitive: false),
-      RegExp(r'https?://.*tenor\.com.*\.gif', caseSensitive: false),
-      RegExp(r'https?://.*media\.giphy\.com.*', caseSensitive: false),
-    ];
-
-    return gifPatterns.any((pattern) => pattern.hasMatch(text));
-  }
-
-  Future<void> _handleGifUrl(String gifUrl) async {
-    try {
-      debugPrint('ChatView: Handling GIF URL: $gifUrl');
-
-      // Show loading indicator
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sending GIF...'),
-            backgroundColor: Colors.blue,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-
-      // Send the GIF using the chat notifier
-      final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
-      await chatNotifier.sendGif(gifUrl);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('GIF sent successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('ChatView: Error sending GIF from URL: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to send GIF: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
-  }
-
   void _scrollToBottom({bool smooth = true}) {
     if (_scrollController.hasClients) {
-      if (smooth) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      } else {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-      }
+      // Add extra padding to ensure we scroll past the keyboard
+      final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+      final extraPadding =
+          keyboardHeight > 0 ? 200.0 : 100.0; // Even more aggressive padding
+
+      // Wait for the layout to complete before scrolling
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          // Force scroll to absolute maximum
+          final maxScrollExtent = _scrollController.position.maxScrollExtent;
+          final targetPosition = maxScrollExtent + extraPadding;
+
+          if (smooth) {
+            _scrollController.animateTo(
+              targetPosition,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          } else {
+            _scrollController.jumpTo(targetPosition);
+          }
+
+          debugPrint(
+              'ChatView: Scrolled to bottom - keyboard: ${keyboardHeight}px, extra: ${extraPadding}px, maxScroll: ${maxScrollExtent}px, target: ${targetPosition}px');
+        }
+      });
     }
   }
 
@@ -521,11 +332,37 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     _textController.dispose();
     _otherUserSubscription?.cancel();
     _currentUserSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Handle keyboard visibility changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+        final isKeyboardVisible = keyboardHeight > 0;
+
+        if (_isKeyboardVisible != isKeyboardVisible) {
+          setState(() {
+            _isKeyboardVisible = isKeyboardVisible;
+          });
+
+          // Scroll to bottom when keyboard appears/disappears
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) {
+              _scrollToBottom();
+            }
+          });
+        }
+      }
+    });
   }
 
   @override
@@ -675,6 +512,25 @@ class _ChatViewState extends ConsumerState<ChatView> {
             ),
           ),
 
+          // Mute icon (if user is muted)
+          if (_isMuted) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.volume_off,
+                color: Colors.red,
+                size: 16,
+              ),
+            ),
+          ],
+
+          const SizedBox(width: 8),
+
           // Info icon
           GestureDetector(
             onTap: () => _showChatSettings(),
@@ -747,9 +603,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 ),
               ),
               const SizedBox(height: 20),
-              _buildSettingsOption(Icons.volume_off, 'Mute', () {}),
-              _buildSettingsOption(Icons.flag, 'Report', () {}),
-              _buildSettingsOption(Icons.block, 'Block', () {}),
+              _buildSettingsOption(
+                  _isMuted ? Icons.volume_up : Icons.volume_off,
+                  _isMuted ? 'Unmute' : 'Mute',
+                  () => _handleMuteUser()),
+              _buildSettingsOption(
+                  Icons.flag, 'Report', () => _handleReportUser()),
+              _buildSettingsOption(
+                  Icons.block, 'Block', () => _handleBlockUser()),
               const SizedBox(height: 20),
               // Add extra padding at the bottom to ensure content is not cut off
               SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
@@ -769,6 +630,213 @@ class _ChatViewState extends ConsumerState<ChatView> {
         onTap();
       },
     );
+  }
+
+  /// Handle mute user functionality
+  Future<void> _handleMuteUser() async {
+    try {
+      final currentUserId = fa.FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) return;
+
+      final chatService = ChatService.shared;
+
+      if (_isMuted) {
+        // Unmute the user
+        await chatService.unmuteChat(widget.chat.id!, currentUserId);
+        setState(() {
+          _isMuted = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '${_otherUserDisplayName.isNotEmpty ? _otherUserDisplayName : 'User'} has been unmuted'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // Mute the user
+        await chatService.muteChat(widget.chat.id!, currentUserId);
+        setState(() {
+          _isMuted = true;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '${_otherUserDisplayName.isNotEmpty ? _otherUserDisplayName : 'User'} has been muted'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error toggling mute status: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to ${_isMuted ? 'unmute' : 'mute'} user: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Handle report user functionality
+  Future<void> _handleReportUser() async {
+    try {
+      final currentUserId = fa.FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) return;
+
+      // Show reason selection dialog
+      final reason = await _showReportReasonDialog();
+      if (reason == null) return; // User cancelled
+
+      final reportService = ReportService();
+      await reportService.reportUser(
+        userId: _otherUserId,
+        reason: reason,
+        additionalDetails: 'Reported from chat view',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '${_otherUserDisplayName.isNotEmpty ? _otherUserDisplayName : 'User'} has been reported'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error reporting user: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to report user: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Handle block user functionality
+  Future<void> _handleBlockUser() async {
+    try {
+      final currentUserId = fa.FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) return;
+
+      // Show confirmation dialog
+      final confirmed = await _showBlockConfirmationDialog();
+      if (!confirmed) return;
+
+      final blockingService = UserBlockingService();
+      await blockingService.blockUser(
+        targetUserId: _otherUserId,
+        reason: 'Blocked from chat view',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '${_otherUserDisplayName.isNotEmpty ? _otherUserDisplayName : 'User'} has been blocked'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // Navigate back to inbox after blocking
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('Error blocking user: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to block user: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Show report reason selection dialog
+  Future<String?> _showReportReasonDialog() async {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          'Report User',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Why are you reporting this user?',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            ...['Spam', 'Harassment', 'Inappropriate Content', 'Other'].map(
+              (reason) => ListTile(
+                title:
+                    Text(reason, style: const TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(context, reason),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show block confirmation dialog
+  Future<bool> _showBlockConfirmationDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          'Block User',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Are you sure you want to block ${_otherUserDisplayName.isNotEmpty ? _otherUserDisplayName : 'this user'}? You won\'t be able to see their messages or interact with them.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Block', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   // Message List
@@ -836,12 +904,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
         }
 
         // Efficient auto-scroll only when new messages arrive
-        if (chatState.messages.length > _previousMessageCount) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToBottom();
-          });
-          _previousMessageCount = chatState.messages.length;
-        }
+        _checkForNewMessages(chatState.messages.length);
 
         return GestureDetector(
           onTap: () {
@@ -850,7 +913,15 @@ class _ChatViewState extends ConsumerState<ChatView> {
           },
           child: ListView.builder(
             controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 20,
+              bottom: 20 +
+                  MediaQuery.of(context)
+                      .viewInsets
+                      .bottom, // Add keyboard height to bottom padding
+            ),
             itemCount: chatState.messages.length,
             itemBuilder: (context, index) {
               final message = chatState.messages[index];
@@ -949,193 +1020,208 @@ class _ChatViewState extends ConsumerState<ChatView> {
                         ),
                       ],
                     ),
-                    child: message.messageType == 'gif' &&
-                            message.gifUrl != null
-                        ? Stack(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.network(
-                                  message.gifUrl!,
-                                  fit: BoxFit.cover,
-                                  width: 200,
-                                  height: 150,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
+                    child: message.messageType == 'video_share' &&
+                            message.videoId != null
+                        ? _buildVideoShareMessage(message)
+                        : message.messageType == 'gif' && message.gifUrl != null
+                            ? Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      message.gifUrl!,
+                                      fit: BoxFit.cover,
                                       width: 200,
                                       height: 150,
-                                      color: Colors.grey.withValues(alpha: 0.3),
-                                      child: const Center(
-                                        child: Text(
-                                          'GIF',
-                                          style: TextStyle(color: Colors.white),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              // Device GIF indicator
-                              if (message.isDeviceGif)
-                                Positioned(
-                                  top: 8,
-                                  right: 8,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFF9248D2),
-                                          Color(0xFF7B2CBF)
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(16),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
+                                        return Container(
+                                          width: 200,
+                                          height: 150,
+                                          color: Colors.grey
                                               .withValues(alpha: 0.3),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.phone_android,
-                                      color: Colors.white,
-                                      size: 16,
+                                          child: const Center(
+                                            child: Text(
+                                              'GIF',
+                                              style: TextStyle(
+                                                  color: Colors.white),
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ),
+                                  // Device GIF indicator
+                                  if (message.isDeviceGif)
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          gradient: const LinearGradient(
+                                            colors: [
+                                              Color(0xFF9248D2),
+                                              Color(0xFF7B2CBF)
+                                            ],
+                                          ),
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.3),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.phone_android,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              )
+                            : Text(
+                                message.text,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.4,
                                 ),
-                            ],
-                          )
-                        : Text(
-                            message.text,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              height: 1.4,
-                            ),
-                          ),
+                                softWrap: true,
+                                overflow: TextOverflow.visible,
+                                textAlign: TextAlign.start,
+                              ),
                   ),
                 ),
               ],
 
               // For outgoing messages (right side)
               if (isFromCurrentUser) ...[
+                // Spacer to push message to the right
                 const Spacer(),
                 // Message bubble for outgoing
-                Flexible(
-                  child: Container(
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.75,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFF9248D2), // Purple
-                          Color(0xFF7768DF), // Another purple
-                          Color(0xFF1670DE), // Blue
-                          Color(0xFF3C8BD6), // Lighter blue
-                          Color(0xFF4897D2), // Lightest blue
-                        ],
-                      ),
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(24),
-                        topRight: Radius.circular(24),
-                        bottomLeft: Radius.circular(24),
-                        bottomRight: Radius.circular(8),
-                      ),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF9248D2).withValues(alpha: 0.4),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                        BoxShadow(
-                          color: const Color(0xFF1670DE).withValues(alpha: 0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
+                Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF9248D2), // Purple
+                        Color(0xFF7768DF), // Another purple
+                        Color(0xFF1670DE), // Blue
+                        Color(0xFF3C8BD6), // Lighter blue
+                        Color(0xFF4897D2), // Lightest blue
                       ],
                     ),
-                    child: message.messageType == 'gif' &&
-                            message.gifUrl != null
-                        ? Stack(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.network(
-                                  message.gifUrl!,
-                                  fit: BoxFit.cover,
-                                  width: 200,
-                                  height: 150,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      width: 200,
-                                      height: 150,
-                                      color: Colors.grey.withValues(alpha: 0.3),
-                                      child: const Center(
-                                        child: Text(
-                                          'GIF',
-                                          style: TextStyle(color: Colors.white),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                      bottomLeft: Radius.circular(24),
+                      bottomRight: Radius.circular(8),
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF9248D2).withValues(alpha: 0.4),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                      BoxShadow(
+                        color: const Color(0xFF1670DE).withValues(alpha: 0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: message.messageType == 'video_share' &&
+                          message.videoId != null
+                      ? _buildVideoShareMessage(message)
+                      : message.messageType == 'gif' && message.gifUrl != null
+                          ? Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(
+                                    message.gifUrl!,
+                                    fit: BoxFit.cover,
+                                    width: 200,
+                                    height: 150,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        width: 200,
+                                        height: 150,
+                                        color:
+                                            Colors.grey.withValues(alpha: 0.3),
+                                        child: const Center(
+                                          child: Text(
+                                            'GIF',
+                                            style:
+                                                TextStyle(color: Colors.white),
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              // Device GIF indicator
-                              if (message.isDeviceGif)
-                                Positioned(
-                                  top: 8,
-                                  right: 8,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFF9248D2),
-                                          Color(0xFF7B2CBF)
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(16),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black
-                                              .withValues(alpha: 0.3),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.phone_android,
-                                      color: Colors.white,
-                                      size: 16,
-                                    ),
+                                      );
+                                    },
                                   ),
                                 ),
-                            ],
-                          )
-                        : Text(
-                            message.text,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              height: 1.4,
+                                // Device GIF indicator
+                                if (message.isDeviceGif)
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFF9248D2),
+                                            Color(0xFF7B2CBF)
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black
+                                                .withValues(alpha: 0.3),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.phone_android,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            )
+                          : Text(
+                              message.text,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                height: 1.4,
+                              ),
+                              softWrap: true,
+                              overflow: TextOverflow.visible,
+                              textAlign: TextAlign.start,
                             ),
-                          ),
-                  ),
                 ),
                 // Avatar for outgoing messages
                 Container(
@@ -1265,26 +1351,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   bool _shouldShowAvatar(
       List<Message> messages, int index, ChatNotifier chatNotifier) {
-    if (index == 0) return true;
-
-    final currentMessage = messages[index];
-    final previousMessage = messages[index - 1];
-
-    // Show avatar if the previous message is from a different user
-    if (chatNotifier.isFromCurrentUser(currentMessage) !=
-        chatNotifier.isFromCurrentUser(previousMessage)) {
-      return true;
-    }
-
-    // Show avatar if there's a time gap of more than 5 minutes
-    if (currentMessage.timestamp != null && previousMessage.timestamp != null) {
-      return currentMessage.timestamp!
-              .difference(previousMessage.timestamp!)
-              .inMinutes >
-          5;
-    }
-
-    return false;
+    // Always show avatar with every message
+    return true;
   }
 
   // Input Bar
@@ -1328,8 +1396,17 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       chatNotifier.updateComposedText(value);
                     },
                     onTap: () {
-                      // Scroll to bottom when user taps to type
-                      Future.delayed(const Duration(milliseconds: 300), () {
+                      // Scroll to bottom when user taps to type - multiple attempts
+                      Future.delayed(const Duration(milliseconds: 50), () {
+                        _scrollToBottom();
+                      });
+                      Future.delayed(const Duration(milliseconds: 200), () {
+                        _scrollToBottom();
+                      });
+                      Future.delayed(const Duration(milliseconds: 500), () {
+                        _scrollToBottom();
+                      });
+                      Future.delayed(const Duration(milliseconds: 800), () {
                         _scrollToBottom();
                       });
                     },
@@ -1337,6 +1414,16 @@ class _ChatViewState extends ConsumerState<ChatView> {
                       if (value.trim().isNotEmpty) {
                         chatNotifier.send();
                         _textController.clear();
+                        // Ensure we scroll to bottom after sending - multiple attempts
+                        Future.delayed(const Duration(milliseconds: 50), () {
+                          _scrollToBottom();
+                        });
+                        Future.delayed(const Duration(milliseconds: 200), () {
+                          _scrollToBottom();
+                        });
+                        Future.delayed(const Duration(milliseconds: 500), () {
+                          _scrollToBottom();
+                        });
                       }
                     },
                     decoration: const InputDecoration(
@@ -1375,9 +1462,29 @@ class _ChatViewState extends ConsumerState<ChatView> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Test message button (temporary for demonstration)
+                  GestureDetector(
+                    onTap: () => _sendTestMessage(),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.8),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.text_fields,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
                   // GIF picker button
                   GestureDetector(
-                    onTap: _isPickingGif ? null : () => _showGifOptions(),
+                    onTap: _isPickingGif ? null : () => _showGiphyPicker(),
                     child: Container(
                       width: 40,
                       height: 40,
@@ -1463,210 +1570,30 @@ class _ChatViewState extends ConsumerState<ChatView> {
     );
   }
 
-  void _showGifOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(top: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Choose GIF Source',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
-              _buildGifOption(
-                icon: Icons.gif_box_outlined,
-                title: 'Giphy GIFs', // cspell:ignore Giphy
-                subtitle: 'Browse and copy GIFs online',
-                onTap: () {
-                  Navigator.pop(context);
-                  _showGiphyPicker(); // cspell:ignore Giphy
-                },
-              ),
-              _buildGifOption(
-                icon: Icons.photo_library_outlined,
-                title: 'Device GIFs',
-                subtitle: 'Use GIFs from your gallery',
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickDeviceGif();
-                },
-              ),
-              _buildGifOption(
-                icon: Icons.content_copy,
-                title: 'Copy GIF URL',
-                subtitle: 'Get a GIF URL to copy',
-                onTap: () {
-                  Navigator.pop(context);
-                  _showGifUrlCopyDialog();
-                },
-              ),
-              _buildGifOption(
-                icon: Icons.content_paste,
-                title: 'Paste GIF URL',
-                subtitle: 'Paste copied GIF link',
-                onTap: () {
-                  Navigator.pop(context);
-                  _handlePastedContent();
-                },
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  void _sendTestMessage() async {
+    // Send a test message to demonstrate text wrapping
+    final testMessage =
+        "This is a very long test message to demonstrate that the text wrapping is working correctly in the message bubbles. The text should now wrap properly within the bubble instead of being compressed or squished. This message contains multiple sentences and should show how the text flows naturally within the message bubble container. The ConstrainedBox and proper text alignment should ensure that long messages display beautifully just like the other user's messages.";
 
-  Widget _buildGifOption({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: Colors.white, size: 24),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.7),
-          fontSize: 14,
-        ),
-      ),
-      onTap: onTap,
-    );
-  }
+    final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
 
-  void _showGiphyPicker() async {
-    // cspell:ignore Giphy
-    try {
-      debugPrint(
-          'ChatView: Opening Giphy picker with API key: ${GiphyConfig.apiKey}');
+    // Set the composed text and send
+    chatNotifier.updateComposedText(testMessage);
+    await chatNotifier.send();
 
-      // Show instructions for using Giphy
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                '💡 Tip: Tap any GIF to send it, or long-press to copy URL'),
-            backgroundColor: Colors.blue,
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
-
-      final gif = await GiphyPicker.pickGif(
-        // cspell:ignore Giphy
-        context: context,
-        apiKey: GiphyConfig.apiKey, // cspell:ignore Giphy
-        fullScreenDialog: false,
-        previewType: GiphyPreviewType.previewWebp, // cspell:ignore Giphy Webp
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Test message sent to demonstrate text wrapping!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
       );
-
-      debugPrint(
-          'ChatView: Giphy picker returned: ${gif != null ? "GIF selected" : "No GIF selected"}');
-
-      if (gif != null && mounted) {
-        debugPrint(
-            'ChatView: GIF details - title: ${gif.title}, URL: ${gif.images.original?.url}');
-
-        final gifUrl = gif.images.original?.url ?? '';
-        if (gifUrl.isNotEmpty) {
-          // Show options dialog for the selected GIF
-          _showGifActionDialog(gifUrl, gif.title ?? 'GIF');
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Failed to get GIF URL. Please try again.'),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-        }
-      } else if (mounted) {
-        // User cancelled or no GIF selected
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No GIF selected'),
-            backgroundColor: Colors.grey,
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('ChatView: Giphy picker error: $e');
-
-      if (mounted) {
-        String errorMessage = 'GIF picker temporarily unavailable';
-        if (e.toString().contains('403') || e.toString().contains('banned')) {
-          errorMessage =
-              'GIF picker needs API key setup. Please get a free Giphy API key from https://developers.giphy.com/'; // cspell:ignore Giphy
-        } else if (e.toString().contains('network')) {
-          errorMessage =
-              'Network error. Please check your internet connection and try again.';
-        } else {
-          errorMessage = 'Failed to open GIF picker: ${e.toString()}';
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: () {
-                _showGiphyPicker();
-              },
-            ),
-          ),
-        );
-      }
     }
   }
 
-  void _pickDeviceGif() async {
+  Future<void> _showGiphyPicker() async {
+    // cspell:ignore Giphy
     if (_isPickingGif) return; // Prevent multiple simultaneous picks
 
     setState(() {
@@ -1674,113 +1601,138 @@ class _ChatViewState extends ConsumerState<ChatView> {
     });
 
     try {
-      debugPrint('ChatView: Opening device GIF picker...');
+      debugPrint(
+          'ChatView: Opening Giphy picker with API key: ${GiphyConfig.bestApiKey}');
 
-      // Show loading indicator
+      // Show immediate feedback that picker is opening
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Opening gallery...'),
+            content: Text('🎬 Opening GIF picker...'),
             backgroundColor: Colors.blue,
             duration: Duration(seconds: 1),
           ),
         );
       }
 
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
+      // Try a simpler configuration first
+      final gif = await GiphyPicker.pickGif(
+        // cspell:ignore Giphy
+        context: context,
+        apiKey: GiphyConfig.bestApiKey, // cspell:ignore Giphy
+        fullScreenDialog: false, // Try without full screen
+        previewType: GiphyPreviewType.previewWebp, // cspell:ignore Giphy Webp
+        showGiphyAttribution: false, // Try without attribution
+        showPreviewPage: false, // Try without preview page
       );
 
       debugPrint(
-          'ChatView: Image picker result: ${image != null ? "Image selected: ${image.path}" : "No image selected"}');
+          'ChatView: Giphy picker returned: ${gif?.id ?? "No GIF selected"}');
+      debugPrint('ChatView: Complete GIF object: $gif');
 
-      if (image != null && mounted) {
-        // Check if the file is a GIF
-        final file = File(image.path);
-        final extension = image.path.toLowerCase().split('.').last;
-
+      if (gif != null && mounted) {
+        debugPrint('ChatView: GIF images object: ${gif.images}');
+        debugPrint('ChatView: Original URL: ${gif.images.original?.url}');
         debugPrint(
-            'ChatView: Selected file: ${image.path}, extension: $extension');
+            'ChatView: Fixed height URL: ${gif.images.fixedHeight?.url}');
+        debugPrint('ChatView: Downsized URL: ${gif.images.downsized?.url}');
+        debugPrint('ChatView: Fixed width URL: ${gif.images.fixedWidth?.url}');
+        // Try multiple URL sources for better compatibility
+        final gifUrl = gif.images.original?.url ??
+            gif.images.fixedHeight?.url ??
+            gif.images.fixedWidth?.url ??
+            gif.images.downsized?.url ??
+            '';
 
-        if (extension == 'gif') {
-          // Upload the GIF file to Firebase Storage and get the URL
-          final chatNotifier =
-              ref.read(chatNotifierProvider(widget.chat).notifier);
-          await chatNotifier.sendDeviceGif(file);
+        debugPrint('ChatView: Final GIF URL: $gifUrl');
 
+        if (gifUrl.isNotEmpty) {
+          // Show loading feedback immediately
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('GIF sent successfully!'),
+                content: Text('📤 Sending GIF...'),
+                backgroundColor: Colors.blue,
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+
+          // Send the GIF using the chat notifier
+          await ref
+              .read(chatNotifierProvider(widget.chat).notifier)
+              .sendGif(gifUrl);
+
+          debugPrint('ChatView: GIF message sent successfully');
+
+          // Show success feedback
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ GIF sent!'),
                 backgroundColor: Colors.green,
                 duration: Duration(seconds: 2),
               ),
             );
           }
         } else {
+          debugPrint('ChatView: No valid GIF URL found');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'Please select a GIF file. Selected file type: $extension'),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 3),
+              const SnackBar(
+                content: Text('❌ Could not load GIF. Please try another one.'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
               ),
             );
           }
         }
-      } else if (mounted) {
-        // User cancelled or no file selected
-        debugPrint('ChatView: User cancelled or no file selected');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No file selected'),
-            backgroundColor: Colors.grey,
-            duration: Duration(seconds: 1),
-          ),
-        );
+      } else {
+        debugPrint('ChatView: User cancelled GIF selection or GIF is null');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('GIF selection cancelled'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
     } catch (e) {
-      debugPrint('ChatView: Error picking device GIF: $e');
+      debugPrint('ChatView: Error in Giphy picker: $e');
 
-      if (mounted) {
-        String errorMessage = 'Failed to access gallery';
-
-        if (e.toString().contains('Permission denied') ||
-            e.toString().contains('permission')) {
-          errorMessage =
-              'Gallery permission denied. Please enable storage permissions in app settings.';
-        } else if (e.toString().contains('No application found') ||
-            e.toString().contains('No app')) {
-          errorMessage =
-              'No gallery app found. Please install a gallery app or file manager.';
-        } else if (e.toString().contains('User cancelled') ||
-            e.toString().contains('cancel')) {
-          errorMessage = 'Gallery access cancelled';
-        } else if (e.toString().contains('PlatformException')) {
-          errorMessage =
-              'Platform error accessing gallery. Please check app permissions.';
-        } else {
-          errorMessage = 'Failed to pick GIF: ${e.toString()}';
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: () {
-                _pickDeviceGif();
-              },
+      // Check if it's a 403/API key error
+      if (e.toString().contains('403') ||
+          e.toString().contains('banned') ||
+          e.toString().contains('Forbidden')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  '🚫 GIF service temporarily unavailable. Please try again later.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
             ),
-          ),
-        );
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Error loading GIFs: ${e.toString()}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'Retry',
+                textColor: Colors.white,
+                onPressed: () {
+                  _showGiphyPicker();
+                },
+              ),
+            ),
+          );
+        }
       }
     } finally {
       if (mounted) {
@@ -1788,6 +1740,260 @@ class _ChatViewState extends ConsumerState<ChatView> {
           _isPickingGif = false;
         });
       }
+    }
+  }
+
+  Widget _buildVideoShareMessage(Message message) {
+    debugPrint(
+        '🎬 ChatView: Building video share message - videoId: ${message.videoId}, title: "${message.videoTitle}", thumbnail: "${message.videoThumbnailUrl}"');
+
+    return GestureDetector(
+      onTap: () {
+        _navigateToVideo(message.videoId!);
+      },
+      child: Container(
+        width: 240,
+        height: 180,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            children: [
+              // Video thumbnail background
+              Container(
+                width: double.infinity,
+                height: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.purple.withValues(alpha: 0.8),
+                      Colors.blue.withValues(alpha: 0.8),
+                      Colors.pink.withValues(alpha: 0.8),
+                    ],
+                  ),
+                ),
+                child: message.videoThumbnailUrl != null &&
+                        message.videoThumbnailUrl!.isNotEmpty
+                    ? Image.network(
+                        message.videoThumbnailUrl!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildGradientBackground();
+                        },
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return _buildGradientBackground();
+                        },
+                      )
+                    : _buildGradientBackground(),
+              ),
+
+              // Dark overlay for better text visibility
+              Container(
+                width: double.infinity,
+                height: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.3),
+                      Colors.black.withValues(alpha: 0.6),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Play button overlay
+              Center(
+                child: Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.black,
+                    size: 35,
+                  ),
+                ),
+              ),
+
+              // Video info at bottom
+              Positioned(
+                bottom: 12,
+                left: 12,
+                right: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Video title
+                    Text(
+                      message.videoTitle ?? 'Shared a video',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black,
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // Duration or share indicator
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.play_circle_outline,
+                          color: Colors.white.withValues(alpha: 0.8),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Tap to watch',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            shadows: const [
+                              Shadow(
+                                color: Colors.black,
+                                blurRadius: 2,
+                                offset: Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // TikTok-style corner indicator
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.videocam,
+                        color: Colors.white,
+                        size: 12,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'VIDEO',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradientBackground() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.purple.withValues(alpha: 0.8),
+            Colors.blue.withValues(alpha: 0.8),
+            Colors.pink.withValues(alpha: 0.8),
+          ],
+        ),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.videocam,
+          color: Colors.white,
+          size: 40,
+        ),
+      ),
+    );
+  }
+
+  /// Navigate to video player using NotificationNavigationService
+  void _navigateToVideo(String videoId) {
+    try {
+      debugPrint('🎬 ChatView: Navigating to video: $videoId');
+
+      final navigationService = NotificationNavigationService();
+      final homeViewModel = ref.read(hp.homeProvider.notifier);
+
+      // Get available videos from home provider
+      final homeState = ref.read(hp.homeProvider);
+      final availableVideos = [
+        ...homeState.forYouVideos,
+        ...homeState.followingVideos
+      ];
+
+      navigationService.navigateToVideo(
+        context: context,
+        videoId: videoId,
+        homeViewModel: homeViewModel,
+        availableVideos: availableVideos,
+      );
+    } catch (e) {
+      debugPrint('❌ ChatView: Error navigating to video: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to open video: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 }

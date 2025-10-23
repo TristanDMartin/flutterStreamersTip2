@@ -210,7 +210,7 @@ class AdvancedAdminService {
 
       // Search messages (limited for performance)
       final messages = await _firestore
-          .collectionGroup('messages')
+          .collection('messages')
           .where('text', isGreaterThanOrEqualTo: queryLower)
           .where('text', isLessThan: '${queryLower}z')
           .limit(20)

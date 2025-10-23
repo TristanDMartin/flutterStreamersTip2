@@ -6,6 +6,7 @@ import 'services/error_handler_service.dart';
 import 'utils/performance_utils.dart';
 import 'services/memory_optimization_service.dart';
 import 'services/network_config_service.dart';
+import 'services/network_connectivity_service.dart';
 import 'services/google_services_fix.dart';
 import 'services/unified_avatar_service.dart' as nav;
 import 'services/unified_bookmark_service.dart';
@@ -52,6 +53,12 @@ Future<void> _initializeAllServices() async {
     // CRITICAL SERVICES (blocking)
     debugPrint('📡 Initializing critical services...');
     NetworkConfigService.initialize();
+
+    // 🌐 CONNECTIVITY: Check network connectivity
+    await _initializeServiceSafely('NetworkConnectivityService', () async {
+      await NetworkConnectivityService().checkConnectivity();
+    });
+
     IOSMemoryService.initialize();
     PerformanceEmergencyService().initialize();
     await FirebaseIOSService.initialize();

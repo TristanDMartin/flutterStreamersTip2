@@ -999,6 +999,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   void _navigateToStreamerCard(user_model.User user) {
     debugPrint(
         '🔵 NetworkView: _navigateToStreamerCard called for user: ${user.displayName}');
+    debugPrint('🔵 NetworkView: User ID being passed: ${user.id}');
+    debugPrint('🔵 NetworkView: User username: ${user.username}');
+    debugPrint('🔵 NetworkView: User displayName: ${user.displayName}');
 
     // Use multiple approaches to prevent backgrounding
     Future.microtask(() {

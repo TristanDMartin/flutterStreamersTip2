@@ -651,8 +651,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> _refreshFollowing({required String rid}) async {
     try {
+      log('🔄 _refreshFollowing: Starting Following feed refresh - rid: $rid');
       final String? viewerId = FirebaseAuth.instance.currentUser?.uid;
       if (viewerId == null) {
+        log('⚠️ _refreshFollowing: No authenticated user, returning empty feed');
         // Fallback to empty when unauthenticated
         if (state.followingSlice?.requestId != rid) return;
         state = state.copyWith(
@@ -665,11 +667,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
         return;
       }
+      log('🔄 _refreshFollowing: Fetching Following videos for user: $viewerId');
       // Fetch videos using connections-based service
       final videos = await _followingFeedService.fetchFollowingVideos(
         viewerId: viewerId,
         limit: 20,
       );
+      log('🔄 _refreshFollowing: Fetched ${videos.length} Following videos');
       if (state.followingSlice?.requestId != rid) return;
       state = state.copyWith(
         followingSlice: state.followingSlice?.copyWith(
@@ -679,14 +683,44 @@ class HomeViewModel extends StateNotifier<HomeState> {
           error: null,
         ),
       );
+      log('✅ _refreshFollowing: Following feed updated with ${videos.length} videos');
     } catch (e) {
+      log('❌ _refreshFollowing: Error fetching Following videos: $e');
       if (state.followingSlice?.requestId != rid) return;
-      state = state.copyWith(
-        followingSlice: state.followingSlice?.copyWith(
-          isLoading: false,
-          error: e.toString(),
-        ),
-      );
+
+      // Fallback: Use For You videos when Following fails
+      log('🔄 _refreshFollowing: Falling back to For You videos due to Following feed error');
+      try {
+        final page = await _videoService.fetchForYouVideos(
+          pageSize: 20,
+          lastDocument: null,
+        );
+        final fallbackVideos = page['videos'] as List<HomeVideo>;
+        log('🔄 _refreshFollowing: Fallback loaded ${fallbackVideos.length} For You videos');
+
+        state = state.copyWith(
+          followingSlice: state.followingSlice?.copyWith(
+            items: fallbackVideos,
+            nextCursor: page['lastDocument'] == null
+                ? null
+                : <String, dynamic>{'lastDoc': page['lastDocument']},
+            isLoading: false,
+            error: null, // Clear error since we have fallback data
+          ),
+        );
+        log('✅ _refreshFollowing: Following feed updated with fallback For You videos');
+      } catch (fallbackError) {
+        log('❌ _refreshFollowing: Fallback also failed: $fallbackError');
+        state = state.copyWith(
+          followingSlice: state.followingSlice?.copyWith(
+            items: const <HomeVideo>[],
+            nextCursor: null,
+            isLoading: false,
+            error: 'Following feed unavailable. Please check your connection.',
+          ),
+        );
+        log('⚠️ _refreshFollowing: Following feed set to error state with empty videos');
+      }
     }
   }
 

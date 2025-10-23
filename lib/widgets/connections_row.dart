@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:ui';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/connection_lite.dart';
 import '../services/connections_service.dart';
 
@@ -38,18 +39,45 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
     _loadConnections();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Preload avatars as soon as context is available
+    if (_connections.isNotEmpty) {
+      _preloadAvatars(_connections);
+    }
+  }
+
   Future<void> _loadConnections() async {
     debugPrint('🔗 ConnectionsRow: _loadConnections called');
     try {
       final connections = await _connectionsService.getConnectionsPreview();
       debugPrint('🔗 ConnectionsRow: Loaded ${connections.length} connections');
+
+      // Debug each connection's avatar URL
+      for (final connection in connections) {
+        debugPrint(
+            '🔗 ConnectionsRow: Connection ${connection.handle} - Avatar URL: "${connection.avatarUrl}"');
+        // Test with a fallback avatar URL if none provided
+        if (connection.avatarUrl.isEmpty) {
+          debugPrint(
+              '🔗 ConnectionsRow: No avatar URL for ${connection.handle}, using default');
+        }
+      }
+
+      // Use real connections only - no test data fallback
+      List<ConnectionLite> finalConnections = connections;
+
       if (mounted) {
         setState(() {
-          _connections = connections;
+          _connections = finalConnections;
           _isLoading = false;
         });
         debugPrint(
             '🔗 ConnectionsRow: State updated - showing ${_connections.length} connections');
+
+        // Preload all avatars for instant display
+        _preloadAvatars(finalConnections);
       }
     } catch (e) {
       debugPrint('❌ ConnectionsRow: Error loading connections: $e');
@@ -57,6 +85,31 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
         setState(() {
           _isLoading = false;
         });
+      }
+    }
+  }
+
+  /// Preload all connection avatars for instant display
+  void _preloadAvatars(List<ConnectionLite> connections) {
+    debugPrint(
+        '🖼️ ConnectionsRow: Starting to preload ${connections.length} avatars');
+    for (final connection in connections) {
+      if (connection.avatarUrl.isNotEmpty) {
+        debugPrint(
+            '🖼️ ConnectionsRow: Preloading avatar for ${connection.handle}: ${connection.avatarUrl}');
+        // Preload the image into cache
+        precacheImage(
+          CachedNetworkImageProvider(connection.avatarUrl),
+          context,
+        ).then((_) {
+          debugPrint(
+              '✅ ConnectionsRow: Successfully preloaded avatar for ${connection.handle}');
+        }).catchError((error) {
+          debugPrint(
+              '⚠️ ConnectionsRow: Failed to preload avatar for ${connection.handle}: $error');
+        });
+      } else {
+        debugPrint('⚠️ ConnectionsRow: No avatar URL for ${connection.handle}');
       }
     }
   }
@@ -96,12 +149,14 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
         _sentConnections.remove(connection.userId);
       });
 
+      debugPrint('❌ ConnectionsRow: Error sharing to ${connection.handle}: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Could not send message'),
+            content: Text('Could not send message: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -113,48 +168,37 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
     debugPrint(
         '🔗 ConnectionsRow: build() called - _isLoading: $_isLoading, connections: ${_connections.length}');
     return Container(
-      height: 96,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.3), // TEMP: Visual indicator
-        border: Border.all(
-            color: Colors.orange, width: 2), // TEMP: Visual indicator
-      ),
+      constraints: const BoxConstraints(maxHeight: 100),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with search icon
+          // Header with search icon only
           Row(
             children: [
-              Text(
-                'Share to Connections',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
               const Spacer(),
               GestureDetector(
                 onTap: widget.onSearchTap,
                 child: Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
                     Icons.search,
                     color: Colors.white,
-                    size: 20,
+                    size: 16,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
 
           // Connections list
-          Expanded(
+          Flexible(
             child: _buildConnectionsList(),
           ),
         ],
@@ -171,52 +215,77 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
       return _buildEmptyState();
     }
 
-    return ListView.builder(
-      scrollDirection: Axis.horizontal,
-      itemCount: _connections.length + 1, // +1 for "More" button
-      itemBuilder: (context, index) {
-        if (index == _connections.length) {
-          return _buildMoreButton();
-        }
+    debugPrint(
+        '🔗 ConnectionsRow: Building list with ${_connections.length} connections');
 
-        final connection = _connections[index];
-        return _buildConnectionChip(connection);
-      },
+    return SizedBox(
+      height: 80,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const ClampingScrollPhysics(),
+        shrinkWrap: true,
+        itemCount: _connections.length + 1, // +1 for "More" button
+        itemBuilder: (context, index) {
+          if (index == _connections.length) {
+            return _buildMoreButton();
+          }
+
+          final connection = _connections[index];
+          debugPrint(
+              '🔗 ConnectionsRow: Building connection chip for ${connection.handle}');
+          return _buildConnectionChip(connection);
+        },
+      ),
     );
   }
 
   Widget _buildLoadingState() {
-    return ListView.builder(
-      scrollDirection: Axis.horizontal,
-      itemCount: 6,
-      itemBuilder: (context, index) {
-        return Container(
-          margin: const EdgeInsets.only(right: 12),
-          child: Column(
-            children: [
-              // Skeleton avatar
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+    return SizedBox(
+      height: 80,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const ClampingScrollPhysics(),
+        shrinkWrap: true,
+        itemCount: 6,
+        itemBuilder: (context, index) {
+          return Container(
+            margin: const EdgeInsets.only(right: 12),
+            child: Column(
+              children: [
+                // Skeleton avatar with shimmer effect
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              // Skeleton text
-              Container(
-                width: 50,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+                const SizedBox(height: 4),
+                // Skeleton text
+                Container(
+                  width: 32,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -245,20 +314,23 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
   Widget _buildConnectionChip(ConnectionLite connection) {
     final isSent = _sentConnections.contains(connection.userId);
     final isDisabled = !connection.canDM || isSent;
+    debugPrint(
+        '🔗 ConnectionsRow: Building chip for ${connection.handle} - Avatar: "${connection.avatarUrl}" - Sent: $isSent');
 
     return GestureDetector(
       onTap: isDisabled ? null : () => _shareToConnection(connection),
       child: Container(
         margin: const EdgeInsets.only(right: 12),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             // Avatar with status indicators
             Stack(
               children: [
                 // Main avatar
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 60,
+                  height: 60,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
@@ -270,12 +342,25 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
                   ),
                   child: ClipOval(
                     child: connection.avatarUrl.isNotEmpty
-                        ? Image.network(
-                            connection.avatarUrl,
+                        ? CachedNetworkImage(
+                            imageUrl: connection.avatarUrl,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
+                            memCacheWidth: 120, // 2x for crisp display
+                            memCacheHeight: 120,
+                            maxWidthDiskCache: 120,
+                            maxHeightDiskCache: 120,
+                            placeholder: (context, url) {
+                              debugPrint(
+                                  '🖼️ ConnectionsRow: Loading avatar for ${connection.handle}: $url');
                               return _buildDefaultAvatar(connection);
                             },
+                            errorWidget: (context, url, error) {
+                              debugPrint(
+                                  '❌ ConnectionsRow: Failed to load avatar for ${connection.handle}: $url - $error');
+                              return _buildDefaultAvatar(connection);
+                            },
+                            fadeInDuration: const Duration(milliseconds: 200),
+                            fadeOutDuration: const Duration(milliseconds: 100),
                           )
                         : _buildDefaultAvatar(connection),
                   ),
@@ -331,7 +416,7 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
               ],
             ),
 
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
 
             // Display name
             SizedBox(
@@ -342,7 +427,7 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
                       color: isDisabled
                           ? Colors.white.withValues(alpha: 0.5)
                           : Colors.white,
-                      fontSize: 12,
+                      fontSize: 10,
                     ),
                 textAlign: TextAlign.center,
                 maxLines: 1,
@@ -356,17 +441,29 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
   }
 
   Widget _buildDefaultAvatar(ConnectionLite connection) {
+    // Get the first letter of the display name or handle
+    final initial = connection.displayName.isNotEmpty
+        ? connection.displayName[0].toUpperCase()
+        : connection.handle.isNotEmpty
+            ? connection.handle[0].toUpperCase()
+            : '?';
+
     return Container(
-      width: 56,
-      height: 56,
+      width: 60,
+      height: 60,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.2),
         shape: BoxShape.circle,
       ),
-      child: Icon(
-        Icons.person,
-        color: Colors.white.withValues(alpha: 0.7),
-        size: 28,
+      child: Center(
+        child: Text(
+          initial,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.9),
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
@@ -377,10 +474,11 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
       child: Container(
         margin: const EdgeInsets.only(right: 12),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 56,
-              height: 56,
+              width: 60,
+              height: 60,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
@@ -396,12 +494,12 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
                 size: 28,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               'More',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Colors.white.withValues(alpha: 0.7),
-                    fontSize: 12,
+                    fontSize: 10,
                   ),
             ),
           ],

@@ -6,7 +6,7 @@ A **real-time admin monitoring panel** that allows you (technqs) to track all ap
 
 ---
 
-## ✅ Features
+## ✅ Complete Features - 9 Tabs
 
 ### 📊 **Overview Tab**
 - **Total Users** - All registered users
@@ -20,24 +20,50 @@ A **real-time admin monitoring panel** that allows you (technqs) to track all ap
 - List of 20 most recently active users
 - Online/offline status (green dot for online)
 - Username, display name, last seen time
-- Tap user to view details
+- Tap user for actions (ban, view details)
 
 ### 📹 **Videos Tab**
 - 20 most recent videos
 - Caption, upload time, views, likes
 - Video status (draft, processing, published, etc.)
-- Tap for full video details (ID, user, stats)
+- Tap for actions (delete, view details)
 
 ### 💬 **Messages Tab**
 - 20 most recent messages across all chats
 - Sender, message text, timestamp
 - Real-time updates as messages are sent
 
+### 🚫 **Moderation Tab**
+- **Ban User** - Permanent ban with reason
+- **Suspend User** - Temporary suspension (1/7/30 days)
+- **Unban User** - Restore access
+- **Delete Video** - Remove content with audit trail
+- **Delete Comment** - Moderate comments
+
+### 🔍 **Search Tab**
+- **Advanced Search** - Search users, videos, messages
+- Multi-collection simultaneous search
+- 20 results per category
+- Real-time Firestore queries
+
+### 📧 **Notifications Tab**
+- **Broadcast to All** - Send to every user
+- **Target Specific** - Send to select users
+- **Export CSV** - Complete data export
+- Custom title & message with audit trail
+
+### ⚙️ **Settings Tab**
+- **Maintenance Mode** - Platform on/off toggle
+- **Feature Flags** - Enable/disable features dynamically
+- **Add Flags** - Create custom toggles
+- Real-time sync across all devices
+
 ### 📝 **Logs Tab**
 - Real-time activity log
-- All monitored events (users, videos, messages, notifications)
+- All admin actions logged automatically
 - Timestamped entries
-- Last 100 events kept in memory
+- Last 1000 events from Firestore
+- Complete audit trail
 
 ---
 

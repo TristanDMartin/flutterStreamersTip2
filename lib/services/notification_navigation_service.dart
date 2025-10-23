@@ -22,9 +22,39 @@ class NotificationNavigationService {
     required BuildContext context,
     required String videoId,
     required hp.HomeViewModel homeViewModel,
+    List<HomeVideo>?
+        availableVideos, // Optional: pass available videos to search
   }) async {
     try {
-      // Fetch video data from Firestore
+      // First, try to find the video in the provided available videos
+      if (availableVideos != null) {
+        final existingVideo =
+            availableVideos.where((video) => video.id == videoId).firstOrNull;
+
+        if (existingVideo != null) {
+          // Use the existing video (faster and more reliable)
+          debugPrint(
+              '🎬 NotificationNavigationService: Using existing video: $videoId');
+          if (context.mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                fullscreenDialog: true,
+                builder: (context) => PlayerScreen(
+                  mode: PlayerMode.homeFeed,
+                  initialIndex: 0,
+                  videoIds: [videoId],
+                  videos: [existingVideo], // Use existing video data
+                ),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // Fallback: Fetch video data from Firestore
+      debugPrint(
+          '🎬 NotificationNavigationService: Video not found in available videos, fetching from Firestore: $videoId');
       final videoDoc = await _firestore.collection('videos').doc(videoId).get();
 
       if (!videoDoc.exists) {

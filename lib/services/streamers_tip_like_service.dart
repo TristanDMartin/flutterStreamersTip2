@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'network_connectivity_service.dart';
 
 /// Like state for a video
 class LikeState {
@@ -136,6 +137,45 @@ class StreamersTipLikeService extends ChangeNotifier {
     return result;
   }
 
+  /// Load like count from Firebase for a specific video
+  Future<void> loadVideoLikeCount(String videoId) async {
+    try {
+      // Check network connectivity first
+      final networkService = NetworkConnectivityService();
+      if (!await networkService.checkFirebaseConnectivity()) {
+        debugPrint(
+            '🌐 StreamersTipLikeService: No Firebase connectivity, skipping like count load');
+        return;
+      }
+
+      final videoDoc = await _firestore.collection('videos').doc(videoId).get();
+
+      if (videoDoc.exists) {
+        final data = videoDoc.data()!;
+        final likeCount = (data['likeCount'] ?? 0) as int;
+
+        final currentState = _localCache[videoId];
+        if (currentState != null) {
+          final updatedState = currentState.copyWith(
+            likeCount: likeCount,
+            timestamp: DateTime.now(),
+          );
+          _localCache[videoId] = updatedState;
+          notifyListeners();
+
+          debugPrint(
+              '📊 StreamersTipLikeService: Loaded like count for $videoId: $likeCount');
+        }
+      } else {
+        debugPrint(
+            '⚠️ StreamersTipLikeService: Video document not found for $videoId');
+      }
+    } catch (e) {
+      debugPrint(
+          '❌ StreamersTipLikeService: Failed to load like count for $videoId: $e');
+    }
+  }
+
   /// TikTok-Style: Load user's liked videos when app opens or feed loads
   ///
   /// This fetches the user's `liked_videos` array from their profile.
@@ -266,13 +306,26 @@ class StreamersTipLikeService extends ChangeNotifier {
   /// Double-tap like (returns true if animation should show)
   Future<bool> doubleTapLike(String videoId, String userId) async {
     final currentState = getLikeState(videoId);
+
+    // Always show animation for double-tap, even if already liked
+    // This provides better user feedback and feels more responsive
     if (currentState.isLiked) {
       debugPrint(
-          '💖 StreamersTipLikeService: Already liked, ignoring double-tap');
-      return false; // Don't show animation if already liked
+          '💖 StreamersTipLikeService: Already liked, but showing animation for feedback');
+      // Trigger a brief animation even if already liked
+      _triggerLikeAnimation(videoId);
+      return true; // Show animation for better UX
     }
 
     return await likeVideo(videoId, userId, source: 'double_tap');
+  }
+
+  /// Trigger a brief like animation for visual feedback
+  void _triggerLikeAnimation(String videoId) {
+    // This could be used to trigger a subtle animation
+    // even when the video is already liked
+    debugPrint(
+        '✨ StreamersTipLikeService: Triggering like animation for $videoId');
   }
 
   /// Toggle like state (like if not liked, unlike if liked)
@@ -556,23 +609,28 @@ class StreamersTipLikeService extends ChangeNotifier {
       final futures = <Future>[];
 
       for (final videoId in videoIds) {
-        final likeCollectionRef =
-            _firestore.collection('likes').doc(videoId).collection('byUser');
+        final videoDocRef = _firestore.collection('videos').doc(videoId);
 
-        final future = likeCollectionRef.get().then((snapshot) {
-          final likeCount = snapshot.docs.length;
-          final currentState = _localCache[videoId];
+        final future = videoDocRef.get().then((snapshot) {
+          if (snapshot.exists) {
+            final data = snapshot.data()!;
+            final likeCount = (data['likeCount'] ?? 0) as int;
+            final currentState = _localCache[videoId];
 
-          if (currentState != null) {
-            final updatedState = currentState.copyWith(
-              likeCount: likeCount,
-              timestamp: DateTime.now(),
-            );
-            _localCache[videoId] = updatedState;
+            if (currentState != null) {
+              final updatedState = currentState.copyWith(
+                likeCount: likeCount,
+                timestamp: DateTime.now(),
+              );
+              _localCache[videoId] = updatedState;
+            }
+
+            debugPrint(
+                '📊 StreamersTipLikeService: Synced like count for $videoId: $likeCount (from video document)');
+          } else {
+            debugPrint(
+                '⚠️ StreamersTipLikeService: Video document not found for $videoId');
           }
-
-          debugPrint(
-              '📊 StreamersTipLikeService: Synced like count for $videoId: $likeCount');
         }).catchError((e) {
           debugPrint(
               '⚠️ StreamersTipLikeService: Failed to sync like count for $videoId: $e');

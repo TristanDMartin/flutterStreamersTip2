@@ -26,6 +26,10 @@ _$MessageImpl _$$MessageImplFromJson(Map<String, dynamic> json) =>
       gifUrl: json['gifUrl'] as String?,
       messageType: json['messageType'] as String? ?? 'text',
       isDeviceGif: json['isDeviceGif'] as bool? ?? false,
+      videoId: json['videoId'] as String?,
+      shareToken: json['shareToken'] as String?,
+      videoThumbnailUrl: json['videoThumbnailUrl'] as String?,
+      videoTitle: json['videoTitle'] as String?,
     );
 
 Map<String, dynamic> _$$MessageImplToJson(_$MessageImpl instance) =>
@@ -43,6 +47,10 @@ Map<String, dynamic> _$$MessageImplToJson(_$MessageImpl instance) =>
       'gifUrl': instance.gifUrl,
       'messageType': instance.messageType,
       'isDeviceGif': instance.isDeviceGif,
+      'videoId': instance.videoId,
+      'shareToken': instance.shareToken,
+      'videoThumbnailUrl': instance.videoThumbnailUrl,
+      'videoTitle': instance.videoTitle,
     };
 
 Json? _$JsonConverterToJson<Json, Value>(

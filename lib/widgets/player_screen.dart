@@ -54,12 +54,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   Future<void> _loadVideos() async {
+    debugPrint(
+        '🎬 PlayerScreen: Loading videos - mode: ${widget.mode}, videoIds: ${widget.videoIds}, videos: ${widget.videos?.length ?? 0}');
+
     if (widget.mode == PlayerMode.favorites) {
       final videoService = ref.read(videoServiceProvider);
       _videos = await videoService.getVideosByIds(widget.videoIds);
+      debugPrint(
+          '🎬 PlayerScreen: Loaded ${_videos.length} videos from favorites');
     } else {
       _videos = widget.videos ?? [];
+      debugPrint(
+          '🎬 PlayerScreen: Using provided videos: ${_videos.length} videos');
+
+      if (_videos.isEmpty) {
+        debugPrint(
+            '⚠️ PlayerScreen: No videos provided! widget.videos is null or empty');
+        debugPrint('🎬 PlayerScreen: widget.videos = ${widget.videos}');
+        debugPrint('🎬 PlayerScreen: widget.videoIds = ${widget.videoIds}');
+      }
     }
+
+    setState(() {}); // Trigger rebuild to show videos
   }
 
   void _onVideoChanged(int index) {
@@ -445,7 +461,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint(
+        '🎬 PlayerScreen: Building - _videos.length = ${_videos.length}');
+
     if (_videos.isEmpty) {
+      debugPrint('⚠️ PlayerScreen: No videos available - showing empty state');
       return Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(
@@ -455,10 +475,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
-        body: const Center(
-          child: Text(
-            'No videos available',
-            style: TextStyle(color: Colors.white, fontSize: 18),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'No videos available',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Mode: ${widget.mode}',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              Text(
+                'Video IDs: ${widget.videoIds}',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              Text(
+                'Provided videos: ${widget.videos?.length ?? 0}',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
           ),
         ),
       );

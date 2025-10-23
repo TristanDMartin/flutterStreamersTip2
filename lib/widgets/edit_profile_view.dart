@@ -14,7 +14,7 @@ import '../services/storage_diagnostic_service.dart';
 import '../services/admin_service.dart';
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
-import 'advanced_admin_panel.dart';
+import 'admin_monitoring_panel.dart';
 
 class EditProfileView extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -760,7 +760,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const AdvancedAdminPanel(),
+                    builder: (context) => const AdminMonitoringPanel(),
                   ),
                 );
               },
@@ -769,9 +769,24 @@ class _EditProfileViewState extends State<EditProfileView> {
                 color: Colors.white,
                 size: 24,
               ),
-            )
-          else
-            const SizedBox(width: 48), // Balance the back button
+            ),
+          IconButton(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              // Navigate to privacy/security settings
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Privacy & Security settings'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            icon: const Icon(
+              Icons.shield,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
         ],
       ),
     );
@@ -1213,7 +1228,7 @@ class _EditProfileViewState extends State<EditProfileView> {
             onChanged: (value) async {
               await _updateFavoritesVisibility(value);
             },
-            activeColor: const Color(0xFF9248D2),
+            activeThumbColor: const Color(0xFF9248D2),
             inactiveThumbColor: Colors.white.withValues(alpha: 0.3),
             inactiveTrackColor: Colors.white.withValues(alpha: 0.1),
           ),

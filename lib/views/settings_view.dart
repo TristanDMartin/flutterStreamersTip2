@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'blocked_accounts_view.dart';
 // import 'manage_account_view.dart'; // Removed - unused
 
 class SettingsView extends StatefulWidget {
@@ -35,120 +36,130 @@ class _SettingsViewState extends State<SettingsView> {
             children: [
               // Header
               _buildHeader(context),
-              
+
               // Search Field
               _buildSearchField(),
-              
+
               // Content
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
                   child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Account Section
-                    _buildSection(
-                      title: 'Account',
-                      items: [
-                        _buildSettingsItem(
-                          icon: Icons.person,
-                          title: 'Manage Account',
-                          subtitle: 'Phone, email, password',
-                          onTap: () => _navigateToPage(context, 'Manage Account'),
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Privacy Section
-                    _buildSection(
-                      title: 'Privacy',
-                      items: [
-                        _buildSettingsItem(
-                          icon: Icons.visibility,
-                          title: 'Who can see your content',
-                          subtitle: 'Control visibility settings',
-                          onTap: () => _navigateToPage(context, 'Privacy Settings'),
-                        ),
-                        _buildSettingsItem(
-                          icon: Icons.block,
-                          title: 'Blocked Accounts',
-                          subtitle: 'Manage blocked users',
-                          onTap: () => _navigateToPage(context, 'Blocked Accounts'),
-                        ),
-                        _buildSettingsItem(
-                          icon: Icons.alternate_email,
-                          title: 'Mentions & Tags',
-                          subtitle: 'Control who can mention you',
-                          onTap: () => _navigateToPage(context, 'Mentions & Tags'),
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Content & Activity Section
-                    _buildSection(
-                      title: 'Content & Activity',
-                      items: [
-                        _buildSettingsItem(
-                          icon: Icons.notifications,
-                          title: 'Notifications',
-                          subtitle: 'Push & in-app notifications',
-                          onTap: () => _navigateToPage(context, 'Notifications'),
-                        ),
-                        _buildSettingsItem(
-                          icon: Icons.tune,
-                          title: 'Content Preferences',
-                          subtitle: 'Language, restricted mode, screen time',
-                          onTap: () => _navigateToPage(context, 'Content Preferences'),
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Support & About Section
-                    _buildSection(
-                      title: 'Support & About',
-                      items: [
-                        _buildSettingsItem(
-                          icon: Icons.report_problem,
-                          title: 'Report a Problem',
-                          subtitle: 'Help us improve the app',
-                          onTap: () => _navigateToPage(context, 'Report a Problem'),
-                        ),
-                        _buildSettingsItem(
-                          icon: Icons.security,
-                          title: 'Safety Center',
-                          subtitle: 'Learn about safety features',
-                          onTap: () => _navigateToPage(context, 'Safety Center'),
-                        ),
-                        _buildSettingsItem(
-                          icon: Icons.rule,
-                          title: 'Community Guidelines',
-                          subtitle: 'Read our community rules',
-                          onTap: () => _navigateToPage(context, 'Community Guidelines'),
-                        ),
-                        _buildSettingsItem(
-                          icon: Icons.description,
-                          title: 'Terms of Service & Privacy Policy',
-                          subtitle: 'Legal information',
-                          onTap: () => _navigateToPage(context, 'Terms & Privacy Policy'),
-                        ),
-                        _buildSettingsItem(
-                          icon: Icons.info,
-                          title: 'About',
-                          subtitle: 'App version and info',
-                          onTap: () => _navigateToPage(context, 'About'),
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 40),
-                  ],
-                ),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Account Section
+                      _buildSection(
+                        title: 'Account',
+                        items: [
+                          _buildSettingsItem(
+                            icon: Icons.person,
+                            title: 'Manage Account',
+                            subtitle: 'Phone, email, password',
+                            onTap: () =>
+                                _navigateToPage(context, 'Manage Account'),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Privacy Section
+                      _buildSection(
+                        title: 'Privacy',
+                        items: [
+                          _buildSettingsItem(
+                            icon: Icons.visibility,
+                            title: 'Who can see your content',
+                            subtitle: 'Control visibility settings',
+                            onTap: () =>
+                                _navigateToPage(context, 'Privacy Settings'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.block,
+                            title: 'Blocked Accounts',
+                            subtitle: 'Manage blocked users',
+                            onTap: () =>
+                                _navigateToPage(context, 'Blocked Accounts'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.alternate_email,
+                            title: 'Mentions & Tags',
+                            subtitle: 'Control who can mention you',
+                            onTap: () =>
+                                _navigateToPage(context, 'Mentions & Tags'),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Content & Activity Section
+                      _buildSection(
+                        title: 'Content & Activity',
+                        items: [
+                          _buildSettingsItem(
+                            icon: Icons.notifications,
+                            title: 'Notifications',
+                            subtitle: 'Push & in-app notifications',
+                            onTap: () =>
+                                _navigateToPage(context, 'Notifications'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.tune,
+                            title: 'Content Preferences',
+                            subtitle: 'Language, restricted mode, screen time',
+                            onTap: () =>
+                                _navigateToPage(context, 'Content Preferences'),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Support & About Section
+                      _buildSection(
+                        title: 'Support & About',
+                        items: [
+                          _buildSettingsItem(
+                            icon: Icons.report_problem,
+                            title: 'Report a Problem',
+                            subtitle: 'Help us improve the app',
+                            onTap: () =>
+                                _navigateToPage(context, 'Report a Problem'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.security,
+                            title: 'Safety Center',
+                            subtitle: 'Learn about safety features',
+                            onTap: () =>
+                                _navigateToPage(context, 'Safety Center'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.rule,
+                            title: 'Community Guidelines',
+                            subtitle: 'Read our community rules',
+                            onTap: () => _navigateToPage(
+                                context, 'Community Guidelines'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.description,
+                            title: 'Terms of Service & Privacy Policy',
+                            subtitle: 'Legal information',
+                            onTap: () => _navigateToPage(
+                                context, 'Terms & Privacy Policy'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.info,
+                            title: 'About',
+                            subtitle: 'App version and info',
+                            onTap: () => _navigateToPage(context, 'About'),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 40),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -195,10 +206,10 @@ class _SettingsViewState extends State<SettingsView> {
       margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withValues(alpha:0.2),
+          color: Colors.white.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -212,11 +223,11 @@ class _SettingsViewState extends State<SettingsView> {
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           hintText: 'Search settings...',
-          hintStyle: TextStyle(color: Colors.white.withValues(alpha:0.5)),
+          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
           border: InputBorder.none,
           icon: Icon(
             Icons.search,
-            color: Colors.white.withValues(alpha:0.5),
+            color: Colors.white.withValues(alpha: 0.5),
           ),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
@@ -228,7 +239,7 @@ class _SettingsViewState extends State<SettingsView> {
                   },
                   icon: Icon(
                     Icons.clear,
-                    color: Colors.white.withValues(alpha:0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                   ),
                 )
               : null,
@@ -290,7 +301,7 @@ class _SettingsViewState extends State<SettingsView> {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: Colors.white.withValues(alpha:0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               width: 1,
             ),
           ),
@@ -300,7 +311,7 @@ class _SettingsViewState extends State<SettingsView> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -326,7 +337,7 @@ class _SettingsViewState extends State<SettingsView> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -335,7 +346,7 @@ class _SettingsViewState extends State<SettingsView> {
             ),
             Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white.withValues(alpha:0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 16,
             ),
           ],
@@ -344,14 +355,19 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-
-
   void _navigateToPage(BuildContext context, String pageName) {
     switch (pageName) {
       case 'Manage Account':
         // page = const ManageAccountView(); // Removed - unused
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Manage account feature coming soon!')),
+        );
+        return;
+      case 'Blocked Accounts':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const BlockedAccountsView(),
+          ),
         );
         return;
       default:
@@ -368,7 +384,7 @@ class _SettingsViewState extends State<SettingsView> {
 // Placeholder page for settings subsections
 class _PlaceholderPage extends StatelessWidget {
   final String title;
-  
+
   const _PlaceholderPage({required this.title});
 
   @override
@@ -389,7 +405,7 @@ class _PlaceholderPage extends StatelessWidget {
           children: [
             Icon(
               Icons.construction,
-              color: Colors.white.withValues(alpha:0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
@@ -405,7 +421,7 @@ class _PlaceholderPage extends StatelessWidget {
             Text(
               'This page will be implemented here',
               style: TextStyle(
-                color: Colors.white.withValues(alpha:0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 16,
               ),
             ),

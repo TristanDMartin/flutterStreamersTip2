@@ -4,7 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'logging_service.dart';
 
 class MessageReactionsService {
-  static final MessageReactionsService _instance = MessageReactionsService._internal();
+  static final MessageReactionsService _instance =
+      MessageReactionsService._internal();
   factory MessageReactionsService() => _instance;
   MessageReactionsService._internal();
 
@@ -13,11 +14,21 @@ class MessageReactionsService {
 
   // Available reaction types
   static const List<String> availableReactions = [
-    '👍', '👎', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯'
+    '👍',
+    '👎',
+    '❤️',
+    '😂',
+    '😮',
+    '😢',
+    '😡',
+    '🎉',
+    '🔥',
+    '💯'
   ];
 
   /// Add reaction to message
-  Future<bool> addReaction(String chatId, String messageId, String reaction) async {
+  Future<bool> addReaction(
+      String chatId, String messageId, String reaction) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return false;
 
@@ -37,7 +48,8 @@ class MessageReactionsService {
           .doc(currentUser.uid)
           .set(reactionData);
 
-      LoggingService.instance.info('Reaction added: $reaction to message $messageId');
+      LoggingService.instance
+          .info('Reaction added: $reaction to message $messageId');
       return true;
     } catch (e) {
       LoggingService.instance.error('Error adding reaction: $e');
@@ -69,7 +81,8 @@ class MessageReactionsService {
   }
 
   /// Get reactions for a message
-  Future<Map<String, int>> getMessageReactions(String chatId, String messageId) async {
+  Future<Map<String, int>> getMessageReactions(
+      String chatId, String messageId) async {
     try {
       final snapshot = await _firestore
           .collection('chats')
@@ -94,7 +107,8 @@ class MessageReactionsService {
   }
 
   /// Stream reactions for a message
-  Stream<Map<String, int>> streamMessageReactions(String chatId, String messageId) {
+  Stream<Map<String, int>> streamMessageReactions(
+      String chatId, String messageId) {
     return _firestore
         .collection('chats')
         .doc(chatId)
@@ -160,7 +174,8 @@ class MessageReactionsService {
   }
 
   /// Get most popular reactions for a chat
-  Future<Map<String, int>> getChatPopularReactions(String chatId, {int limit = 5}) async {
+  Future<Map<String, int>> getChatPopularReactions(String chatId,
+      {int limit = 5}) async {
     try {
       final snapshot = await _firestore
           .collection('chats')
@@ -169,12 +184,11 @@ class MessageReactionsService {
           .get();
 
       final allReactions = <String, int>{};
-      
+
       for (final messageDoc in snapshot.docs) {
-        final reactionsSnapshot = await messageDoc.reference
-            .collection('reactions')
-            .get();
-            
+        final reactionsSnapshot =
+            await messageDoc.reference.collection('reactions').get();
+
         for (final reactionDoc in reactionsSnapshot.docs) {
           final data = reactionDoc.data();
           final reaction = data['reaction'] as String;
@@ -183,14 +197,10 @@ class MessageReactionsService {
       }
 
       // Sort by count and return top reactions
-      final sortedReactions = Map.fromEntries(
-        allReactions.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value))
-      );
+      final sortedReactions = Map.fromEntries(allReactions.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value)));
 
-      return Map.fromEntries(
-        sortedReactions.entries.take(limit)
-      );
+      return Map.fromEntries(sortedReactions.entries.take(limit));
     } catch (e) {
       LoggingService.instance.error('Error getting chat popular reactions: $e');
       return {};
@@ -201,7 +211,7 @@ class MessageReactionsService {
   Future<Map<String, int>> getUserReactionStats(String userId) async {
     try {
       final snapshot = await _firestore
-          .collectionGroup('reactions')
+          .collection('reactions')
           .where('userId', isEqualTo: userId)
           .get();
 
@@ -236,7 +246,8 @@ class MessageReactionsService {
       }
 
       await batch.commit();
-      LoggingService.instance.info('All reactions cleared from message $messageId');
+      LoggingService.instance
+          .info('All reactions cleared from message $messageId');
       return true;
     } catch (e) {
       LoggingService.instance.error('Error clearing message reactions: $e');

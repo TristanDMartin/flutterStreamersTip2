@@ -51,7 +51,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
         final docs = snapshot.docs;
         final List<Message> firebaseMessages = docs.map((d) {
           final data = d.data();
+          debugPrint(
+              '📱 ChatNotifier: Converting message ${d.id} - data: $data');
           final parsed = Message.fromJson(data);
+          debugPrint(
+              '📱 ChatNotifier: Parsed message - videoId: ${parsed.videoId}, videoTitle: "${parsed.videoTitle}", videoThumbnailUrl: "${parsed.videoThumbnailUrl}"');
           return parsed.copyWith(id: d.id);
         }).toList();
         state = state.copyWith(
