@@ -15,10 +15,10 @@ import 'streamer_card_view.dart';
 // import 'search_screen.dart'; // Removed - unused
 import 'activity_view.dart';
 import '../services/logging_service.dart';
-import '../services/error_handler_service.dart';
 import '../services/caching_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/accessibility_service.dart';
+import '../services/global_playback_manager.dart';
 import 'instant_response_button.dart';
 import 'lazy_loading_list.dart';
 import 'video_player_view_optimized.dart';
@@ -76,13 +76,9 @@ class DiscoverView extends ConsumerStatefulWidget {
 }
 
 class _DiscoverViewState extends ConsumerState<DiscoverView> {
+  static const int _videosPerPage = 20;
   String? _selectedCategory;
   int _currentCategoryPage = 0;
-
-  // Video grid pagination
-  static const int _videosPerPage = 12;
-  int _currentVideoPage = 0;
-  bool _isLoadingMoreVideos = false;
 
   // 🔥 FIX: Enhanced caching with user-specific keys and TTL
   final Map<String, List<Map<String, dynamic>>> _cachedVideos = {};
@@ -96,14 +92,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   // 🔥 FIX: Real-time subscriptions
   StreamSubscription<QuerySnapshot>? _trendingCreatorsSubscription;
   StreamSubscription<QuerySnapshot>? _notificationsSubscription;
-
-  // 🔥 FIX: Pagination tracking
-  final Map<String, DocumentSnapshot?> _lastDocuments = {};
-
-  // 🔥 FIX: Error handling and retry logic
-  final Map<String, int> _retryCounts = {};
-  final Map<String, String> _errorMessages = {};
-  static const int _maxRetries = 3;
 
   // Common gradient used throughout the view
   static const LinearGradient _backgroundGradient = LinearGradient(
@@ -137,17 +125,28 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
     // Clear cached videos to free memory
     _cachedVideos.clear();
+
+    // Clean up audio when disposing DiscoverView
+    GlobalPlaybackManager.instance.pauseAll();
+    GlobalPlaybackManager.instance.block(reason: 'discover_view_disposed');
+
     super.dispose();
   }
 
   void _loadInitialData() {
     try {
-      LoggingService.instance
-          .debug('Loading initial data', tag: 'DiscoverView');
+      LoggingService.instance.debug(
+        'Loading initial data',
+        tag: 'DiscoverView',
+      );
       ref.read(discoverProvider.notifier).loadTrendingCreators();
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error loading initial data',
-          tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error(
+        'Error loading initial data',
+        tag: 'DiscoverView',
+        error: e,
+        stackTrace: stackTrace,
+      );
       // Safe error handling - don't call ErrorHandlerService during startup
       debugPrint('❌ DiscoverView initialization error: $e');
     }
@@ -156,8 +155,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   /// 🔥 FIX: Set up real-time updates for trending creators and notifications
   void _setupRealtimeUpdates() {
     try {
-      LoggingService.instance
-          .debug('Setting up real-time updates', tag: 'DiscoverView');
+      LoggingService.instance.debug(
+        'Setting up real-time updates',
+        tag: 'DiscoverView',
+      );
 
       // 🔥 ENHANCED: Real-time trending creators updates based on video performance
       // Note: We'll refresh trending creators periodically instead of using a simple user stream
@@ -173,27 +174,40 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             .collection('items')
             .where('status', isEqualTo: 'pending')
             .snapshots()
-            .listen((snapshot) {
-          if (mounted) {
-            LoggingService.instance.debug(
+            .listen(
+          (snapshot) {
+            if (mounted) {
+              LoggingService.instance.debug(
                 'Real-time notifications update: ${snapshot.docs.length} pending',
-                tag: 'DiscoverView');
+                tag: 'DiscoverView',
+              );
 
-            // Update notification count in real-time
-            // Note: unreadMessagesProvider is a StreamProvider, so we don't need to update it manually
-            // The provider will automatically update when the stream changes
-          }
-        }, onError: (error) {
-          LoggingService.instance.error('Error in notifications stream',
-              tag: 'DiscoverView', error: error);
-        });
+              // Update notification count in real-time
+              // Note: unreadMessagesProvider is a StreamProvider, so we don't need to update it manually
+              // The provider will automatically update when the stream changes
+            }
+          },
+          onError: (error) {
+            LoggingService.instance.error(
+              'Error in notifications stream',
+              tag: 'DiscoverView',
+              error: error,
+            );
+          },
+        );
       }
 
-      LoggingService.instance
-          .debug('Real-time updates setup complete', tag: 'DiscoverView');
+      LoggingService.instance.debug(
+        'Real-time updates setup complete',
+        tag: 'DiscoverView',
+      );
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error setting up real-time updates',
-          tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error(
+        'Error setting up real-time updates',
+        tag: 'DiscoverView',
+        error: e,
+        stackTrace: stackTrace,
+      );
       // Safe error handling - don't call ErrorHandlerService during startup
       debugPrint('❌ DiscoverView real-time setup error: $e');
     }
@@ -209,8 +223,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       }
 
       LoggingService.instance.debug(
-          '🔄 Refreshing trending creators based on video performance...',
-          tag: 'DiscoverView');
+        '🔄 Refreshing trending creators based on video performance...',
+        tag: 'DiscoverView',
+      );
 
       // Use the enhanced algorithm to get trending creators
       ref.read(discoverProvider.notifier).loadTrendingCreators();
@@ -219,33 +234,46 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     // Also refresh when new videos are uploaded (listen to videos collection)
     _trendingCreatorsSubscription = FirebaseFirestore.instance
         .collection('videos')
-        .where('createdAt',
-            isGreaterThan: Timestamp.fromDate(
-                DateTime.now().subtract(const Duration(hours: 1))))
+        .where(
+          'createdAt',
+          isGreaterThan: Timestamp.fromDate(
+            DateTime.now().subtract(const Duration(hours: 1)),
+          ),
+        )
         .snapshots()
-        .listen((snapshot) {
-      if (mounted && snapshot.docs.isNotEmpty) {
-        LoggingService.instance.debug(
+        .listen(
+      (snapshot) {
+        if (mounted && snapshot.docs.isNotEmpty) {
+          LoggingService.instance.debug(
             '🔥 New videos detected, refreshing trending creators...',
-            tag: 'DiscoverView');
+            tag: 'DiscoverView',
+          );
 
-        // Refresh trending creators when new videos are uploaded
-        ref.read(discoverProvider.notifier).loadTrendingCreators();
-      }
-    }, onError: (error) {
-      LoggingService.instance.error('Error in trending creators refresh stream',
-          tag: 'DiscoverView', error: error);
-    });
+          // Refresh trending creators when new videos are uploaded
+          ref.read(discoverProvider.notifier).loadTrendingCreators();
+        }
+      },
+      onError: (error) {
+        LoggingService.instance.error(
+          'Error in trending creators refresh stream',
+          tag: 'DiscoverView',
+          error: error,
+        );
+      },
+    );
   }
 
   // Lazy loading methods
   Future<List<TrendingCreator>> _loadTrendingCreators(
-      int page, int limit) async {
+    int page,
+    int limit,
+  ) async {
     try {
       // Check cache first
       final cacheKey = 'trending_creators_${page}_$limit';
-      final cachedData =
-          _cachingService.getMemoryCache<List<TrendingCreator>>(cacheKey);
+      final cachedData = _cachingService.getMemoryCache<List<TrendingCreator>>(
+        cacheKey,
+      );
       if (cachedData != null) {
         return cachedData;
       }
@@ -265,10 +293,14 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       // Fallback to provider
       final discoverState = ref.read(discoverProvider);
       final startIndex = page * limit;
-      final endIndex =
-          (startIndex + limit).clamp(0, discoverState.trendingCreators.length);
-      final pageData =
-          discoverState.trendingCreators.sublist(startIndex, endIndex);
+      final endIndex = (startIndex + limit).clamp(
+        0,
+        discoverState.trendingCreators.length,
+      );
+      final pageData = discoverState.trendingCreators.sublist(
+        startIndex,
+        endIndex,
+      );
 
       // Cache the result
       _cachingService.setMemoryCache(cacheKey, pageData);
@@ -285,7 +317,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   Widget _buildTrendingCreatorCard(
-      BuildContext context, TrendingCreator creator, int index) {
+    BuildContext context,
+    TrendingCreator creator,
+    int index,
+  ) {
     return _accessibilityService.createAccessibleListItem(
       semanticLabel:
           'Trending creator ${creator.displayName ?? creator.username}',
@@ -298,8 +333,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   void _onCreatorTapped(TrendingCreator creator) {
     HapticFeedback.lightImpact();
-    LoggingService.instance
-        .debug('Creator tapped: ${creator.username}', tag: 'DiscoverView');
+    LoggingService.instance.debug(
+      'Creator tapped: ${creator.username}',
+      tag: 'DiscoverView',
+    );
 
     // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
     Navigator.of(context).push(
@@ -375,10 +412,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           ),
           Text(
             '${(creator.followerCount / 1000).toStringAsFixed(0)}K followers',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 10,
-            ),
+            style: const TextStyle(color: Colors.white70, fontSize: 10),
           ),
         ],
       ),
@@ -419,7 +453,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   /// On very small screens, clamp to min 12dp gaps
   /// On tall screens, scale up to 24-32dp for a more breathable look
   double _getResponsiveSpacing(
-      BuildContext context, double minSpacing, double maxSpacing) {
+    BuildContext context,
+    double minSpacing,
+    double maxSpacing,
+  ) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
 
@@ -444,14 +481,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       setState(() {
         _selectedCategory = categoryId;
         _currentCategoryPage = 0; // Reset pagination
-        _currentVideoPage = 0; // Reset video pagination
-        _isLoadingMoreVideos = false; // Reset loading state
       });
 
-      // 🔥 FIX: Reset pagination when switching categories
-      if (categoryId != null) {
-        _resetPaginationForCategory(categoryId);
-      }
+      // Category content is loaded dynamically in _getCategoryVideosForFeed
 
       // Show visual feedback and fetch content
       if (categoryId != null) {
@@ -478,8 +510,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           ),
         );
 
-        LoggingService.instance
-            .debug('Category selected: ${category.name}', tag: 'DiscoverView');
+        LoggingService.instance.debug(
+          'Category selected: ${category.name}',
+          tag: 'DiscoverView',
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -497,143 +531,76 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         );
       }
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Error selecting category',
-          tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error(
+        'Error selecting category',
+        tag: 'DiscoverView',
+        error: e,
+        stackTrace: stackTrace,
+      );
       // Safe error handling - don't call ErrorHandlerService during startup
       debugPrint('❌ DiscoverView category selection error: $e');
     }
   }
 
-  /// 🔥 FIX: Load more videos for the current category
-  Future<void> _loadMoreVideos() async {
-    if (_isLoadingMoreVideos || _selectedCategory == null) return;
-
-    setState(() {
-      _isLoadingMoreVideos = true;
-    });
-
-    try {
-      LoggingService.instance.debug(
-          'Loading more videos for category: $_selectedCategory',
-          tag: 'DiscoverView');
-
-      final moreVideos = await _generateCategoryVideos(_selectedCategory!);
-
-      if (mounted) {
-        setState(() {
-          _currentVideoPage++;
-          _isLoadingMoreVideos = false;
-        });
-
-        LoggingService.instance.debug('Loaded ${moreVideos.length} more videos',
-            tag: 'DiscoverView');
-      }
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error loading more videos',
-          tag: 'DiscoverView', error: e, stackTrace: stackTrace);
-
-      if (mounted) {
-        setState(() {
-          _isLoadingMoreVideos = false;
-        });
-      }
-    }
-  }
-
   void _navigateToActivity(BuildContext context) {
     LoggingService.instance.debug(
-        'Bell icon tapped - navigating to ActivityView',
-        tag: 'DiscoverView');
+      'Bell icon tapped - navigating to ActivityView',
+      tag: 'DiscoverView',
+    );
     try {
       // Mark all notifications as read when opening ActivityView
       final currentUser = fa.FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
         final activityNotifier = ref.read(activityProvider.notifier);
         activityNotifier.markAllDelivered(currentUser.uid);
-        LoggingService.instance
-            .debug('Marked all notifications as read', tag: 'DiscoverView');
+        LoggingService.instance.debug(
+          'Marked all notifications as read',
+          tag: 'DiscoverView',
+        );
       }
 
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) {
-            LoggingService.instance
-                .debug('ActivityView page builder called', tag: 'DiscoverView');
+            LoggingService.instance.debug(
+              'ActivityView page builder called',
+              tag: 'DiscoverView',
+            );
             return const ActivityView();
           },
         ),
       );
-      LoggingService.instance
-          .debug('Navigation push completed', tag: 'DiscoverView');
+      LoggingService.instance.debug(
+        'Navigation push completed',
+        tag: 'DiscoverView',
+      );
     } catch (e, stackTrace) {
-      LoggingService.instance.error('Navigation error',
-          tag: 'DiscoverView', error: e, stackTrace: stackTrace);
+      LoggingService.instance.error(
+        'Navigation error',
+        tag: 'DiscoverView',
+        error: e,
+        stackTrace: stackTrace,
+      );
       // Safe error handling - don't call ErrorHandlerService during startup
       debugPrint('❌ DiscoverView navigation error: $e');
     }
   }
 
-  void _showVideoDetails(Map<String, dynamic> video) {
-    // Convert video data to HomeVideo model for VideoPlayerViewOptimized
-    final homeVideo = _convertToHomeVideo(video);
+  /// Safely cast dynamic data to List<String> for hashtags
+  List<String> _safeCastToStringList(dynamic data) {
+    if (data == null) return [];
 
-    // Navigate to full-screen video player with audio enhancement
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          body: Stack(
-            children: [
-              // Full-screen video player with TikTok-style audio enhancement
-              VideoPlayerViewOptimized(
-                video: homeVideo,
-                isCurrentVideo: true,
-                isFirstVideo: true,
-                tabId: 'discoverView', // Specific tab ID for DiscoverView
-                homeViewModel: ref.read(hp.homeProvider.notifier),
-                showSheet: false,
-                sheetType: '',
-                onShowProfile: () {
-                  // Handle profile view
-                  Navigator.of(context).pop();
-                },
-                onShowComments: () {
-                  // Handle comments
-                  Navigator.of(context).pop();
-                },
-                onShowShare: () {
-                  // Handle share
-                  Navigator.of(context).pop();
-                },
-                onShowStreamerCard: () {
-                  // Handle streamer card
-                  Navigator.of(context).pop();
-                },
-                isLiked: false,
-                isBookmarked: false,
-              ),
-              // Close button
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 16,
-                left: 16,
-                child: IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(
-                    Icons.arrow_back,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.5),
-                    shape: const CircleBorder(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (data is List) {
+      return data.map((item) => item.toString()).toList();
+    }
+
+    if (data is String) {
+      // If it's a single string, return it as a list with one item
+      return [data];
+    }
+
+    // For any other type, convert to string and return as single-item list
+    return [data.toString()];
   }
 
   /// Convert video data from DiscoverView format to HomeVideo model
@@ -651,26 +618,19 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             'Unknown Creator',
         avatarURL: video['creatorAvatar'] ?? '',
         bio: video['creatorBio'] ?? '',
-        hashtags: video['creatorHashtags'] ?? [],
-        followerCount: video['creatorFollowers'] ?? 0,
-        followingCount: video['creatorFollowing'] ?? 0,
-        postCount: video['creatorVideos'] ?? 0,
+        hashtags: _safeCastToStringList(video['creatorHashtags']),
+        followerCount: FieldMapper.safeInt(video['creatorFollowers']),
+        followingCount: FieldMapper.safeInt(video['creatorFollowing']),
+        postCount: FieldMapper.safeInt(video['creatorVideos']),
       ),
-      likes: video['likes'] ?? 0,
-      comments: video['comments'] ?? 0,
-      views: video['views'] ?? 0,
-      duration: video['duration'] ?? 0.0,
-      isLiked: false,
-      isFavorited: false,
-      createdAt: Timestamp.now(),
+      likes: FieldMapper.safeInt(video['likes']),
+      comments: FieldMapper.safeInt(video['comments']),
+      views: FieldMapper.safeInt(video['views']),
+      duration: FieldMapper.safeDouble(video['duration']),
+      isLiked: video['isLiked'] ?? false,
+      isFavorited: video['isFavorited'] ?? false,
+      createdAt: video['createdAt'] ?? Timestamp.now(),
     );
-  }
-
-  bool _hasMoreVideos(String categoryId) {
-    if (!_cachedVideos.containsKey(categoryId)) return false;
-    final allVideos = _cachedVideos[categoryId]!;
-    final currentCount = (_currentVideoPage + 1) * _videosPerPage;
-    return currentCount < allVideos.length;
   }
 
   Widget _buildNotificationButton(BuildContext context, WidgetRef ref) {
@@ -694,8 +654,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
     return GestureDetector(
       onTap: () {
-        LoggingService.instance
-            .debug('GestureDetector onTap triggered', tag: 'DiscoverView');
+        LoggingService.instance.debug(
+          'GestureDetector onTap triggered',
+          tag: 'DiscoverView',
+        );
         _navigateToActivity(context);
       },
       child: Container(
@@ -748,9 +710,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: _backgroundGradient,
-        ),
+        decoration: const BoxDecoration(gradient: _backgroundGradient),
         child: CustomScrollView(
           slivers: [
             // App Bar
@@ -771,9 +731,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 ),
               ),
               centerTitle: true,
-              actions: [
-                _buildNotificationButton(context, ref),
-              ],
+              actions: [_buildNotificationButton(context, ref)],
             ),
 
             // Search Bar
@@ -789,7 +747,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     // );
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text('Search feature coming soon!')),
+                        content: Text('Search feature coming soon!'),
+                      ),
                     );
                   },
                   child: Container(
@@ -805,8 +764,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       children: [
-                        Icon(Icons.search,
-                            color: Colors.white.withValues(alpha: 0.6)),
+                        Icon(
+                          Icons.search,
+                          color: Colors.white.withValues(alpha: 0.6),
+                        ),
                         const SizedBox(width: 10),
                         Text(
                           'Search creators, videos, hashtags…',
@@ -832,14 +793,20 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Trending Creators Section with Lazy Loading
             SliverToBoxAdapter(
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SectionHeader(
-                      title: 'Trending Creators',
-                      action: () => discoverViewModel.loadTrendingCreators(),
+                    Text(
+                      'Trending Creators',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     SizedBox(
                       height: 200,
@@ -861,12 +828,21 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Categories Section
             SliverToBoxAdapter(
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SectionHeader(title: 'Categories', action: null),
+                    const Text(
+                      'Categories',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
 
                     // Categories PageView with proper spacing
                     SizedBox(
@@ -880,8 +856,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         itemCount: (discoverState.categories.length / 6).ceil(),
                         itemBuilder: (context, pageIndex) {
                           final startIndex = pageIndex * 6;
-                          final endIndex = (startIndex + 6)
-                              .clamp(0, discoverState.categories.length);
+                          final endIndex = (startIndex + 6).clamp(
+                            0,
+                            discoverState.categories.length,
+                          );
                           final pageCategories = discoverState.categories
                               .sublist(startIndex, endIndex);
 
@@ -937,7 +915,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                     // Responsive spacing between categories and dots (16-24dp as specified)
                     SizedBox(
                       height: _getResponsiveSpacing(
-                          context, 16, 24), // Normal spacing
+                        context,
+                        16,
+                        24,
+                      ), // Normal spacing
                     ),
 
                     // Page indicator with proper safe area handling
@@ -959,8 +940,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                                 shape: BoxShape.circle,
                                 color: index == _currentCategoryPage
                                     ? const Color(0xFF40DCD1)
-                                    : const Color(0xFF6B5AE0)
-                                        .withValues(alpha: 0.4),
+                                    : const Color(
+                                        0xFF6B5AE0,
+                                      ).withValues(alpha: 0.4),
                               ),
                             ),
                           ),
@@ -977,12 +959,21 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               // Default view - show resources
               SliverToBoxAdapter(
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionHeader(title: 'Resources', action: null),
+                      const Text(
+                        'Resources',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -1001,14 +992,12 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 ),
               ),
             ] else ...[
-              // Category selected - show 3-column video grid with pagination
+              // Category selected - show 3-column video grid with tap to open swipeable feed
               _buildCategoryVideoGridSliver(discoverState, discoverViewModel),
             ],
 
             // Bottom padding for tab bar
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 100),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 100)),
           ],
         ),
       ),
@@ -1016,7 +1005,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   Widget _buildCategoryVideoGridSliver(
-      DiscoverState discoverState, DiscoverNotifier discoverViewModel) {
+    DiscoverState discoverState,
+    DiscoverNotifier discoverViewModel,
+  ) {
     if (_selectedCategory == null)
       return const SliverToBoxAdapter(child: SizedBox.shrink());
 
@@ -1065,75 +1056,20 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
             const SizedBox(height: 16),
 
-            // 3-column video grid with pagination
-            _buildVideoGridWithPagination(selectedCategory.id, discoverState),
+            // 3-column video grid with tap to open swipeable feed
+            _buildVideoGridWithTapToSwipe(selectedCategory.id, discoverState),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildLoadingState() {
-    return const SizedBox(
-      height: 120,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-            SizedBox(height: 12),
-            Text(
-              'Loading trending creators...',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyTrendingCreatorsState() {
-    return SizedBox(
-      height: 120,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.people,
-              size: 32,
-              color: Colors.white70,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No trending creators yet',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.85),
-                fontSize: 14,
-              ),
-            ),
-            Text(
-              'Popular creators will appear here',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.65),
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVideoGridWithPagination(
-      String categoryId, DiscoverState discoverState) {
+  Widget _buildVideoGridWithTapToSwipe(
+    String categoryId,
+    DiscoverState discoverState,
+  ) {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _getCategoryVideos(categoryId),
+      future: _getCategoryVideosForFeed(categoryId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -1150,527 +1086,43 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         final categoryVideos = snapshot.data ?? [];
 
         if (categoryVideos.isEmpty) {
-          return _buildEmptyCategoryState(categoryId);
+          return _buildEmptyCategoryState();
         }
 
-        return Column(
-          children: [
-            // Video grid
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 2,
-                mainAxisSpacing: 2,
-                childAspectRatio:
-                    9 / 16, // 9:16 aspect ratio for portrait videos
-              ),
-              itemCount: categoryVideos.length,
-              itemBuilder: (context, index) {
-                return _buildVideoGridItem(categoryVideos[index], categoryId);
-              },
-            ),
-
-            // Load more button or loading indicator
-            if (_hasMoreVideos(categoryId)) ...[
-              const SizedBox(height: 16),
-              if (_isLoadingMoreVideos)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  ),
-                )
-              else
-                Center(
-                  child: InstantTextButton(
-                    onPressed: _loadMoreVideos,
-                    hapticType: HapticFeedbackType.mediumImpact,
-                    child: const Text(
-                      'Load More Videos',
-                      style: TextStyle(
-                        color: Color(0xFF6633CC),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ],
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 2,
+            mainAxisSpacing: 2,
+            childAspectRatio: 9 / 16, // 9:16 aspect ratio for portrait videos
+          ),
+          itemCount: categoryVideos.length,
+          itemBuilder: (context, index) {
+            return _buildVideoGridItemWithTap(
+              categoryVideos[index],
+              categoryVideos,
+              index,
+            );
+          },
         );
       },
     );
   }
 
-  Future<List<Map<String, dynamic>>> _getCategoryVideos(
-      String categoryId) async {
-    // Check if we have cached videos for this category
-    if (_cachedVideos.containsKey(categoryId)) {
-      final cachedVideos = _cachedVideos[categoryId]!;
-      final endIndex = ((_currentVideoPage + 1) * _videosPerPage)
-          .clamp(0, cachedVideos.length);
-      return cachedVideos.sublist(0, endIndex);
-    }
-
-    // Generate and cache all videos for this category
-    final allVideos = await _generateCategoryVideos(categoryId);
-    _cachedVideos[categoryId] = allVideos;
-
-    // Return first page
-    final endIndex = _videosPerPage.clamp(0, allVideos.length);
-    return allVideos.sublist(0, endIndex);
-  }
-
-  Future<List<Map<String, dynamic>>> _generateCategoryVideos(
-      String categoryId) async {
-    return await _loadVideosWithRetry(categoryId);
-  }
-
-  /// 🔥 ENHANCED: Load mixed feed of new and trending videos for a category
-  Future<List<Map<String, dynamic>>> _loadMixedCategoryVideos(
-      String categoryId, DocumentSnapshot? startAfter) async {
-    try {
-      LoggingService.instance.debug(
-          'Loading mixed videos for category: $categoryId',
-          tag: 'DiscoverView');
-
-      // Step 1: Load recent videos (last 7 days) - 60% of feed
-      final recentVideos = await _loadRecentVideos(categoryId, startAfter);
-
-      // Step 2: Load trending videos (high engagement) - 40% of feed
-      final trendingVideos = await _loadTrendingVideos(categoryId, startAfter);
-
-      // Step 3: Mix and sort videos
-      final mixedVideos = _mixAndSortVideos(recentVideos, trendingVideos);
-
-      // Step 4: Apply pagination
-      final paginatedVideos = _applyPagination(mixedVideos, startAfter);
-
-      LoggingService.instance.debug(
-          'Mixed feed: ${recentVideos.length} recent + ${trendingVideos.length} trending = ${paginatedVideos.length} total',
-          tag: 'DiscoverView');
-
-      return paginatedVideos;
-    } catch (e, stackTrace) {
-      LoggingService.instance.error(
-          'Error loading mixed category videos for $categoryId',
-          tag: 'DiscoverView',
-          error: e,
-          stackTrace: stackTrace);
-      return [];
-    }
-  }
-
-  /// Load recent videos (last 7 days)
-  Future<List<Map<String, dynamic>>> _loadRecentVideos(
-      String categoryId, DocumentSnapshot? startAfter) async {
-    final now = DateTime.now();
-    final sevenDaysAgo = now.subtract(const Duration(days: 7));
-
-    Query query = FirebaseFirestore.instance
-        .collection('videos')
-        .where('status', isEqualTo: 'published')
-        .where('privacy', isEqualTo: 'Everyone')
-        .where('category', isEqualTo: categoryId)
-        .where('createdAt', isGreaterThan: Timestamp.fromDate(sevenDaysAgo))
-        .orderBy('createdAt', descending: true)
-        .limit((_videosPerPage * 0.6).round()); // 60% recent videos
-
-    if (startAfter != null) {
-      query = query.startAfterDocument(startAfter);
-    }
-
-    final snapshot = await query.get();
-
-    LoggingService.instance.debug(
-        'Category query returned ${snapshot.docs.length} videos for category $categoryId',
-        tag: 'DiscoverView');
-
-    return snapshot.docs.map((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      return {
-        'docId': doc.id,
-        'data': data,
-        'trendingScore': _calculateVideoTrendingScore(data, now),
-        'isNew': true,
-        '_documentSnapshot': doc,
-      };
-    }).toList();
-  }
-
-  /// Load trending videos (high engagement)
-  Future<List<Map<String, dynamic>>> _loadTrendingVideos(
-      String categoryId, DocumentSnapshot? startAfter) async {
-    final now = DateTime.now();
-
-    // 🔥 FIX: Try category-specific query first, then fallback to all videos
-    Query query = FirebaseFirestore.instance
-        .collection('videos')
-        .where('status', isEqualTo: 'published')
-        .where('privacy', isEqualTo: 'Everyone')
-        .where('category', isEqualTo: categoryId)
-        .orderBy('likes', descending: true) // Order by engagement
-        .limit((_videosPerPage * 0.4).round()); // 40% trending videos
-
-    if (startAfter != null) {
-      query = query.startAfterDocument(startAfter);
-    }
-
-    final snapshot = await query.get();
-
-    LoggingService.instance.debug(
-        'Category trending query returned ${snapshot.docs.length} videos for category $categoryId',
-        tag: 'DiscoverView');
-
-    return snapshot.docs.map((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      return {
-        'docId': doc.id,
-        'data': data,
-        'trendingScore': _calculateVideoTrendingScore(data, now),
-        'isNew': false,
-        '_documentSnapshot': doc,
-      };
-    }).toList();
-  }
-
-  /// Mix and sort videos with intelligent algorithm
-  List<Map<String, dynamic>> _mixAndSortVideos(
-      List<Map<String, dynamic>> recentVideos,
-      List<Map<String, dynamic>> trendingVideos) {
-    // Remove duplicates (same video ID)
-    final allVideos = <String, Map<String, dynamic>>{};
-
-    // Add recent videos first (they get priority for new content)
-    for (final video in recentVideos) {
-      allVideos[video['docId']] = video;
-    }
-
-    // Add trending videos (only if not already added)
-    for (final video in trendingVideos) {
-      if (!allVideos.containsKey(video['docId'])) {
-        allVideos[video['docId']] = video;
-      }
-    }
-
-    final mixedVideos = allVideos.values.toList();
-
-    // Sort by intelligent algorithm: new videos with high engagement first
-    mixedVideos.sort((a, b) {
-      final aScore = a['trendingScore'] as double;
-      final bScore = b['trendingScore'] as double;
-      final aIsNew = a['isNew'] as bool;
-      final bIsNew = b['isNew'] as bool;
-
-      // New videos with high engagement get highest priority
-      if (aIsNew && !bIsNew && aScore > 100) return -1;
-      if (!aIsNew && bIsNew && bScore > 100) return 1;
-
-      // Then sort by trending score
-      return bScore.compareTo(aScore);
-    });
-
-    return mixedVideos;
-  }
-
-  /// Apply pagination to mixed results
-  List<Map<String, dynamic>> _applyPagination(
-      List<Map<String, dynamic>> mixedVideos, DocumentSnapshot? startAfter) {
-    // For now, just return the mixed videos (pagination is handled at higher level)
-    return mixedVideos.take(_videosPerPage).toList();
-  }
-
-  /// Calculate trending score for a video (same as trending creators algorithm)
-  double _calculateVideoTrendingScore(
-      Map<String, dynamic> videoData, DateTime now) {
-    final views = (videoData['views'] ?? 0) as int;
-    final likes = (videoData['likes'] ?? 0) as int;
-    final comments = (videoData['comments'] ?? 0) as int;
-    final shares = (videoData['shares'] ?? 0) as int;
-
-    // Engagement rate
-    final engagementRate =
-        views > 0 ? (likes + comments + shares) / views : 0.0;
-
-    // Recency boost
-    final createdAt = videoData['createdAt'] as Timestamp?;
-    double recencyBoost = 1.0;
-    if (createdAt != null) {
-      final hoursAgo = now.difference(createdAt.toDate()).inHours;
-      recencyBoost = 1.0 + (24.0 / (hoursAgo + 1));
-    }
-
-    // Calculate final score
-    final baseScore =
-        (views * 0.1) + (likes * 0.3) + (comments * 0.5) + (shares * 0.7);
-    final engagementMultiplier = 1.0 + (engagementRate * 2.0);
-    final finalScore = baseScore * engagementMultiplier * recencyBoost;
-
-    return finalScore;
-  }
-
-  /// 🔥 FIX: Load videos with retry logic and proper error handling
-  Future<List<Map<String, dynamic>>> _loadVideosWithRetry(
-      String categoryId) async {
-    final retryCount = _retryCounts[categoryId] ?? 0;
-
-    try {
-      LoggingService.instance.debug(
-          'Loading videos for category: $categoryId (attempt ${retryCount + 1})',
-          tag: 'DiscoverView');
-
-      // Clear any previous error messages
-      _errorMessages.remove(categoryId);
-
-      // 🔥 FIX: Add pagination support
-      final startAfter = _getLastDocumentForCategory(categoryId);
-
-      // 🔥 ENHANCED: Load mixed feed of new and trending videos
-      final mixedVideos =
-          await _loadMixedCategoryVideos(categoryId, startAfter);
-
-      if (mixedVideos.isEmpty) {
-        // Reset retry count on successful empty result
-        _retryCounts.remove(categoryId);
-        return [];
-      }
-
-      LoggingService.instance.debug(
-          'Found ${mixedVideos.length} mixed videos for category $categoryId',
-          tag: 'DiscoverView');
-
-      // Store the last document for pagination (use the last document from mixed results)
-      if (mixedVideos.isNotEmpty) {
-        // For mixed results, we'll track pagination differently
-        _setLastDocumentForCategory(
-            categoryId, mixedVideos.last['_documentSnapshot']);
-      }
-
-      // 🔥 FIX: Extract all unique user IDs first (batch approach)
-      final userIds = <String>{};
-      final videoDataList = <Map<String, dynamic>>[];
-
-      for (final videoData in mixedVideos) {
-        final data = videoData['data'] as Map<String, dynamic>?;
-        if (data == null) continue;
-
-        final userId = (data['userId'] ??
-            data['creatorId'] ??
-            data['creator_id']) as String?;
-
-        if (userId != null) {
-          userIds.add(userId);
-          videoDataList.add({
-            'docId': videoData['docId'],
-            'data': data,
-            'userId': userId,
-            'trendingScore':
-                videoData['trendingScore'], // Include trending score
-            'isNew': videoData['isNew'], // Include new video flag
-          });
-        }
-      }
-
-      if (userIds.isEmpty) {
-        LoggingService.instance
-            .debug('No valid user IDs found in videos', tag: 'DiscoverView');
-        _retryCounts.remove(categoryId);
-        return [];
-      }
-
-      LoggingService.instance.debug(
-          'Fetching user data for ${userIds.length} unique users',
-          tag: 'DiscoverView');
-
-      // 🔥 FIX: Batch fetch all users at once (eliminates N+1 queries)
-      final usersSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: userIds.toList())
-          .get();
-
-      // Create user lookup map for O(1) access
-      final userMap = <String, Map<String, dynamic>>{};
-      for (final doc in usersSnapshot.docs) {
-        userMap[doc.id] = doc.data();
-      }
-
-      LoggingService.instance.debug(
-          'Retrieved ${userMap.length} user documents',
-          tag: 'DiscoverView');
-
-      // 🔥 FIX: Combine video and user data efficiently
-      final videos = <Map<String, dynamic>>[];
-
-      for (final videoData in videoDataList) {
-        final data = videoData['data'] as Map<String, dynamic>;
-        final userId = videoData['userId'] as String;
-        final userData = userMap[userId];
-
-        if (userData == null) {
-          LoggingService.instance.debug(
-              'User data not found for userId: $userId',
-              tag: 'DiscoverView');
-          continue;
-        }
-
-        videos.add({
-          'id': videoData['docId'],
-          'title': FieldMapper.safeString(
-              data['caption'] ?? data['title'] ?? 'Untitled'),
-          'creator': FieldMapper.getDisplayName(userData),
-          'thumbnail': FieldMapper.getThumbnailUrl(data),
-          'views':
-              '${FieldMapper.safeInt(data['views'] ?? data['viewsCount'])}',
-          'duration': _formatDuration(data['duration']),
-          'color': _getCategoryColor(categoryId),
-          'videoUrl': FieldMapper.getVideoUrl(data),
-          'creatorId': userId,
-          'creatorAvatar': FieldMapper.getAvatarUrl(userData),
-          'creatorUsername': FieldMapper.safeString(userData['username']),
-          // 🔥 FIX: Add missing fields for complete data
-          'likes': FieldMapper.safeInt(data['likes'] ?? data['likesCount']),
-          'comments':
-              FieldMapper.safeInt(data['comments'] ?? data['commentsCount']),
-          'createdAt': data['createdAt'],
-          'isLiked': data['isLiked'] ?? false,
-          'isFavorited': data['isFavorited'] ?? false,
-          // 🔥 ENHANCED: Add trending indicators
-          'trendingScore': videoData['trendingScore'] ?? 0.0,
-          'isNew': videoData['isNew'] ?? false,
-          'isTrending': (videoData['trendingScore'] ?? 0.0) > 100.0,
-        });
-      }
-
-      // Reset retry count on successful load
-      _retryCounts.remove(categoryId);
-
-      LoggingService.instance.debug(
-          'Successfully processed ${videos.length} videos for category $categoryId',
-          tag: 'DiscoverView');
-      return videos;
-    } catch (e, stackTrace) {
-      LoggingService.instance.error(
-          'Error loading category videos for $categoryId (attempt ${retryCount + 1})',
-          tag: 'DiscoverView',
-          error: e,
-          stackTrace: stackTrace);
-
-      // 🔥 FIX: Implement retry logic with exponential backoff
-      if (retryCount < _maxRetries) {
-        _retryCounts[categoryId] = retryCount + 1;
-
-        // Exponential backoff: wait 1s, 2s, 4s
-        final delayMs = 1000 * (1 << retryCount);
-        LoggingService.instance
-            .debug('Retrying in ${delayMs}ms...', tag: 'DiscoverView');
-
-        await Future.delayed(Duration(milliseconds: delayMs));
-        return await _loadVideosWithRetry(categoryId);
-      } else {
-        // Max retries reached, show specific error message
-        final errorMessage = _getSpecificErrorMessage(e);
-        _errorMessages[categoryId] = errorMessage;
-
-        LoggingService.instance.error(
-            'Max retries reached for category $categoryId',
-            tag: 'DiscoverView');
-        // Safe error handling - don't call ErrorHandlerService during startup
-        debugPrint('❌ DiscoverView max retries error: $e');
-
-        return [];
-      }
-    }
-  }
-
-  /// 🔥 FIX: Get specific error messages for better user experience
-  String _getSpecificErrorMessage(dynamic error) {
-    final errorString = error.toString().toLowerCase();
-
-    if (errorString.contains('permission-denied')) {
-      return 'Permission denied. Please sign in to view videos.';
-    } else if (errorString.contains('network') ||
-        errorString.contains('timeout')) {
-      return 'Network error. Please check your connection and try again.';
-    } else if (errorString.contains('not-found')) {
-      return 'No videos found for this category.';
-    } else if (errorString.contains('unavailable')) {
-      return 'Service temporarily unavailable. Please try again later.';
-    } else {
-      return 'Failed to load videos. Please try again.';
-    }
-  }
-
-  /// Format duration from seconds to MM:SS format
-  String _formatDuration(dynamic duration) {
-    if (duration == null) return '0:00';
-
-    int seconds;
-    if (duration is double) {
-      seconds = duration.round();
-    } else if (duration is int) {
-      seconds = duration;
-    } else {
-      return '0:00';
-    }
-
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
-  }
-
-  /// 🔥 FIX: Pagination helper methods
-  DocumentSnapshot? _getLastDocumentForCategory(String categoryId) {
-    return _lastDocuments[categoryId];
-  }
-
-  void _setLastDocumentForCategory(
-      String categoryId, DocumentSnapshot document) {
-    _lastDocuments[categoryId] = document;
-  }
-
-  void _resetPaginationForCategory(String categoryId) {
-    _lastDocuments.remove(categoryId);
-  }
-
-  int _getCategoryColor(String categoryId) {
-    // Return appropriate color for category
-    switch (categoryId) {
-      case 'gaming':
-        return 0xFFFF6CAB;
-      case 'music':
-        return 0xFF8E54E9;
-      case 'art':
-        return 0xFF3D99F7;
-      case 'comedy':
-        return 0xFF4CAF50;
-      case 'dance':
-        return 0xFFFF9800;
-      case 'sports':
-        return 0xFF9C27B0;
-      case 'education':
-        return 0xFFE91E63;
-      case 'lifestyle':
-        return 0xFFFF5722;
-      case 'food':
-        return 0xFF2196F3;
-      case 'travel':
-        return 0xFF795548;
-      case 'fashion':
-        return 0xFF607D8B;
-      default:
-        return 0xFF6633CC; // Default purple color
-    }
-  }
-
-  Widget _buildVideoGridItem(Map<String, dynamic> video, String categoryId) {
+  Widget _buildVideoGridItemWithTap(
+    Map<String, dynamic> video,
+    List<Map<String, dynamic>> allVideos,
+    int currentIndex,
+  ) {
     return GestureDetector(
       onTap: () {
-        LoggingService.instance
-            .debug('Tapped video: ${video['title']}', tag: 'DiscoverView');
-        _showVideoDetails(video);
+        LoggingService.instance.debug(
+          'Tapped video: ${video['title']}',
+          tag: 'DiscoverView',
+        );
+        _openSwipeableVideoFeed(allVideos, currentIndex);
       },
       child: Container(
         decoration: BoxDecoration(
@@ -1680,38 +1132,61 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Video thumbnail or placeholder
-            if (video['thumbnailUrl'] != null || video['thumbnailURL'] != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  video['thumbnailUrl'] ?? video['thumbnailURL'] ?? '',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: Colors.grey[800],
-                      child: const Center(
-                        child: Icon(
-                          Icons.video_library_outlined,
-                          color: Colors.white54,
-                          size: 32,
-                        ),
+            // Video thumbnail
+            Builder(
+              builder: (context) {
+                final thumbnailUrl = video['thumbnailUrl'] ??
+                    video['thumbnailURL'] ??
+                    video['thumbnail'] ??
+                    '';
+
+                if (thumbnailUrl.isNotEmpty) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      thumbnailUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: Colors.grey[800],
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey[800],
+                          child: const Center(
+                            child: Icon(
+                              Icons.video_library_outlined,
+                              color: Colors.white54,
+                              size: 32,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                } else {
+                  return Container(
+                    color: Colors.grey[800],
+                    child: const Center(
+                      child: Icon(
+                        Icons.video_library_outlined,
+                        color: Colors.white54,
+                        size: 32,
                       ),
-                    );
-                  },
-                ),
-              )
-            else
-              Container(
-                color: Colors.grey[800],
-                child: const Center(
-                  child: Icon(
-                    Icons.video_library_outlined,
-                    color: Colors.white54,
-                    size: 32,
-                  ),
-                ),
-              ),
+                    ),
+                  );
+                }
+              },
+            ),
             // Play button overlay
             const Center(
               child: Icon(
@@ -1721,239 +1196,988 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               ),
             ),
             // Duration badge (if available)
-            if (video['duration'] != null)
-              Positioned(
-                bottom: 8,
-                right: 8,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _formatDuration(video['duration']),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
+            Builder(
+              builder: (context) {
+                // Check both direct duration field and metadata.duration field
+                dynamic duration = video['duration'];
+                if (duration == null) {
+                  final metadata = video['metadata'] as Map<String, dynamic>?;
+                  duration = metadata?['duration'];
+                }
 
-            // 🔥 ENHANCED: Trending and New video indicators
-            // New video indicator (top-left)
-            if (video['isNew'] == true)
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4CAF50), // Green for new
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+                if (duration != null) {
+                  return Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
                       ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.fiber_new,
-                        color: Colors.white,
-                        size: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                      SizedBox(width: 2),
-                      Text(
-                        'NEW',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // Trending video indicator (top-right)
-            if (video['isTrending'] == true)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF6CAB), // Pink for trending
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.trending_up,
-                        color: Colors.white,
-                        size: 12,
-                      ),
-                      SizedBox(width: 2),
-                      Text(
-                        'HOT',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // Engagement score indicator (bottom-left)
-            if (video['trendingScore'] != null && video['trendingScore'] > 50)
-              Positioned(
-                bottom: 8,
-                left: 8,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.favorite,
-                        color: Color(0xFFFF6CAB),
-                        size: 12,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        '${(video['trendingScore'] as double).round()}',
+                      child: Text(
+                        _formatDuration(duration),
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildEmptyCategoryState(String categoryId) {
-    return Container(
-      height: 300,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
-          width: 1,
+  String _formatDuration(dynamic duration) {
+    if (duration == null) return '0:00';
+
+    // Debug logging to see what we're getting
+    LoggingService.instance.debug(
+      'Duration value: $duration, type: ${duration.runtimeType}',
+      tag: 'DiscoverView',
+    );
+
+    int seconds = 0;
+
+    if (duration is double) {
+      seconds = duration.round();
+    } else if (duration is int) {
+      seconds = duration;
+    } else if (duration is String) {
+      // Handle duration stored as string (e.g., "120" or "2:00")
+      if (duration.contains(':')) {
+        // Parse format like "2:00" or "1:30"
+        final parts = duration.split(':');
+        if (parts.length == 2) {
+          final minutes = int.tryParse(parts[0]) ?? 0;
+          final secs = int.tryParse(parts[1]) ?? 0;
+          seconds = minutes * 60 + secs;
+        }
+      } else {
+        // Parse as seconds string
+        seconds = int.tryParse(duration) ?? 0;
+      }
+    } else if (duration is Duration) {
+      seconds = duration.inSeconds;
+    }
+
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    final formatted = '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
+
+    LoggingService.instance.debug(
+      'Formatted duration: $formatted',
+      tag: 'DiscoverView',
+    );
+    return formatted;
+  }
+
+  void _openSwipeableVideoFeed(
+    List<Map<String, dynamic>> videos,
+    int startIndex,
+  ) {
+    // Convert to HomeVideo objects for VideoPlayerViewOptimized
+    final homeVideos =
+        videos.map((video) => _convertToHomeVideo(video)).toList();
+
+    // Navigate to full-screen swipeable video feed using HomeView pattern
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _CategoryVideoFeed(
+          videos: homeVideos,
+          startIndex: startIndex,
+          categoryId: _selectedCategory ?? 'unknown',
         ),
       ),
+    );
+  }
+
+  /// Category video feed widget that follows HomeView's audio management pattern exactly
+  Widget _CategoryVideoFeed({
+    required List<HomeVideo> videos,
+    required int startIndex,
+    required String categoryId,
+  }) {
+    return _CategoryVideoFeedStateful(
+      videos: videos,
+      startIndex: startIndex,
+      categoryId: categoryId,
+    );
+  }
+
+  /// Get videos for the category feed with proper ordering (new videos first, then shuffle)
+  Future<List<Map<String, dynamic>>> _getCategoryVideosForFeed(
+    String categoryId,
+  ) async {
+    try {
+      LoggingService.instance.debug(
+        'Loading category feed videos for: $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      // Load mixed videos (new + trending)
+      final mixedVideos = await _loadMixedCategoryVideos(categoryId, null);
+
+      LoggingService.instance.debug(
+        'Raw mixed videos loaded: ${mixedVideos.length} for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      if (mixedVideos.isEmpty) {
+        LoggingService.instance.debug(
+          'No mixed videos found for $categoryId',
+          tag: 'DiscoverView',
+        );
+        return [];
+      }
+
+      // Debug: Log video data to see duration field
+      for (int i = 0; i < mixedVideos.length && i < 3; i++) {
+        final video = mixedVideos[i];
+        LoggingService.instance.debug(
+          'Video $i: title=${video['title']}, duration=${video['duration']}, durationType=${video['duration']?.runtimeType}',
+          tag: 'DiscoverView',
+        );
+
+        // Also check metadata.duration field
+        final metadata = video['metadata'] as Map<String, dynamic>?;
+        if (metadata != null) {
+          LoggingService.instance.debug(
+            'Video $i metadata: duration=${metadata['duration']}, durationType=${metadata['duration']?.runtimeType}',
+            tag: 'DiscoverView',
+          );
+        }
+
+        // Log all available fields
+        LoggingService.instance.debug(
+          'Video $i all fields: ${video.keys.toList()}',
+          tag: 'DiscoverView',
+        );
+      }
+
+      // Sort videos: new videos first, then by trending score
+      mixedVideos.sort((a, b) {
+        final aIsNew = a['isNew'] as bool;
+        final bIsNew = b['isNew'] as bool;
+        final aScore = a['trendingScore'] as double;
+        final bScore = b['trendingScore'] as double;
+
+        // New videos always appear first
+        if (aIsNew && !bIsNew) return -1;
+        if (!aIsNew && bIsNew) return 1;
+
+        // Then sort by trending score (highest first)
+        return bScore.compareTo(aScore);
+      });
+
+      // Convert to the format expected by the UI
+      final videos = <Map<String, dynamic>>[];
+      final userIds = <String>{};
+
+      for (final videoData in mixedVideos) {
+        final data = videoData['data'] as Map<String, dynamic>?;
+        if (data == null) {
+          LoggingService.instance.debug(
+            'Skipping video with null data: ${videoData['docId']}',
+            tag: 'DiscoverView',
+          );
+          continue;
+        }
+
+        final userId = (data['userId'] ??
+            data['creatorId'] ??
+            data['creator_id']) as String?;
+        if (userId != null) {
+          userIds.add(userId);
+        }
+      }
+
+      LoggingService.instance.debug(
+        'Found ${userIds.length} unique user IDs for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      // Batch fetch user data
+      final usersSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: userIds.toList())
+          .get();
+
+      final userMap = <String, Map<String, dynamic>>{};
+      for (final doc in usersSnapshot.docs) {
+        userMap[doc.id] = doc.data();
+      }
+
+      LoggingService.instance.debug(
+        'Fetched ${userMap.length} user documents for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      // Build final video list
+      for (final videoData in mixedVideos) {
+        final data = videoData['data'] as Map<String, dynamic>;
+        final userId = (data['userId'] ??
+            data['creatorId'] ??
+            data['creator_id']) as String?;
+
+        if (userId == null) {
+          LoggingService.instance.debug(
+            'Skipping video with null userId: ${videoData['docId']}',
+            tag: 'DiscoverView',
+          );
+          continue;
+        }
+
+        final userData = userMap[userId];
+        if (userData == null) {
+          LoggingService.instance.debug(
+            'Skipping video with missing user data: ${videoData['docId']}, userId: $userId',
+            tag: 'DiscoverView',
+          );
+          continue;
+        }
+
+        final thumbnailUrl = FieldMapper.getThumbnailUrl(data);
+
+        videos.add({
+          'id': videoData['docId'],
+          'title': FieldMapper.safeString(
+            data['caption'] ?? data['title'] ?? 'Untitled',
+          ),
+          'creator': FieldMapper.getDisplayName(userData),
+          'thumbnail': thumbnailUrl,
+          'thumbnailUrl': thumbnailUrl,
+          'thumbnailURL': thumbnailUrl,
+          'views': FieldMapper.safeInt(data['views'] ?? data['viewsCount']),
+          'duration': FieldMapper.safeDouble(data['duration']),
+          'videoUrl': FieldMapper.getVideoUrl(data),
+          'creatorId': userId,
+          'creatorAvatar': FieldMapper.getAvatarUrl(userData),
+          'creatorUsername': FieldMapper.safeString(userData['username']),
+          'creatorDisplayName': FieldMapper.getDisplayName(userData),
+          'creatorBio': FieldMapper.safeString(userData['bio']),
+          'creatorHashtags': userData['hashtags'] ?? [],
+          'creatorFollowers': FieldMapper.safeInt(userData['followerCount']),
+          'creatorFollowing': FieldMapper.safeInt(userData['followingCount']),
+          'creatorVideos': FieldMapper.safeInt(userData['postCount']),
+          'likes': FieldMapper.safeInt(data['likes'] ?? data['likesCount']),
+          'comments': FieldMapper.safeInt(
+            data['comments'] ?? data['commentsCount'],
+          ),
+          'createdAt': data['createdAt'],
+          'isLiked': data['isLiked'] ?? false,
+          'isFavorited': data['isFavorited'] ?? false,
+          'trendingScore': videoData['trendingScore'] ?? 0.0,
+          'isNew': videoData['isNew'] ?? false,
+          'isTrending': (videoData['trendingScore'] ?? 0.0) > 100.0,
+        });
+      }
+
+      LoggingService.instance.debug(
+        'Category feed prepared ${videos.length} videos for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      return videos;
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error loading category feed videos for $categoryId',
+        tag: 'DiscoverView',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return [];
+    }
+  }
+
+  Widget _buildLoadingState() {
+    return const SizedBox(
+      height: 120,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Loading trending creators...',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyTrendingCreatorsState() {
+    return SizedBox(
+      height: 120,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.people, size: 32, color: Colors.white70),
+            const SizedBox(height: 12),
+            Text(
+              'No trending creators yet',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyCategoryState() {
+    return SizedBox(
+      height: 200,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
               Icons.video_library_outlined,
-              color: Colors.white.withValues(alpha: 0.5),
-              size: 64,
+              size: 48,
+              color: Colors.white70,
             ),
             const SizedBox(height: 16),
             Text(
               'No videos found for this category',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
+                color: Colors.white70,
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Check back later for new content!',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 14,
-              ),
+              'Be the first to upload a video!',
+              style: TextStyle(color: Colors.white54, fontSize: 14),
             ),
           ],
         ),
       ),
     );
   }
+
+  /// Load mixed category videos (recent + trending)
+  Future<List<Map<String, dynamic>>> _loadMixedCategoryVideos(
+    String categoryId,
+    DocumentSnapshot? startAfter,
+  ) async {
+    try {
+      LoggingService.instance.debug(
+        'Loading mixed category videos for: $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      // Load recent videos (last 7 days)
+      final recentVideos = await _loadRecentVideos(categoryId, startAfter);
+      LoggingService.instance.debug(
+        'Loaded ${recentVideos.length} recent videos for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      // Load trending videos
+      final trendingVideos = await _loadTrendingVideos(categoryId, startAfter);
+      LoggingService.instance.debug(
+        'Loaded ${trendingVideos.length} trending videos for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      // Always try to load additional uncategorized videos as fallback
+      // This ensures existing videos without categories also appear
+      LoggingService.instance.debug(
+        'Loading fallback videos for $categoryId to include uncategorized content',
+        tag: 'DiscoverView',
+      );
+
+      final fallbackVideos = await _loadAllCategoryVideos(
+        categoryId,
+        startAfter,
+      );
+      LoggingService.instance.debug(
+        'Fallback query returned ${fallbackVideos.length} videos for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      // If we have categorized videos, combine them with fallback videos
+      if (recentVideos.isNotEmpty || trendingVideos.isNotEmpty) {
+        LoggingService.instance.debug(
+          'Combining ${recentVideos.length + trendingVideos.length} categorized videos with ${fallbackVideos.length} fallback videos',
+          tag: 'DiscoverView',
+        );
+
+        // Add fallback videos that aren't already in the categorized list
+        final existingIds = <String>{};
+        for (final video in recentVideos) {
+          existingIds.add(video['docId'] as String);
+        }
+        for (final video in trendingVideos) {
+          existingIds.add(video['docId'] as String);
+        }
+
+        for (final fallbackVideo in fallbackVideos) {
+          final docId = fallbackVideo['docId'] as String;
+          if (!existingIds.contains(docId)) {
+            recentVideos.add({
+              ...fallbackVideo,
+              'isNew': false, // Fallback videos are not marked as new
+            });
+          }
+        }
+
+        LoggingService.instance.debug(
+          'After combining: ${recentVideos.length} total videos for $categoryId',
+          tag: 'DiscoverView',
+        );
+      } else {
+        // If no categorized videos, return fallback videos
+        LoggingService.instance.debug(
+          'No categorized videos found, returning ${fallbackVideos.length} fallback videos for $categoryId',
+          tag: 'DiscoverView',
+        );
+        return fallbackVideos;
+      }
+
+      // Combine and deduplicate
+      final allVideos = <String, Map<String, dynamic>>{};
+
+      // Add recent videos first
+      for (final video in recentVideos) {
+        final docId = video['docId'] as String;
+        allVideos[docId] = {...video, 'isNew': true, 'trendingScore': 0.0};
+      }
+
+      // Add trending videos (don't override recent ones)
+      for (final video in trendingVideos) {
+        final docId = video['docId'] as String;
+        if (!allVideos.containsKey(docId)) {
+          allVideos[docId] = {
+            ...video,
+            'isNew': false,
+            'trendingScore': video['trendingScore'] ?? 0.0,
+          };
+        }
+      }
+
+      final mixedVideos = allVideos.values.toList();
+      LoggingService.instance.debug(
+        'Combined ${mixedVideos.length} total videos for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      // Apply pagination
+      final paginatedVideos = _applyPagination(mixedVideos, startAfter);
+
+      LoggingService.instance.debug(
+        'Mixed feed: ${recentVideos.length} recent + ${trendingVideos.length} trending = ${paginatedVideos.length} total',
+        tag: 'DiscoverView',
+      );
+
+      return paginatedVideos;
+    } catch (e, stackTrace) {
+      LoggingService.instance.error(
+        'Error loading mixed category videos for $categoryId',
+        tag: 'DiscoverView',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return [];
+    }
+  }
+
+  /// Fallback method to load all videos for a category (no restrictions)
+  Future<List<Map<String, dynamic>>> _loadAllCategoryVideos(
+    String categoryId,
+    DocumentSnapshot? startAfter,
+  ) async {
+    try {
+      LoggingService.instance.debug(
+        'Loading ALL videos for category: $categoryId (fallback)',
+        tag: 'DiscoverView',
+      );
+
+      // First, let's check what categories actually exist in the database
+      final allVideosSnapshot =
+          await FirebaseFirestore.instance.collection('videos').limit(10).get();
+
+      LoggingService.instance.debug(
+        'Found ${allVideosSnapshot.docs.length} total videos in database',
+        tag: 'DiscoverView',
+      );
+
+      final categories = <String>{};
+      for (final doc in allVideosSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>?;
+        final category = data?['category'] as String?;
+        final categoryId = data?['categoryId'] as String?;
+        if (category != null) {
+          categories.add(category);
+        }
+        if (categoryId != null) {
+          categories.add(categoryId);
+        }
+        LoggingService.instance.debug(
+          'Video ${doc.id}: category="$category", categoryId="$categoryId", status="${data?['status']}"',
+          tag: 'DiscoverView',
+        );
+      }
+
+      LoggingService.instance.debug(
+        'Found categories in database: ${categories.toList()}',
+        tag: 'DiscoverView',
+      );
+      LoggingService.instance.debug(
+        'Searching for category: "$categoryId"',
+        tag: 'DiscoverView',
+      );
+
+      // If no videos found with the specific category, try to find videos without categories
+      // and show them in the gaming category as a fallback
+      if (categories.isEmpty || !categories.contains(categoryId)) {
+        LoggingService.instance.debug(
+          'No videos found with category "$categoryId", trying to find videos without categories',
+          tag: 'DiscoverView',
+        );
+
+        // Try to find videos without category field
+        final videosWithoutCategory = await FirebaseFirestore.instance
+            .collection('videos')
+            .where('status', isEqualTo: 'published')
+            .where('privacy', isEqualTo: 'Everyone')
+            .orderBy('createdAt', descending: true)
+            .limit(_videosPerPage)
+            .get();
+
+        LoggingService.instance.debug(
+          'Found ${videosWithoutCategory.docs.length} videos without category',
+          tag: 'DiscoverView',
+        );
+
+        final videos = <Map<String, dynamic>>[];
+        for (final doc in videosWithoutCategory.docs) {
+          final data = doc.data() as Map<String, dynamic>?;
+          LoggingService.instance.debug(
+            'Video ${doc.id}: category="${data?['category']}", categoryId="${data?['categoryId']}"',
+            tag: 'DiscoverView',
+          );
+
+          videos.add({
+            'docId': doc.id,
+            'data': data,
+            'isNew': false,
+            'trendingScore': 0.0,
+          });
+        }
+
+        LoggingService.instance.debug(
+          'Returning ${videos.length} videos without category as fallback',
+          tag: 'DiscoverView',
+        );
+
+        return videos;
+      }
+
+      Query query = FirebaseFirestore.instance
+          .collection('videos')
+          .where('category', isEqualTo: categoryId)
+          .orderBy('createdAt', descending: true)
+          .limit(_videosPerPage);
+
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      LoggingService.instance.debug(
+        'Executing fallback Firestore query: category=$categoryId, limit=$_videosPerPage',
+        tag: 'DiscoverView',
+      );
+
+      final snapshot = await query.get();
+      final videos = <Map<String, dynamic>>[];
+
+      LoggingService.instance.debug(
+        'Fallback query returned ${snapshot.docs.length} documents',
+        tag: 'DiscoverView',
+      );
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>?;
+        LoggingService.instance.debug(
+          'Video ${doc.id}: category=${data?['category']}, createdAt=${data?['createdAt']}',
+          tag: 'DiscoverView',
+        );
+
+        videos.add({
+          'docId': doc.id,
+          'data': data,
+          'isNew': false,
+          'trendingScore': 0.0,
+        });
+      }
+
+      LoggingService.instance.debug(
+        'Processed ${videos.length} fallback videos for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      return videos;
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error loading all category videos for $categoryId',
+        tag: 'DiscoverView',
+        error: e,
+      );
+      return [];
+    }
+  }
+
+  /// Load recent videos (last 7 days)
+  Future<List<Map<String, dynamic>>> _loadRecentVideos(
+    String categoryId,
+    DocumentSnapshot? startAfter,
+  ) async {
+    try {
+      LoggingService.instance.debug(
+        'Loading recent videos for category: $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      final now = DateTime.now();
+      final sevenDaysAgo = now.subtract(const Duration(days: 7));
+
+      Query query = FirebaseFirestore.instance
+          .collection('videos')
+          .where('category', isEqualTo: categoryId)
+          .where('createdAt', isGreaterThan: sevenDaysAgo)
+          .orderBy('createdAt', descending: true)
+          .limit(_videosPerPage);
+
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      LoggingService.instance.debug(
+        'Executing Firestore query for recent videos: category=$categoryId, limit=$_videosPerPage',
+        tag: 'DiscoverView',
+      );
+
+      final snapshot = await query.get();
+      final videos = <Map<String, dynamic>>[];
+
+      LoggingService.instance.debug(
+        'Firestore returned ${snapshot.docs.length} documents for recent videos',
+        tag: 'DiscoverView',
+      );
+
+      for (final doc in snapshot.docs) {
+        videos.add({'docId': doc.id, 'data': doc.data()});
+      }
+
+      LoggingService.instance.debug(
+        'Processed ${videos.length} recent videos for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      return videos;
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error loading recent videos for $categoryId',
+        tag: 'DiscoverView',
+        error: e,
+      );
+      return [];
+    }
+  }
+
+  /// Load trending videos
+  Future<List<Map<String, dynamic>>> _loadTrendingVideos(
+    String categoryId,
+    DocumentSnapshot? startAfter,
+  ) async {
+    try {
+      LoggingService.instance.debug(
+        'Loading trending videos for category: $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      Query query = FirebaseFirestore.instance
+          .collection('videos')
+          .where('category', isEqualTo: categoryId)
+          .where('trendingScore', isGreaterThan: 50.0)
+          .orderBy('trendingScore', descending: true)
+          .limit(_videosPerPage);
+
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      LoggingService.instance.debug(
+        'Executing Firestore query for trending videos: category=$categoryId, limit=$_videosPerPage',
+        tag: 'DiscoverView',
+      );
+
+      final snapshot = await query.get();
+      final videos = <Map<String, dynamic>>[];
+
+      LoggingService.instance.debug(
+        'Firestore returned ${snapshot.docs.length} documents for trending videos',
+        tag: 'DiscoverView',
+      );
+
+      for (final doc in snapshot.docs) {
+        videos.add({'docId': doc.id, 'data': doc.data()});
+      }
+
+      LoggingService.instance.debug(
+        'Processed ${videos.length} trending videos for $categoryId',
+        tag: 'DiscoverView',
+      );
+
+      return videos;
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error loading trending videos for $categoryId',
+        tag: 'DiscoverView',
+        error: e,
+      );
+      return [];
+    }
+  }
+
+  /// Apply pagination to video list
+  List<Map<String, dynamic>> _applyPagination(
+    List<Map<String, dynamic>> videos,
+    DocumentSnapshot? startAfter,
+  ) {
+    if (startAfter == null) {
+      return videos.take(_videosPerPage).toList();
+    }
+    return videos;
+  }
 }
 
-// Section Header Widget
-class SectionHeader extends StatelessWidget {
-  final String title;
-  final VoidCallback? action;
+/// Stateful widget for category video feed that follows HomeView's pattern exactly
+class _CategoryVideoFeedStateful extends ConsumerStatefulWidget {
+  final List<HomeVideo> videos;
+  final int startIndex;
+  final String categoryId;
 
-  const SectionHeader({
-    super.key,
-    required this.title,
-    this.action,
+  const _CategoryVideoFeedStateful({
+    required this.videos,
+    required this.startIndex,
+    required this.categoryId,
   });
 
   @override
+  ConsumerState<_CategoryVideoFeedStateful> createState() =>
+      _CategoryVideoFeedStatefulState();
+}
+
+class _CategoryVideoFeedStatefulState
+    extends ConsumerState<_CategoryVideoFeedStateful> {
+  late PageController _pageController;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.startIndex;
+    _pageController = PageController(initialPage: widget.startIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const Spacer(),
-          if (action != null)
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.3),
-                shape: BoxShape.circle,
+    return PopScope(
+      onPopInvoked: (didPop) {
+        if (didPop) {
+          // Clean up when navigating back
+          LoggingService.instance.debug(
+            'Category video feed closed, current index: $_currentIndex',
+            tag: 'DiscoverView',
+          );
+        }
+      },
+      child: Material(
+        color: Colors.black,
+        child: Stack(
+          children: [
+            // Video content fills entire screen (exact HomeView pattern)
+            Positioned.fill(
+              child: PageView.builder(
+                controller: _pageController,
+                scrollDirection: Axis.vertical,
+                physics: const ClampingScrollPhysics(), // Same as HomeView
+                onPageChanged: (index) {
+                  LoggingService.instance.debug(
+                    'Category video page changed to index: $index, video ID: ${widget.videos[index].id}',
+                    tag: 'DiscoverView',
+                  );
+                  setState(() {
+                    _currentIndex = index;
+                  });
+                },
+                itemCount: widget.videos.length,
+                itemBuilder: (context, index) {
+                  final video = widget.videos[index];
+                  final isCurrentVideo =
+                      index == _currentIndex; // HomeView pattern
+
+                  LoggingService.instance.debug(
+                    'Creating VideoPlayerViewOptimized for index: $index, isCurrent: $isCurrentVideo, video ID: ${video.id}',
+                    tag: 'DiscoverView',
+                  );
+
+                  return VideoPlayerViewOptimized(
+                    key: ValueKey(video.id), // Stable key like HomeView
+                    video: video,
+                    isCurrentVideo: isCurrentVideo, // HomeView pattern
+                    isFirstVideo: index == 0,
+                    tabId: 'discoverView_${widget.categoryId}',
+                    homeViewModel: ref.read(hp.homeProvider.notifier),
+                    showSheet: false,
+                    sheetType: '',
+                    showHUD: true, // Show HUD like HomeView
+                    onShowProfile: () {
+                      // Handle profile view
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => StreamerCardView(
+                            userId: video.creator.id,
+                            currentUserId:
+                                fa.FirebaseAuth.instance.currentUser?.uid,
+                            onDismiss: () => Navigator.of(context).pop(),
+                            onFollow: (userId) async {
+                              final followsService = ref.read(
+                                followsServiceProvider,
+                              );
+                              await followsService.followUser(userId);
+                            },
+                            onMessage: (userId) {
+                              // Handle message action
+                            },
+                            onNavigateToTab: (tabName) {
+                              // Handle tab navigation
+                            },
+                            onShare: (userId) {
+                              // Handle share action
+                            },
+                          ),
+                          fullscreenDialog: true,
+                        ),
+                      );
+                    },
+                    onShowComments: () {
+                      // Handle comments
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => Scaffold(
+                            backgroundColor: Colors.black,
+                            appBar: AppBar(
+                              backgroundColor: Colors.transparent,
+                              elevation: 0,
+                              leading: IconButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(
+                                  Icons.arrow_back,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              title: const Text(
+                                'Comments',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            body: const Center(
+                              child: Text(
+                                'Comments coming soon!',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    onShowShare: () {
+                      // Handle share
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Share feature coming soon!'),
+                          backgroundColor: Color(0xFF6633CC),
+                        ),
+                      );
+                    },
+                    onShowStreamerCard: () {
+                      // Handle streamer card
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => StreamerCardView(
+                            userId: video.creator.id,
+                            currentUserId:
+                                fa.FirebaseAuth.instance.currentUser?.uid,
+                            onDismiss: () => Navigator.of(context).pop(),
+                            onFollow: (userId) async {
+                              final followsService = ref.read(
+                                followsServiceProvider,
+                              );
+                              await followsService.followUser(userId);
+                            },
+                            onMessage: (userId) {
+                              // Handle message action
+                            },
+                            onNavigateToTab: (tabName) {
+                              // Handle tab navigation
+                            },
+                            onShare: (userId) {
+                              // Handle share action
+                            },
+                          ),
+                          fullscreenDialog: true,
+                        ),
+                      );
+                    },
+                    isLiked: video.isLiked,
+                    isBookmarked: video.isFavorited,
+                  );
+                },
               ),
-              child: InstantIconButton(
-                onPressed: action,
-                hapticType: HapticFeedbackType.lightImpact,
-                icon: const Icon(
-                  Icons.refresh,
-                  color: Colors.white,
-                  size: 16,
+            ),
+            // Back button overlay (HomeView pattern)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 16,
+              left: 16,
+              child: SafeArea(
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(
+                    Icons.arrow_back_ios,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

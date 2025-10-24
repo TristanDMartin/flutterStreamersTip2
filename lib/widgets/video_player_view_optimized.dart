@@ -1476,15 +1476,36 @@ class _VideoPlayerViewOptimizedState
     final safeBottom = media.viewPadding.bottom;
 
     // Constants - TikTok-style spacing
-    const navHeight = 100.0; // Height of bottom navigation
     const railWidth = 64.0;
     const leftInset = 12.0;
     const rightInset = railWidth + 16;
     const paddingAboveNav =
         50.0; // Match right action buttons TikTok-style spacing
 
-    // Position caption block right above bottom navigation
-    final bottomPosition = safeBottom + navHeight + paddingAboveNav;
+    // Different positioning for each view type:
+    // - HomeView: Perfect as is (standard TikTok positioning)
+    // - ProfileView: Move down a little more
+    // - DiscoverView: At the very bottom
+    final isCategoryFeed = widget.tabId.startsWith('discoverView_');
+    final isProfileView =
+        widget.tabId.startsWith('profile_') || widget.tabId == 'playerScreen';
+
+    // Debug logging to see actual tabId values
+    debugPrint('🎯 VideoPlayerViewOptimized tabId: "${widget.tabId}"');
+    debugPrint(
+        '🎯 isCategoryFeed: $isCategoryFeed, isProfileView: $isProfileView');
+
+    double bottomPosition;
+    if (isCategoryFeed) {
+      // DiscoverView: At the very bottom - use minimal spacing
+      bottomPosition = safeBottom + 20.0; // Just safe area + 20px
+    } else if (isProfileView) {
+      // ProfileView: Move down more than HomeView
+      bottomPosition = safeBottom + 100.0 + paddingAboveNav + 60.0;
+    } else {
+      // HomeView: Perfect as is
+      bottomPosition = safeBottom + 100.0 + paddingAboveNav;
+    }
 
     return Positioned(
       left: leftInset,
@@ -1641,11 +1662,35 @@ class _VideoPlayerViewOptimizedState
 
     final screenHeight = media.size.height;
     final safeBottom = media.viewPadding.bottom;
-    // Bottom nav starts at: screenHeight - safeBottom - bottomNavHeight
-    // We want buttons above it, so: bottomNavStart - paddingAboveNav - groupHeight
+
+    // Different positioning for each view type:
+    // - HomeView: Perfect as is (standard TikTok positioning)
+    // - ProfileView: Move down a little more
+    // - DiscoverView: At the very bottom
+    final isCategoryFeed = widget.tabId.startsWith('discoverView_');
+    final isProfileView =
+        widget.tabId.startsWith('profile_') || widget.tabId == 'playerScreen';
     final bottomNavStart = screenHeight - safeBottom - bottomNavHeight;
-    final desiredTop = bottomNavStart - paddingAboveNav - groupHeight;
-    final top = desiredTop.clamp(0.0, screenHeight - groupHeight);
+
+    // Debug logging for action buttons positioning
+    debugPrint('🎯 ActionButtons tabId: "${widget.tabId}"');
+    debugPrint(
+        '🎯 ActionButtons isCategoryFeed: $isCategoryFeed, isProfileView: $isProfileView');
+
+    double top;
+    if (isCategoryFeed) {
+      // DiscoverView: At the very bottom - position near bottom of screen
+      top = screenHeight - safeBottom - groupHeight - 20.0; // 20px from bottom
+    } else if (isProfileView) {
+      // ProfileView: Move down more than HomeView
+      const profilePaddingAboveNav = 60.0; // Move down more (112-52=60)
+      final desiredTop = bottomNavStart - profilePaddingAboveNav - groupHeight;
+      top = desiredTop.clamp(0.0, screenHeight - groupHeight);
+    } else {
+      // HomeView: Perfect as is
+      final desiredTop = bottomNavStart - paddingAboveNav - groupHeight;
+      top = desiredTop.clamp(0.0, screenHeight - groupHeight);
+    }
 
     return Positioned(
       top: top,

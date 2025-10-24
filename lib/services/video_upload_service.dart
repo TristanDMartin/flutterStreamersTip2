@@ -63,6 +63,12 @@ class VideoUploadService {
       debugPrint(
           '📁 Video file size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
 
+      // Extract video duration
+      final videoProcessingService = VideoProcessingService();
+      final duration = await videoProcessingService.getVideoDuration(videoFile);
+      final durationSeconds = duration.inSeconds.toDouble();
+      debugPrint('⏱️ Video duration: ${durationSeconds} seconds');
+
       // 1. Pre-upload moderation check
       debugPrint('🔍 Starting video moderation...');
       final moderationResult = await _moderationService.moderateVideo(
@@ -211,7 +217,7 @@ class VideoUploadService {
         },
         'metadata': {
           'fileSize': fileSize,
-          'duration': 30.0, // Placeholder - would get from video processing
+          'duration': durationSeconds, // Use actual video duration
           'resolution': '1080x1920', // Placeholder
           'format': 'mp4',
           'uploadedAt': FieldValue.serverTimestamp(),
@@ -364,6 +370,12 @@ class VideoUploadService {
       final videoId = _generateVideoId();
       final userId = user.uid;
 
+      // Extract video duration
+      final videoProcessingService = VideoProcessingService();
+      final duration = await videoProcessingService.getVideoDuration(videoFile);
+      final durationSeconds = duration.inSeconds.toDouble();
+      debugPrint('⏱️ Draft video duration: ${durationSeconds} seconds');
+
       // Upload video file
       final videoUrl = await _uploadVideoFile(videoFile, videoId, userId);
       if (videoUrl == null) {
@@ -410,7 +422,7 @@ class VideoUploadService {
         },
         'metadata': {
           'fileSize': await videoFile.length(),
-          'duration': 30.0,
+          'duration': durationSeconds, // Use actual video duration
           'resolution': '1080x1920',
           'format': 'mp4',
           'uploadedAt': FieldValue.serverTimestamp(),

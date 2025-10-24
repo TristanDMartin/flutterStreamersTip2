@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:video_player/video_player.dart';
 import '../services/logging_service.dart';
 
 class VideoProcessingService {
@@ -21,13 +22,34 @@ class VideoProcessingService {
   /// Get video duration in seconds
   Future<Duration> getVideoDuration(File videoFile) async {
     try {
-      // For now, return a placeholder duration
-      // In production, use ffmpeg or video_player to get actual duration
-      return const Duration(seconds: 60);
+      LoggingService.instance.debug(
+          'Getting video duration for: ${videoFile.path}',
+          tag: 'VideoProcessingService');
+
+      // Create VideoPlayerController to get duration
+      final controller = VideoPlayerController.file(videoFile);
+
+      try {
+        // Initialize the controller
+        await controller.initialize();
+
+        // Get the duration
+        final duration = controller.value.duration;
+
+        LoggingService.instance.debug(
+            'Video duration: ${duration.inSeconds} seconds',
+            tag: 'VideoProcessingService');
+
+        return duration;
+      } finally {
+        // Always dispose the controller
+        await controller.dispose();
+      }
     } catch (e) {
       LoggingService.instance.error('Error getting video duration',
           tag: 'VideoProcessingService', error: e);
-      return const Duration(seconds: 0);
+      // Return a default duration if extraction fails
+      return const Duration(seconds: 30);
     }
   }
 

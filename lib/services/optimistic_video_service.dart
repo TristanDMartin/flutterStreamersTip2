@@ -94,6 +94,12 @@ class OptimisticVideoService extends ChangeNotifier {
           video.ownerId, // Snake case variant for website compatibility
       'caption': video.caption,
       'categories': video.categories,
+      'category': video.categories.isNotEmpty
+          ? video.categories.first
+          : 'gaming', // Add singular category for DiscoverView
+      'categoryId': video.categories.isNotEmpty
+          ? video.categories.first
+          : 'gaming', // Alternative field name
       'createdAt': video.createdAt,
       'status': 'processing',
       'thumbnailUrl': video.localThumbnailPath, // Use local thumbnail initially
@@ -157,6 +163,16 @@ class OptimisticVideoService extends ChangeNotifier {
     debugPrint(
         '🔥 OptimisticVideoService: Attempting to write to Firestore...');
     try {
+      // First, try to delete any existing document to avoid conflicts
+      try {
+        await _firestore.collection('videos').doc(video.videoId).delete();
+        debugPrint('🔥 OptimisticVideoService: Deleted existing document');
+      } catch (e) {
+        // Document doesn't exist, that's fine
+        debugPrint('🔥 OptimisticVideoService: No existing document to delete');
+      }
+
+      // Now create the new document
       await _firestore.collection('videos').doc(video.videoId).set(videoData);
       debugPrint('🔥 OptimisticVideoService: Successfully wrote to Firestore!');
     } catch (e) {
