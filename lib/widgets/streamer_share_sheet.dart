@@ -477,11 +477,18 @@ class StreamerShareSheet extends ConsumerWidget {
   }
 
   Future<void> _handleAction(BuildContext context, String action) async {
-    // Track action attempt
-    AnalyticsService.instance.trackEvent('share_action_attempted', parameters: {
-      'user_id': _sanitizedUserId,
-      'action': action.toLowerCase().replaceAll(' ', '_'),
-    });
+    // Track action attempt (safe call)
+    try {
+      if (AnalyticsService.isReady) {
+        AnalyticsService.instance
+            .trackEvent('share_action_attempted', parameters: {
+          'user_id': _sanitizedUserId,
+          'action': action.toLowerCase().replaceAll(' ', '_'),
+        });
+      }
+    } catch (e) {
+      debugPrint('📊 Analytics not ready: $e');
+    }
 
     try {
       switch (action) {
@@ -520,12 +527,19 @@ class StreamerShareSheet extends ConsumerWidget {
       LoggingService.instance.error('Failed to handle share action: $action',
           tag: 'ShareSheet', error: e, stackTrace: stackTrace);
 
-      // Track failed action
-      AnalyticsService.instance.trackEvent('share_action_failed', parameters: {
-        'user_id': _sanitizedUserId,
-        'action': action.toLowerCase().replaceAll(' ', '_'),
-        'error': e.toString(),
-      });
+      // Track failed action (safe call)
+      try {
+        if (AnalyticsService.isReady) {
+          AnalyticsService.instance
+              .trackEvent('share_action_failed', parameters: {
+            'user_id': _sanitizedUserId,
+            'action': action.toLowerCase().replaceAll(' ', '_'),
+            'error': e.toString(),
+          });
+        }
+      } catch (analyticsError) {
+        debugPrint('📊 Analytics not ready: $analyticsError');
+      }
     }
   }
 
@@ -580,11 +594,18 @@ class StreamerShareSheet extends ConsumerWidget {
 
       await Clipboard.setData(ClipboardData(text: _profileUrl));
 
-      // Track analytics
-      AnalyticsService.instance.trackEvent('share_link_copied', parameters: {
-        'user_id': _sanitizedUserId,
-        'platform': 'clipboard',
-      });
+      // Track analytics (safe call)
+      try {
+        if (AnalyticsService.isReady) {
+          AnalyticsService.instance
+              .trackEvent('share_link_copied', parameters: {
+            'user_id': _sanitizedUserId,
+            'platform': 'clipboard',
+          });
+        }
+      } catch (e) {
+        debugPrint('📊 Analytics not ready: $e');
+      }
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -697,13 +718,19 @@ class StreamerShareSheet extends ConsumerWidget {
           },
         );
 
-        // Track successful launch
-        AnalyticsService.instance
-            .trackEvent('share_platform_opened', parameters: {
-          'user_id': _sanitizedUserId,
-          'platform': platform,
-          'method': 'primary',
-        });
+        // Track successful launch (safe call)
+        try {
+          if (AnalyticsService.isReady) {
+            AnalyticsService.instance
+                .trackEvent('share_platform_opened', parameters: {
+              'user_id': _sanitizedUserId,
+              'platform': platform,
+              'method': 'primary',
+            });
+          }
+        } catch (e) {
+          debugPrint('📊 Analytics not ready: $e');
+        }
 
         if (context.mounted) {
           Navigator.of(context).pop();
@@ -730,13 +757,19 @@ class StreamerShareSheet extends ConsumerWidget {
             },
           );
 
-          // Track successful fallback launch
-          AnalyticsService.instance
-              .trackEvent('share_platform_opened', parameters: {
-            'user_id': _sanitizedUserId,
-            'platform': platform,
-            'method': 'fallback',
-          });
+          // Track successful fallback launch (safe call)
+          try {
+            if (AnalyticsService.isReady) {
+              AnalyticsService.instance
+                  .trackEvent('share_platform_opened', parameters: {
+                'user_id': _sanitizedUserId,
+                'platform': platform,
+                'method': 'fallback',
+              });
+            }
+          } catch (e) {
+            debugPrint('📊 Analytics not ready: $e');
+          }
 
           if (context.mounted) {
             Navigator.of(context).pop();

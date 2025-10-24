@@ -79,6 +79,8 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
             },
             onFollowingTap: () {
               log('🔘 HomeContent: Following tapped, current tab: ${widget.activeTab}');
+              debugPrint(
+                  '🔘 HomeContent: Following tapped, calling onTabChange');
               widget.onTabChange('Following');
             },
             onDiscoverTap: widget.onDiscoverTap,

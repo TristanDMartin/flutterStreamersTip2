@@ -94,10 +94,26 @@ class VideoUploadService {
       // 2. Get current user
       final user = _auth.currentUser;
       if (user == null) {
-        debugPrint('❌ User not authenticated');
+        debugPrint('❌ VideoUploadService: User not authenticated');
         return const VideoUploadResult(
           success: false,
           error: 'User not authenticated',
+        );
+      }
+
+      debugPrint('✅ VideoUploadService: User authenticated - UID: ${user.uid}');
+      debugPrint('✅ VideoUploadService: User email: ${user.email}');
+
+      // Force refresh auth token
+      try {
+        final idToken = await user.getIdToken(true);
+        debugPrint(
+            '✅ VideoUploadService: Auth token refreshed - Length: ${idToken?.length ?? 0}');
+      } catch (e) {
+        debugPrint('❌ VideoUploadService: Failed to refresh auth token: $e');
+        return VideoUploadResult(
+          success: false,
+          error: 'Authentication token refresh failed: $e',
         );
       }
 
@@ -120,24 +136,50 @@ class VideoUploadService {
 
       // 5. Generate and upload thumbnail
       debugPrint('🖼️ Generating thumbnail...');
-      final thumbnailUrl =
-          await _generateAndUploadThumbnail(videoFile, videoId, userId);
-      debugPrint('✅ Thumbnail generated: $thumbnailUrl');
+      String? thumbnailUrl;
+      try {
+        thumbnailUrl =
+            await _generateAndUploadThumbnail(videoFile, videoId, userId);
+        debugPrint('✅ Thumbnail generated: $thumbnailUrl');
+      } catch (e) {
+        debugPrint('❌ Thumbnail generation failed: $e');
+        return VideoUploadResult(
+          success: false,
+          error: 'Failed to generate thumbnail: ${e.toString()}',
+        );
+      }
+
+      if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+        debugPrint('❌ Thumbnail URL is null or empty');
+        return const VideoUploadResult(
+          success: false,
+          error: 'Failed to generate thumbnail - no URL returned',
+        );
+      }
 
       // Create VideoThumbnails object for new format
-      final thumbnails = thumbnailUrl != null
-          ? {
-              'urls': {
-                '360': thumbnailUrl,
-                '540': thumbnailUrl,
-                '720': thumbnailUrl,
-              },
-              'generatedAt': FieldValue.serverTimestamp(),
-            }
-          : null;
+      final thumbnails = {
+        'urls': {
+          '360': thumbnailUrl,
+          '540': thumbnailUrl,
+          '720': thumbnailUrl,
+        },
+        'generatedAt': FieldValue.serverTimestamp(),
+      };
 
       // 6. Create video document in Firestore
       debugPrint('💾 Saving video metadata to Firestore...');
+
+      // Extract category from additionalMetadata
+      final category = additionalMetadata?['category'] as String? ?? 'General';
+
+      debugPrint('🔥 VideoUploadService: Category extracted: $category');
+      debugPrint(
+          '🔥 VideoUploadService: Additional metadata: $additionalMetadata');
+      debugPrint('🔥 VideoUploadService: User UID: $userId');
+      debugPrint('🔥 VideoUploadService: Auth UID: ${user.uid}');
+      debugPrint('🔥 VideoUploadService: UIDs match: ${userId == user.uid}');
+
       final videoData = {
         'id': videoId,
         'userId': userId,
@@ -151,6 +193,9 @@ class VideoUploadService {
         'hashtags': hashtags,
         'privacy': privacy,
         'allowComments': allowComments,
+        'category':
+            category, // 🔥 FIX: Add category field directly to video document
+        'categoryId': category, // Alternative field name for compatibility
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'status': 'published',
@@ -175,10 +220,22 @@ class VideoUploadService {
       };
 
       try {
+        debugPrint(
+            '🔥 VideoUploadService: Attempting to save video document to Firestore...');
+        debugPrint('🔥 VideoUploadService: Video ID: $videoId');
+        debugPrint('🔥 VideoUploadService: User ID: $userId');
+        debugPrint(
+            '🔥 VideoUploadService: Video data keys: ${videoData.keys.toList()}');
+        debugPrint(
+            '🔥 VideoUploadService: Video data values: ${videoData.values.map((v) => v.toString()).toList()}');
+
         await _firestore.collection('videos').doc(videoId).set(videoData);
-        debugPrint('✅ Video document saved to Firestore');
+        debugPrint(
+            '✅ VideoUploadService: Video document saved to Firestore successfully');
       } catch (e) {
-        debugPrint('❌ Failed to save video document: $e');
+        debugPrint('❌ VideoUploadService: Failed to save video document: $e');
+        debugPrint('❌ VideoUploadService: Error type: ${e.runtimeType}');
+        debugPrint('❌ VideoUploadService: Error details: ${e.toString()}');
         return VideoUploadResult(
           success: false,
           error: 'Failed to save video metadata: ${e.toString()}',
@@ -321,6 +378,9 @@ class VideoUploadService {
           await _generateAndUploadThumbnail(videoFile, videoId, userId);
 
       // Save as draft
+      // Extract category from additionalMetadata
+      final category = additionalMetadata?['category'] as String?;
+
       final videoData = {
         'id': videoId,
         'userId': userId,
@@ -332,6 +392,9 @@ class VideoUploadService {
         'hashtags': hashtags,
         'privacy': privacy,
         'allowComments': allowComments,
+        'category':
+            category, // 🔥 FIX: Add category field directly to video document
+        'categoryId': category, // Alternative field name for compatibility
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'status': 'draft',
@@ -425,6 +488,9 @@ class VideoUploadService {
       File videoFile, String videoId, String userId) async {
     try {
       debugPrint('🖼️ Starting thumbnail generation...');
+      debugPrint('🖼️ Video file path: ${videoFile.path}');
+      debugPrint('🖼️ Video file exists: ${await videoFile.exists()}');
+      debugPrint('🖼️ Video file size: ${await videoFile.length()} bytes');
 
       // Use the new video processing service for thumbnail generation
       final processingService = VideoProcessingService();
@@ -435,6 +501,11 @@ class VideoUploadService {
       );
 
       debugPrint('🖼️ Thumbnail generated: ${result.thumbnailUrl}');
+
+      if (result.thumbnailUrl.isEmpty) {
+        throw Exception('VideoProcessingService returned empty thumbnail URL');
+      }
+
       return result.thumbnailUrl;
     } catch (e) {
       debugPrint('❌ Error generating thumbnail: $e');
@@ -443,8 +514,8 @@ class VideoUploadService {
       LoggingService.instance.error('Error generating thumbnail',
           tag: 'VideoUploadService', error: e);
 
-      // Return null but don't fail the entire upload for thumbnail issues
-      return null;
+      // 🔥 FIX: Fail the upload if thumbnail generation fails
+      rethrow;
     }
   }
 

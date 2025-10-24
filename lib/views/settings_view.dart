@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'blocked_accounts_view.dart';
+import '../widgets/video_categorization_screen.dart';
 // import 'manage_account_view.dart'; // Removed - unused
 
 class SettingsView extends StatefulWidget {
@@ -103,6 +104,13 @@ class _SettingsViewState extends State<SettingsView> {
                             subtitle: 'Push & in-app notifications',
                             onTap: () =>
                                 _navigateToPage(context, 'Notifications'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.category,
+                            title: 'Video Categorization',
+                            subtitle: 'Categorize existing videos',
+                            onTap: () => _navigateToPage(
+                                context, 'Video Categorization'),
                           ),
                           _buildSettingsItem(
                             icon: Icons.tune,
@@ -367,6 +375,13 @@ class _SettingsViewState extends State<SettingsView> {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => const BlockedAccountsView(),
+          ),
+        );
+        return;
+      case 'Video Categorization':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const VideoCategorizationScreen(),
           ),
         );
         return;

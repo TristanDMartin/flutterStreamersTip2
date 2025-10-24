@@ -21,45 +21,74 @@ class FeedDropdownWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!isVisible) return const SizedBox.shrink();
 
-    return Material(
-      elevation: 20, // Very high elevation to appear above video
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        width: 200,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
-            width: 1,
+    debugPrint(
+        '🔘 FeedDropdown: Building dropdown widget - activeTab: $activeTab, isVisible: $isVisible');
+
+    return Stack(
+      children: [
+        // Debug overlay to show dropdown bounds
+        Positioned.fill(
+          child: Container(
+            color: Colors.red.withValues(alpha: 0.1),
+            child: Center(
+              child: Text(
+                'DEBUG: Dropdown Area',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
           ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildDropdownItem(
-              'For You',
-              isSelected: activeTab == 'For You',
-              onTap: onForYouTap,
+        // Actual dropdown
+        Material(
+          elevation: 20, // Very high elevation to appear above video
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 200,
+            decoration: BoxDecoration(
+              color: Colors.black
+                  .withValues(alpha: 0.9), // More opaque for better visibility
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color:
+                    Colors.white.withValues(alpha: 0.3), // More visible border
+                width: 2, // Thicker border
+              ),
             ),
-            _buildDivider(),
-            _buildDropdownItem(
-              'Following',
-              isSelected: activeTab == 'Following',
-              onTap: onFollowingTap,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildDropdownItem(
+                  'For You',
+                  isSelected: activeTab == 'For You',
+                  onTap: onForYouTap,
+                ),
+                _buildDivider(),
+                _buildDropdownItem(
+                  'Following',
+                  isSelected: activeTab == 'Following',
+                  onTap: onFollowingTap,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
   Widget _buildDropdownItem(String title,
       {required bool isSelected, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+    return GestureDetector(
+      onTap: () {
+        debugPrint('🔘 FeedDropdown: $title item tapped');
+        onTap();
+      },
+      behavior: HitTestBehavior.opaque, // Ensure it captures taps
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(

@@ -23,124 +23,149 @@ class FeedSelectorWidget extends StatefulWidget {
 
 class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
   bool _isDropdownOpen = false;
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _showOverlay() {
+    _removeOverlay();
+
+    final overlay = Overlay.of(context);
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: 100, // Position below the header
+        left: 16,
+        child: Material(
+          elevation: 100,
+          color: Colors.transparent,
+          child: FeedDropdownWidget(
+            activeTab: widget.activeTab,
+            isVisible: true,
+            onForYouTap: () {
+              debugPrint('🔘 FeedSelector: For You tapped in overlay');
+              _removeOverlay();
+              setState(() {
+                _isDropdownOpen = false;
+              });
+              widget.onForYouTap();
+            },
+            onFollowingTap: () {
+              debugPrint('🔘 FeedSelector: Following tapped in overlay');
+              _removeOverlay();
+              setState(() {
+                _isDropdownOpen = false;
+              });
+              widget.onFollowingTap();
+            },
+            onClose: () {
+              _removeOverlay();
+              setState(() {
+                _isDropdownOpen = false;
+              });
+            },
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(_overlayEntry!);
+  }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       top: true,
-      child: Stack(
-        clipBehavior: Clip.none, // Allow dropdown to overflow
-        children: [
-          // Header row - FIRST (base layer)
-          Container(
-            height: 50,
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Single purple pill with dropdown
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    setState(() {
-                      _isDropdownOpen = !_isDropdownOpen;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A).withValues(alpha: 0.98),
-                      borderRadius: BorderRadius.circular(25),
-                      border: Border.all(
-                        color: const Color(0xFF9248D2).withValues(alpha: 0.8),
-                        width: 2.0,
+      child: Container(
+        height: 50,
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Single purple pill with dropdown
+            GestureDetector(
+              onTap: () {
+                debugPrint('🔘 FeedSelector: Main dropdown button tapped');
+                HapticFeedback.lightImpact();
+                setState(() {
+                  _isDropdownOpen = !_isDropdownOpen;
+                });
+                debugPrint(
+                    '🔘 FeedSelector: Dropdown state changed to: $_isDropdownOpen');
+
+                if (_isDropdownOpen) {
+                  _showOverlay();
+                } else {
+                  _removeOverlay();
+                }
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1A).withValues(alpha: 0.98),
+                  borderRadius: BorderRadius.circular(25),
+                  border: Border.all(
+                    color: const Color(0xFF9248D2).withValues(alpha: 0.8),
+                    width: 2.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.activeTab,
+                      style: const TextStyle(
+                        color: Color(0xFF9248D2),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          widget.activeTab,
-                          style: const TextStyle(
-                            color: Color(0xFF9248D2),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          _isDropdownOpen
-                              ? Icons.keyboard_arrow_up
-                              : Icons.keyboard_arrow_down,
-                          color: const Color(0xFF9248D2),
-                          size: 20,
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    Icon(
+                      _isDropdownOpen
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      color: const Color(0xFF9248D2),
+                      size: 20,
                     ),
-                  ),
-                ),
-
-                // Discover button (compass icon)
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    widget.onDiscoverTap();
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(
-                      Icons.explore_outlined,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Tap outside to close dropdown - absorbs taps outside dropdown area
-          if (_isDropdownOpen)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  setState(() {
-                    _isDropdownOpen = false;
-                  });
-                },
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.3), // Slight dimming
+                  ],
                 ),
               ),
             ),
 
-          // Dropdown overlay - LAST (top layer, absorbs its own taps)
-          if (_isDropdownOpen)
-            Positioned(
-              top: 60, // Position right below the header (50px + 10px margin)
-              left: 16,
-              child: FeedDropdownWidget(
-                activeTab: widget.activeTab,
-                isVisible: _isDropdownOpen,
-                onForYouTap: widget.onForYouTap,
-                onFollowingTap: widget.onFollowingTap,
-                onClose: () {
-                  setState(() {
-                    _isDropdownOpen = false;
-                  });
-                },
+            // Discover button (compass icon)
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                widget.onDiscoverTap();
+              },
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(
+                  Icons.explore_outlined,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

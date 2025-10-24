@@ -187,6 +187,14 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     }
   }
 
+  /// 🔥 FIX: Update trending creators from real-time stream
+  void updateTrendingCreators(List<TrendingCreator> creators) {
+    state = state.copyWith(trendingCreators: creators);
+    LoggingService.instance.debug(
+        'Updated trending creators: ${creators.length}',
+        tag: 'DiscoverProvider');
+  }
+
   void clearSearch() {
     state = state.copyWith(searchResults: [], isSearching: false);
   }

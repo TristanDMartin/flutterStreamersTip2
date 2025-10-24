@@ -181,6 +181,9 @@ class UnifiedVideoService {
     Map<String, dynamic>? additionalMetadata,
   }) async {
     try {
+      // Extract category from additionalMetadata
+      final category = additionalMetadata?['category'] as String?;
+
       final videoData = {
         'id': videoId,
         'userId': userId,
@@ -200,6 +203,9 @@ class UnifiedVideoService {
         'hashtags': hashtags,
         'privacy': privacy,
         'allowComments': allowComments,
+        'category':
+            category, // 🔥 FIX: Add category field directly to video document
+        'categoryId': category, // Alternative field name for compatibility
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'status': 'published',

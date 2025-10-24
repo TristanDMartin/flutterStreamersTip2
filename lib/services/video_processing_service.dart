@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 import '../services/logging_service.dart';
 
 class VideoProcessingService {
@@ -162,11 +163,91 @@ class VideoProcessingService {
           '🎬 VideoProcessingService: Thumbnail will be saved to: ${thumbnailFile.path}',
           tag: 'VideoProcessingService');
 
+      // 🔥 FIX: Try video_thumbnail package first, fallback to generated thumbnail
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Attempting to extract thumbnail from video',
+          tag: 'VideoProcessingService');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Video file path: ${videoFile.path}',
+          tag: 'VideoProcessingService');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Thumbnail path: ${thumbnailFile.path}',
+          tag: 'VideoProcessingService');
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Time in milliseconds: ${timestamp.inMilliseconds}',
+          tag: 'VideoProcessingService');
+
+      try {
+        final thumbnailPath = await VideoThumbnail.thumbnailFile(
+          video: videoFile.path,
+          thumbnailPath: thumbnailFile.path,
+          imageFormat: ImageFormat.JPEG,
+          maxWidth: 320,
+          maxHeight: 240,
+          timeMs: timestamp.inMilliseconds,
+          quality: 85,
+        );
+
+        LoggingService.instance.info(
+            '🎬 VideoProcessingService: VideoThumbnail.thumbnailFile returned: $thumbnailPath',
+            tag: 'VideoProcessingService');
+
+        if (thumbnailPath != null) {
+          final generatedFile = File(thumbnailPath);
+          if (await generatedFile.exists()) {
+            final fileSize = await generatedFile.length();
+            LoggingService.instance.info(
+                '🎬 VideoProcessingService: Thumbnail generated successfully: ${generatedFile.path} (${fileSize} bytes)',
+                tag: 'VideoProcessingService');
+
+            if (fileSize > 0) {
+              return generatedFile;
+            } else {
+              LoggingService.instance.warning(
+                  '🎬 VideoProcessingService: Generated thumbnail is empty, creating fallback',
+                  tag: 'VideoProcessingService');
+            }
+          } else {
+            LoggingService.instance.warning(
+                '🎬 VideoProcessingService: Generated thumbnail file does not exist, creating fallback',
+                tag: 'VideoProcessingService');
+          }
+        } else {
+          LoggingService.instance.warning(
+              '🎬 VideoProcessingService: VideoThumbnail returned null, creating fallback',
+              tag: 'VideoProcessingService');
+        }
+      } catch (e) {
+        LoggingService.instance.warning(
+            '🎬 VideoProcessingService: VideoThumbnail failed: $e, creating fallback',
+            tag: 'VideoProcessingService');
+      }
+
+      // Create fallback thumbnail if video extraction fails
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Creating fallback thumbnail',
+          tag: 'VideoProcessingService');
+      return await _createFallbackThumbnail(videoId, thumbnailFile);
+    } catch (e) {
+      LoggingService.instance.error('Error generating thumbnail',
+          tag: 'VideoProcessingService', error: e);
+      // Return fallback thumbnail on error
+      final tempDir = await getTemporaryDirectory();
+      final fallbackFile = File('${tempDir.path}/thumb_$videoId.jpg');
+      return await _createFallbackThumbnail(videoId, fallbackFile);
+    }
+  }
+
+  /// Create fallback thumbnail when video extraction fails
+  Future<File> _createFallbackThumbnail(
+      String videoId, File thumbnailFile) async {
+    try {
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Creating fallback thumbnail for video $videoId',
+          tag: 'VideoProcessingService');
+
       // Create a proper video-style thumbnail
       final image = img.Image(width: 320, height: 240);
-      LoggingService.instance.info(
-          '🎬 VideoProcessingService: Created image canvas ${image.width}x${image.height}',
-          tag: 'VideoProcessingService');
 
       // Create a solid dark background (no gradients)
       final solidColor = img.ColorRgb8(45, 45, 45); // Dark grey
@@ -181,7 +262,7 @@ class VideoProcessingService {
       final centerY = image.height ~/ 2;
       final iconSize = 30;
 
-      // Draw a play triangle with some transparency effect
+      // Draw a play triangle
       for (int y = centerY - iconSize ~/ 2; y < centerY + iconSize ~/ 2; y++) {
         for (int x = centerX - iconSize ~/ 2;
             x < centerX + iconSize ~/ 2;
@@ -207,17 +288,22 @@ class VideoProcessingService {
         image.setPixel(image.width - 1, y, img.ColorRgb8(200, 200, 200));
       }
 
+      // Ensure the thumbnail file exists
+      await thumbnailFile.create(recursive: true);
       await thumbnailFile.writeAsBytes(img.encodeJpg(image));
+
+      final fileSize = await thumbnailFile.length();
       LoggingService.instance.info(
-          '🎬 VideoProcessingService: Thumbnail saved successfully. File size: ${await thumbnailFile.length()} bytes',
+          '🎬 VideoProcessingService: Fallback thumbnail saved successfully. File size: $fileSize bytes',
           tag: 'VideoProcessingService');
-      LoggingService.instance.info(
-          '🎬 VideoProcessingService: Thumbnail file exists: ${await thumbnailFile.exists()}',
-          tag: 'VideoProcessingService');
+
+      if (fileSize == 0) {
+        throw Exception('Fallback thumbnail file is empty');
+      }
 
       return thumbnailFile;
     } catch (e) {
-      LoggingService.instance.error('Error generating thumbnail',
+      LoggingService.instance.error('Error creating fallback thumbnail',
           tag: 'VideoProcessingService', error: e);
       rethrow;
     }
@@ -276,6 +362,16 @@ class VideoProcessingService {
           '🎬 VideoProcessingService: Thumbnail storage path: thumbnails/$videoId.jpg',
           tag: 'VideoProcessingService');
 
+      // Check if thumbnail file exists before uploading
+      if (!await thumbnail.exists()) {
+        throw Exception('Thumbnail file does not exist: ${thumbnail.path}');
+      }
+
+      final thumbnailSize = await thumbnail.length();
+      LoggingService.instance.info(
+          '🎬 VideoProcessingService: Thumbnail file size: $thumbnailSize bytes',
+          tag: 'VideoProcessingService');
+
       await thumbnailRef.putFile(thumbnail);
       LoggingService.instance.info(
           '🎬 VideoProcessingService: Thumbnail uploaded successfully',
@@ -285,6 +381,10 @@ class VideoProcessingService {
       LoggingService.instance.info(
           '🎬 VideoProcessingService: Thumbnail download URL: $thumbnailUrl',
           tag: 'VideoProcessingService');
+
+      if (thumbnailUrl.isEmpty) {
+        throw Exception('Failed to get download URL for thumbnail');
+      }
 
       return VideoProcessingResult(
         videoFile: inputFile,

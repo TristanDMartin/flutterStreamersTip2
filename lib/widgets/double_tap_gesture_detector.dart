@@ -28,6 +28,20 @@ class _DoubleTapGestureDetectorState extends State<DoubleTapGestureDetector> {
   Offset? _lastTapPosition;
 
   void _handleTapDown(TapDownDetails details) {
+    // 🔥 FIX: Check if tap is in dropdown area (top 200px of screen)
+    final tapY = details.globalPosition.dy;
+    final tapX = details.globalPosition.dx;
+
+    // Log all tap coordinates for debugging
+    debugPrint('🎯 DoubleTapGestureDetector: Tap at (x: $tapX, y: $tapY)');
+
+    // If tap is in the top 200px, ignore it completely (dropdown area)
+    if (tapY < 200) {
+      debugPrint(
+          '🎯 DoubleTapGestureDetector: Tap ignored - in dropdown area (y: $tapY)');
+      return;
+    }
+
     _tapCount++;
     _lastTapPosition = details.localPosition;
 
@@ -70,7 +84,8 @@ class _DoubleTapGestureDetectorState extends State<DoubleTapGestureDetector> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTapDown: _handleTapDown,
-      behavior: HitTestBehavior.translucent,
+      behavior: HitTestBehavior
+          .translucent, // Allow taps to pass through when ignored
       child: widget.child,
     );
   }

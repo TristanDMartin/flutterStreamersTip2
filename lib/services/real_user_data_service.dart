@@ -7,6 +7,53 @@ import '../models/video_thumbnails.dart';
 import '../models/trending_creator.dart';
 import '../services/logging_service.dart';
 
+/// Helper class to track trending scores for creators
+class TrendingCreatorScore {
+  final String creatorId;
+  double totalScore;
+  int videoCount;
+  double bestVideoScore;
+  Timestamp? latestVideoTime;
+
+  TrendingCreatorScore({
+    required this.creatorId,
+    required this.totalScore,
+    required this.videoCount,
+    required this.bestVideoScore,
+    this.latestVideoTime,
+  });
+
+  void addVideoScore(double videoScore) {
+    totalScore += videoScore;
+    videoCount++;
+    if (videoScore > bestVideoScore) {
+      bestVideoScore = videoScore;
+    }
+  }
+
+  /// Calculate final trending score with various factors
+  double getFinalScore() {
+    // Base score from total video performance
+    double finalScore = totalScore;
+
+    // Consistency boost (creators with multiple trending videos)
+    if (videoCount > 1) {
+      finalScore *=
+          (1.0 + (videoCount * 0.1)); // 10% boost per additional video
+    }
+
+    // Recency boost (creators with recent trending videos)
+    if (latestVideoTime != null) {
+      final hoursAgo =
+          DateTime.now().difference(latestVideoTime!.toDate()).inHours;
+      final recencyBoost = 1.0 + (24.0 / (hoursAgo + 1));
+      finalScore *= recencyBoost;
+    }
+
+    return finalScore;
+  }
+}
+
 class RealUserDataService {
   static final RealUserDataService _instance = RealUserDataService._internal();
   factory RealUserDataService() => _instance;
@@ -67,12 +114,170 @@ class RealUserDataService {
     }
   }
 
-  /// Get trending creators from Firestore
+  /// 🔥 ENHANCED: Get trending creators based on video performance and category relevance
   Future<List<TrendingCreator>> getTrendingCreators({int limit = 10}) async {
+    try {
+      LoggingService.instance.debug(
+          '🔥 Loading trending creators based on video performance...',
+          tag: 'RealUserDataService');
+
+      // Step 1: Get recent videos with high engagement (last 7 days)
+      final now = DateTime.now();
+      final sevenDaysAgo = now.subtract(const Duration(days: 7));
+
+      final trendingVideosSnapshot = await _firestore
+          .collection('videos')
+          .where('createdAt', isGreaterThan: Timestamp.fromDate(sevenDaysAgo))
+          .where('isDraft', isEqualTo: false)
+          .orderBy('createdAt', descending: true)
+          .limit(100) // Get more videos to analyze
+          .get();
+
+      if (trendingVideosSnapshot.docs.isEmpty) {
+        LoggingService.instance.debug(
+            '⚠️ No recent videos found, falling back to active users',
+            tag: 'RealUserDataService');
+        return await _getFallbackTrendingCreators(limit);
+      }
+
+      // Step 2: Calculate trending scores for each creator
+      final Map<String, TrendingCreatorScore> creatorScores = {};
+
+      for (final videoDoc in trendingVideosSnapshot.docs) {
+        final videoData = videoDoc.data();
+        final creatorId = videoData['userId'] ??
+            videoData['creatorId'] ??
+            videoData['creator_id'];
+
+        if (creatorId == null) continue;
+
+        // Calculate video trending score
+        final videoScore = _calculateVideoTrendingScore(videoData, now);
+
+        if (creatorScores.containsKey(creatorId)) {
+          creatorScores[creatorId]!.addVideoScore(videoScore);
+        } else {
+          creatorScores[creatorId] = TrendingCreatorScore(
+            creatorId: creatorId,
+            totalScore: videoScore,
+            videoCount: 1,
+            bestVideoScore: videoScore,
+            latestVideoTime: videoData['createdAt'] as Timestamp?,
+          );
+        }
+      }
+
+      // Step 3: Get creator details and sort by trending score
+      final List<TrendingCreatorScore> sortedScores = creatorScores.values
+          .toList()
+        ..sort((a, b) => b.getFinalScore().compareTo(a.getFinalScore()));
+
+      final List<TrendingCreator> trendingCreators = [];
+
+      for (final score in sortedScores.take(limit * 2)) {
+        // Get more to filter
+        try {
+          final creatorDoc =
+              await _firestore.collection('users').doc(score.creatorId).get();
+
+          if (!creatorDoc.exists) continue;
+
+          final creatorData = creatorDoc.data()!;
+
+          // Only include active creators
+          if ((creatorData['onlineStatus'] ?? 'offline') != 'online') continue;
+
+          trendingCreators.add(TrendingCreator(
+            id: score.creatorId,
+            username: creatorData['username'] ?? 'Unknown',
+            displayName: creatorData['displayName'] ?? creatorData['username'],
+            avatarURL: creatorData['avatarURL'],
+            followerCount: creatorData['followerCount'] ?? 0,
+            isActive: true,
+          ));
+
+          if (trendingCreators.length >= limit) break;
+        } catch (e) {
+          LoggingService.instance.warning(
+              'Error loading creator ${score.creatorId}: $e',
+              tag: 'RealUserDataService');
+        }
+      }
+
+      LoggingService.instance.debug(
+          '✅ Loaded ${trendingCreators.length} trending creators based on video performance',
+          tag: 'RealUserDataService');
+      return trendingCreators;
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error getting trending creators',
+          tag: 'RealUserDataService', error: e, stackTrace: stackTrace);
+      return await _getFallbackTrendingCreators(limit);
+    }
+  }
+
+  /// Calculate trending score for a video based on engagement and recency
+  double _calculateVideoTrendingScore(
+      Map<String, dynamic> videoData, DateTime now) {
+    // Base metrics
+    final views = (videoData['views'] ?? 0) as int;
+    final likes = (videoData['likes'] ?? 0) as int;
+    final comments = (videoData['comments'] ?? 0) as int;
+    final shares = (videoData['shares'] ?? 0) as int;
+
+    // Engagement rate (likes + comments + shares) / views
+    final engagementRate =
+        views > 0 ? (likes + comments + shares) / views : 0.0;
+
+    // Recency boost (more recent = higher score)
+    final createdAt = videoData['createdAt'] as Timestamp?;
+    double recencyBoost = 1.0;
+    if (createdAt != null) {
+      final hoursAgo = now.difference(createdAt.toDate()).inHours;
+      recencyBoost = 1.0 + (24.0 / (hoursAgo + 1)); // Boost decreases over time
+    }
+
+    // Category relevance boost (videos in popular categories get boost)
+    final categoryId =
+        videoData['categoryId'] ?? videoData['category_id'] ?? '';
+    final categoryBoost = _getCategoryRelevanceBoost(categoryId);
+
+    // Calculate final score
+    final baseScore =
+        (views * 0.1) + (likes * 0.3) + (comments * 0.5) + (shares * 0.7);
+    final engagementMultiplier =
+        1.0 + (engagementRate * 2.0); // Higher engagement = higher multiplier
+    final finalScore =
+        baseScore * engagementMultiplier * recencyBoost * categoryBoost;
+
+    return finalScore;
+  }
+
+  /// Get category relevance boost based on current trending categories
+  double _getCategoryRelevanceBoost(String categoryId) {
+    // Define trending categories and their boost values
+    const trendingCategories = {
+      'gaming': 1.5, // Gaming is always trending
+      'music': 1.3, // Music content performs well
+      'art': 1.2, // Art content has good engagement
+      'comedy': 1.4, // Comedy is highly shareable
+      'dance': 1.3, // Dance videos are viral
+      'sports': 1.1, // Sports content
+      'tech': 1.2, // Tech reviews
+      'food': 1.1, // Food content
+      'fashion': 1.2, // Fashion content
+      'fitness': 1.1, // Fitness content
+    };
+
+    return trendingCategories[categoryId] ?? 1.0; // Default boost
+  }
+
+  /// Fallback method to get active users when no trending videos are found
+  Future<List<TrendingCreator>> _getFallbackTrendingCreators(int limit) async {
     try {
       final snapshot = await _firestore
           .collection('users')
           .where('isActive', isEqualTo: true)
+          .orderBy('followerCount', descending: true)
           .limit(limit)
           .get();
 
@@ -89,12 +294,12 @@ class RealUserDataService {
       }).toList();
 
       LoggingService.instance.debug(
-          '✅ Loaded ${creators.length} trending creators',
+          '✅ Loaded ${creators.length} fallback trending creators',
           tag: 'RealUserDataService');
       return creators;
-    } catch (e, stackTrace) {
-      LoggingService.instance.error('Error getting trending creators',
-          tag: 'RealUserDataService', error: e, stackTrace: stackTrace);
+    } catch (e) {
+      LoggingService.instance.error('Error getting fallback trending creators',
+          tag: 'RealUserDataService', error: e);
       return [];
     }
   }

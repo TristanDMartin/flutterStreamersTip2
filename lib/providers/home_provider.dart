@@ -4,6 +4,7 @@ import 'dart:developer';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/feed_tab.dart';
 import '../models/home_video.dart';
 import '../models/user.dart' as app_user;
@@ -811,6 +812,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
           lastForYouDoc: videos['lastDocument'],
         );
       }
+
+      // Set up real-time comment count updates for the loaded videos
+      _setupRealtimeCommentCounts();
     } catch (e) {
       log('Error fetching For You videos: $e');
     }
@@ -873,6 +877,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
       }
 
       log('✅ Following feed updated: ${videos.length} videos from Connections');
+
+      // Set up real-time comment count updates for the loaded videos
+      _setupRealtimeCommentCounts();
     } catch (e) {
       log('Error fetching ranked Following feed: $e');
     }
@@ -1133,6 +1140,49 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('Updated comment count for video $videoId: $newCommentCount');
     } catch (e) {
       log('Error updating comment count for video $videoId: $e');
+    }
+  }
+
+  /// Set up real-time comment count updates for all videos
+  void _setupRealtimeCommentCounts() {
+    // Get all unique video IDs from both feeds
+    final allVideos = [...state.forYouVideos, ...state.followingVideos];
+    final videoIds = allVideos.map((video) => video.id).toSet().toList();
+
+    if (videoIds.isEmpty) return;
+
+    // Set up real-time listeners for each video's comment count
+    for (final videoId in videoIds) {
+      FirebaseFirestore.instance
+          .collection('videos')
+          .doc(videoId)
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.exists) {
+          final data = snapshot.data()!;
+          final newCommentCount = data['comments'] ?? 0;
+
+          // Update comment count in both feeds
+          final updatedForYouVideos = state.forYouVideos.map((video) {
+            return video.id == videoId
+                ? video.copyWith(comments: newCommentCount)
+                : video;
+          }).toList();
+
+          final updatedFollowingVideos = state.followingVideos.map((video) {
+            return video.id == videoId
+                ? video.copyWith(comments: newCommentCount)
+                : video;
+          }).toList();
+
+          state = state.copyWith(
+            forYouVideos: updatedForYouVideos,
+            followingVideos: updatedFollowingVideos,
+          );
+
+          log('Real-time comment count update for video $videoId: $newCommentCount');
+        }
+      });
     }
   }
 

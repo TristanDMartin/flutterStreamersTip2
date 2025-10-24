@@ -72,7 +72,10 @@ class _VideoEditViewState extends ConsumerState<VideoEditView>
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
-    _pauseAllHomeViewVideos(); // Stop HomeView audio immediately
+    // ✅ FIX: Delay provider modification until after widget tree is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pauseAllHomeViewVideos(); // Stop HomeView audio after build
+    });
     _initializeVideo();
   }
 

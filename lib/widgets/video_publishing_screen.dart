@@ -18,6 +18,7 @@ import '../services/optimistic_video_service.dart';
 import '../services/hashtag_lock_service.dart';
 import '../widgets/schedule_post_widget.dart';
 import '../models/scheduled_post.dart';
+import '../services/firebase_ios_service.dart';
 
 class VideoPublishingScreen extends ConsumerStatefulWidget {
   final File videoFile;
@@ -1099,6 +1100,41 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Future<void> _publishVideo() async {
+    // Check if Firebase is initialized
+    if (!FirebaseIOSService.isInitialized) {
+      _showUploadErrorDialog(
+          'Firebase is not initialized. Please restart the app and try again.');
+      return;
+    }
+
+    // Check if user is authenticated
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      debugPrint('❌ VideoPublishingScreen: User not authenticated');
+      _showUploadErrorDialog('Please log in to publish videos');
+      return;
+    }
+
+    debugPrint(
+        '✅ VideoPublishingScreen: User authenticated - UID: ${currentUser.uid}');
+    debugPrint('✅ VideoPublishingScreen: User email: ${currentUser.email}');
+    debugPrint(
+        '✅ VideoPublishingScreen: User displayName: ${currentUser.displayName}');
+
+    // Check authentication token and force refresh
+    try {
+      final idToken = await currentUser.getIdToken(true); // Force refresh
+      debugPrint(
+          '✅ VideoPublishingScreen: Auth token obtained - Length: ${idToken?.length ?? 0}');
+      debugPrint(
+          '✅ VideoPublishingScreen: Auth token preview: ${idToken?.substring(0, 20) ?? 'null'}...');
+    } catch (e) {
+      debugPrint('❌ VideoPublishingScreen: Failed to get auth token: $e');
+      _showUploadErrorDialog(
+          'Authentication error. Please log out and log back in.');
+      return;
+    }
+
     if (_caption.trim().isEmpty) {
       _showUploadErrorDialog('Please add a caption to your video');
       return;
@@ -1110,7 +1146,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
     try {
       // 1. Run content moderation
-      // print('🔍 Running content moderation...');
+      debugPrint('🔍 VideoPublishingScreen: Running content moderation...');
       final moderationResult = await _moderationService.moderateVideo(
         videoFile: widget.videoFile,
         caption: _caption,
@@ -1120,6 +1156,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           'allowComments': _allowComments,
         },
       );
+      debugPrint(
+          '✅ VideoPublishingScreen: Content moderation completed - approved: ${moderationResult.isApproved}');
 
       if (!moderationResult.isApproved) {
         setState(() {
@@ -1137,12 +1175,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
       // 2. Generate video ID and create optimistic video
       final videoId = _generateVideoId();
-      // print('🎬 Creating optimistic video: $videoId');
+      debugPrint(
+          '🎬 VideoPublishingScreen: Creating optimistic video: $videoId');
 
       // Apply watermark if cross-platform sharing is selected
       File videoFileToUpload = widget.videoFile;
       if (_watermarkService.shouldApplyWatermark(_selectedPlatforms)) {
-        // print('🎬 Applying watermark for cross-platform sharing...');
+        debugPrint(
+            '🎬 VideoPublishingScreen: Applying watermark for cross-platform sharing...');
         final watermarkedFile = await _watermarkService.addWatermarkToVideo(
           videoFile: widget.videoFile,
           selectedPlatforms: _selectedPlatforms,
@@ -1150,10 +1190,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         );
         if (watermarkedFile != null) {
           videoFileToUpload = watermarkedFile;
+          debugPrint('✅ VideoPublishingScreen: Watermark applied successfully');
         }
       }
 
       // 3. Create optimistic video placeholder
+      debugPrint(
+          '🎬 VideoPublishingScreen: Creating optimistic video placeholder...');
       await _optimisticVideoService.createOptimisticVideo(
         videoId: videoId,
         caption: _caption,
@@ -1172,6 +1215,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           'fileSize': await videoFileToUpload.length(),
         },
       );
+      debugPrint(
+          '✅ VideoPublishingScreen: Optimistic video created successfully');
 
       // 4. Upload video directly to all required feeds
       setState(() {
@@ -1180,6 +1225,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       });
 
       try {
+        debugPrint('🚀 Starting video upload...');
+        debugPrint('📁 Video file: ${videoFileToUpload.path}');
+        debugPrint('📝 Caption: $_caption');
+        debugPrint('🏷️ Hashtags: $_hashtags');
+        debugPrint('🔒 Privacy: $_selectedPrivacy');
+        debugPrint('📂 Category: $_selectedCategory');
+        debugPrint('👤 User ID: ${currentUser.uid}');
+
         final uploadResult = await _uploadService.uploadVideo(
           videoFile: videoFileToUpload,
           caption: _caption,
@@ -1197,6 +1250,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             'fileSize': await videoFileToUpload.length(),
           },
         );
+
+        debugPrint(
+            '📤 Upload result: success=${uploadResult.success}, error=${uploadResult.error}');
 
         setState(() {
           _isUploading = false;
@@ -1222,16 +1278,54 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           }
         } else {
           if (mounted) {
-            _showUploadErrorDialog(
-                uploadResult.error ?? 'Failed to publish video');
+            String errorMessage =
+                uploadResult.error ?? 'Failed to publish video';
+
+            // Provide more specific error messages
+            if (errorMessage.contains('PERMISSION_DENIED')) {
+              errorMessage =
+                  'Permission denied. Please check your account status and try again.';
+            } else if (errorMessage.contains('UNAVAILABLE')) {
+              errorMessage =
+                  'Service temporarily unavailable. Please try again in a few minutes.';
+            } else if (errorMessage.contains('UNAUTHENTICATED')) {
+              errorMessage = 'Please log in again to publish videos.';
+            } else if (errorMessage.contains('thumbnail')) {
+              errorMessage =
+                  'Failed to generate video thumbnail. Please try again.';
+            }
+
+            _showUploadErrorDialog(errorMessage);
           }
         }
       } catch (e) {
+        debugPrint(
+            '❌ VideoPublishingScreen: Error during video upload process: $e');
+        debugPrint('❌ VideoPublishingScreen: Error type: ${e.runtimeType}');
+        debugPrint(
+            '❌ VideoPublishingScreen: Stack trace: ${StackTrace.current}');
+
         setState(() {
           _isUploading = false;
         });
         if (mounted) {
-          _showUploadErrorDialog('Failed to publish video: ${e.toString()}');
+          String errorMessage = 'Failed to publish video: ${e.toString()}';
+
+          // Provide more specific error messages
+          if (e.toString().contains('PERMISSION_DENIED')) {
+            errorMessage =
+                'Permission denied. Please check your account status and try again.';
+          } else if (e.toString().contains('UNAVAILABLE')) {
+            errorMessage =
+                'Service temporarily unavailable. Please try again in a few minutes.';
+          } else if (e.toString().contains('UNAUTHENTICATED')) {
+            errorMessage = 'Please log in again to publish videos.';
+          } else if (e.toString().contains('thumbnail')) {
+            errorMessage =
+                'Failed to generate video thumbnail. Please try again.';
+          }
+
+          _showUploadErrorDialog(errorMessage);
         }
       }
     } catch (e) {

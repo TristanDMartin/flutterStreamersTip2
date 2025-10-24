@@ -268,10 +268,6 @@ class _VideoPlayerViewOptimizedState
   }
 
   Future<bool> _safePause() async {
-    // AGGRESSIVE DEBUG: Track who is calling pause
-    debugPrint('⚠️⚠️ _safePause() CALLED for video ${widget.video.id}');
-    debugPrint('   Stack trace: ${StackTrace.current}');
-
     if (_videoPlayerController == null || _isDisposed) {
       _logger.warn('Cannot pause: controller is null or disposed',
           tag: 'VideoPlayer');
@@ -384,19 +380,27 @@ class _VideoPlayerViewOptimizedState
     if (_videoPlayerController == null || !_isInitialized || _isDisposed)
       return;
 
+    // 🔥 FIX: Prevent excessive rebuilds by checking if anything actually changed
+    if (oldWidget.isCurrentVideo == widget.isCurrentVideo &&
+        oldWidget.video.id == widget.video.id) {
+      return; // Nothing important changed, skip processing
+    }
+
     // Check if we should pause all videos (when leaving HomeView)
     final homeState = ref.read(homeProvider);
     if (homeState.shouldPauseAllVideos) {
-      // IMMEDIATE pause - stops audio instantly
-      _safePause().then((_) {
-        log('⏸️ Video paused due to HomeView navigation: ${widget.video.id}');
-        // Update UI state after build completes (prevents setState error)
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() => _isPlaying = false);
-          }
+      // Only pause if currently playing to avoid excessive calls
+      if (_isPlaying) {
+        _safePause().then((_) {
+          log('⏸️ Video paused due to HomeView navigation: ${widget.video.id}');
+          // Update UI state after build completes (prevents setState error)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _isPlaying = false);
+            }
+          });
         });
-      });
+      }
       return;
     }
 
@@ -422,15 +426,16 @@ class _VideoPlayerViewOptimizedState
         });
       } else {
         // Video is no longer current - just pause (GlobalPlaybackManager handles focus)
+        // Only pause if currently playing to avoid excessive calls
+        if (_isPlaying) {
+          _safePause().then((_) {
+            _safeSetVolume(0.0); // Mute audio immediately
+          });
+          setState(() => _isPlaying = false);
 
-        // This video is no longer current - pause it immediately
-        _safePause().then((_) {
-          _safeSetVolume(0.0); // Mute audio immediately
-        });
-        setState(() => _isPlaying = false);
-
-        log('⏸️ Video no longer current, paused: ${widget.video.id}');
-        debugPrint('⏸️ Video no longer current, paused: ${widget.video.id}');
+          log('⏸️ Video no longer current, paused: ${widget.video.id}');
+          debugPrint('⏸️ Video no longer current, paused: ${widget.video.id}');
+        }
       }
     }
 
@@ -440,6 +445,19 @@ class _VideoPlayerViewOptimizedState
       if (playbackManager.activeVideoId != widget.video.id) {
         log('🎵 VideoPlayer: Current video doesn\'t have focus, requesting it: ${widget.video.id}');
         playbackManager.requestFocus(widget.video.id, widget.tabId);
+
+        // 🔥 FIX: Ensure this video plays when it becomes current
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted && widget.isCurrentVideo) {
+            _applyAudioEnhancement().then((_) async {
+              await _safeSetVolume(1.0);
+              setState(() => _audioUnmuted = true);
+              await _safePlay();
+              setState(() => _isPlaying = true);
+              log('🔊 VideoPlayer: Auto-started current video: ${widget.video.id}');
+            });
+          }
+        });
       }
     }
   }
@@ -1300,15 +1318,8 @@ class _VideoPlayerViewOptimizedState
   }
 
   Widget _buildVideoPlayer() {
-    // DEBUG: Log video controller state when modal is open
-    debugPrint(
-        '🎬 _buildVideoPlayer: videoId=${widget.video.id}, controller=${_videoPlayerController != null}, initialized=$_isInitialized, disposed=$_isDisposed, isCurrent=${widget.isCurrentVideo}');
-
     // 🚀 INSTANT SWITCHING: Only show video when fully ready - no thumbnails during swipes
     if (_videoPlayerController == null || !_isInitialized || _isDisposed) {
-      debugPrint(
-          '🎬 _buildVideoPlayer: CONTROLLER NOT READY - videoId=${widget.video.id}, controller=${_videoPlayerController != null}, initialized=$_isInitialized, disposed=$_isDisposed');
-
       // SEAMLESS RETURN: Reinitialize if controller was disposed
       if ((_videoPlayerController == null || _isDisposed) &&
           widget.isCurrentVideo) {

@@ -34,6 +34,10 @@ class FollowingFeedService {
 
       // 2) Extract author IDs from connections
       log('👥 FollowingFeedService: Processing ${connections.length} total connections');
+      for (final conn in connections) {
+        log('   - Connection ${conn.connectionId}: followState=${conn.followState}');
+      }
+
       final authorIds = connections
           .where((conn) =>
               conn.followState == 'mutual' || conn.followState == 'following')
@@ -95,10 +99,11 @@ class FollowingFeedService {
       final chunk = authorIds.skip(i).take(10).toList();
 
       try {
-        // Try querying by creatorId (the field name in the video document)
+        // Query by userId field (primary field used by mobile app)
+        log('👥 FollowingFeedService: Querying videos for chunk: $chunk');
         Query query = _firestore
             .collection('videos')
-            .where('creatorId', whereIn: chunk)
+            .where('userId', whereIn: chunk)
             .orderBy('createdAt', descending: true);
 
         // Add pagination if needed
@@ -113,13 +118,37 @@ class FollowingFeedService {
 
         log('👥 FollowingFeedService: Query returned ${querySnapshot.docs.length} documents for chunk: $chunk');
 
-        final chunkVideos = querySnapshot.docs
-            .map((doc) => _homeVideoFromFirestore(doc))
-            .toList();
+        // If no results with userId field, try creatorId field as fallback
+        if (querySnapshot.docs.isEmpty) {
+          log('👥 FollowingFeedService: No videos found with userId field, trying creatorId field...');
+          final fallbackQuery = _firestore
+              .collection('videos')
+              .where('creatorId', whereIn: chunk)
+              .orderBy('createdAt', descending: true);
 
-        allVideos.addAll(chunkVideos);
+          if (startAfter != null && i == 0) {
+            query = fallbackQuery.startAfterDocument(startAfter);
+          } else {
+            query = fallbackQuery;
+          }
 
-        log('👥 FollowingFeedService: Fetched ${chunkVideos.length} videos from ${chunk.length} authors (chunk: $chunk)');
+          final fallbackSnapshot = await query.get();
+          log('👥 FollowingFeedService: Fallback query returned ${fallbackSnapshot.docs.length} documents');
+
+          final chunkVideos = fallbackSnapshot.docs
+              .map((doc) => _homeVideoFromFirestore(doc))
+              .toList();
+
+          allVideos.addAll(chunkVideos);
+          log('👥 FollowingFeedService: Fetched ${chunkVideos.length} videos from ${chunk.length} authors (chunk: $chunk) using creatorId field');
+        } else {
+          final chunkVideos = querySnapshot.docs
+              .map((doc) => _homeVideoFromFirestore(doc))
+              .toList();
+
+          allVideos.addAll(chunkVideos);
+          log('👥 FollowingFeedService: Fetched ${chunkVideos.length} videos from ${chunk.length} authors (chunk: $chunk) using userId field');
+        }
       } catch (e) {
         log('❌ FollowingFeedService: Error fetching videos from chunk: $e');
         // Continue with next chunk instead of failing completely
@@ -178,29 +207,36 @@ class FollowingFeedService {
   HomeVideo _homeVideoFromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
+    // Support all field name variants for cross-platform compatibility
+    final userId = (data['userId'] ?? data['creatorId'] ?? data['creator_id'])
+            as String? ??
+        '';
+
     // Create the creator/user object
     final creator = User(
-      id: data['creatorId'] ?? '',
-      username: data['creatorUsername'] ?? '',
-      displayName: data['creatorDisplayName'] ?? '',
-      bio: data['creatorBio'],
-      avatarURL: data['creatorProfileImageURL'] ?? data['creatorAvatarURL'],
+      id: userId,
+      username: data['creatorUsername'] ?? data['username'] ?? '',
+      displayName: data['creatorDisplayName'] ?? data['displayName'] ?? '',
+      bio: data['creatorBio'] ?? data['bio'],
+      avatarURL: data['creatorProfileImageURL'] ??
+          data['creatorAvatarURL'] ??
+          data['avatarURL'],
     );
 
     return HomeVideo(
       id: doc.id,
       creator: creator,
-      videoURL: data['videoURL'] ?? '',
-      thumbnailURL: data['thumbnailURL'],
-      likes: data['likesCount'] ?? 0,
-      comments: data['commentsCount'] ?? 0,
-      views: data['viewsCount'] ?? 0,
+      videoURL: data['videoUrl'] ?? data['videoURL'] ?? '',
+      thumbnailURL: data['thumbnailUrl'] ?? data['thumbnailURL'],
+      likes: data['likes'] ?? data['likesCount'] ?? 0,
+      comments: data['comments'] ?? data['commentsCount'] ?? 0,
+      views: data['views'] ?? data['viewsCount'] ?? 0,
       caption: data['caption'] ?? data['description'] ?? '',
       isLiked: data['isLiked'] ?? false,
       isFavorited: data['isFavorited'] ?? false,
       isDraft: data['isDraft'] ?? false,
       mlScore: data['mlScore']?.toDouble() ?? 0.0,
-      categoryId: data['categoryId'] ?? '',
+      categoryId: data['categoryId'] ?? data['category'] ?? '',
       duration: data['duration']?.toDouble() ?? 0.0,
       createdAt: data['createdAt'] as Timestamp?,
     );

@@ -345,50 +345,9 @@ class GlobalPlaybackManager {
     log('▶️ PlaybackManager: Resuming after tab switch');
     _isPaused = false;
 
-    // First, try to resume the active video if we have one and not blocked
-    if (_activeVideoId != null && _blockLevel == 0) {
-      final controller = _controllerPool[_activeVideoId];
-      if (controller != null) {
-        try {
-          // 🔒 SAFETY: Check if controller is safe to use
-          if (_isControllerSafe(_activeVideoId!, controller)) {
-            controller.setVolume(1.0);
-            _muteStates[_activeVideoId!] = false;
-            controller.play();
-            log('▶️ PlaybackManager: Resumed active video $_activeVideoId');
-            return; // Successfully resumed active video
-          } else {
-            log('⚠️ PlaybackManager: Active video controller $_activeVideoId is not valid');
-          }
-        } catch (e) {
-          log('❌ PlaybackManager: Error resuming active video $_activeVideoId: $e');
-        }
-      }
-    }
-
-    // If active video couldn't be resumed, find any valid video to resume
-    log('🔄 PlaybackManager: Active video failed, looking for any valid video to resume...');
-    for (final entry in _controllerPool.entries) {
-      final videoId = entry.key;
-      final controller = entry.value;
-
-      try {
-        if (_isControllerSafe(videoId, controller) &&
-            !controller.value.isPlaying) {
-          // Found a valid paused video, resume it
-          controller.setVolume(1.0);
-          _muteStates[videoId] = false;
-          controller.play();
-          _activeVideoId = videoId; // Update active video
-          log('▶️ PlaybackManager: Resumed fallback video $videoId');
-          return;
-        }
-      } catch (e) {
-        log('❌ PlaybackManager: Error resuming fallback video $videoId: $e');
-      }
-    }
-
-    log('⚠️ PlaybackManager: No valid videos found to resume');
+    // 🔥 FIX: Don't auto-resume - let the new feed handle video playback
+    // The VideoPlayerViewOptimized will automatically request focus when it becomes current
+    log('🎵 PlaybackManager: Ready for new feed to request focus');
   }
 
   // ============================================

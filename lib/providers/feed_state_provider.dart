@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/feed_tab.dart';
 import '../services/global_playback_manager.dart';
+import 'home_provider.dart';
 
 /// Single source of truth for the active feed tab
 /// This provider manages the current feed selection and ensures consistent state
@@ -35,27 +36,23 @@ void switchFeed(WidgetRef ref, FeedTab newFeed) {
   print(
       '✅ switchFeed: Proceeding with switch from ${currentFeed.displayName} to ${newFeed.displayName}');
 
-  // 1) Stop audio immediately to prevent bleeding
+  // 🔥 FIX: Don't dispose all controllers - just pause current video
   final playbackManager = ref.read(globalPlaybackManagerProvider);
-  playbackManager.pauseAllForTabSwitch();
+  playbackManager.pauseAll(); // Just pause, don't dispose
 
-  // 2) Dispose all controllers bound to old feed
-  playbackManager.disposeAll();
-
-  // 3) Update the active feed (HomeView only)
+  // Update the active feed (HomeView only)
   ref.read(activeFeedProvider.notifier).state = newFeed;
   print('✅ switchFeed: Updated activeFeedProvider to ${newFeed.displayName}');
 
-  // 4) Invalidate video providers to force refetch (HomeView only)
-  ref.invalidate(videosProvider);
+  // 🔥 FIX: Call the actual HomeViewModel switchFeed method to load videos
+  final homeVM = ref.read(homeProvider.notifier);
+  homeVM.switchFeed(newFeed);
+  print(
+      '✅ switchFeed: Called HomeViewModel.switchFeed(${newFeed.displayName})');
 
-  // 5) Reset paging state for the new feed (HomeView only)
-  ref.invalidate(pagingStateProvider);
-
-  // 6) Resume playback after a brief delay to allow UI to rebuild
-  Future.delayed(const Duration(milliseconds: 300), () {
-    playbackManager.resumeAfterTabSwitch();
-  });
+  // 🔥 FIX: Don't auto-resume - let the new feed handle video playback
+  // The new feed will automatically start playing its first video
+  print('🎵 switchFeed: Ready for new feed to handle video playback');
 }
 
 /// Provider for videos that depends on active feed

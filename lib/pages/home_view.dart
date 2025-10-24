@@ -336,52 +336,6 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  /// INSTANT FOLLOWING: Switch to Following tab instantly (videos preloaded in background)
-  Future<void> _loadFollowingVideos() async {
-    try {
-      final homeState = ref.read(hp.homeProvider);
-
-      // INSTANT RESPONSE: Check if following videos are already preloaded
-      if (homeState.followingVideos.isNotEmpty) {
-        await _prewarmFirstVideo();
-        return;
-      }
-
-      // Trigger background loading for future visits
-      _triggerFollowingVideosBackgroundLoad();
-    } catch (e) {
-      if (kDebugMode) {
-        log('❌ Error switching to Following tab: $e');
-      }
-    }
-  }
-
-  /// Trigger background loading of following videos for future instant switching
-  void _triggerFollowingVideosBackgroundLoad() {
-    try {
-      log('👥 INSTANT FOLLOWING: Triggering background load for future visits...');
-
-      // Trigger background loading without blocking UI
-      Future.microtask(() async {
-        try {
-          final homeVM = ref.read(hp.homeProvider.notifier);
-          final userService = ref.read(hp.userServiceProvider);
-          final followingIds = await userService.getFollowingIds();
-
-          if (followingIds.isNotEmpty) {
-            await homeVM.fetchFollowingVideos(
-                followingIds: followingIds, reset: true);
-            log('✅ INSTANT FOLLOWING: Background load completed - videos ready for next visit');
-          }
-        } catch (e) {
-          log('⚠️ INSTANT FOLLOWING: Background load failed: $e (non-critical)');
-        }
-      });
-    } catch (e) {
-      log('❌ INSTANT FOLLOWING: Error triggering background load: $e');
-    }
-  }
-
   /// Prewarm the first video for instant play (TikTok style)
   Future<void> _prewarmFirstVideo() async {
     try {
@@ -590,12 +544,8 @@ class _HomeViewState extends ConsumerState<HomeView>
       });
     }
 
-    // Load videos for the new feed
-    if (newTab == FeedTab.following) {
-      _loadFollowingVideos();
-    } else {
-      _loadVideos();
-    }
+    // 🔥 FIX: Videos are already loaded by HomeProvider.switchFeed()
+    // No need to duplicate the loading logic here
 
     log('✅ HomeView: Feed switched to ${newTab.displayName}');
   }

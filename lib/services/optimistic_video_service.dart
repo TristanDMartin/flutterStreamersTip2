@@ -74,8 +74,20 @@ class OptimisticVideoService extends ChangeNotifier {
 
   /// Create placeholder documents in Firestore
   Future<void> _createPlaceholderDocuments(OptimisticVideo video) async {
-    // Create main video document
-    await _firestore.collection('videos').doc(video.videoId).set({
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    debugPrint(
+        '🔥 OptimisticVideoService: Creating placeholder document for video: ${video.videoId}');
+    debugPrint(
+        '🔥 OptimisticVideoService: Authenticated user UID: ${user.uid}');
+    debugPrint('🔥 OptimisticVideoService: Video owner ID: ${video.ownerId}');
+    debugPrint(
+        '🔥 OptimisticVideoService: UIDs match: ${user.uid == video.ownerId}');
+
+    final videoData = {
       'userId': video.ownerId,
       'creatorId': video.ownerId, // Add for web/cross-platform compatibility
       'creator_id':
@@ -90,68 +102,179 @@ class OptimisticVideoService extends ChangeNotifier {
       'duration': video.duration ?? 0,
       'fileSize': video.fileSize ?? 0,
       'metadata': video.metadata ?? {},
-    });
+    };
+
+    debugPrint(
+        '🔥 OptimisticVideoService: Video data keys: ${videoData.keys.toList()}');
+    debugPrint(
+        '🔥 OptimisticVideoService: Video data values: ${videoData.values.map((v) => v.toString()).toList()}');
+
+    // Check Firestore auth context
+    debugPrint('🔥 OptimisticVideoService: Checking Firestore auth context...');
+    try {
+      final firestoreUser = _auth.currentUser;
+      debugPrint(
+          '🔥 OptimisticVideoService: Firestore auth user: ${firestoreUser?.uid}');
+      debugPrint(
+          '🔥 OptimisticVideoService: Firestore auth user email: ${firestoreUser?.email}');
+      debugPrint(
+          '🔥 OptimisticVideoService: Firestore auth user displayName: ${firestoreUser?.displayName}');
+
+      if (firestoreUser != null) {
+        final firestoreToken = await firestoreUser.getIdToken(true);
+        debugPrint(
+            '🔥 OptimisticVideoService: Firestore auth token length: ${firestoreToken?.length ?? 0}');
+        debugPrint(
+            '🔥 OptimisticVideoService: Firestore auth token preview: ${firestoreToken?.substring(0, 20) ?? 'null'}...');
+
+        // Force refresh the Firestore client authentication
+        debugPrint(
+            '🔥 OptimisticVideoService: Forcing Firestore client auth refresh...');
+        try {
+          // Wait a moment for auth to propagate
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          // Force refresh the auth token
+          final refreshedToken = await firestoreUser.getIdToken(true);
+          debugPrint(
+              '🔥 OptimisticVideoService: Refreshed auth token length: ${refreshedToken?.length ?? 0}');
+
+          // Wait for auth to propagate to Firestore
+          await Future.delayed(const Duration(milliseconds: 1000));
+          debugPrint(
+              '🔥 OptimisticVideoService: Firestore client should be authenticated');
+        } catch (e) {
+          debugPrint(
+              '🔥 OptimisticVideoService: Error refreshing Firestore auth: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint(
+          '🔥 OptimisticVideoService: Error checking Firestore auth: $e');
+    }
+
+    // Create main video document
+    debugPrint(
+        '🔥 OptimisticVideoService: Attempting to write to Firestore...');
+    try {
+      await _firestore.collection('videos').doc(video.videoId).set(videoData);
+      debugPrint('🔥 OptimisticVideoService: Successfully wrote to Firestore!');
+    } catch (e) {
+      debugPrint('❌ OptimisticVideoService: Failed to write to Firestore: $e');
+      debugPrint('❌ OptimisticVideoService: Error type: ${e.runtimeType}');
+      debugPrint('❌ OptimisticVideoService: Error details: ${e.toString()}');
+
+      // Check if user is still authenticated
+      final currentUser = _auth.currentUser;
+      debugPrint(
+          '❌ OptimisticVideoService: Current user after error: ${currentUser?.uid}');
+      debugPrint(
+          '❌ OptimisticVideoService: User email after error: ${currentUser?.email}');
+
+      rethrow;
+    }
 
     // Add to user's video list
-    await _firestore
-        .collection('users')
-        .doc(video.ownerId)
-        .collection('videos')
-        .doc(video.videoId)
-        .set({
-      'createdAt': video.createdAt,
-      'status': 'processing',
-    });
+    debugPrint(
+        '🔥 OptimisticVideoService: Adding to user video list: ${video.ownerId}/videos/${video.videoId}');
+    try {
+      await _firestore
+          .collection('users')
+          .doc(video.ownerId)
+          .collection('videos')
+          .doc(video.videoId)
+          .set({
+        'createdAt': video.createdAt,
+        'status': 'processing',
+      });
+      debugPrint(
+          '🔥 OptimisticVideoService: Successfully added to user video list!');
+    } catch (e) {
+      debugPrint(
+          '🔥 OptimisticVideoService: Error adding to user video list: $e');
+      rethrow;
+    }
 
     // Get privacy setting from metadata
     final privacy = video.metadata?['privacy'] as String? ?? 'Everyone';
+    debugPrint('🔥 OptimisticVideoService: Privacy setting: $privacy');
 
     // Add to appropriate feeds based on privacy setting
     switch (privacy) {
       case 'Everyone':
         // Add to public feeds (For You feed)
-        await _firestore
-            .collection('feeds')
-            .doc('for_you')
-            .collection('videos')
-            .doc(video.videoId)
-            .set({
-          'videoId': video.videoId,
-          'userId': video.ownerId,
-          'privacy': privacy,
-          'status': 'processing',
-          'addedAt': video.createdAt,
-        });
-
-        // Add to following feed
-        await _firestore
-            .collection('feeds')
-            .doc('following')
-            .collection('videos')
-            .doc(video.videoId)
-            .set({
-          'videoId': video.videoId,
-          'userId': video.ownerId,
-          'privacy': privacy,
-          'status': 'processing',
-          'addedAt': video.createdAt,
-        });
-
-        // Add to category feeds for each category
-        for (final category in video.categories) {
+        debugPrint('🔥 OptimisticVideoService: Adding to For You feed');
+        try {
           await _firestore
               .collection('feeds')
-              .doc('categories')
-              .collection(category)
+              .doc('for_you')
+              .collection('videos')
               .doc(video.videoId)
               .set({
             'videoId': video.videoId,
             'userId': video.ownerId,
-            'category': category,
             'privacy': privacy,
             'status': 'processing',
             'addedAt': video.createdAt,
           });
+          debugPrint(
+              '🔥 OptimisticVideoService: Successfully added to For You feed!');
+        } catch (e) {
+          debugPrint(
+              '🔥 OptimisticVideoService: Error adding to For You feed: $e');
+          rethrow;
+        }
+
+        // Add to following feed
+        debugPrint('🔥 OptimisticVideoService: Adding to Following feed');
+        try {
+          await _firestore
+              .collection('feeds')
+              .doc('following')
+              .collection('videos')
+              .doc(video.videoId)
+              .set({
+            'videoId': video.videoId,
+            'userId': video.ownerId,
+            'privacy': privacy,
+            'status': 'processing',
+            'addedAt': video.createdAt,
+          });
+          debugPrint(
+              '🔥 OptimisticVideoService: Successfully added to Following feed!');
+        } catch (e) {
+          debugPrint(
+              '🔥 OptimisticVideoService: Error adding to Following feed: $e');
+          rethrow;
+        }
+
+        // Add to category feeds for each category
+        debugPrint(
+            '🔥 OptimisticVideoService: Adding to category feeds: ${video.categories}');
+        for (final category in video.categories) {
+          debugPrint(
+              '🔥 OptimisticVideoService: Adding to category: $category');
+          try {
+            await _firestore
+                .collection('feeds')
+                .doc('categories')
+                .collection(category)
+                .doc(video.videoId)
+                .set({
+              'videoId': video.videoId,
+              'userId': video.ownerId,
+              'category': category,
+              'privacy': privacy,
+              'status': 'processing',
+              'addedAt': video.createdAt,
+            });
+            debugPrint(
+                '🔥 OptimisticVideoService: Successfully added to category $category!');
+          } catch (e) {
+            debugPrint(
+                '🔥 OptimisticVideoService: Error adding to category $category: $e');
+            rethrow;
+          }
         }
         break;
 
