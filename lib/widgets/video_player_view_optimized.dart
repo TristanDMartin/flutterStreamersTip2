@@ -1500,8 +1500,8 @@ class _VideoPlayerViewOptimizedState
       // DiscoverView: At the very bottom - use minimal spacing
       bottomPosition = safeBottom + 20.0; // Just safe area + 20px
     } else if (isProfileView) {
-      // ProfileView: Move down more than HomeView
-      bottomPosition = safeBottom + 100.0 + paddingAboveNav + 60.0;
+      // ProfileView: At the very bottom like DiscoverView
+      bottomPosition = safeBottom + 20.0; // Just safe area + 20px
     } else {
       // HomeView: Perfect as is
       bottomPosition = safeBottom + 100.0 + paddingAboveNav;
@@ -1679,13 +1679,11 @@ class _VideoPlayerViewOptimizedState
 
     double top;
     if (isCategoryFeed) {
-      // DiscoverView: At the very bottom - position near bottom of screen
-      top = screenHeight - safeBottom - groupHeight - 20.0; // 20px from bottom
+      // DiscoverView: Position lower but still above system navigation bar
+      top = screenHeight - safeBottom - groupHeight - 40.0; // Reduced spacing
     } else if (isProfileView) {
-      // ProfileView: Move down more than HomeView
-      const profilePaddingAboveNav = 60.0; // Move down more (112-52=60)
-      final desiredTop = bottomNavStart - profilePaddingAboveNav - groupHeight;
-      top = desiredTop.clamp(0.0, screenHeight - groupHeight);
+      // ProfileView: Position lower but still above system navigation bar
+      top = screenHeight - safeBottom - groupHeight - 40.0; // Reduced spacing
     } else {
       // HomeView: Perfect as is
       final desiredTop = bottomNavStart - paddingAboveNav - groupHeight;

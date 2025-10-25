@@ -94,11 +94,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     const railWidth = 64.0;
     const leftInset = 12.0;
     const rightInset = railWidth + 16;
-    const paddingAboveNav =
-        50.0; // Match right action buttons TikTok-style spacing
 
-    // Position caption block right above bottom navigation
-    final bottomPosition = safeBottom + paddingAboveNav;
+    // ProfileView: Position at the very bottom like DiscoverView
+    final bottomPosition = safeBottom + 20.0; // At the very bottom
+
+    // Action buttons: Position lower but still above nav bar
+    final screenHeight = media.size.height;
+    const btnSize = 56.0;
+    const gap = 16.0;
+    const count = 5; // Like, Comment, Bookmark, Share, More Options
+    const groupHeight = (count * btnSize) + ((count - 1) * gap);
+    final actionButtonsBottom = screenHeight -
+        safeBottom -
+        groupHeight -
+        40.0; // Reduced from 120 to 40
 
     return [
       // Back button - top left
@@ -115,14 +124,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         ),
       ),
 
-      // Action rail - right edge
+      // Action rail - right edge (positioned from top to avoid nav bar)
       Positioned(
         right: 12,
-        bottom: safeBottom + paddingAboveNav,
+        top: actionButtonsBottom,
         child: _buildActionRail(context),
       ),
 
-      // Caption block - bottom left (screen edge anchored)
+      // Caption block - bottom left (at the very bottom)
       Positioned(
         left: leftInset,
         right: rightInset,
