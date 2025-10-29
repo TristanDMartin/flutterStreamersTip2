@@ -115,22 +115,51 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
       builder: (context, ref, child) {
         final authService = ref.watch(robustAuthServiceProvider);
 
+        // Listen to auth state changes
+        ref.listen(robustAuthServiceProvider, (previous, next) {
+          if (previous != null && next.isLoggedIn != previous.isLoggedIn) {
+            debugPrint('🔄 AppStartupWrapper: Auth state changed');
+            debugPrint('   Previous: isLoggedIn=${previous.isLoggedIn}');
+            debugPrint('   Next: isLoggedIn=${next.isLoggedIn}');
+
+            if (next.isLoggedIn && next.currentUser != null) {
+              debugPrint('✅ User logged in: ${next.currentUser!.displayName}');
+              debugPrint('✅ AppStartupWrapper will show MainTabView');
+            } else if (!next.isLoggedIn) {
+              debugPrint('❌ User logged out - showing AuthModalView');
+            }
+          }
+        });
+
+        // Debug: Log current state
+        debugPrint(
+            '🎯 AppStartupWrapper build: isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}, _showSplash=$_showSplash');
+
+        if (authService.currentUser != null) {
+          debugPrint(
+              '   Current user: ${authService.currentUser!.displayName}');
+        }
+
         // Show main app if logged in (bypass splash screen)
         if (authService.isLoggedIn) {
+          debugPrint('🏠 AppStartupWrapper: Returning MainTabView');
           return const MainTabView();
         }
 
         // Show splash screen for minimum duration like TikTok (only when not logged in)
         if (_showSplash) {
+          debugPrint('🎬 AppStartupWrapper: Showing splash screen');
           return _buildLoadingScreen();
         }
 
         // Show loading while checking auth (but not if user is already logged in)
         if (authService.shouldShowLoading) {
+          debugPrint('⏳ AppStartupWrapper: Showing loading screen');
           return _buildLoadingScreen();
         }
 
         // Show auth modal if not logged in
+        debugPrint('🔐 AppStartupWrapper: Showing auth modal');
         return const AuthModalView();
       },
     );

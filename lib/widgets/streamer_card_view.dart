@@ -19,6 +19,7 @@ import '../services/chat_service.dart';
 import '../services/follows_service.dart';
 import '../providers/follows_provider.dart';
 import '../services/follow_button_service.dart';
+import '../services/user_blocking_service.dart';
 import 'chat_view.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
@@ -72,6 +73,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // Bookmark service
   late final EnhancedBookmarkService _bookmarkService;
 
+  // Blocking service
+  late final UserBlockingService _blockingService;
+
   // Real-time data
   Map<String, dynamic>? _userData;
   bool _isLoading = true;
@@ -122,6 +126,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     });
 
     _bookmarkService = EnhancedBookmarkService();
+    _blockingService = UserBlockingService();
     _initializeBookmarks();
     _flipController = AnimationController(
       duration: const Duration(milliseconds: 600),
@@ -1446,19 +1451,21 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             ),
           ),
         ),
-        // Main content with proper safe area handling
+        // Main content with proper safe area handling and scrolling
         SafeArea(
-          child: Column(
-            children: [
-              _buildTopBar(),
-              const SizedBox(height: 8), // Add spacing after top bar
-              _buildProfileSection(),
-              _buildStatisticsRow(),
-              _buildActionButtons(),
-              const SizedBox(height: 24), // Spacing between buttons and tabs
-              _buildContentTabs(),
-              _buildContentArea(),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                _buildTopBar(),
+                const SizedBox(height: 8), // Add spacing after top bar
+                _buildProfileSection(),
+                _buildStatisticsRow(),
+                _buildActionButtons(),
+                const SizedBox(height: 24), // Spacing between buttons and tabs
+                _buildContentTabs(),
+                _buildContentArea(),
+              ],
+            ),
           ),
         ),
       ],
@@ -1911,6 +1918,21 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               ),
 
               const SizedBox(height: 12),
+              const Divider(color: Colors.grey, height: 1),
+
+              // Option 4: Block
+              _buildOptionTile(
+                icon: Icons.block,
+                title: 'Block',
+                subtitle: 'Block this user',
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleBlockUser();
+                },
+                isDestructive: true,
+              ),
+
+              const SizedBox(height: 12),
 
               // Cancel button
               Padding(
@@ -2172,6 +2194,74 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         ),
       ),
     );
+  }
+
+  /// Handle block user action
+  Future<void> _handleBlockUser() async {
+    final displayName = _userData?['displayName'] ?? 'this user';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          'Block User',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Are you sure you want to block $displayName? They will not be able to interact with you and you will not see their content.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'Block',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _blockingService.blockUser(
+          targetUserId: widget.userId,
+          reason: 'User blocked from StreamerCardView',
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$displayName has been blocked'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+
+          // Navigate back
+          Navigator.of(context).pop();
+          if (widget.onDismiss != null) {
+            widget.onDismiss!();
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to block user: $e'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    }
   }
 
   /// Submit report to backend
@@ -2821,7 +2911,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildContentArea() {
-    return Expanded(
+    return SizedBox(
+      height:
+          MediaQuery.of(context).size.height * 0.5, // Use 50% of screen height
       child: _buildVideoFeed(),
     );
   }

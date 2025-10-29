@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../services/tiktok_account_switcher.dart';
+import '../services/robust_auth_service.dart';
 import 'instant_response_button.dart';
+import 'auth_modal_view.dart';
 
 /// TikTok-style account switching modal with instant switching
 class TikTokAccountSwitcherModal extends ConsumerStatefulWidget {
@@ -203,7 +206,7 @@ class _TikTokAccountSwitcherModalState
   }
 
   Widget _buildAccountTile(SavedAccount account) {
-    final isCurrent = account.isCurrent;
+    final isCurrent = account.uid == _accountSwitcher.currentAccount?.uid;
     final isSwitching = _accountSwitcher.isSwitching;
 
     return Container(
@@ -715,129 +718,125 @@ class _TikTokAccountSwitcherModalState
   Future<void> _addAccount() async {
     HapticFeedback.lightImpact();
 
+    debugPrint('🔄 _addAccount called in TikTokAccountSwitcherModal');
+
     // Close current modal
     _closeModal();
 
-    // Show add account dialog
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.person_add, color: Colors.purple),
-              const SizedBox(width: 8),
-              const Text('Add New Account'),
-            ],
-          ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  'Add a new Google account for instant TikTok-style switching!'),
-              SizedBox(height: 12),
-              Text(
-                'This will allow you to switch between accounts instantly, just like TikTok.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _triggerGoogleSignInForNewAccount();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Add Account'),
-            ),
-          ],
-        ),
-      );
-    }
+    // Wait a bit for modal to close completely
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    // Trigger Google Sign-In directly without intermediate dialog
+    debugPrint('🔄 Triggering Google Sign-In directly');
+    await _triggerGoogleSignInForNewAccount();
   }
 
   Future<void> _triggerGoogleSignInForNewAccount() async {
+    debugPrint('🚀 _triggerGoogleSignInForNewAccount called');
+
+    // Wait a bit for the context to stabilize
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (!mounted) {
+      debugPrint('❌ Context not mounted, aborting authentication');
+      return;
+    }
+
     try {
-      // Show loading indicator
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => Center(
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                const Text(
-                  'Adding new account...',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
+      // Show auth modal with both Google and Email/Password options
+      debugPrint('🔄 Showing auth modal for new account addition...');
+
+      // Navigate to auth modal
+      final result = await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => const AuthModalView(),
+          fullscreenDialog: true,
         ),
       );
 
-      // Trigger Google Sign-In flow for new account
-      final success = await _accountSwitcher.performGoogleSignIn();
+      debugPrint('✅ Auth modal closed with result: $result');
 
-      if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
+      // Wait a moment for auth state to update and trigger rebuild
+      await Future.delayed(const Duration(milliseconds: 500));
 
-        if (success) {
-          // Trigger comprehensive data refresh for new account
-          await _accountSwitcher.triggerDataRefreshWithRef(ref);
+      // Check if authentication was successful by checking current user
+      final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+
+      debugPrint('🔍 Current user after auth: ${currentUser?.email ?? 'None'}');
+      debugPrint(
+          '🔍 Firebase Auth current user ID: ${currentUser?.uid ?? 'None'}');
+
+      if (currentUser != null && mounted) {
+        debugPrint('✅ New account authenticated: ${currentUser.email}');
+
+        // Check if this account is already in the saved accounts
+        final existingAccount = _accountSwitcher.savedAccounts.firstWhere(
+          (account) => account.uid == currentUser.uid,
+          orElse: () => SavedAccount(
+            uid: '',
+            email: '',
+            displayName: '',
+            provider: '',
+            lastUsed: DateTime.now(),
+          ),
+        );
+
+        if (existingAccount.uid.isNotEmpty) {
+          debugPrint(
+              '⚠️ Account already exists in saved accounts, not adding again');
+        } else {
+          // Add the account to saved accounts
+          await _accountSwitcher.addCurrentAccount();
+          debugPrint('✅ New account added to saved accounts');
+        }
+
+        // Trigger comprehensive data refresh for new account
+        await _accountSwitcher.triggerDataRefreshWithRef(ref);
+
+        if (mounted) {
+          debugPrint('🔄 Processing successful authentication...');
+
+          // Close ALL modals and navigate back to the first route
+          debugPrint('🔄 Closing all modals to return to main app...');
+          Navigator.of(context).popUntil((route) => route.isFirst);
+
+          debugPrint(
+              '✅ All modals closed - returned to first route (MainTabView)');
+
+          // Show success message
+          await Future.delayed(const Duration(milliseconds: 300));
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: const Text(
-                    '✅ New account added! You can now switch accounts instantly. All data refreshed!'),
+                    '✅ Account added successfully! Swipe to switch accounts.'),
                 backgroundColor: Colors.green,
                 behavior: SnackBarBehavior.floating,
                 duration: const Duration(seconds: 3),
               ),
             );
           }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text(
-                    '❌ Account addition was cancelled. Please try again.'),
-                backgroundColor: Colors.orange,
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+        }
+      } else {
+        debugPrint('❌ No user authenticated, account addition cancelled');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                  '❌ Account addition was cancelled. Please try again.'),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
         }
       }
-    } catch (e) {
-      if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error in _triggerGoogleSignInForNewAccount: $e');
+      debugPrint('Stack trace: $stackTrace');
 
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ Error: ${e.toString()}'),

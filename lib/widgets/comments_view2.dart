@@ -413,7 +413,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     final double screenHeight = MediaQuery.of(context).size.height;
     final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final double modalHeight =
-        screenHeight * 0.5; // Make modal much smaller to show more video
+        screenHeight * 0.5; // Fixed height - keyboard will overlap comments
 
     print(
         '🎬 CommentsView2: Building modal with height: $modalHeight, keyboard: $keyboardHeight');
@@ -436,7 +436,8 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
 
   Widget _buildCommentsModal(double modalHeight, double keyboardHeight) {
     return Positioned(
-      bottom: 0,
+      bottom:
+          keyboardHeight > 0 ? keyboardHeight : 0, // Lift modal above keyboard
       left: 0,
       right: 0,
       child: ClipRRect(
@@ -459,17 +460,14 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
             ),
             child: GestureDetector(
               onTap: () {}, // Prevent tap from propagating to close modal
-              child: Padding(
-                padding: EdgeInsets.only(bottom: keyboardHeight),
-                child: Column(
-                  children: [
-                    _buildDragIndicator(),
-                    _buildHeader(),
-                    Expanded(child: _buildCommentList()),
-                    _buildEmojiRow(),
-                    _buildInputBar(),
-                  ],
-                ),
+              child: Column(
+                children: [
+                  _buildDragIndicator(),
+                  _buildHeader(),
+                  Expanded(child: _buildCommentList()),
+                  _buildEmojiRow(),
+                  _buildInputBar(),
+                ],
               ),
             ),
           ),
@@ -688,13 +686,50 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   }
 
   Widget _buildUserAvatar() {
-    final avatarUrl = _currentUserAvatarUrl ??
-        firebase_auth.FirebaseAuth.instance.currentUser?.photoURL ??
-        '';
-    return UnifiedAvatarService().getAvatar(
-      imageUrl: avatarUrl,
-      radius: 18,
-      useProfileViewStyling: false,
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    final avatarUrl = _currentUserAvatarUrl ?? currentUser?.photoURL;
+
+    // Always show a visible avatar
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: SweepGradient(
+          colors: [
+            Color(0xFFFF6CAB),
+            Color(0xFF8E54E9),
+            Color(0xFF3D99F7),
+            Color(0xFFFF6CAB),
+          ],
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.grey,
+        ),
+        child: avatarUrl != null && avatarUrl.isNotEmpty
+            ? ClipOval(
+                child: Image.network(
+                  avatarUrl,
+                  width: 32,
+                  height: 32,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+              )
+            : const Icon(
+                Icons.person,
+                color: Colors.white,
+                size: 18,
+              ),
+      ),
     );
   }
 

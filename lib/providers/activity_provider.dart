@@ -29,6 +29,8 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _procSub;
   bool _isInitialized = false; // FIXED: Prevent multiple initializations
 
+  bool get isInitialized => _isInitialized;
+
   Future<void> init(String userId) async {
     debugPrint('🔄 ActivityNotifier.init called for user: $userId');
     debugPrint('  - _isInitialized: $_isInitialized');
@@ -263,6 +265,12 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       }
     }
     return count;
+  }
+
+  /// Force refresh notifications from Firestore
+  Future<void> refresh(String userId) async {
+    debugPrint('🔄 Force refreshing notifications for user: $userId');
+    await _loadFirestoreData(userId);
   }
 
   void startProcessingListener(String userId) {

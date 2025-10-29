@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/insights_data.dart';
 import '../models/profile_video.dart';
 import '../services/insights_firebase_service.dart';
+import '../services/video_analytics_aggregation_service.dart';
 import 'insights_overview_tab.dart';
 import 'insights_viewers_tab.dart';
 import 'insights_engagement_tab.dart';
@@ -53,15 +54,26 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     final videoId = _selectedVideo?.id ?? widget.videoId;
     final insightsService = ref.read(insightsFirebaseServiceProvider);
 
+    debugPrint('🔍 InsightsView: Loading insights for videoId: $videoId');
+
     try {
+      // First, trigger aggregation to ensure we have the latest data
+      final aggregationService = VideoAnalyticsAggregationService();
+      await aggregationService.aggregateVideoAnalytics(videoId);
+
+      // Then fetch the aggregated insights
       final insights = await insightsService.getVideoInsights(videoId);
 
       if (mounted) {
         setState(() {
           if (insights != null) {
+            debugPrint(
+                '✅ InsightsView: Real data loaded - Views: ${insights.overview.totalViews}, Likes: ${insights.engagement.likes}');
             _insightsData = insights;
           } else {
-            // Fallback to mock data if no real data available
+            debugPrint(
+                '⚠️ InsightsView: No analytics data found, using real-time data from video document');
+            // Fallback to generating data from video document stats
             _insightsData = _generateMockData();
           }
           _isLoading = false;
@@ -70,6 +82,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     } catch (e) {
       if (mounted) {
         setState(() {
+          debugPrint('❌ InsightsView: Error loading insights: $e');
           // Fallback to mock data on error
           _insightsData = _generateMockData();
           _isLoading = false;
@@ -407,10 +420,12 @@ class _InsightsViewState extends ConsumerState<InsightsView>
   }
 
   bool _isVideoTooNewForInsights() {
-    if (_selectedVideo == null) return false;
-    final now = DateTime.now();
-    final hoursSinceUpload = now.difference(_selectedVideo!.createdAt).inHours;
-    return hoursSinceUpload < 24;
+    // DISABLED: We now track analytics in real-time, so insights are available immediately
+    // if (_selectedVideo == null) return false;
+    // final now = DateTime.now();
+    // final hoursSinceUpload = now.difference(_selectedVideo!.createdAt).inHours;
+    // return hoursSinceUpload < 24;
+    return false; // Always show insights (real-time tracking enabled)
   }
 
   Widget _buildDataCollectingState() {

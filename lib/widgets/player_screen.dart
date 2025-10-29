@@ -3,12 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/home_video.dart';
-import '../models/user.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/video_service_provider.dart';
+import '../services/global_playback_manager.dart';
 import 'video_player_view_optimized.dart';
 import 'insights_view.dart';
-import 'video_options_bottom_sheet.dart';
 
 enum PlayerMode {
   homeFeed,
@@ -75,6 +74,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       }
     }
 
+    // Safety check: ensure _currentIndex is within bounds
+    if (_videos.isNotEmpty && _currentIndex >= _videos.length) {
+      debugPrint(
+          '⚠️ PlayerScreen: _currentIndex ($_currentIndex) out of bounds, clamping to ${_videos.length - 1}');
+      _currentIndex = _videos.length - 1;
+      _pageController = PageController(initialPage: _currentIndex);
+    }
+
     setState(() {}); // Trigger rebuild to show videos
   }
 
@@ -84,30 +91,38 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
   }
 
-  /// Build HUD elements with proper screen edge anchoring (same as HomeView)
-  List<Widget> _buildHUDElements(BuildContext context) {
+  /// Build ProfileView-specific overlays (back button, insights button for owner videos)
+  List<Widget> _buildProfileViewOverlays(BuildContext context) {
     final media = MediaQuery.of(context);
-    final safeBottom = media.viewPadding.bottom;
     final safeTop = media.viewPadding.top;
+    final safeBottom = media.viewPadding.bottom;
+    final currentUser = fa.FirebaseAuth.instance.currentUser;
 
-    // Constants - TikTok-style spacing
-    const railWidth = 64.0;
-    const leftInset = 12.0;
-    const rightInset = railWidth + 16;
+    // Safety checks: ensure videos are loaded and index is valid
+    if (_videos.isEmpty ||
+        _currentIndex >= _videos.length ||
+        _currentIndex < 0) {
+      debugPrint(
+          '⚠️ PlayerScreen: Cannot build overlays - _videos.length: ${_videos.length}, _currentIndex: $_currentIndex');
+      return [
+        // Back button only if we can't show the full overlay
+        Positioned(
+          top: safeTop + 16,
+          left: 16,
+          child: IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+        ),
+      ];
+    }
 
-    // ProfileView: Position at the very bottom like DiscoverView
-    final bottomPosition = safeBottom + 20.0; // At the very bottom
-
-    // Action buttons: Position lower but still above nav bar
-    final screenHeight = media.size.height;
-    const btnSize = 56.0;
-    const gap = 16.0;
-    const count = 5; // Like, Comment, Bookmark, Share, More Options
-    const groupHeight = (count * btnSize) + ((count - 1) * gap);
-    final actionButtonsBottom = screenHeight -
-        safeBottom -
-        groupHeight -
-        40.0; // Reduced from 120 to 40
+    final video = _videos[_currentIndex];
+    final isCurrentUser = currentUser?.uid == video.creator.id;
 
     return [
       // Back button - top left
@@ -124,271 +139,83 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         ),
       ),
 
-      // Action rail - right edge (positioned from top to avoid nav bar)
-      Positioned(
-        right: 12,
-        top: actionButtonsBottom,
-        child: _buildActionRail(context),
-      ),
-
-      // Caption block - bottom left (at the very bottom)
-      Positioned(
-        left: leftInset,
-        right: rightInset,
-        bottom: bottomPosition,
-        child: _buildCaptionBlock(context),
-      ),
-    ];
-  }
-
-  /// Build action rail (like, comment, bookmark, share, more options)
-  Widget _buildActionRail(BuildContext context) {
-    const gap = 16.0;
-    final currentUser = fa.FirebaseAuth.instance.currentUser;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Like button
-        _buildActionButton(
-          icon: Icons.favorite_border,
-          count: _videos.isNotEmpty
-              ? _videos[_currentIndex].likes.toString()
-              : '0',
-          onTap: () {
-            // TODO: Implement like functionality
-          },
-        ),
-        const SizedBox(height: gap),
-
-        // Comment button
-        _buildActionButton(
-          icon: Icons.chat_bubble_outline,
-          count: _videos.isNotEmpty
-              ? _videos[_currentIndex].comments.toString()
-              : '0',
-          onTap: () {
-            // TODO: Implement comment functionality
-          },
-        ),
-        const SizedBox(height: gap),
-
-        // Bookmark button
-        _buildActionButton(
-          icon: Icons.bookmark_border,
-          count: '0',
-          onTap: () {
-            // TODO: Implement bookmark functionality
-          },
-        ),
-        const SizedBox(height: gap),
-
-        // Share button
-        _buildActionButton(
-          icon: Icons.share,
-          count: 'Share',
-          onTap: () {
-            // TODO: Implement share functionality
-          },
-        ),
-        const SizedBox(height: gap),
-
-        // More Options button (context-aware)
-        _buildActionButton(
-          icon: Icons.more_horiz,
-          count: '',
-          onTap: () => _showMoreOptions(context, currentUser),
-        ),
-      ],
-    );
-  }
-
-  /// Build individual action button
-  Widget _buildActionButton({
-    required IconData icon,
-    required String count,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            color: Colors.white,
-            size: 32,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            count,
-            style: const TextStyle(
+      // Menu button - top right (for owner videos)
+      if (isCurrentUser)
+        Positioned(
+          top: safeTop + 16,
+          right: 16,
+          child: IconButton(
+            onPressed: () => _showVideoOptionsMenu(context, video),
+            icon: const Icon(
+              Icons.more_vert,
               color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              size: 28,
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
 
-  /// Build caption block with username and video caption
-  Widget _buildCaptionBlock(BuildContext context) {
-    if (_videos.isEmpty) return const SizedBox.shrink();
-
-    final video = _videos[_currentIndex];
-    final currentUser = fa.FirebaseAuth.instance.currentUser;
-    final isCurrentUser = currentUser?.uid == video.creator.id;
-
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.25,
-      ),
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Creator row: avatar + username + follow pill (only for non-owner posts)
-          if (!isCurrentUser) ...[
-            Row(
+      // Insights button and views counter for owner videos
+      // Positioned BELOW creator info to avoid overlap
+      if (isCurrentUser)
+        Positioned(
+          left: 12,
+          bottom: safeBottom +
+              120.0, // Position below creator info (20px base + 100px creator info height)
+          right: 80, // Leave space for action buttons
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // User avatar
+                // Insights button
                 GestureDetector(
-                  onTap: () {
-                    // TODO: Navigate to user profile
-                  },
-                  child: CircleAvatar(
-                    radius: 20,
-                    backgroundImage: video.creator.avatarURL != null
-                        ? NetworkImage(video.creator.avatarURL!)
-                        : null,
-                    child: video.creator.avatarURL == null
-                        ? const Icon(Icons.person, color: Colors.white)
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Username
-                Flexible(
-                  child: GestureDetector(
-                    onTap: () {
-                      // TODO: Navigate to user profile
-                    },
-                    child: Text(
-                      '@${video.creator.username}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Follow pill
-                GestureDetector(
-                  onTap: () {
-                    // TODO: Implement follow functionality
-                  },
+                  onTap: () => _openInsights(context, video),
                   child: Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'Follow',
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        width: 1,
                       ),
                     ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.analytics_outlined,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Insights',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
 
-          // Video caption
-          Flexible(
-            child: Text(
-              video.caption,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                height: 1.2,
-              ),
-            ),
-          ),
-
-          if (isCurrentUser) ...[
-            const SizedBox(height: 12),
-            _buildBottomInfoRow(context, video),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// Build bottom info row with Insights button and views counter (owner posts only)
-  Widget _buildBottomInfoRow(BuildContext context, HomeVideo video) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        // Insights button
-        GestureDetector(
-          onTap: () => _openInsights(context, video),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.3),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.analytics_outlined,
-                  color: Colors.white,
-                  size: 16,
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Insights',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
+                // Views counter
+                _buildViewsCounter(video),
               ],
             ),
           ),
         ),
-
-        // Views counter
-        _buildViewsCounter(video),
-      ],
-    );
+    ];
   }
 
   /// Build views counter for owner posts
   Widget _buildViewsCounter(HomeVideo video) {
-    // TODO: Get real views count from analytics
-    final viewsCount = video.views; // Use video.views for now
+    final viewsCount = video.views;
     final formattedViews = _formatViewsCount(viewsCount);
 
     return Text(
@@ -412,9 +239,237 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
   }
 
+  /// Show video options menu (Edit, Privacy, Download, Delete)
+  void _showVideoOptionsMenu(BuildContext context, HomeVideo video) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Video Options',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Colors.white24, height: 1),
+
+              // Edit Post
+              _buildMenuOption(
+                context,
+                icon: Icons.edit,
+                title: 'Edit Post',
+                subtitle: 'Update caption and settings',
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleEditPost(context, video);
+                },
+              ),
+
+              // Privacy Settings
+              _buildMenuOption(
+                context,
+                icon: Icons.lock_outline,
+                title: 'Privacy Settings',
+                subtitle: 'Change who can see this video',
+                onTap: () {
+                  Navigator.pop(context);
+                  _handlePrivacySettings(context, video);
+                },
+              ),
+
+              // Download
+              _buildMenuOption(
+                context,
+                icon: Icons.download,
+                title: 'Download',
+                subtitle: 'Save video to device',
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleDownload(context, video);
+                },
+              ),
+
+              // Delete
+              _buildMenuOption(
+                context,
+                icon: Icons.delete_outline,
+                title: 'Delete',
+                subtitle: 'Permanently remove this video',
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleDelete(context, video);
+                },
+                isDestructive: true,
+              ),
+
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build a menu option row
+  Widget _buildMenuOption(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isDestructive
+                    ? Colors.red.withValues(alpha: 0.1)
+                    : Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                color: isDestructive ? Colors.red : Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: isDestructive ? Colors.red : Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: Colors.white.withValues(alpha: 0.3),
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Handle Edit Post action
+  void _handleEditPost(BuildContext context, HomeVideo video) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditPostSheet(video: video),
+    );
+  }
+
+  /// Handle Privacy Settings action
+  void _handlePrivacySettings(BuildContext context, HomeVideo video) {
+    // TODO: Implement privacy settings functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Privacy Settings feature coming soon')),
+    );
+  }
+
+  /// Handle Download action
+  void _handleDownload(BuildContext context, HomeVideo video) {
+    // TODO: Implement download functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Download feature coming soon')),
+    );
+  }
+
+  /// Handle Delete action
+  void _handleDelete(BuildContext context, HomeVideo video) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'Delete Video?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'This action cannot be undone. Your video will be permanently deleted.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // TODO: Implement actual delete functionality
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Delete feature coming soon')),
+              );
+            },
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Open Insights view for the current video
-  void _openInsights(BuildContext context, HomeVideo video) {
-    Navigator.of(context).push(
+  void _openInsights(BuildContext context, HomeVideo video) async {
+    // Block video playback before navigating to prevent audio bleeding
+    final playbackManager = GlobalPlaybackManager.instance;
+    playbackManager.block(reason: 'insights_view_navigation');
+
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => InsightsView(
           videoId: video.id,
@@ -424,49 +479,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         fullscreenDialog: true,
       ),
     );
-  }
 
-  /// Show More Options bottom sheet
-  void _showMoreOptions(BuildContext context, fa.User? currentUser) async {
-    if (_videos.isEmpty || currentUser == null) return;
-    final video = _videos[_currentIndex];
-    try {
-      final userDocSnap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-      if (!userDocSnap.exists) return;
-      final userData = userDocSnap.data();
-      if (userData == null) return;
-      final user = User.fromMap(userData);
-      if (!context.mounted) return;
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (context) => VideoOptionsBottomSheet(
-          video: video,
-          currentUser: user,
-          onVideoDeleted: () {
-            setState(() {
-              _videos.removeAt(_currentIndex);
-              if (_videos.isEmpty) {
-                Navigator.of(context).pop();
-              } else if (_currentIndex >= _videos.length) {
-                _currentIndex = _videos.length - 1;
-                _pageController.jumpToPage(_currentIndex);
-              }
-            });
-          },
-          onVideoUpdated: () {
-            setState(() {});
-          },
-        ),
-      );
-    } catch (e) {
-      debugPrint('Error loading user data: $e');
+    // Unblock video playback after returning from Insights View
+    playbackManager.unblock();
+
+    // Request focus for the current video to resume playback
+    if (_videos.isNotEmpty && _currentIndex < _videos.length) {
+      final currentVideo = _videos[_currentIndex];
+      playbackManager.requestFocus(currentVideo.id, 'playerScreen');
     }
   }
+
+  /// DEPRECATED: These HUD methods are no longer used since we enabled showHUD: true on VideoPlayerViewOptimized
+  /// This provides consistent functionality with HomeView (EnhancedLikeButton, real-time counters, bookmarks, etc.)
+  /// Kept for reference only - can be removed in a future cleanup
+  @Deprecated('Use VideoPlayerViewOptimized showHUD: true instead')
+  // All HUD elements (comments, likes, share, etc.) are now handled by VideoPlayerViewOptimized
+  // The deprecated methods (_buildHUDElements, _buildActionRail, etc.) have been removed
 
   @override
   Widget build(BuildContext context) {
@@ -530,20 +559,300 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 homeViewModel: ref.read(hp.homeProvider.notifier),
                 showSheet: false,
                 sheetType: '',
-                onShowProfile: () {},
-                onShowComments: () {},
-                onShowShare: () {},
-                onShowStreamerCard: () {},
-                isLiked: false,
-                isBookmarked: false,
-                showHUD: false, // Disable HUD - PlayerScreen provides its own
+                // Callbacks are null - will use internal methods (comments, share, etc.)
+                isLiked: false, // TODO: Get real like state from service
+                isBookmarked:
+                    false, // TODO: Get real bookmark state from service
+                showHUD:
+                    true, // Enable HUD - Use VideoPlayerViewOptimized's full functionality like HomeView
               );
             },
           ),
-          // HUD Layout - Screen Edge Anchoring (same as HomeView)
-          ..._buildHUDElements(context),
+          // Custom overlays for ProfileView-specific features
+          ..._buildProfileViewOverlays(context),
         ],
       ),
     );
+  }
+}
+
+/// Edit Post Sheet for updating video title and hashtags
+class EditPostSheet extends ConsumerStatefulWidget {
+  final HomeVideo video;
+
+  const EditPostSheet({super.key, required this.video});
+
+  @override
+  ConsumerState<EditPostSheet> createState() => _EditPostSheetState();
+}
+
+class _EditPostSheetState extends ConsumerState<EditPostSheet> {
+  late TextEditingController _titleController;
+  late TextEditingController _hashtagsController;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.video.caption);
+    debugPrint('🏷️ EditPostSheet: Video tags: ${widget.video.tags}');
+    _hashtagsController = TextEditingController(
+      text: widget.video.tags.join(' '),
+    );
+    debugPrint(
+        '🏷️ EditPostSheet: Hashtags controller text: ${_hashtagsController.text}');
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _hashtagsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  const Text(
+                    'Edit Post',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Title/Caption Field
+              const Text(
+                'Caption',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _titleController,
+                maxLines: 3,
+                maxLength: 150,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Write a caption...',
+                  hintStyle:
+                      TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.1),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: Color(0xFF9248D2), width: 2),
+                  ),
+                  counterStyle:
+                      TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Hashtags Field
+              const Text(
+                'Hashtags',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _hashtagsController,
+                maxLines: 2,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: '#hashtag1 #hashtag2 #hashtag3',
+                  hintStyle:
+                      TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.1),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: Color(0xFF9248D2), width: 2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Separate hashtags with spaces. Include # symbol.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed:
+                          _isLoading ? null : () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleSave,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF9248D2),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Text(
+                              'Save Changes',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Handle saving the changes
+  Future<void> _handleSave() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Parse hashtags
+      final hashtagText = _hashtagsController.text.trim();
+      debugPrint('🏷️ EditPostSheet: Saving hashtag text: "$hashtagText"');
+      final hashtags = hashtagText.isEmpty
+          ? <String>[]
+          : hashtagText
+              .split(' ')
+              .where((tag) => tag.isNotEmpty)
+              .map((tag) => tag.startsWith('#') ? tag : '#$tag')
+              .toList();
+      debugPrint('🏷️ EditPostSheet: Parsed hashtags: $hashtags');
+
+      // Update video in Firestore
+      await FirebaseFirestore.instance
+          .collection('videos')
+          .doc(widget.video.id)
+          .update({
+        'caption': _titleController.text.trim(),
+        'tags': hashtags,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update video data in memory (VideoService state)
+      final videoService = ref.read(videoServiceProvider);
+      debugPrint(
+          '🏷️ EditPostSheet: Updating VideoService with tags: $hashtags');
+      videoService.updateVideoMetadata(
+        widget.video.id,
+        caption: _titleController.text.trim(),
+        tags: hashtags,
+      );
+      debugPrint('🏷️ EditPostSheet: VideoService update completed');
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Post updated successfully!'),
+            backgroundColor: Color(0xFF9248D2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update post: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 }

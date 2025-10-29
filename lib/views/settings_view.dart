@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'blocked_accounts_view.dart';
 import '../widgets/video_categorization_screen.dart';
-// import 'manage_account_view.dart'; // Removed - unused
+import '../widgets/two_factor_settings_view.dart';
+import 'manage_account_view.dart';
+import 'privacy_settings_view.dart';
+import 'mentions_tags_view.dart';
+import 'notifications_view.dart';
+import 'content_preferences_view.dart';
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -64,6 +69,22 @@ class _SettingsViewState extends State<SettingsView> {
 
                       const SizedBox(height: 32),
 
+                      // Security Section
+                      _buildSection(
+                        title: 'Security',
+                        items: [
+                          _buildSettingsItem(
+                            icon: Icons.security,
+                            title: 'Two-Factor Authentication',
+                            subtitle: 'Add an extra layer of security',
+                            onTap: () => _navigateToPage(
+                                context, 'Two-Factor Authentication'),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 32),
+
                       // Privacy Section
                       _buildSection(
                         title: 'Privacy',
@@ -88,6 +109,13 @@ class _SettingsViewState extends State<SettingsView> {
                             subtitle: 'Control who can mention you',
                             onTap: () =>
                                 _navigateToPage(context, 'Mentions & Tags'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.notifications_active,
+                            title: 'Notifications',
+                            subtitle: 'Manage notification preferences',
+                            onTap: () =>
+                                _navigateToPage(context, 'Notifications'),
                           ),
                         ],
                       ),
@@ -366,9 +394,17 @@ class _SettingsViewState extends State<SettingsView> {
   void _navigateToPage(BuildContext context, String pageName) {
     switch (pageName) {
       case 'Manage Account':
-        // page = const ManageAccountView(); // Removed - unused
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Manage account feature coming soon!')),
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const ManageAccountView(),
+          ),
+        );
+        return;
+      case 'Two-Factor Authentication':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const TwoFactorSettingsView(),
+          ),
         );
         return;
       case 'Blocked Accounts':
@@ -378,10 +414,38 @@ class _SettingsViewState extends State<SettingsView> {
           ),
         );
         return;
+      case 'Privacy Settings':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const PrivacySettingsView(),
+          ),
+        );
+        return;
+      case 'Mentions & Tags':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const MentionsTagsView(),
+          ),
+        );
+        return;
+      case 'Notifications':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const NotificationsView(),
+          ),
+        );
+        return;
       case 'Video Categorization':
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => const VideoCategorizationScreen(),
+          ),
+        );
+        return;
+      case 'Content Preferences':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const ContentPreferencesView(),
           ),
         );
         return;

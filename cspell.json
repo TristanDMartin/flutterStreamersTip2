@@ -29,8 +29,5 @@
     "linux/**",
     "windows/**",
     "web/**"
-  ],
-  "import": [
-    "@cspell/dart-dict/cspell-ext.json"
   ]
 }

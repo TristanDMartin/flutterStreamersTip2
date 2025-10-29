@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'production_logging_service.dart';
+import 'video_analytics_aggregation_service.dart';
 
 /// Unified Analytics Service - Consolidates all analytics and tracking operations
 ///
@@ -16,6 +17,8 @@ class UnifiedAnalyticsService {
 
   final ProductionLoggingService _logger = ProductionLoggingService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final VideoAnalyticsAggregationService _aggregationService =
+      VideoAnalyticsAggregationService();
 
   // Video engagement tracking
   Future<void> trackVideoView({
@@ -45,6 +48,9 @@ class UnifiedAnalyticsService {
 
       _logger.info('Video view tracked successfully',
           tag: 'UnifiedAnalyticsService');
+
+      // Trigger analytics aggregation for Insights View
+      _aggregationService.triggerAggregation(videoId);
     } catch (e) {
       _logger.error('Failed to track video view',
           tag: 'UnifiedAnalyticsService', error: e);
@@ -78,6 +84,9 @@ class UnifiedAnalyticsService {
 
       _logger.info('Video like tracked successfully',
           tag: 'UnifiedAnalyticsService');
+
+      // Trigger analytics aggregation for Insights View
+      _aggregationService.triggerAggregation(videoId);
     } catch (e) {
       _logger.error('Failed to track video like',
           tag: 'UnifiedAnalyticsService', error: e);
@@ -109,6 +118,9 @@ class UnifiedAnalyticsService {
 
       _logger.info('Video comment tracked successfully',
           tag: 'UnifiedAnalyticsService');
+
+      // Trigger analytics aggregation for Insights View
+      _aggregationService.triggerAggregation(videoId);
     } catch (e) {
       _logger.error('Failed to track video comment',
           tag: 'UnifiedAnalyticsService', error: e);
@@ -142,8 +154,47 @@ class UnifiedAnalyticsService {
 
       _logger.info('Video share tracked successfully',
           tag: 'UnifiedAnalyticsService');
+
+      // Trigger analytics aggregation for Insights View
+      _aggregationService.triggerAggregation(videoId);
     } catch (e) {
       _logger.error('Failed to track video share',
+          tag: 'UnifiedAnalyticsService', error: e);
+    }
+  }
+
+  Future<void> trackVideoFavorite({
+    required String videoId,
+    required String userId,
+    required String favoriterId,
+    required bool isFavorited,
+  }) async {
+    try {
+      _logger.info(
+          'Tracking video favorite: $videoId by $favoriterId (favorited: $isFavorited)',
+          tag: 'UnifiedAnalyticsService');
+
+      await _firestore.collection('video_analytics').add({
+        'videoId': videoId,
+        'userId': userId,
+        'favoriterId': favoriterId,
+        'event': isFavorited ? 'favorite' : 'unfavorite',
+        'timestamp': FieldValue.serverTimestamp(),
+        'platform': defaultTargetPlatform.name,
+      });
+
+      // Update video favorite count
+      await _firestore.collection('videos').doc(videoId).update({
+        'favorites': FieldValue.increment(isFavorited ? 1 : -1),
+      });
+
+      _logger.info('Video favorite tracked successfully',
+          tag: 'UnifiedAnalyticsService');
+
+      // Trigger analytics aggregation for Insights View
+      _aggregationService.triggerAggregation(videoId);
+    } catch (e) {
+      _logger.error('Failed to track video favorite',
           tag: 'UnifiedAnalyticsService', error: e);
     }
   }

@@ -86,14 +86,26 @@ class NotificationService {
     required String followingId,
   }) async {
     try {
+      debugPrint('🔔 NotificationService: handleFollowEvent called');
+      debugPrint('   FollowerId: $followerId');
+      debugPrint('   FollowingId: $followingId');
+
       // Get follower user data
       final followerDoc = await _db.collection('users').doc(followerId).get();
-      if (!followerDoc.exists) return;
+      if (!followerDoc.exists) {
+        debugPrint('❌ Follower document not found: $followerId');
+        return;
+      }
 
       final followerData = followerDoc.data()!;
+      debugPrint(
+          '📝 Follower data: ${followerData['username']} (${followerData['displayName']})');
 
       // Create notification for the user being followed
-      await _db
+      debugPrint('💾 Creating notification in Firestore...');
+      debugPrint('   Path: notifications/$followingId/items');
+
+      final docRef = await _db
           .collection('notifications')
           .doc(followingId)
           .collection('items')
@@ -107,10 +119,13 @@ class NotificationService {
         },
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'delivered',
+        'status': 'pending', // Use 'pending' so it shows in the activity badge
       });
 
-      debugPrint('✅ Follow notification created: $followerId -> $followingId');
+      debugPrint('✅ Follow notification created in Firestore');
+      debugPrint('   Document ID: ${docRef.id}');
+      debugPrint(
+          '   Notification path: notifications/$followingId/items/${docRef.id}');
 
       // Send push notification
       await _pushNotificationService.sendNotificationToUser(
@@ -170,7 +185,7 @@ class NotificationService {
         'postThumbnailUrl': postThumbnailUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'delivered',
+        'status': 'pending', // Use 'pending' so it shows in the activity badge
       };
 
       debugPrint(
@@ -237,7 +252,7 @@ class NotificationService {
         'postThumbnailUrl': postThumbnailUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'delivered',
+        'status': 'pending', // Use 'pending' so it shows in the activity badge
       });
 
       debugPrint(
@@ -293,7 +308,7 @@ class NotificationService {
         'postThumbnailUrl': postThumbnailUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'delivered',
+        'status': 'pending', // Use 'pending' so it shows in the activity badge
       });
 
       debugPrint(
@@ -348,7 +363,7 @@ class NotificationService {
         'postThumbnailUrl': postThumbnailUrl,
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
-        'status': 'delivered',
+        'status': 'pending', // Use 'pending' so it shows in the activity badge
       });
 
       debugPrint(

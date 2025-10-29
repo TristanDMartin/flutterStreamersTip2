@@ -14,9 +14,10 @@ import '../services/storage_diagnostic_service.dart';
 import '../services/admin_service.dart';
 import '../models/user_status.dart';
 import '../providers/status_provider.dart';
+import '../providers/support_tickets_provider.dart';
 import 'admin_monitoring_panel.dart';
 
-class EditProfileView extends StatefulWidget {
+class EditProfileView extends ConsumerStatefulWidget {
   final Map<String, dynamic> user;
   final Function(Map<String, dynamic>) onUserUpdated;
   final VoidCallback? onBack;
@@ -29,10 +30,10 @@ class EditProfileView extends StatefulWidget {
   });
 
   @override
-  State<EditProfileView> createState() => _EditProfileViewState();
+  ConsumerState<EditProfileView> createState() => _EditProfileViewState();
 }
 
-class _EditProfileViewState extends State<EditProfileView> {
+class _EditProfileViewState extends ConsumerState<EditProfileView> {
   late Map<String, dynamic> _user;
   bool _isUploadingAvatar = false;
   File? _selectedImage;
@@ -754,21 +755,52 @@ class _EditProfileViewState extends State<EditProfileView> {
             ),
           ),
           if (_isAdmin)
-            IconButton(
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AdminMonitoringPanel(),
+            Consumer(
+              builder: (context, ref, child) {
+                final supportTickets = ref.watch(supportTicketsProvider);
+                final hasPendingTickets = supportTickets.pendingTickets > 0;
+
+                return IconButton(
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AdminMonitoringPanel(),
+                      ),
+                    );
+                  },
+                  icon: Stack(
+                    children: [
+                      const Icon(
+                        Icons.admin_panel_settings,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      if (hasPendingTickets)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.red,
+                                  blurRadius: 4,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 );
               },
-              icon: const Icon(
-                Icons.admin_panel_settings,
-                color: Colors.white,
-                size: 24,
-              ),
             ),
           IconButton(
             onPressed: () {

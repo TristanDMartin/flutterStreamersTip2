@@ -16,7 +16,8 @@ class VideoSelectorWidget extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<VideoSelectorWidget> createState() => _VideoSelectorWidgetState();
+  ConsumerState<VideoSelectorWidget> createState() =>
+      _VideoSelectorWidgetState();
 }
 
 class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
@@ -27,7 +28,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    _pageController = PageController(initialPage: _currentIndex);
     _loadVideos();
   }
 
@@ -40,7 +41,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
   void _loadVideos() {
     // Load user's recent videos from Firebase
     final insightsService = ref.read(insightsFirebaseServiceProvider);
-    
+
     insightsService.getUserProfileVideos().then((videos) {
       if (mounted) {
         setState(() {
@@ -51,9 +52,15 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
             );
             if (_currentIndex == -1) _currentIndex = 0;
           }
-          
+
+          // Recreate PageController with correct initial page
+          _pageController.dispose();
+          _pageController = PageController(initialPage: _currentIndex);
+
           // Select the first video if none is selected
-          if (_videos.isNotEmpty && _currentIndex == 0 && widget.selectedVideoId == null) {
+          if (_videos.isNotEmpty &&
+              _currentIndex == 0 &&
+              widget.selectedVideoId == null) {
             widget.onVideoSelected(_videos[0]);
           }
         });
@@ -68,7 +75,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
         print('Error loading videos: $error');
       }
     });
-    
+
     // Uncomment the line below to test with mock data instead:
     // setState(() {
     //   _videos = _getMockVideos();
@@ -80,7 +87,6 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
     //   }
     // });
   }
-
 
   String _formatDuration(double seconds) {
     final minutes = (seconds / 60).floor();
@@ -103,6 +109,129 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
     }
   }
 
+  /// Build video thumbnail widget with 9:16 aspect ratio
+  Widget _buildVideoThumbnail(ProfileVideo video) {
+    return Center(
+      child: AspectRatio(
+        aspectRatio: 9.0 / 16.0, // TikTok-style vertical video
+        child: Container(
+          constraints: const BoxConstraints(
+            maxWidth: 200, // Max width to prevent overflow
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                // Thumbnail image
+                Builder(
+                  builder: (context) {
+                    final thumbnailUrl = video.thumbnailURL;
+                    debugPrint(
+                        '🖼️ VideoSelector: Loading thumbnail for ${video.id}');
+                    debugPrint(
+                        '🖼️ VideoSelector: Thumbnail URL: $thumbnailUrl');
+
+                    if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+                      debugPrint(
+                          '⚠️ VideoSelector: No thumbnail URL, showing fallback');
+                      return Container(
+                        color: Colors.grey[800],
+                        child: const Center(
+                          child: Icon(
+                            Icons.video_library,
+                            color: Colors.white54,
+                            size: 48,
+                          ),
+                        ),
+                      );
+                    }
+
+                    return Image.network(
+                      thumbnailUrl,
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) {
+                          debugPrint(
+                              '✅ VideoSelector: Thumbnail loaded successfully');
+                          return child;
+                        }
+                        final progress =
+                            loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null;
+                        debugPrint(
+                            '⏳ VideoSelector: Loading thumbnail... ${progress != null ? '${(progress * 100).toStringAsFixed(0)}%' : ''}');
+                        return Container(
+                          color: Colors.grey[800],
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: progress,
+                              color: Colors.white54,
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        debugPrint(
+                            '❌ VideoSelector: Failed to load thumbnail: $error');
+                        return Container(
+                          color: Colors.grey[800],
+                          child: const Center(
+                            child: Icon(
+                              Icons.video_library,
+                              color: Colors.white54,
+                              size: 48,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+
+                // Duration overlay
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      _formatDuration(video.duration),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -156,7 +285,8 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
               ),
               const SizedBox(height: 20),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
@@ -186,8 +316,6 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
       );
     }
 
-    final currentVideo = _videos[_currentIndex];
-
     return Container(
       height: 280,
       margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -206,81 +334,22 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
               ),
               child: Stack(
                 children: [
-                  // Video thumbnail
-                  Center(
-                    child: Container(
-                      width: 200,
-                      height: 160,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Stack(
-                          children: [
-                            // Thumbnail image
-                            Image.network(
-                              currentVideo.thumbnailURL ?? 'https://picsum.photos/300/400?random=1',
-                              width: double.infinity,
-                              height: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.grey[800],
-                                  child: const Icon(
-                                    Icons.video_library,
-                                    color: Colors.white54,
-                                    size: 48,
-                                  ),
-                                );
-                              },
-                            ),
-                            
-                            // Duration overlay
-                            Positioned(
-                              bottom: 8,
-                              right: 8,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.8),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  _formatDuration(currentVideo.duration),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            
-                            // Play icon overlay
-                            const Center(
-                              child: Icon(
-                                Icons.play_circle_fill,
-                                color: Colors.white,
-                                size: 48,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  // PageView for swiping between videos
+                  PageView.builder(
+                    controller: _pageController,
+                    itemCount: _videos.length,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentIndex = index;
+                      });
+                      widget.onVideoSelected(_videos[index]);
+                    },
+                    itemBuilder: (context, index) {
+                      final video = _videos[index];
+                      return _buildVideoThumbnail(video);
+                    },
                   ),
-                  
+
                   // Navigation arrows
                   if (_videos.length > 1) ...[
                     // Left arrow
@@ -291,8 +360,8 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                       child: Center(
                         child: GestureDetector(
                           onTap: () {
-                            final newIndex = _currentIndex > 0 
-                                ? _currentIndex - 1 
+                            final newIndex = _currentIndex > 0
+                                ? _currentIndex - 1
                                 : _videos.length - 1;
                             _pageController.animateToPage(
                               newIndex,
@@ -315,7 +384,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                         ),
                       ),
                     ),
-                    
+
                     // Right arrow
                     Positioned(
                       right: 16,
@@ -324,8 +393,8 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                       child: Center(
                         child: GestureDetector(
                           onTap: () {
-                            final newIndex = _currentIndex < _videos.length - 1 
-                                ? _currentIndex + 1 
+                            final newIndex = _currentIndex < _videos.length - 1
+                                ? _currentIndex + 1
                                 : 0;
                             _pageController.animateToPage(
                               newIndex,
@@ -348,14 +417,41 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                         ),
                       ),
                     ),
+
+                    // Video counter (e.g., "1 / 3")
+                    Positioned(
+                      top: 16,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            '${_currentIndex + 1} / ${_videos.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ],
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Video info and posting date
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -367,7 +463,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
               children: [
                 // Video caption
                 Text(
-                  currentVideo.caption,
+                  _videos[_currentIndex].caption,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -377,15 +473,15 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                
+
                 const SizedBox(height: 8),
-                
+
                 // Posting date and basic stats
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      _formatDate(currentVideo.createdAt),
+                      _formatDate(_videos[_currentIndex].createdAt),
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.7),
                         fontSize: 14,
@@ -400,7 +496,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          _formatViews(currentVideo.views),
+                          _formatViews(_videos[_currentIndex].views),
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 14,
@@ -410,19 +506,20 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 8),
-                
+
                 // Insights availability status
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _isVideoTooNewForInsights(currentVideo)
+                    color: _isVideoTooNewForInsights(_videos[_currentIndex])
                         ? Colors.orange.withValues(alpha: 0.2)
                         : Colors.green.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: _isVideoTooNewForInsights(currentVideo)
+                      color: _isVideoTooNewForInsights(_videos[_currentIndex])
                           ? Colors.orange.withValues(alpha: 0.5)
                           : Colors.green.withValues(alpha: 0.5),
                       width: 1,
@@ -432,21 +529,22 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _isVideoTooNewForInsights(currentVideo)
+                        _isVideoTooNewForInsights(_videos[_currentIndex])
                             ? Icons.schedule
                             : Icons.analytics,
-                        color: _isVideoTooNewForInsights(currentVideo)
+                        color: _isVideoTooNewForInsights(_videos[_currentIndex])
                             ? Colors.orange
                             : Colors.green,
                         size: 14,
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        _getInsightsAvailabilityMessage(currentVideo),
+                        _getInsightsAvailabilityMessage(_videos[_currentIndex]),
                         style: TextStyle(
-                          color: _isVideoTooNewForInsights(currentVideo)
-                              ? Colors.orange
-                              : Colors.green,
+                          color:
+                              _isVideoTooNewForInsights(_videos[_currentIndex])
+                                  ? Colors.orange
+                                  : Colors.green,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -457,24 +555,28 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 12),
-          
+
           // Page indicator dots
           if (_videos.length > 1)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                _videos.length,
-                (index) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: index == _currentIndex
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.3),
+            Padding(
+              padding:
+                  const EdgeInsets.only(bottom: 16.0), // Add bottom padding
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  _videos.length,
+                  (index) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: index == _currentIndex
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.3),
+                    ),
                   ),
                 ),
               ),
@@ -503,7 +605,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
   String _getInsightsAvailabilityMessage(ProfileVideo video) {
     final now = DateTime.now();
     final hoursSinceUpload = now.difference(video.createdAt).inHours;
-    
+
     if (hoursSinceUpload < 24) {
       final remainingHours = 24 - hoursSinceUpload;
       if (remainingHours > 1) {

@@ -5,6 +5,7 @@ import '../pages/bookmark_view.dart';
 import '../widgets/account_management_menu.dart';
 import '../widgets/insights_view.dart';
 import 'manage_posts_view.dart';
+import 'contact_support_view.dart';
 
 class MenuView extends StatelessWidget {
   const MenuView({super.key});
@@ -29,14 +30,14 @@ class MenuView extends StatelessWidget {
               children: [
                 // Header with close button
                 _buildHeader(context),
-                
+
                 const SizedBox(height: 24),
-                
+
                 // Profile Section
                 _buildProfileSection(context),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // Menu Grid
                 _buildMenuGrid(context),
               ],
@@ -75,7 +76,7 @@ class MenuView extends StatelessWidget {
 
   Widget _buildProfileSection(BuildContext context) {
     final user = fa.FirebaseAuth.instance.currentUser;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -114,9 +115,9 @@ class MenuView extends StatelessWidget {
                   ),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // User Info
         Text(
           user?.displayName ?? 'User',
@@ -130,14 +131,13 @@ class MenuView extends StatelessWidget {
         Text(
           '@${user?.email?.split('@')[0] ?? 'username'}',
           style: TextStyle(
-            color: Colors.white.withValues(alpha:0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             fontSize: 16,
           ),
         ),
       ],
     );
   }
-
 
   Widget _buildMenuGrid(BuildContext context) {
     return GridView.count(
@@ -222,9 +222,10 @@ class MenuView extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isPrimary 
+          color: isPrimary
               ? const Color(0xFF9248D2) // Purple for primary card
-              : Colors.white.withValues(alpha: 0.1), // Semi-transparent white for other cards
+              : Colors.white.withValues(
+                  alpha: 0.1), // Semi-transparent white for other cards
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: Colors.white.withValues(alpha: 0.2),
@@ -260,7 +261,7 @@ class MenuView extends StatelessWidget {
             Text(
               subtitle,
               style: TextStyle(
-                color: Colors.white.withValues(alpha:0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 fontSize: 12,
               ),
               textAlign: TextAlign.center,
@@ -275,7 +276,7 @@ class MenuView extends StatelessWidget {
 
   void _navigateToPage(BuildContext context, String pageName) {
     Widget page;
-    
+
     switch (pageName) {
       case 'Bookmarks':
         page = const BookmarkView();
@@ -286,11 +287,14 @@ class MenuView extends StatelessWidget {
           videoTitle: 'General Insights',
         );
         break;
+      case 'Contact Support':
+        page = const ContactSupportView();
+        break;
       default:
         page = _PlaceholderPage(title: pageName);
         break;
     }
-    
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => page,
@@ -314,21 +318,21 @@ class MenuView extends StatelessWidget {
     );
   }
 
-        void _showLogOutDialog(BuildContext context) {
-          showModalBottomSheet(
-            context: context,
-            backgroundColor: Colors.transparent,
-            isScrollControlled: true,
-            builder: (context) => Container(
-              padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-                ),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
+  void _showLogOutDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,7 +349,7 @@ class MenuView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // Title
             const Text(
               'Account Management',
@@ -364,10 +368,10 @@ class MenuView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // Account Management Menu
             const AccountManagementMenu(),
-            
+
             const SizedBox(height: 24),
           ],
         ),
@@ -379,7 +383,7 @@ class MenuView extends StatelessWidget {
 // Placeholder page for existing functionality
 class _PlaceholderPage extends StatelessWidget {
   final String title;
-  
+
   const _PlaceholderPage({required this.title});
 
   @override
@@ -400,7 +404,7 @@ class _PlaceholderPage extends StatelessWidget {
           children: [
             Icon(
               Icons.construction,
-              color: Colors.white.withValues(alpha:0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 64,
             ),
             const SizedBox(height: 16),
@@ -416,7 +420,7 @@ class _PlaceholderPage extends StatelessWidget {
             Text(
               'This page will be implemented here',
               style: TextStyle(
-                color: Colors.white.withValues(alpha:0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 16,
               ),
             ),

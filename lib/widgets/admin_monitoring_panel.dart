@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
 import '../services/advanced_admin_service.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:cross_file/cross_file.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
@@ -55,7 +56,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 9, vsync: this);
+    _tabController = TabController(length: 10, vsync: this);
     _startMonitoring();
     _loadSystemSettings();
     _loadFeatureFlags();
@@ -454,6 +455,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
             Tab(text: '📹 Videos'),
             Tab(text: '💬 Messages'),
             Tab(text: '🚫 Moderation'),
+            Tab(text: '🎫 Support'),
             Tab(text: '🔍 Search'),
             Tab(text: '📧 Notifications'),
             Tab(text: '⚙️ Settings'),
@@ -469,6 +471,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
           _buildVideosTab(),
           _buildMessagesTab(),
           _buildModerationTab(),
+          _buildSupportTicketsTab(),
           _buildSearchTab(),
           _buildNotificationsTab(),
           _buildSettingsTab(),
@@ -1274,6 +1277,410 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     );
   }
 
+  Widget _buildSupportTicketsTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('support_tickets')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final tickets = snapshot.data!.docs;
+
+        if (tickets.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.inbox_outlined,
+                  size: 64,
+                  color: Colors.white38,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'No support tickets yet',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Support tickets will appear here',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          itemCount: tickets.length,
+          itemBuilder: (context, index) {
+            final ticket = tickets[index];
+            final data = ticket.data() as Map<String, dynamic>;
+            final status = data['status'] ?? 'pending';
+            final priority = data['priority'] ?? 'medium';
+            final category = data['category'] ?? 'General';
+
+            Color statusColor;
+            switch (status) {
+              case 'pending':
+                statusColor = Colors.orange;
+                break;
+              case 'in_progress':
+                statusColor = Colors.blue;
+                break;
+              case 'resolved':
+                statusColor = Colors.green;
+                break;
+              case 'closed':
+                statusColor = Colors.grey;
+                break;
+              default:
+                statusColor = Colors.orange;
+            }
+
+            Color priorityColor;
+            switch (priority) {
+              case 'high':
+                priorityColor = Colors.red;
+                break;
+              case 'medium':
+                priorityColor = Colors.orange;
+                break;
+              case 'low':
+                priorityColor = Colors.green;
+                break;
+              default:
+                priorityColor = Colors.orange;
+            }
+
+            return Card(
+              color: const Color(0xFF1A1A1A),
+              margin: const EdgeInsets.only(bottom: 12),
+              child: InkWell(
+                onTap: () => _showTicketDetails(context, ticket, data),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: priorityColor.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: priorityColor,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              priority.toUpperCase(),
+                              style: TextStyle(
+                                color: priorityColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: statusColor,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              status.toUpperCase().replaceAll('_', ' '),
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        data['subject'] ?? 'No Subject',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.category,
+                            size: 14,
+                            color: Colors.white54,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            category,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Icon(
+                            Icons.person,
+                            size: 14,
+                            color: Colors.white54,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            data['displayName'] ?? 'Unknown',
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        data['message'] ?? 'No message',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      if (data['createdAt'] != null)
+                        Text(
+                          'Created: ${data['createdAt'].toDate().toString().substring(0, 16)}',
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 11,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showTicketDetails(BuildContext context, DocumentSnapshot ticket,
+      Map<String, dynamic> data) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Ticket Details',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTicketDetailRow('Subject', data['subject'] ?? 'N/A'),
+                    _buildTicketDetailRow(
+                        'Category', data['category'] ?? 'General'),
+                    _buildTicketDetailRow(
+                        'Status', data['status'] ?? 'pending'),
+                    _buildTicketDetailRow(
+                        'Priority', data['priority'] ?? 'medium'),
+                    _buildTicketDetailRow(
+                        'User', data['displayName'] ?? 'Unknown'),
+                    _buildTicketDetailRow(
+                        'Username', '@${data['username'] ?? 'unknown'}'),
+                    _buildTicketDetailRow('Email', data['email'] ?? 'N/A'),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Message:',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        data['message'] ?? 'No message',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Actions:',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (data['status'] == 'pending')
+                      _buildTicketActionButton(
+                        'Mark as In Progress',
+                        Colors.blue,
+                        () async {
+                          await ticket.reference.update({
+                            'status': 'in_progress',
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          });
+                          Navigator.pop(context);
+                        },
+                      ),
+                    if (data['status'] == 'in_progress')
+                      _buildTicketActionButton(
+                        'Mark as Resolved',
+                        Colors.green,
+                        () async {
+                          await ticket.reference.update({
+                            'status': 'resolved',
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          });
+                          Navigator.pop(context);
+                        },
+                      ),
+                    _buildTicketActionButton(
+                      'Close Ticket',
+                      Colors.grey,
+                      () async {
+                        await ticket.reference.update({
+                          'status': 'closed',
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        });
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTicketDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTicketActionButton(
+      String label, Color color, VoidCallback onTap) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color.withValues(alpha: 0.2),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(color: color),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLogsTab() {
     return StreamBuilder<QuerySnapshot>(
       stream: AdvancedAdminService.instance.getActivityHistory(),
@@ -1786,55 +2193,6 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     );
   }
 
-  void _showUnbanUserDialog() {
-    final userIdController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Unban User', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: userIdController,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            labelText: 'User ID',
-            labelStyle: TextStyle(color: Colors.white54),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              try {
-                await AdvancedAdminService.instance
-                    .unbanUser(userIdController.text);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  _addLog('✅ Unbanned user: ${userIdController.text}');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('User unbanned successfully')),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  _addLog('❌ Unban failed: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Unban', style: TextStyle(color: Colors.green)),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showDeleteVideoDialog({String? videoId}) {
     final videoIdController = TextEditingController(text: videoId);
     final reasonController = TextEditingController();
@@ -1889,85 +2247,6 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
               } catch (e) {
                 if (context.mounted) {
                   _addLog('❌ Delete video failed: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeleteCommentDialog() {
-    final videoIdController = TextEditingController();
-    final commentIdController = TextEditingController();
-    final reasonController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title:
-            const Text('Delete Comment', style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: videoIdController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Video ID',
-                labelStyle: TextStyle(color: Colors.white54),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: commentIdController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Comment ID',
-                labelStyle: TextStyle(color: Colors.white54),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: reasonController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Reason',
-                labelStyle: TextStyle(color: Colors.white54),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              try {
-                await AdvancedAdminService.instance.deleteComment(
-                  videoId: videoIdController.text,
-                  commentId: commentIdController.text,
-                  reason: reasonController.text,
-                );
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  _addLog('🗑️ Deleted comment: ${commentIdController.text}');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Comment deleted successfully')),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  _addLog('❌ Delete comment failed: $e');
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Error: $e')),
                   );
@@ -2145,7 +2424,10 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
       await file.writeAsString(csv);
 
       if (mounted) {
-        await Share.shareXFiles([XFile(file.path)], text: 'Analytics Export');
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'Analytics Export',
+        );
         _addLog('✅ Analytics exported successfully');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

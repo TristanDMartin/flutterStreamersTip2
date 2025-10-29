@@ -1,0 +1,580 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+  // Users can read public user profiles and write their own
+  match /users/{userId} {
+    // Allow unauthenticated reads for username lookups during login
+    allow read: if true;
+    allow write: if request.auth != null && request.auth.uid == userId 
+      && (!request.resource.data.keys().hasAny(['pinnedVideoIds']) 
+          || request.resource.data.pinnedVideoIds.size() <= 3);
+      
+      // TikTok-style: Allow any authenticated user to update follower/following counts and liked_videos array
+      allow update: if request.auth != null 
+        && (request.auth.uid == userId  // Own profile
+            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_videos', 'followingCount', 'followersCount', 'connectionsCount']) // Only these fields
+                && (!('liked_videos' in request.resource.data.diff(resource.data).affectedKeys()) 
+                    || isValidBookmarkUpdate(request.resource.data.liked_videos)))); // Validate bookmark data only if liked_videos is being updated
+      
+      // Users can read and write their own subcollections
+      match /{subcollection=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Allow following/followers subcollections for authenticated users
+      match /following/{followingId} {
+        allow read, write: if request.auth != null;
+        allow list: if request.auth != null;
+      }
+      
+      match /followers/{followerId} {
+        allow read, write: if request.auth != null;
+        allow list: if request.auth != null;
+      }
+    }
+    
+    // Users can read their own notifications and write notifications for others
+    match /notifications/{userId} {
+      // Users can only read their own notifications
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow querying/listing notifications for checking duplicates
+      allow list: if request.auth != null;
+      
+      // Any authenticated user can create notifications for any user
+      // This allows the notification system to work
+      allow create: if request.auth != null;
+      
+      // Users can only update their own notifications
+      allow update: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow deleting notifications (for cleanup)
+      allow delete: if request.auth != null;
+      
+      // Users can read and write notification items
+      match /items/{itemId} {
+        // Users can only read their own notification items
+        allow read: if request.auth != null && request.auth.uid == userId;
+        
+        // Any authenticated user can create notification items for any user
+        // This allows the notification system to work
+        allow create: if request.auth != null;
+        
+        // Users can only update their own notification items
+        allow update: if request.auth != null && request.auth.uid == userId;
+        
+        // Allow deleting notifications (for cleanup)
+        allow delete: if request.auth != null;
+      }
+    }
+    
+    // Users can read and write their own relationships
+    match /relationships/{relationshipId} {
+      // Allow creating new relationships where user is the follower
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.followerId;
+      
+      // Allow reading relationships where user is involved
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.followerId || 
+         request.auth.uid == resource.data.followingId);
+      
+      // Allow querying/listing relationships for authenticated users
+      allow list: if request.auth != null;
+      
+      // Allow deleting relationships where user is the follower
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.followerId;
+    }
+    
+    // Users can read public posts
+    match /posts/{postId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == resource.data.authorId;
+    }
+    
+    // Users can read public comments
+    match /comments/{commentId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.authorId || 
+         request.auth.uid == resource.data.commenterId);
+    }
+    
+    // Users can read and write video comments
+    match /videos/{videoId}/comments/{commentId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.user.id;
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.user.id || 
+         // Allow adding replies to any comment
+         request.resource.data.keys().hasAll(['replies']) && 
+         request.resource.data.replies is list);
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.user.id;
+    }
+    
+    // Allow querying video comments collection
+    match /videos/{videoId}/comments {
+      allow list: if request.auth != null;
+    }
+    
+    // Users can read public videos
+    match /videos/{videoId} {
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Allow creating videos for any authenticated user
+      allow create: if request.auth != null;
+      // Allow updating videos - owner can update anything, others can only update stats
+      // Owner can update: allowSave, allowRemix, visibility, status, isPinned, tags, playlistIds, caption, deletedAt
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.userId ||
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['views', 'likes', 'likeCount', 'comments', 'commentCount', 'shares', 'isLiked', 'lastViewedAt', 'lastLikedAt', 'lastUnlikedAt', 'isFavorited']));
+      // Allow deleting videos - only owner
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // User favorites collections
+    match /user_favorites/{userId}/videos/{videoId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Reports collection
+    match /reports/{reportId} {
+      // Anyone can create reports
+      allow create: if request.auth != null;
+      // Only reporter can read their own reports
+      allow read: if request.auth != null && request.auth.uid == resource.data.reporterId;
+      // No updates or deletes allowed (data integrity)
+      allow update, delete: if false;
+    }
+    
+    // Users can read public likes and write their own likes
+    match /likes/{videoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      
+      // Allow subcollections for user-specific likes
+      match /byUser/{userId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Users can read public follows and write their own follow relationships
+    match /follows/{followId} {
+      // Allow reading all follow relationships for authenticated users
+      allow read: if request.auth != null;
+      
+      // Allow creating follow relationships for authenticated users
+      // This is needed for migration and mutual follow scenarios
+      allow create: if request.auth != null;
+      
+      // Allow updating follow relationships for authenticated users
+      allow update: if request.auth != null;
+      
+      // Allow deleting follow relationships for authenticated users
+      allow delete: if request.auth != null;
+      
+      // Allow querying follows collection for relationship state
+      allow list: if request.auth != null;
+    }
+    
+    // Users can read all engagement analytics and write their own
+    match /engagement_analytics/{analyticsId} {
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // User Privacy Settings
+    match /users/{userId}/privacySettings/{settingsId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Support tickets collection - NEW
+    match /support_tickets/{ticketId} {
+      // Allow users to create their own tickets
+      allow create: if request.auth != null;
+      
+      // Allow users to read their own tickets OR admins can read all
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.uid == 'bU0RxyZ2L4ULAv1Co5L4f825yV73' // Admin UID
+      );
+      
+      // Allow listing tickets - admin can see all, users can see their own
+      allow list: if request.auth != null;
+      
+      // Allow only admins to update tickets
+      allow update: if request.auth != null && 
+        request.auth.uid == 'bU0RxyZ2L4ULAv1Co5L4f825yV73'; // Admin UID
+      
+      // Allow only admins to delete tickets
+      allow delete: if request.auth != null && 
+        request.auth.uid == 'bU0RxyZ2L4ULAv1Co5L4f825yV73'; // Admin UID
+    }
+    
+    // TikTok-style: Engagement tracking for algorithm
+    match /engagement/{engagementId} {
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+    
+    // TikTok-style: User retention profiles for algorithm
+    match /user_retention_profiles/{userId} {
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Users can read and write chats they participate in
+    match /chats/{chatId} {
+      // Allow creating new chats if the user is a participant
+      allow create: if request.auth != null && 
+        request.auth.uid in request.resource.data.participants;
+      
+      // Allow reading and updating existing chats if the user is a participant
+      allow read, update: if request.auth != null && 
+        request.auth.uid in resource.data.participants;
+      
+      // Allow listing chats for authenticated users
+      allow list: if request.auth != null;
+      
+      // Allow deleting chats if the user is a participant
+      allow delete: if request.auth != null && 
+        request.auth.uid in resource.data.participants;
+      
+      // Users can read and write messages in chats they participate in
+      match /messages/{messageId} {
+        // Allow reading messages if user is a participant in parent chat
+        allow read: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        
+        // Allow listing messages if user is a participant in parent chat
+        allow list: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        
+        // Allow creating messages if user is the sender OR a participant in the chat
+        allow create: if request.auth != null && 
+          (request.auth.uid == request.resource.data.from || 
+           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants);
+        
+        // Allow updating messages if user is a participant (for read receipts)
+        allow update: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        
+        // Allow deleting messages if user is the sender (use 'from' field)
+        allow delete: if request.auth != null && 
+          request.auth.uid == resource.data.from;
+      }
+    }
+    
+    // Note: All user subcollections are now handled by the wildcard pattern above
+    // This includes: bookmarks, deviceTokens, bookmarkedEvents, presence, videos, 
+    // followers, following, likedVideos, connections, and any future subcollections
+    
+    // Hashtag permissions - allow authenticated users to read and write
+    match /hashtag_permissions/{hashtag} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Shared drafts permissions - allow users to read and write their own drafts
+    match /shared_drafts/{draftId} {
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.senderId || 
+         request.auth.uid == resource.data.receiverId);
+      allow list: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.senderId || 
+         request.auth.uid == resource.data.receiverId);
+    }
+    
+    // Video analytics permissions - allow users to read and write their own analytics
+    match /video_analytics/{videoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Video analytics aggregated data (camelCase) - read by InsightsView
+    match /videoAnalytics/{videoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Video insights (additional insights data)
+    match /videoInsights/{videoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Follow edges permissions - allow users to read and write their own follow relationships
+    match /followEdges/{edgeId} {
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.followerId || 
+         request.auth.uid == resource.data.followingId);
+      allow write: if request.auth != null && 
+        request.auth.uid == request.resource.data.followerId;
+      // Allow querying followEdges collection for relationship state
+      allow list: if request.auth != null;
+    }
+    
+    // Outgoing invites permissions - allow users to read and write their own invites
+    match /users/{userId}/outgoingInvites/{inviteId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Incoming invites permissions - allow users to read invites sent to them
+    match /users/{userId}/incomingInvites/{inviteId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Feed permissions - allow authenticated users to read and write feeds
+    match /feeds/{feedType} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      
+      // Allow subcollections within feeds
+      match /{subcollection=**} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+    }
+    
+    // Bookmark audit logging - allow users to create audit entries for their own actions
+    match /bookmark_audit/{auditId} {
+      allow create: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // Rate limiting collection - for tracking operation frequency
+    match /rate_limits/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Creator stats - analytics data for content creators
+    match /creator_stats/{userId} {
+      // Allow reading your own stats or public stats
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Allow writing your own stats
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+      
+      // Follower history subcollection
+      match /follower_history/{entryId} {
+        allow read: if request.auth != null;
+        allow list: if request.auth != null;
+        allow create, update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Video stats subcollection
+      match /video_stats/{entryId} {
+        allow read: if request.auth != null;
+        allow list: if request.auth != null;
+        allow create, update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Allow other subcollections
+      match /{subcollection=**} {
+        allow read: if request.auth != null;
+        allow create, update: if request.auth != null && request.auth.uid == userId;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Invites - user invitation system
+    match /invites/{inviteId} {
+      // Allow reading all invites for authenticated users
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Allow creating invites
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.inviterId;
+      // Allow updating invites - inviter or invitee can update
+      allow update: if request.auth != null && 
+        (request.auth.uid == resource.data.inviterId || 
+         request.auth.uid == resource.data.inviteeId);
+      // Allow deleting own invites
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.inviterId;
+    }
+    
+    // Reports - content/user reporting system
+    match /reports/{reportId} {
+      // Only allow reading your own reports or if you're admin (for moderation)
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.reporterId;
+      allow list: if request.auth != null;
+      // Anyone can create a report
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.reporterId;
+      // Cannot update or delete reports (immutable for integrity)
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Tags - user/content tagging system
+    match /tags/{tagId} {
+      // Anyone can read tags
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Anyone can create tags
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.taggerId;
+      // Can update your own tags
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.taggerId;
+      // Can delete your own tags
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.taggerId;
+    }
+    
+    // Mentions - user mention system
+    match /mentions/{mentionId} {
+      // Anyone can read mentions
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // Anyone can create mentions
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.mentionerId;
+      // Can update your own mentions
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.mentionerId;
+      // Can delete your own mentions
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.mentionerId;
+    }
+    
+    // Moderation - content moderation system
+    match /moderation/{moderationId} {
+      // Only allow reading moderation data for the content owner
+      allow read: if request.auth != null;
+      allow list: if request.auth != null;
+      // System can create moderation entries
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+    
+    // Admin logs - only admins can read/write
+    match /admin_logs/{logId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+    }
+    
+    // System settings - only admins can write
+    match /system/{settingId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Admin notifications subcollection under users
+    match /users/{userId}/admin_notifications/{notificationId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null;
+    }
+    
+    // Device tokens subcollection (already exists but ensuring it's documented)
+    match /users/{userId}/deviceTokens/{tokenId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User favorites subcollection
+    match /user_favorites/{userId}/videos/{videoId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow list: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Conversations collection - for DM sharing
+    match /conversations/{conversationId} {
+      // Allow reading conversations if user is a participant
+      allow read: if request.auth != null && 
+        request.auth.uid in resource.data.participants;
+      
+      // Allow creating conversations if user is a participant
+      allow create: if request.auth != null && 
+        request.auth.uid in request.resource.data.participants;
+      
+      // Allow updating conversations if user is a participant
+      allow update: if request.auth != null && 
+        request.auth.uid in resource.data.participants;
+      
+      // Allow listing conversations for authenticated users
+      allow list: if request.auth != null;
+      
+      // Allow deleting conversations if user is a participant
+      allow delete: if request.auth != null && 
+        request.auth.uid in resource.data.participants;
+      
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Allow reading messages if user is a participant in parent conversation
+        allow read: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        
+        // Allow listing messages if user is a participant in parent conversation
+        allow list: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        
+        // Allow creating messages if user is the sender
+        allow create: if request.auth != null && 
+          request.auth.uid == request.resource.data.senderId;
+        
+        // Allow updating messages if user is a participant (for read receipts)
+        allow update: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        
+        // Allow deleting messages if user is the sender
+        allow delete: if request.auth != null && 
+          request.auth.uid == resource.data.senderId;
+      }
+    }
+  }
+  
+  // Validation functions
+  function isValidBookmarkUpdate(likedVideos) {
+    return likedVideos is list
+      && likedVideos.size() <= 1000  // Prevent abuse - max 1000 bookmarks
+      && likedVideos.hasAll(['string'])  // Only video IDs allowed
+      && likedVideos.size() == likedVideos.toSet().size();  // No duplicates
+  }
+  
+  function isValidVideoId(videoId) {
+    return videoId is string
+      && videoId.size() > 0
+      && videoId.size() <= 100  // Reasonable video ID length
+      && videoId.matches('^[a-zA-Z0-9_-]+$');  // Only alphanumeric, underscore, dash
+  }
+  
+  function isValidTimestamp(ts) {
+    return ts is timestamp
+      && ts < request.time
+      && ts > timestamp.date(2020, 1, 1);  // Not too old
+  }
+  
+  function isWithinRateLimit(userId, operation) {
+    // Check if user has exceeded rate limit for this operation
+    // This would require implementing rate limiting logic
+    return true; // For now, allow all operations
+  }
+}
+

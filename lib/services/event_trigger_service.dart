@@ -119,6 +119,18 @@ class EventTriggerService extends ChangeNotifier {
     );
   }
 
+  Future<void> triggerCommentDeleteEvent({
+    required String videoId,
+  }) async {
+    debugPrint(
+        "🔄 EventTriggerService: Comment delete event triggered for video $videoId");
+
+    // Decrement comment count
+    await _updateCommentCount(videoId, -1);
+
+    debugPrint("✅ Comment count decremented for video $videoId");
+  }
+
   // MARK: - Tag Event Triggers
 
   Future<void> triggerTagEvent({
@@ -288,7 +300,8 @@ class EventTriggerService extends ChangeNotifier {
   Future<void> _updateCommentCount(String videoId, int increment) async {
     try {
       await _db.collection("videos").doc(videoId).update({
-        "commentCount": FieldValue.increment(increment),
+        "comments": FieldValue.increment(
+            increment), // Fixed: Use 'comments' to match listener
       });
       // print("✅ Updated comment count for video: $videoId");
     } catch (e) {

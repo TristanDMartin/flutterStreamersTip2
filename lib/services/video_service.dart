@@ -263,6 +263,30 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     }
   }
 
+  /// Update video metadata (caption, tags, etc.)
+  void updateVideoMetadata(
+    String videoId, {
+    String? caption,
+    List<String>? tags,
+  }) {
+    final currentVideos = List<HomeVideo>.from(state);
+    final index = currentVideos.indexWhere((video) => video.id == videoId);
+
+    if (index != -1) {
+      final video = currentVideos[index];
+      currentVideos[index] = video.copyWith(
+        caption: caption ?? video.caption,
+        tags: tags ?? video.tags,
+      );
+      state = currentVideos;
+      debugPrint(
+          '✅ VideoService: Updated video metadata for $videoId - caption: "${caption ?? video.caption}", tags: ${tags ?? video.tags}');
+    } else {
+      debugPrint(
+          '❌ VideoService: Video not found for metadata update: $videoId');
+    }
+  }
+
   /// Refresh videos from Firestore
   Future<void> refresh() async {
     await loadAllVideos();

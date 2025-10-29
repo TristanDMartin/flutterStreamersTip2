@@ -584,8 +584,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
           title: null,
           centerTitle: false,
           actions: [
-            // TikTok-style account switcher
-            const TikTokAccountSwitchIcon(),
+            // TikTok-style account switcher (HIDDEN for now - needs more work)
+            // const TikTokAccountSwitchIcon(),
             IconButton(
               icon: const Icon(
                 Icons.flip,

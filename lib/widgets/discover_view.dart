@@ -12,7 +12,7 @@ import '../models/trending_creator.dart';
 import 'category_card.dart';
 import 'recommended_content_card.dart';
 import 'streamer_card_view.dart';
-// import 'search_screen.dart'; // Removed - unused
+import '../views/search_screen.dart';
 import 'activity_view.dart';
 import '../services/logging_service.dart';
 import '../services/caching_service.dart';
@@ -386,8 +386,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   Widget _buildTrendingCreatorItem(TrendingCreator creator) {
     return Container(
+      width: 80,
       margin: const EdgeInsets.only(right: 12),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           CircleAvatar(
             radius: 30,
@@ -399,20 +401,24 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 : null,
           ),
           const SizedBox(height: 8),
-          Text(
-            creator.displayName ?? creator.username,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
+          Flexible(
+            child: Text(
+              creator.displayName ?? creator.username,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
           Text(
             '${(creator.followerCount / 1000).toStringAsFixed(0)}K followers',
             style: const TextStyle(color: Colors.white70, fontSize: 10),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -644,13 +650,36 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
 
     // Add activity notification count
+    int pendingCount = 0;
     for (final notifications in activityState.grouped.values) {
       for (final notification in notifications) {
         if (notification.status == 'pending') {
+          pendingCount++;
           totalUnreadCount++;
         }
       }
     }
+
+    // Debug badge calculation
+    if (pendingCount > 0 || totalUnreadCount > 0) {
+      LoggingService.instance.debug(
+          '🔔 DiscoverView Badge: total=$totalUnreadCount, pending=$pendingCount, sections=${activityState.grouped.length}',
+          tag: 'DiscoverView');
+    }
+
+    // Ensure ActivityProvider is initialized for current user
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final currentUser = fa.FirebaseAuth.instance.currentUser;
+      if (currentUser != null && !activityState.isLoading) {
+        final notifier = ref.read(activityProvider.notifier);
+        if (!notifier.isInitialized) {
+          notifier.init(currentUser.uid);
+          LoggingService.instance.debug(
+              '🔔 ActivityProvider initialized for user: ${currentUser.uid}',
+              tag: 'DiscoverView');
+        }
+      }
+    });
 
     return GestureDetector(
       onTap: () {
@@ -740,14 +769,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: GestureDetector(
                   onTap: () {
-                    // Navigator.of(context).push(
-                    //   MaterialPageRoute(
-                    //     builder: (_) => const SearchScreen(),
-                    //   ),
-                    // );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Search feature coming soon!'),
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SearchScreen(),
                       ),
                     );
                   },
@@ -767,21 +791,26 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         Icon(
                           Icons.search,
                           color: Colors.white.withValues(alpha: 0.6),
+                          size: 20,
                         ),
                         const SizedBox(width: 10),
-                        Text(
-                          'Search creators, videos, hashtags…',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.65),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                        Flexible(
+                          child: Text(
+                            'Search creators, videos, hashtags…',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.65),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
-                        const Spacer(),
+                        const SizedBox(width: 8),
                         Icon(
                           Icons.arrow_forward_ios,
                           color: Colors.white.withValues(alpha: 0.4),
-                          size: 16,
+                          size: 14,
                         ),
                       ],
                     ),
@@ -795,7 +824,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
-                  vertical: 16,
+                  vertical: 8,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -818,6 +847,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                             _buildEmptyTrendingCreatorsState(),
                         loadingBuilder: (context) => _buildLoadingState(),
                         errorBuilder: _buildErrorState,
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
                     ),
                   ],
@@ -825,12 +857,17 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               ),
             ),
 
+            // Small spacing between Trending Creators and Categories
+            const SliverToBoxAdapter(
+              child: SizedBox(height: 4),
+            ),
+
             // Categories Section
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
-                  vertical: 8,
+                  vertical: 0,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -874,8 +911,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 3,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 16,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
                               ),
                               itemCount: pageCategories.length,
                               itemBuilder: (context, index) {
@@ -912,21 +949,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                       ),
                     ),
 
-                    // Responsive spacing between categories and dots (16-24dp as specified)
+                    // Reduced spacing between categories and dots
                     SizedBox(
-                      height: _getResponsiveSpacing(
-                        context,
-                        16,
-                        24,
-                      ), // Normal spacing
+                      height: 8,
                     ),
 
                     // Page indicator with proper safe area handling
                     Center(
                       child: Padding(
                         padding: EdgeInsets.only(
-                          bottom: MediaQuery.of(context).padding.bottom +
-                              _getResponsiveSpacing(context, 16, 24),
+                          bottom: MediaQuery.of(context).padding.bottom + 8,
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -961,7 +993,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 20,
-                    vertical: 16,
+                    vertical: 8,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -980,7 +1012,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         itemCount: discoverState.recommendedContent.length,
                         itemBuilder: (context, index) {
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.only(bottom: 8),
                             child: RecommendedContentCard(
                               content: discoverState.recommendedContent[index],
                             ),
@@ -997,7 +1029,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             ],
 
             // Bottom padding for tab bar
-            const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            const SliverToBoxAdapter(child: SizedBox(height: 60)),
           ],
         ),
       ),
@@ -1019,7 +1051,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1054,7 +1086,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               ],
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
             // 3-column video grid with tap to open swipeable feed
             _buildVideoGridWithTapToSwipe(selectedCategory.id, discoverState),
@@ -1094,8 +1126,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            crossAxisSpacing: 2,
-            mainAxisSpacing: 2,
+            crossAxisSpacing: 1,
+            mainAxisSpacing: 1,
             childAspectRatio: 9 / 16, // 9:16 aspect ratio for portrait videos
           ),
           itemCount: categoryVideos.length,

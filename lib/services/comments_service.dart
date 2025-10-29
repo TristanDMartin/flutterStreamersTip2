@@ -8,16 +8,43 @@ import 'event_trigger_service.dart';
 class CommentsService {
   static final CommentsService _instance = CommentsService._internal();
   factory CommentsService() => _instance;
-  
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   EventTriggerService? _eventTriggerService;
-  
+
   CommentsService._internal();
-  
+
   /// Set the EventTriggerService instance (should be called from provider)
   void setEventTriggerService(EventTriggerService eventTriggerService) {
     _eventTriggerService = eventTriggerService;
+  }
+
+  /// Resync comment counter with actual comment count in subcollection
+  /// This is useful if the counter got out of sync due to manual deletions
+  Future<void> resyncCommentCounter(String videoId) async {
+    try {
+      debugPrint('🔄 Resyncing comment counter for video: $videoId');
+
+      // Get actual count from subcollection
+      final commentsSnapshot = await _firestore
+          .collection('videos')
+          .doc(videoId)
+          .collection('comments')
+          .get();
+
+      final actualCount = commentsSnapshot.docs.length;
+
+      // Update the video document's comments field
+      await _firestore.collection('videos').doc(videoId).update({
+        'comments': actualCount,
+      });
+
+      debugPrint(
+          '✅ Comment counter resynced for video $videoId: $actualCount comments');
+    } catch (e) {
+      debugPrint('❌ Error resyncing comment counter for $videoId: $e');
+    }
   }
 
   /// Fetch comments for a video
@@ -25,7 +52,7 @@ class CommentsService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
-    // print('User not authenticated, returning mock data');
+        // print('User not authenticated, returning mock data');
         return CommentMockData.mockData();
       }
 
@@ -38,7 +65,7 @@ class CommentsService {
           .get();
 
       if (snapshot.docs.isEmpty) {
-    // print('No comments found for video $videoId, returning mock data');
+        // print('No comments found for video $videoId, returning mock data');
         return CommentMockData.mockData();
       }
 
@@ -57,7 +84,7 @@ class CommentsService {
         );
       }).toList();
     } catch (e) {
-    // print('Error fetching comments: $e');
+      // print('Error fetching comments: $e');
       // Return mock data as fallback for better UX
       return CommentMockData.mockData();
     }
@@ -73,7 +100,7 @@ class CommentsService {
     try {
       final currentUser = _auth.currentUser;
       if (currentUser == null) throw Exception('User not authenticated');
-      
+
       debugPrint('🔔 CommentsService: Current user: ${currentUser.uid}');
 
       final comment = Comment(
@@ -99,10 +126,11 @@ class CommentsService {
 
       return commentWithId;
     } catch (e) {
-    // print('Error adding comment: $e');
+      // print('Error adding comment: $e');
       // Provide more specific error messages
       if (e.toString().contains('permission-denied')) {
-        throw Exception('Permission denied. Please check your authentication status.');
+        throw Exception(
+            'Permission denied. Please check your authentication status.');
       } else if (e.toString().contains('network')) {
         throw Exception('Network error. Please check your connection.');
       } else {
@@ -142,12 +170,14 @@ class CommentsService {
         'replies': FieldValue.arrayUnion([reply.toJson()]),
       });
 
-      return reply.copyWith(id: 'reply-${DateTime.now().millisecondsSinceEpoch}');
+      return reply.copyWith(
+          id: 'reply-${DateTime.now().millisecondsSinceEpoch}');
     } catch (e) {
-    // print('Error adding reply: $e');
+      // print('Error adding reply: $e');
       // Provide more specific error messages
       if (e.toString().contains('permission-denied')) {
-        throw Exception('Permission denied. Please check your authentication status.');
+        throw Exception(
+            'Permission denied. Please check your authentication status.');
       } else if (e.toString().contains('network')) {
         throw Exception('Network error. Please check your connection.');
       } else {
@@ -185,7 +215,7 @@ class CommentsService {
 
       return true;
     } catch (e) {
-    // print('Error toggling like: $e');
+      // print('Error toggling like: $e');
       return false;
     }
   }
@@ -215,12 +245,12 @@ class CommentsService {
 
       // Check if current user can delete this comment
       bool canDelete = false;
-      
+
       // Comment author can delete their own comment
       if (commentAuthorId == currentUser.uid) {
         canDelete = true;
       }
-      
+
       // Video owner can delete any comment on their video
       if (videoOwnerId != null && videoOwnerId == currentUser.uid) {
         canDelete = true;
@@ -238,6 +268,11 @@ class CommentsService {
           .doc(commentId)
           .delete();
 
+      // Trigger comment delete event to decrement counter
+      await _eventTriggerService?.triggerCommentDeleteEvent(
+        videoId: videoId,
+      );
+
       return true;
     } catch (e) {
       if (e is CommentError) {
@@ -249,9 +284,11 @@ class CommentsService {
   }
 
   /// Trigger comment event for notifications
-  Future<void> _triggerCommentEvent(String videoId, String commenterId, String commentText) async {
+  Future<void> _triggerCommentEvent(
+      String videoId, String commenterId, String commentText) async {
     try {
-      debugPrint('🔔 CommentsService._triggerCommentEvent called: $commenterId -> $videoId');
+      debugPrint(
+          '🔔 CommentsService._triggerCommentEvent called: $commenterId -> $videoId');
 
       if (_eventTriggerService == null) {
         debugPrint('🔔 EventTriggerService not set - skipping notification');
@@ -264,12 +301,13 @@ class CommentsService {
         debugPrint('🔔 Video document not found: $videoId');
         return;
       }
-      
+
       final videoData = videoDoc.data()!;
       final videoOwnerId = videoData['userId'] as String?;
-      
+
       if (videoOwnerId != null) {
-        debugPrint('🔔 Triggering comment event: $commenterId -> $videoOwnerId for video $videoId');
+        debugPrint(
+            '🔔 Triggering comment event: $commenterId -> $videoOwnerId for video $videoId');
         await _eventTriggerService!.triggerCommentEvent(
           commenterId: commenterId,
           videoId: videoId,
@@ -285,5 +323,4 @@ class CommentsService {
       debugPrint('❌ Error triggering comment event: $e');
     }
   }
-
 }

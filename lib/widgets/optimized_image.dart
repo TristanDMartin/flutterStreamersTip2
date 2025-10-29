@@ -33,7 +33,8 @@ class _OptimizedImageState extends State<OptimizedImage> {
   bool _shouldLoad = false;
   Timer? _loadTimer;
   static int _activeImageCount = 0;
-  static const int _maxActiveImages = 3; // Allow 3 images for better UX
+  static const int _maxActiveImages =
+      10; // Allow 10 images for better UX (Instagram/TikTok style)
   static final Queue<String> _imageQueue = Queue<String>();
 
   @override
@@ -45,31 +46,31 @@ class _OptimizedImageState extends State<OptimizedImage> {
   void _scheduleLoad() {
     // CRITICAL: Ultra-conservative image loading to prevent buffer overflow
     _loadTimer?.cancel();
-    
+
     // Add to queue if not already there
     if (widget.imageUrl != null && !_imageQueue.contains(widget.imageUrl)) {
       _imageQueue.add(widget.imageUrl!);
     }
-    
-      // Only load if we're under the limit and it's our turn
-      if (_activeImageCount < _maxActiveImages && 
-          _imageQueue.isNotEmpty && 
-          _imageQueue.first == widget.imageUrl) {
-        _loadTimer = Timer(const Duration(milliseconds: 1000), () {
-          if (mounted && _activeImageCount < _maxActiveImages) {
-            setState(() {
-              _shouldLoad = true;
-              _activeImageCount++;
-            });
-            MemoryPressureService.registerImageLoad();
-          }
-        });
-      } else {
-        // Wait longer if queue is full
-        _loadTimer = Timer(const Duration(milliseconds: 3000), () {
-          _scheduleLoad(); // Retry
-        });
-      }
+
+    // Only load if we're under the limit and it's our turn
+    if (_activeImageCount < _maxActiveImages &&
+        _imageQueue.isNotEmpty &&
+        _imageQueue.first == widget.imageUrl) {
+      _loadTimer = Timer(const Duration(milliseconds: 1000), () {
+        if (mounted && _activeImageCount < _maxActiveImages) {
+          setState(() {
+            _shouldLoad = true;
+            _activeImageCount++;
+          });
+          MemoryPressureService.registerImageLoad();
+        }
+      });
+    } else {
+      // Wait longer if queue is full
+      _loadTimer = Timer(const Duration(milliseconds: 3000), () {
+        _scheduleLoad(); // Retry
+      });
+    }
   }
 
   @override
@@ -78,7 +79,7 @@ class _OptimizedImageState extends State<OptimizedImage> {
     if (_shouldLoad) {
       _activeImageCount--;
       MemoryPressureService.registerImageDispose();
-      
+
       // Remove from queue and process next
       if (_imageQueue.isNotEmpty) {
         _imageQueue.removeFirst();
@@ -93,11 +94,11 @@ class _OptimizedImageState extends State<OptimizedImage> {
     if (!MemoryPressureService.canLoadImage) {
       return _buildPlaceholder();
     }
-    
+
     if (!_shouldLoad || widget.imageUrl == null || widget.imageUrl!.isEmpty) {
       return _buildPlaceholder();
     }
-    
+
     return CachedNetworkImage(
       imageUrl: widget.imageUrl!,
       width: widget.width,
@@ -105,8 +106,10 @@ class _OptimizedImageState extends State<OptimizedImage> {
       fit: widget.fit,
       placeholder: (context, url) => _buildPlaceholder(),
       errorWidget: (context, url, error) => _buildPlaceholder(),
-      memCacheWidth: (widget.width ?? 100) > 200 ? 200 : (widget.width ?? 100).toInt(),
-      memCacheHeight: (widget.height ?? 100) > 200 ? 200 : (widget.height ?? 100).toInt(),
+      memCacheWidth:
+          (widget.width ?? 100) > 200 ? 200 : (widget.width ?? 100).toInt(),
+      memCacheHeight:
+          (widget.height ?? 100) > 200 ? 200 : (widget.height ?? 100).toInt(),
       maxWidthDiskCache: 200,
       maxHeightDiskCache: 200,
       cacheManager: CacheManager(
@@ -131,14 +134,14 @@ class _OptimizedImageState extends State<OptimizedImage> {
         color: Colors.grey[300],
         borderRadius: widget.borderRadius,
       ),
-      child: widget.placeholder ?? const Icon(
-        Icons.person,
-        color: Colors.grey,
-        size: 20, // Reduced size
-      ),
+      child: widget.placeholder ??
+          const Icon(
+            Icons.person,
+            color: Colors.grey,
+            size: 20, // Reduced size
+          ),
     );
   }
-
 }
 
 class OptimizedAvatar extends StatelessWidget {
@@ -174,9 +177,10 @@ class OptimizedAvatar extends StatelessWidget {
                 cacheManager: CacheManager(
                   Config(
                     'optimized_avatars',
-            stalePeriod: const Duration(hours: 12),
-            maxNrOfCacheObjects: 20,
-                    repo: JsonCacheInfoRepository(databaseName: 'optimized_avatars'),
+                    stalePeriod: const Duration(hours: 12),
+                    maxNrOfCacheObjects: 20,
+                    repo: JsonCacheInfoRepository(
+                        databaseName: 'optimized_avatars'),
                     fileService: HttpFileService(),
                   ),
                 ),
@@ -197,5 +201,4 @@ class OptimizedAvatar extends StatelessWidget {
       size: radius * 0.8,
     );
   }
-
 }

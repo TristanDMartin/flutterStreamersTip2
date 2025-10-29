@@ -11,6 +11,7 @@ import 'auth_rate_limiting_service.dart';
 import 'tiktok_account_switcher.dart';
 import 'google_services_fix.dart';
 import 'username_lock_service.dart';
+import 'two_factor_auth_service.dart';
 
 /// Request-scoped authentication result
 class AuthRequestResult {
@@ -18,12 +19,14 @@ class AuthRequestResult {
   final bool success;
   final String? error;
   final User? user;
+  final bool requires2FA;
 
   const AuthRequestResult({
     required this.requestId,
     required this.success,
     this.error,
     this.user,
+    this.requires2FA = false,
   });
 }
 
@@ -35,6 +38,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   final AuthRateLimitingService _rateLimiter = AuthRateLimitingService();
   final UsernameLockService _usernameLockService = UsernameLockService();
   final TikTokAccountSwitcher _accountSwitcher = TikTokAccountSwitcher();
+  final TwoFactorAuthService _twoFactorService = TwoFactorAuthService();
 
   User? _currentUser;
   bool _isLoggedIn = false;
@@ -214,11 +218,17 @@ class RobustAuthenticationService extends ChangeNotifier {
         // Record successful authentication
         await _rateLimiter.recordSuccess();
 
+        // Check if user has 2FA enabled
+        final requires2FA = await _twoFactorService.requires2FA(
+          userCredential.user!.uid,
+        );
+
         // User will be handled by auth state listener
         return AuthRequestResult(
           requestId: requestId,
           success: true,
           user: _currentUser,
+          requires2FA: requires2FA,
         );
       } else {
         // Record failed attempt
@@ -782,6 +792,9 @@ class RobustAuthenticationService extends ChangeNotifier {
 
         // Ensure user document exists (handles any edge cases)
         await _ensureUserDocumentExists();
+
+        // Register FCM token for push notifications
+        await _registerFCMToken(firebaseUser.uid);
       } else {
         debugPrint(
             "🔐 User document NOT found in Firestore - creating new user");
@@ -824,6 +837,9 @@ class RobustAuthenticationService extends ChangeNotifier {
 
         // Set up real-time listener for the new user
         _setupUserDataListener(firebaseUser.uid);
+
+        // Register FCM token for push notifications
+        await _registerFCMToken(firebaseUser.uid);
       }
     } catch (e) {
       debugPrint("❌ Error in handleUserSignIn: $e");
@@ -987,6 +1003,90 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Still cleanup state even if there was an error
       _cleanupAuthState();
       rethrow; // Re-throw the error so the UI can handle it
+    }
+  }
+
+  /// Register FCM token for push notifications
+  Future<void> _registerFCMToken(String userId) async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+
+      // Check existing permission status
+      final currentSettings = await messaging.getNotificationSettings();
+
+      // Only request permission if not already granted
+      if (currentSettings.authorizationStatus ==
+          AuthorizationStatus.notDetermined) {
+        debugPrint("🔔 Requesting notification permissions...");
+        final settings = await messaging.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+          provisional: false,
+        );
+
+        if (settings.authorizationStatus != AuthorizationStatus.authorized) {
+          debugPrint("⚠️ Notification permission denied");
+          return;
+        }
+      }
+
+      // Get FCM token (works even if permission was already granted)
+      final fcmToken = await messaging.getToken();
+      if (fcmToken != null) {
+        debugPrint("📱 FCM Token obtained: ${fcmToken.substring(0, 20)}...");
+
+        // Check if token already saved in Firestore
+        final userDoc = await _firestore.collection('users').doc(userId).get();
+        final existingToken = userDoc.data()?['fcmToken'] as String?;
+
+        // Only save if token changed
+        if (existingToken != fcmToken) {
+          // Save token to Firestore user document
+          await _firestore.collection('users').doc(userId).update({
+            'fcmToken': fcmToken,
+            'lastTokenUpdate': FieldValue.serverTimestamp(),
+          });
+
+          debugPrint("✅ FCM token saved to Firestore for user $userId");
+
+          // Also save to deviceTokens subcollection for multi-device support
+          await _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('deviceTokens')
+              .doc(fcmToken)
+              .set({
+            'token': fcmToken,
+            'createdAt': FieldValue.serverTimestamp(),
+            'lastUsed': FieldValue.serverTimestamp(),
+            'platform': defaultTargetPlatform.name,
+          });
+
+          debugPrint("✅ FCM token added to deviceTokens collection");
+        } else {
+          debugPrint("ℹ️ FCM token unchanged, skipping Firestore update");
+        }
+
+        // Listen for token refresh
+        messaging.onTokenRefresh.listen((newToken) async {
+          debugPrint("🔄 FCM token refreshed");
+          try {
+            await _firestore.collection('users').doc(userId).update({
+              'fcmToken': newToken,
+              'lastTokenUpdate': FieldValue.serverTimestamp(),
+            });
+            debugPrint("✅ Updated FCM token in Firestore");
+          } catch (e) {
+            debugPrint("❌ Error updating FCM token: $e");
+          }
+        });
+      } else {
+        debugPrint("⚠️ No FCM token available");
+      }
+    } catch (e) {
+      debugPrint("❌ Error registering FCM token: $e");
+      // Don't fail sign-in if FCM registration fails
     }
   }
 

@@ -154,18 +154,24 @@ class StreamersTipLikeService extends ChangeNotifier {
         final data = videoDoc.data()!;
         final likeCount = (data['likeCount'] ?? 0) as int;
 
+        // Always update/create state (not just when currentState exists)
         final currentState = _localCache[videoId];
-        if (currentState != null) {
-          final updatedState = currentState.copyWith(
-            likeCount: likeCount,
-            timestamp: DateTime.now(),
-          );
-          _localCache[videoId] = updatedState;
-          notifyListeners();
+        final updatedState = currentState != null
+            ? currentState.copyWith(
+                likeCount: likeCount,
+                timestamp: DateTime.now(),
+              )
+            : LikeState(
+                isLiked: false,
+                likeCount: likeCount,
+                timestamp: DateTime.now(),
+              );
 
-          debugPrint(
-              '📊 StreamersTipLikeService: Loaded like count for $videoId: $likeCount');
-        }
+        _localCache[videoId] = updatedState;
+        notifyListeners();
+
+        debugPrint(
+            '📊 StreamersTipLikeService: Loaded like count for $videoId: $likeCount');
       } else {
         debugPrint(
             '⚠️ StreamersTipLikeService: Video document not found for $videoId');

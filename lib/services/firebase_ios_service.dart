@@ -41,19 +41,36 @@ class FirebaseIOSService {
         );
         debugPrint('✅ Firebase initialized on Web');
       } else {
-        // For Android, initialize with explicit options
+        // For Android, try to initialize with default options first
         debugPrint('🤖 Initializing Firebase for Android...');
-        await Firebase.initializeApp(
-          options: const FirebaseOptions(
-            apiKey: "AIzaSyCcUq1k02c4QRvuZSZK16fD6wpUMnLXxe8",
-            authDomain: "streamerstip-6cfdb.firebaseapp.com",
-            projectId: "streamerstip-6cfdb",
-            storageBucket: "streamerstip-6cfdb.firebasestorage.app",
-            messagingSenderId: "161050969080",
-            appId: "1:161050969080:android:07a92599a2c1a1f504cc0d",
-          ),
-        );
-        debugPrint('✅ Firebase initialized on Android');
+        try {
+          // Try default initialization first (uses google-services.json)
+          await Firebase.initializeApp();
+          debugPrint('✅ Firebase initialized on Android (default)');
+        } catch (e) {
+          debugPrint(
+              '⚠️ Default initialization failed, trying explicit options: $e');
+          // Fallback to explicit options
+          await Firebase.initializeApp(
+            options: const FirebaseOptions(
+              apiKey: "AIzaSyCcUq1k02c4QRvuZSZK16fD6wpUMnLXxe8",
+              authDomain: "streamerstip-6cfdb.firebaseapp.com",
+              projectId: "streamerstip-6cfdb",
+              storageBucket: "streamerstip-6cfdb.firebasestorage.app",
+              messagingSenderId: "161050969080",
+              appId: "1:161050969080:android:07a92599a2c1a1f504cc0d",
+            ),
+          );
+          debugPrint('✅ Firebase initialized on Android (explicit)');
+        }
+      }
+
+      // Wait for Firebase to be fully ready
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Verify Firebase is properly initialized
+      if (Firebase.apps.isEmpty) {
+        throw Exception('Firebase initialization failed - no apps found');
       }
 
       _isInitialized = true;
@@ -75,8 +92,10 @@ class FirebaseIOSService {
             '💡 Android: Make sure google-services.json is in android/app/ and Firebase is properly configured');
       }
 
-      // Don't throw - let the app continue without Firebase
-      debugPrint('⚠️ FirebaseIOSService: Continuing without Firebase...');
+      // Re-throw the error to prevent the app from starting without Firebase
+      debugPrint(
+          '⚠️ FirebaseIOSService: Firebase is required - stopping app initialization');
+      rethrow;
     }
   }
 

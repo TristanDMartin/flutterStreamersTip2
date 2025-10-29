@@ -5,6 +5,7 @@ import '../models/activity_notification.dart';
 import '../models/user.dart';
 import '../widgets/optimized_image.dart';
 import '../services/auth_service.dart';
+import '../services/follows_service.dart';
 // import '../services/relationship_service.dart'; // Temporarily commented out
 
 class ActivityRowView extends ConsumerStatefulWidget {
@@ -33,6 +34,13 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   late AnimationController _fadeController;
   bool _isPressed = false;
 
+  // Follow status state
+  bool _isFollowing = false;
+  bool _isFollowedBy = false;
+  bool _isLoadingFollowStatus = true;
+
+  final FollowsService _followsService = FollowsService();
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +53,45 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       vsync: this,
     );
     _fadeController.forward();
+    _loadFollowStatus();
+  }
+
+  Future<void> _loadFollowStatus() async {
+    final auth = ref.read(authServiceProvider);
+    final currentUserId = auth.currentUser?.id;
+
+    if (currentUserId == null || widget.notification.user.id == currentUserId) {
+      setState(() {
+        _isLoadingFollowStatus = false;
+      });
+      return;
+    }
+
+    try {
+      // Load all follow status in parallel for efficiency
+      final results = await Future.wait([
+        _followsService.isFollowing(widget.notification.user.id),
+        _followsService.isFollowedBy(widget.notification.user.id),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _isFollowing = results[0];
+          _isFollowedBy = results[1];
+          _isLoadingFollowStatus = false;
+        });
+
+        debugPrint(
+            '✅ ActivityRowView: Follow status loaded - following: ${results[0]}, followedBy: ${results[1]}');
+      }
+    } catch (e) {
+      debugPrint('❌ ActivityRowView: Error loading follow status: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingFollowStatus = false;
+        });
+      }
+    }
   }
 
   @override
@@ -60,11 +107,9 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     final auth = ref.watch(authServiceProvider);
     final currentUserId = auth.currentUser?.id;
 
-    // Relationship service implementation
-    // This would involve checking follow status with a relationship service
-    // Currently using mock data as this feature is not implemented
-    const isFollowing = false;
-    const isMutualFollow = false;
+    // Calculate follow status
+    final isFollowing = _isFollowing;
+    final isMutualFollow = _isFollowing && _isFollowedBy;
 
     return FadeTransition(
       opacity: _fadeController,
@@ -198,6 +243,9 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   }
 
   Widget _buildAvatarWithRing() {
+    final user = widget.notification.user;
+    final avatarURL = user.avatarURL ?? '';
+
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -205,7 +253,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       },
       child: Stack(
         children: [
-          // User avatar
+          // User avatar - Always show user's avatar using UnifiedAvatarService
           Container(
             width: 44,
             height: 44,
@@ -215,39 +263,42 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 color: Colors.white.withValues(alpha: 0.3),
                 width: 2,
               ),
+              // No background color - let the avatar show through
             ),
             child: ClipOval(
-              child: widget.notification.user.avatarURL != null &&
-                      widget.notification.user.avatarURL!.isNotEmpty
-                  ? OptimizedImage(
-                      imageUrl: widget.notification.user.avatarURL!,
+              child: avatarURL.isNotEmpty
+                  ? Image.network(
+                      avatarURL,
                       width: 40,
                       height: 40,
                       fit: BoxFit.cover,
-                      borderRadius: BorderRadius.circular(20),
-                      placeholder: Container(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        child: Icon(
-                          Icons.person,
-                          color: Colors.white.withValues(alpha: 0.7),
-                          size: 24,
-                        ),
-                      ),
-                      errorWidget: Container(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        child: Icon(
-                          Icons.person,
-                          color: Colors.white.withValues(alpha: 0.7),
-                          size: 24,
-                        ),
-                      ),
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            color: Colors.grey[600],
+                            size: 20,
+                          ),
+                        );
+                      },
                     )
                   : Container(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        shape: BoxShape.circle,
+                      ),
                       child: Icon(
                         Icons.person,
-                        color: Colors.white.withValues(alpha: 0.7),
-                        size: 24,
+                        color: Colors.grey[600],
+                        size: 20,
                       ),
                     ),
             ),
@@ -480,16 +531,25 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                 ),
               ],
             ),
-            child: Text(
-              isMutualFollow
-                  ? 'Connected'
-                  : (isFollowing ? 'Following' : 'Follow back'),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: _isLoadingFollowStatus
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Text(
+                    isMutualFollow
+                        ? 'Connected'
+                        : (isFollowing ? 'Following' : 'Follow back'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
         ),
       );
@@ -595,25 +655,60 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
 
   void _handleFollowAction(bool isFollowing, bool isMutualFollow) async {
     try {
-      // Follow/unfollow logic implementation
-      // This would involve calling a relationship service to update follow status
-      // Currently showing a snackbar as this feature is not implemented
-      final action = isFollowing ? 'unfollow' : 'follow';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$action action will be implemented soon'),
-          backgroundColor: const Color(0xFF9248D2),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      setState(() {
+        _isLoadingFollowStatus = true;
+      });
+
+      bool success;
+      final action = isFollowing ? 'Unfollowed' : 'Followed';
+
+      if (isFollowing) {
+        // Unfollow the user
+        success =
+            await _followsService.unfollowUser(widget.notification.user.id);
+        if (success) {
+          setState(() {
+            _isFollowing = false;
+            _isLoadingFollowStatus = false;
+          });
+        }
+      } else {
+        // Follow the user
+        success = await _followsService.followUser(widget.notification.user.id);
+        if (success) {
+          setState(() {
+            _isFollowing = true;
+            _isLoadingFollowStatus = false;
+          });
+          // Reload follow status to check if they now follow you back
+          await _loadFollowStatus();
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$action @${widget.notification.user.username}'),
+            backgroundColor:
+                success ? Colors.green.shade700 : Colors.red.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      debugPrint('❌ ActivityRowView: Error handling follow action: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingFollowStatus = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 }

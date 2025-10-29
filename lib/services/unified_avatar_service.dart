@@ -13,22 +13,24 @@ import '../widgets/optimized_image.dart';
 /// Bulletproof avatar loading with aggressive caching, error handling,
 /// and fallback mechanisms to ensure avatars always display.
 class UnifiedAvatarService {
-  static final UnifiedAvatarService _instance = UnifiedAvatarService._internal();
+  static final UnifiedAvatarService _instance =
+      UnifiedAvatarService._internal();
   factory UnifiedAvatarService() => _instance;
   UnifiedAvatarService._internal();
 
   // Memory cache for instant access
   final Map<String, ImageProvider> _memoryCache = {};
   final Map<String, bool> _loadingStates = {};
-  
+
   // FIXED: Set reasonable limit to allow avatar loading while preventing buffer overflow
-  static const int _maxConcurrentLoads = 3; // Allow up to 3 concurrent avatar loads
+  static const int _maxConcurrentLoads =
+      3; // Allow up to 3 concurrent avatar loads
   int _currentLoads = 0;
   final Queue<String> _loadQueue = Queue<String>();
-  
+
   // Cache directory
   Directory? _cacheDir;
-  
+
   // Persistent cache for main user avatar
   static const String _mainUserAvatarKey = 'main_user_avatar_url';
   static const String _mainUserAvatarDataKey = 'main_user_avatar_data';
@@ -39,18 +41,19 @@ class UnifiedAvatarService {
       // Skip cache directory creation for faster startup
       _cacheDir = await getApplicationDocumentsDirectory();
       _cacheDir = Directory(path.join(_cacheDir!.path, 'unified_avatar_cache'));
-      
+
       // Create cache directory only if needed (lazy creation)
       // if (!await _cacheDir!.exists()) {
       //   await _cacheDir!.create(recursive: true);
       // }
-      
+
       // Load main user avatar in background (non-blocking)
       _loadMainUserAvatarFromStorage().catchError((e) {
         debugPrint('⚠️ Failed to load main user avatar (non-critical): $e');
       });
-      
-      debugPrint('✅ UnifiedAvatarService: Initialized with cache directory: ${_cacheDir!.path}');
+
+      debugPrint(
+          '✅ UnifiedAvatarService: Initialized with cache directory: ${_cacheDir!.path}');
     } catch (e) {
       debugPrint('❌ UnifiedAvatarService: Failed to initialize: $e');
     }
@@ -166,20 +169,20 @@ class UnifiedAvatarService {
     }
   }
 
-
   /// Build default avatar with ProfileView styling
-  Widget _buildDefaultAvatar(double radius, [bool useProfileViewStyling = true]) {
-    final defaultAvatar = CircleAvatar(
-      radius: radius,
-      backgroundColor: Colors.grey[300],
-      child: Icon(
-        Icons.person,
-        size: radius * 0.8,
-        color: Colors.grey[600],
-      ),
-    );
-
+  Widget _buildDefaultAvatar(double radius,
+      [bool useProfileViewStyling = true]) {
     if (useProfileViewStyling) {
+      final defaultAvatar = CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.grey[300],
+        child: Icon(
+          Icons.person,
+          size: radius * 0.8,
+          color: Colors.grey[600],
+        ),
+      );
+
       return Stack(
         clipBehavior: Clip.none,
         children: [
@@ -214,7 +217,16 @@ class UnifiedAvatarService {
         ],
       );
     } else {
-      return defaultAvatar;
+      // For simple styling, return a CircleAvatar that will be clearly visible
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.grey[300],
+        child: Icon(
+          Icons.person,
+          size: radius * 1.2,
+          color: Colors.grey[600],
+        ),
+      );
     }
   }
 
@@ -222,35 +234,39 @@ class UnifiedAvatarService {
   Future<void> preloadAvatars(List<String> avatarUrls) async {
     if (avatarUrls.isEmpty) return;
 
-    debugPrint('🔄 UnifiedAvatarService: Preloading ${avatarUrls.length} avatars...');
-    
+    debugPrint(
+        '🔄 UnifiedAvatarService: Preloading ${avatarUrls.length} avatars...');
+
     // Limit concurrent loading to prevent buffer overflow
     final limitedUrls = avatarUrls.take(_maxConcurrentLoads).toList();
-    
+
     for (final url in limitedUrls) {
       if (url.isNotEmpty && !_memoryCache.containsKey(url)) {
         _loadImageWithBufferManagement(url);
       }
     }
-    
-    debugPrint('✅ UnifiedAvatarService: Preloaded ${_memoryCache.length} avatars');
+
+    debugPrint(
+        '✅ UnifiedAvatarService: Preloaded ${_memoryCache.length} avatars');
   }
 
   /// Load image with buffer management
   Future<void> _loadImageWithBufferManagement(String url) async {
-    if (url.isEmpty || _memoryCache.containsKey(url) || _loadingStates[url] == true) return;
-    
+    if (url.isEmpty ||
+        _memoryCache.containsKey(url) ||
+        _loadingStates[url] == true) return;
+
     if (_currentLoads >= _maxConcurrentLoads) {
       _loadQueue.add(url);
       return;
     }
-    
+
     _currentLoads++;
     _loadingStates[url] = true;
-    
+
     try {
       final imageProvider = CachedNetworkImageProvider(url);
-      
+
       final context = NavigationService.navigatorKey.currentContext;
       if (context != null) {
         try {
@@ -258,7 +274,8 @@ class UnifiedAvatarService {
           _memoryCache[url] = imageProvider;
           debugPrint('✅ UnifiedAvatarService: Loaded avatar $url');
         } catch (e) {
-          debugPrint('⚠️ UnifiedAvatarService: Failed to precache avatar $url: $e');
+          debugPrint(
+              '⚠️ UnifiedAvatarService: Failed to precache avatar $url: $e');
         }
       } else {
         _memoryCache[url] = imageProvider;
@@ -269,7 +286,7 @@ class UnifiedAvatarService {
     } finally {
       _loadingStates[url] = false;
       _currentLoads--;
-      
+
       // Process next in queue
       if (_loadQueue.isNotEmpty) {
         final nextUrl = _loadQueue.removeFirst();
@@ -285,7 +302,7 @@ class UnifiedAvatarService {
     try {
       // Use a more robust approach to validate images
       final imageProvider = CachedNetworkImageProvider(url);
-      
+
       // Try to precache the image to validate it
       final context = NavigationService.navigatorKey.currentContext;
       if (context != null) {
@@ -295,7 +312,8 @@ class UnifiedAvatarService {
           debugPrint('✅ UnifiedAvatarService: Preloaded avatar $url');
         } catch (e) {
           // If precaching fails, don't cache the provider
-          debugPrint('⚠️ UnifiedAvatarService: Failed to precache avatar $url: $e');
+          debugPrint(
+              '⚠️ UnifiedAvatarService: Failed to precache avatar $url: $e');
           // Don't add to memory cache if it fails validation
         }
       } else {
@@ -313,12 +331,12 @@ class UnifiedAvatarService {
     try {
       _memoryCache.clear();
       _loadingStates.clear();
-      
+
       if (_cacheDir != null && await _cacheDir!.exists()) {
         await _cacheDir!.delete(recursive: true);
         await _cacheDir!.create(recursive: true);
       }
-      
+
       debugPrint('✅ UnifiedAvatarService: Cache cleared');
     } catch (e) {
       debugPrint('❌ UnifiedAvatarService: Failed to clear cache: $e');
@@ -329,7 +347,7 @@ class UnifiedAvatarService {
   Future<int> getCacheSize() async {
     try {
       if (_cacheDir == null || !await _cacheDir!.exists()) return 0;
-      
+
       int totalSize = 0;
       await for (final entity in _cacheDir!.list(recursive: true)) {
         if (entity is File) {
@@ -358,14 +376,16 @@ class UnifiedAvatarService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final avatarUrl = prefs.getString(_mainUserAvatarKey);
-      
+
       if (avatarUrl != null && avatarUrl.isNotEmpty) {
         // Preload the main user avatar for instant display
         await _preloadSingleAvatar(avatarUrl);
-        debugPrint('✅ UnifiedAvatarService: Loaded main user avatar from storage: $avatarUrl');
+        debugPrint(
+            '✅ UnifiedAvatarService: Loaded main user avatar from storage: $avatarUrl');
       }
     } catch (e) {
-      debugPrint('⚠️ UnifiedAvatarService: Failed to load main user avatar from storage: $e');
+      debugPrint(
+          '⚠️ UnifiedAvatarService: Failed to load main user avatar from storage: $e');
     }
   }
 
@@ -374,13 +394,15 @@ class UnifiedAvatarService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_mainUserAvatarKey, avatarUrl);
-      
+
       // Preload the avatar for instant access
       await _preloadSingleAvatar(avatarUrl);
-      
-      debugPrint('✅ UnifiedAvatarService: Saved main user avatar to storage: $avatarUrl');
+
+      debugPrint(
+          '✅ UnifiedAvatarService: Saved main user avatar to storage: $avatarUrl');
     } catch (e) {
-      debugPrint('⚠️ UnifiedAvatarService: Failed to save main user avatar: $e');
+      debugPrint(
+          '⚠️ UnifiedAvatarService: Failed to save main user avatar: $e');
     }
   }
 
@@ -396,7 +418,7 @@ class UnifiedAvatarService {
     if (imageUrl.isNotEmpty) {
       saveMainUserAvatar(imageUrl);
     }
-    
+
     return getAvatar(
       imageUrl: imageUrl,
       radius: radius,
@@ -413,15 +435,18 @@ class UnifiedAvatarService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_mainUserAvatarKey);
       await prefs.remove(_mainUserAvatarDataKey);
-      
-      debugPrint('✅ UnifiedAvatarService: Cleared main user avatar from storage');
+
+      debugPrint(
+          '✅ UnifiedAvatarService: Cleared main user avatar from storage');
     } catch (e) {
-      debugPrint('⚠️ UnifiedAvatarService: Failed to clear main user avatar: $e');
+      debugPrint(
+          '⚠️ UnifiedAvatarService: Failed to clear main user avatar: $e');
     }
   }
 }
 
 /// Navigation Service for accessing context
 class NavigationService {
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 }

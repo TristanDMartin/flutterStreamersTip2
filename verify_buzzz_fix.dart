@@ -25,7 +25,7 @@ void main() async {
     }
 
     final buzzzDoc = buzzzQuery.docs.first;
-    final userData = buzzzDoc.data() as Map<String, dynamic>;
+    final userData = buzzzDoc.data();
 
     print('📋 buzZz user data:');
     print('  Document ID: ${buzzzDoc.id}');

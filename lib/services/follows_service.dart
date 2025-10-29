@@ -228,17 +228,42 @@ class FollowsService {
     try {
       final currentUserId = currentUser.uid;
 
+      // DEBUG: Fetch ALL follows documents to inspect structure
+      debugPrint(
+          '🔍 DEBUG: Fetching ALL follows documents to inspect structure...');
+      final allFollowsQuery =
+          await _firestore.collection('follows').limit(10).get();
+      debugPrint(
+          '📋 Found ${allFollowsQuery.docs.length} total follows documents:');
+      for (var doc in allFollowsQuery.docs) {
+        debugPrint('   Doc ID: ${doc.id}');
+        debugPrint('   Doc Data: ${doc.data()}');
+        debugPrint('   Data Keys: ${doc.data().keys.toList()}');
+      }
+
       // Get all follows where current user is the follower
       final followingQuery = await _firestore
           .collection('follows')
           .where('followerId', isEqualTo: currentUserId)
           .get();
 
+      debugPrint(
+          '📋 Following query results for user $currentUserId: ${followingQuery.docs.length} documents');
+      for (var doc in followingQuery.docs) {
+        debugPrint('   Doc ID: ${doc.id}, Data: ${doc.data()}');
+      }
+
       // Get all follows where current user is the followed
       final followersQuery = await _firestore
           .collection('follows')
           .where('followedId', isEqualTo: currentUserId)
           .get();
+
+      debugPrint(
+          '📋 Followers query results for user $currentUserId: ${followersQuery.docs.length} documents');
+      for (var doc in followersQuery.docs) {
+        debugPrint('   Doc ID: ${doc.id}, Data: ${doc.data()}');
+      }
 
       // Extract user IDs
       final followingIds = followingQuery.docs

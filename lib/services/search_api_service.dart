@@ -28,58 +28,57 @@ class SearchApiService {
       final searchTerm = query.trim().toLowerCase();
       final List<SearchResult> results = [];
 
-      // Search by username
+      // Search by username (get all users and filter client-side)
       final usernameQuery = await _firestore
           .collection('users')
-          .where('username', isGreaterThanOrEqualTo: searchTerm)
-          .where('username', isLessThan: '${searchTerm}z')
-          .limit(limit)
+          .limit(100) // Get more users to filter
           .get();
 
       for (final doc in usernameQuery.docs) {
-        if (doc.id != currentUserId) {
-          results.add(_mapUserToSearchResult(doc, 'username'));
+        if (doc.id == currentUserId) continue;
+
+        final data = doc.data();
+        final username = data['username']?.toString().toLowerCase() ?? '';
+        final displayName = data['displayName']?.toString().toLowerCase() ?? '';
+
+        // Check if username or display name contains the search term
+        if (username.contains(searchTerm) || displayName.contains(searchTerm)) {
+          if (!results.any((r) => r.userId == doc.id)) {
+            // Determine match type
+            String matchType = 'username';
+            if (displayName.contains(searchTerm) &&
+                !username.contains(searchTerm)) {
+              matchType = 'displayName';
+            } else if (displayName.contains(searchTerm) &&
+                username.contains(searchTerm)) {
+              // Both match, prioritize username
+              matchType = 'username';
+            }
+
+            results.add(_mapUserToSearchResult(doc, matchType));
+          }
         }
       }
 
-      // Search by display name
-      final displayNameQuery = await _firestore
-          .collection('users')
-          .where('displayName', isGreaterThanOrEqualTo: searchTerm)
-          .where('displayName', isLessThan: '${searchTerm}z')
-          .limit(limit)
-          .get();
-
-      for (final doc in displayNameQuery.docs) {
-        if (doc.id != currentUserId &&
-            !results.any((r) => r.userId == doc.id)) {
-          results.add(_mapUserToSearchResult(doc, 'displayName'));
-        }
+      // Remove duplicates
+      final uniqueResults = <String, SearchResult>{};
+      for (final result in results) {
+        uniqueResults[result.userId ?? ''] = result;
       }
 
-      // Search by hashtags in user profiles
-      final hashtagQuery = await _firestore
-          .collection('users')
-          .where('hashtags', arrayContains: searchTerm)
-          .limit(limit)
-          .get();
-
-      for (final doc in hashtagQuery.docs) {
-        if (doc.id != currentUserId &&
-            !results.any((r) => r.userId == doc.id)) {
-          results.add(_mapUserToSearchResult(doc, 'hashtag'));
-        }
-      }
+      // Convert back to list
+      final deduplicatedResults = uniqueResults.values.toList();
 
       // Sort results by relevance (exact matches first, then partial matches)
-      results.sort((a, b) {
+      deduplicatedResults.sort((a, b) {
         final aRelevance = _calculateRelevance(a, searchTerm);
         final bRelevance = _calculateRelevance(b, searchTerm);
         return bRelevance.compareTo(aRelevance);
       });
 
       // Apply pagination
-      final paginatedResults = results.skip(offset).take(limit).toList();
+      final paginatedResults =
+          deduplicatedResults.skip(offset).take(limit).toList();
 
       LoggingService.instance.debug(
           'Found ${paginatedResults.length} users for query: "$query"',
@@ -103,45 +102,37 @@ class SearchApiService {
       final searchTerm = query.trim().toLowerCase();
       final List<SearchResult> results = [];
 
-      // Search by video title
-      final titleQuery = await _firestore
+      // Get all published videos and filter client-side
+      final videosQuery = await _firestore
           .collection('videos')
-          .where('title', isGreaterThanOrEqualTo: searchTerm)
-          .where('title', isLessThan: '${searchTerm}z')
-          .where('isPublic', isEqualTo: true)
-          .limit(limit)
+          .where('status', isEqualTo: 'published')
+          .limit(100) // Get more videos to filter
           .get();
 
-      for (final doc in titleQuery.docs) {
-        results.add(_mapVideoToSearchResult(doc, 'title'));
-      }
+      for (final doc in videosQuery.docs) {
+        final data = doc.data();
+        final title = data['caption']?.toString().toLowerCase() ?? '';
+        final description = data['description']?.toString().toLowerCase() ?? '';
+        final hashtags = List<String>.from(data['hashtags'] ?? []);
 
-      // Search by video description
-      final descriptionQuery = await _firestore
-          .collection('videos')
-          .where('description', isGreaterThanOrEqualTo: searchTerm)
-          .where('description', isLessThan: '${searchTerm}z')
-          .where('isPublic', isEqualTo: true)
-          .limit(limit)
-          .get();
+        // Check if title, description, or hashtags contain the search term
+        bool matches = false;
+        String matchType = 'title';
 
-      for (final doc in descriptionQuery.docs) {
-        if (!results.any((r) => r.videoId == doc.id)) {
-          results.add(_mapVideoToSearchResult(doc, 'description'));
+        if (title.contains(searchTerm)) {
+          matches = true;
+          matchType = 'title';
+        } else if (description.contains(searchTerm)) {
+          matches = true;
+          matchType = 'description';
+        } else if (hashtags
+            .any((tag) => tag.toLowerCase().contains(searchTerm))) {
+          matches = true;
+          matchType = 'hashtag';
         }
-      }
 
-      // Search by video hashtags
-      final hashtagQuery = await _firestore
-          .collection('videos')
-          .where('hashtags', arrayContains: searchTerm)
-          .where('isPublic', isEqualTo: true)
-          .limit(limit)
-          .get();
-
-      for (final doc in hashtagQuery.docs) {
-        if (!results.any((r) => r.videoId == doc.id)) {
-          results.add(_mapVideoToSearchResult(doc, 'hashtag'));
+        if (matches && !results.any((r) => r.videoId == doc.id)) {
+          results.add(_mapVideoToSearchResult(doc, matchType));
         }
       }
 
@@ -300,6 +291,8 @@ class SearchApiService {
   SearchResult _mapUserToSearchResult(
       QueryDocumentSnapshot doc, String matchType) {
     final data = doc.data() as Map<String, dynamic>;
+    // Firestore stores avatar as 'avatarURL' (uppercase RL), not 'avatarUrl'
+    final avatarURL = data['avatarURL'] ?? '';
     return SearchResult(
       id: doc.id,
       type: SearchResultType.user,
@@ -309,11 +302,11 @@ class SearchApiService {
         'userId': doc.id,
         'username': data['username'] ?? '',
         'displayName': data['displayName'] ?? '',
-        'avatarUrl': data['avatarUrl'],
+        'avatarUrl': avatarURL,
         'followerCount': data['followerCount'] ?? 0,
         'matchType': matchType,
       },
-      imageURL: data['avatarUrl'],
+      imageURL: avatarURL.isNotEmpty ? avatarURL : null,
     );
   }
 
@@ -324,14 +317,14 @@ class SearchApiService {
     return SearchResult(
       id: doc.id,
       type: SearchResultType.video,
-      title: data['title'] ?? 'Untitled Video',
+      title: data['caption'] ?? data['title'] ?? 'Untitled Video',
       subtitle: 'by @${data['creatorUsername'] ?? 'unknown'}',
       metadata: {
         'videoId': doc.id,
-        'creatorId': data['creatorId'] ?? '',
+        'creatorId': data['creatorId'] ?? data['userId'] ?? '',
         'creatorUsername': data['creatorUsername'] ?? '',
         'thumbnailUrl': data['thumbnailUrl'],
-        'viewCount': data['viewCount'] ?? 0,
+        'viewCount': data['views'] ?? data['viewCount'] ?? 0,
         'duration': data['duration'] ?? 0,
         'matchType': matchType,
       },

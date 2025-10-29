@@ -28,7 +28,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 void main() async {
   final appStartTime = DateTime.now();
   debugPrint('🚀 APP STARTUP: Starting at $appStartTime');
-  
+
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('✅ WidgetsFlutterBinding: Initialized at ${DateTime.now()}');
 
@@ -44,7 +44,8 @@ void main() async {
 
   final appReadyTime = DateTime.now();
   final totalStartupTime = appReadyTime.difference(appStartTime);
-  debugPrint('🎉 APP READY: Total startup time: ${totalStartupTime.inMilliseconds}ms');
+  debugPrint(
+      '🎉 APP READY: Total startup time: ${totalStartupTime.inMilliseconds}ms');
 
   // Run app immediately
   debugPrint('🏃 Running app at ${DateTime.now()}');
@@ -103,9 +104,14 @@ Future<void> _initializeAllServices() async {
     debugPrint('✅ PerformanceEmergencyService: Completed at ${DateTime.now()}');
 
     // 🔥 FIREBASE: Initialize Firebase first before any Firebase-dependent services
-    debugPrint('🔥 FIREBASE: Starting Firebase initialization at ${DateTime.now()}');
+    debugPrint(
+        '🔥 FIREBASE: Starting Firebase initialization at ${DateTime.now()}');
     await FirebaseIOSService.initialize();
-    debugPrint('🔥 FIREBASE: Firebase initialization completed at ${DateTime.now()}');
+    debugPrint(
+        '🔥 FIREBASE: Firebase initialization completed at ${DateTime.now()}');
+
+    // Give Firebase time to fully initialize
+    await Future.delayed(const Duration(milliseconds: 1000));
 
     // 🔥 ANALYTICS: Initialize analytics immediately after Firebase
     debugPrint('⏰ AnalyticsService: Start time: ${DateTime.now()}');
@@ -188,16 +194,18 @@ Future<void> _initializeServiceSafely(
     String serviceName, Future<void> Function() initFunction) async {
   final startTime = DateTime.now();
   debugPrint('⏰ ServiceManager: Starting $serviceName at $startTime');
-  
+
   try {
     await initFunction();
     final endTime = DateTime.now();
     final duration = endTime.difference(startTime);
-    debugPrint('✅ ServiceManager: $serviceName initialized successfully in ${duration.inMilliseconds}ms');
+    debugPrint(
+        '✅ ServiceManager: $serviceName initialized successfully in ${duration.inMilliseconds}ms');
   } catch (e) {
     final endTime = DateTime.now();
     final duration = endTime.difference(startTime);
-    debugPrint('❌ ServiceManager: $serviceName initialization failed after ${duration.inMilliseconds}ms: $e');
+    debugPrint(
+        '❌ ServiceManager: $serviceName initialization failed after ${duration.inMilliseconds}ms: $e');
     // Don't rethrow - allow other services to continue
   }
 }

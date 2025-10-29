@@ -97,6 +97,10 @@ class _VideoPlayerViewOptimizedState
   // Stream subscription for bookmark state changes
   StreamSubscription<BookmarkEvent>? _bookmarkSubscription;
 
+  // Stream subscription for real-time comment count updates
+  StreamSubscription<DocumentSnapshot>? _commentCountSubscription;
+  int _commentCount = 0; // Real-time comment count
+
   // 🚀 VIRAL ALGORITHM: Watch time tracking
   Timer? _watchTimeTracker;
   double _lastReportedWatchPercentage = 0.0;
@@ -151,6 +155,86 @@ class _VideoPlayerViewOptimizedState
 
     debugPrint(
         '📚 VideoPlayerView: Initialized bookmark state for video ${widget.video.id}: $_isBookmarked');
+  }
+
+  /// Initialize real-time comment count listener
+  void _initializeCommentCountListener() {
+    // Initialize with widget.video.comments to avoid showing 0 while waiting for snapshot
+    _commentCount = widget.video.comments;
+    debugPrint(
+        '💬 VideoPlayerView: Initializing comment count listener for video ${widget.video.id} with initial value: $_commentCount');
+
+    // Verify counter is accurate by checking actual subcollection count
+    // This helps fix out-of-sync counters from manual deletions
+    _verifyCommentCounter();
+
+    // Listen to real-time updates from Firestore
+    _commentCountSubscription = FirebaseFirestore.instance
+        .collection('videos')
+        .doc(widget.video.id)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        debugPrint(
+            '💬 VideoPlayerView: Received snapshot for video ${widget.video.id}, exists: ${snapshot.exists}, mounted: $mounted');
+
+        if (snapshot.exists && mounted) {
+          final data = snapshot.data();
+          debugPrint(
+              '💬 VideoPlayerView: Snapshot data for video ${widget.video.id}: comments=${data?['comments']}');
+
+          final updatedCommentCount = data?['comments'] ?? 0;
+
+          // Always update on first snapshot or when value changes
+          if (_commentCount != updatedCommentCount) {
+            setState(() {
+              _commentCount = updatedCommentCount;
+            });
+            debugPrint(
+                '💬 VideoPlayerView: Comment count updated for video ${widget.video.id}: $_commentCount');
+          } else {
+            debugPrint(
+                '💬 VideoPlayerView: Comment count unchanged for video ${widget.video.id}: $_commentCount');
+          }
+        }
+      },
+      onError: (error) {
+        debugPrint(
+            '❌ VideoPlayerView: Error listening to comment count for video ${widget.video.id}: $error');
+      },
+    );
+  }
+
+  /// Verify comment counter matches actual subcollection count
+  Future<void> _verifyCommentCounter() async {
+    try {
+      final commentsSnapshot = await FirebaseFirestore.instance
+          .collection('videos')
+          .doc(widget.video.id)
+          .collection('comments')
+          .get();
+
+      final actualCount = commentsSnapshot.docs.length;
+
+      debugPrint(
+          '🔍 VideoPlayerView: Verifying comment count - Document says: $_commentCount, Actual: $actualCount');
+
+      // If counts don't match, resync
+      if (actualCount != _commentCount) {
+        debugPrint(
+            '⚠️ VideoPlayerView: Comment count mismatch! Resyncing from $actualCount to $_commentCount');
+        await FirebaseFirestore.instance
+            .collection('videos')
+            .doc(widget.video.id)
+            .update({
+          'comments': actualCount,
+        });
+        debugPrint(
+            '✅ VideoPlayerView: Comment counter resynced to $actualCount');
+      }
+    } catch (e) {
+      debugPrint('❌ VideoPlayerView: Error verifying comment counter: $e');
+    }
   }
 
   // 🚀 VIRAL ALGORITHM: Track watch progress
@@ -306,6 +390,9 @@ class _VideoPlayerViewOptimizedState
     // Initialize bookmark state from FavoritesService
     _initializeBookmarkState();
 
+    // Initialize real-time comment count listener
+    _initializeCommentCountListener();
+
     // TIKTOK-STYLE: Initialize video immediately for instant playback
     _initializeVideo();
   }
@@ -318,6 +405,10 @@ class _VideoPlayerViewOptimizedState
     // 🔖 MEMORY LEAK FIX: Clean up bookmark subscription
     _bookmarkSubscription?.cancel();
     _bookmarkSubscription = null;
+
+    // 💬 MEMORY LEAK FIX: Clean up comment count subscription
+    _commentCountSubscription?.cancel();
+    _commentCountSubscription = null;
 
     // 🚀 VIRAL ALGORITHM: Stop watch time tracking
     _stopWatchTimeTracking();
@@ -499,9 +590,11 @@ class _VideoPlayerViewOptimizedState
       _logger.debug('Video controller created successfully: ${widget.video.id}',
           tag: 'VideoPlayer');
 
-      // Add listeners
-      _videoPlayerController!.addListener(_videoErrorListener);
-      _videoPlayerController!.addListener(_videoStateListener);
+      // Add listeners only if widget is still mounted
+      if (mounted && !_isDisposed) {
+        _videoPlayerController!.addListener(_videoErrorListener);
+        _videoPlayerController!.addListener(_videoStateListener);
+      }
 
       // 🔊 AUDIO FIX: Register with GlobalPlaybackManager (single registration)
       GlobalPlaybackManager.instance.registerController(
@@ -526,8 +619,8 @@ class _VideoPlayerViewOptimizedState
       _logger.debug('Video initialized successfully: ${widget.video.id}',
           tag: 'VideoPlayer');
 
-      // Auto-play if this is the current video
-      if (widget.isCurrentVideo) {
+      // Auto-play if this is the current video and widget is still mounted
+      if (widget.isCurrentVideo && mounted && !_isDisposed) {
         debugPrint(
             '🎯 VideoPlayer: Auto-playing current video - videoId: ${widget.video.id}');
 
@@ -537,10 +630,12 @@ class _VideoPlayerViewOptimizedState
 
         // Apply audio enhancement and unmute for first video
         _applyAudioEnhancement().then((_) async {
-          await _safeSetVolume(1.0);
-          setState(() => _audioUnmuted = true);
-          debugPrint(
-              '🔊 VideoPlayer: Audio unmuted for first video - videoId: ${widget.video.id}');
+          if (mounted && !_isDisposed) {
+            await _safeSetVolume(1.0);
+            setState(() => _audioUnmuted = true);
+            debugPrint(
+                '🔊 VideoPlayer: Audio unmuted for first video - videoId: ${widget.video.id}');
+          }
         });
 
         await _safePlay();
@@ -1322,10 +1417,11 @@ class _VideoPlayerViewOptimizedState
     if (_videoPlayerController == null || !_isInitialized || _isDisposed) {
       // SEAMLESS RETURN: Reinitialize if controller was disposed
       if ((_videoPlayerController == null || _isDisposed) &&
-          widget.isCurrentVideo) {
+          widget.isCurrentVideo &&
+          mounted) {
         log('🔄 VideoPlayer: Reinitializing disposed controller for current video: ${widget.video.id}');
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
+          if (mounted && !_isDisposed) {
             _initializeVideo();
           }
         });
@@ -1500,7 +1596,7 @@ class _VideoPlayerViewOptimizedState
       // DiscoverView: At the very bottom - use minimal spacing
       bottomPosition = safeBottom + 20.0; // Just safe area + 20px
     } else if (isProfileView) {
-      // ProfileView: At the very bottom like DiscoverView
+      // ProfileView: At the very bottom (matches DiscoverView)
       bottomPosition = safeBottom + 20.0; // Just safe area + 20px
     } else {
       // HomeView: Perfect as is
@@ -1639,6 +1735,37 @@ class _VideoPlayerViewOptimizedState
                 ),
               ),
             ),
+            // Video tags/hashtags
+            if (widget.video.tags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: widget.video.tags.map((tag) {
+                  debugPrint('🏷️ VideoPlayerView: Displaying tag: $tag');
+                  return Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      tag.startsWith('#') ? tag : '#$tag',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
           ],
         ),
       ),
@@ -1679,11 +1806,18 @@ class _VideoPlayerViewOptimizedState
 
     double top;
     if (isCategoryFeed) {
-      // DiscoverView: Position lower but still above system navigation bar
-      top = screenHeight - safeBottom - groupHeight - 40.0; // Reduced spacing
+      // DiscoverView: Position lower but ensure clearance above nav bar
+      // Need to account for nav bar height (100px) + minimum spacing (20px)
+      top = screenHeight -
+          safeBottom -
+          groupHeight -
+          120.0; // Increased clearance
     } else if (isProfileView) {
-      // ProfileView: Position lower but still above system navigation bar
-      top = screenHeight - safeBottom - groupHeight - 40.0; // Reduced spacing
+      // ProfileView: Position lower with 40px clearance (matches DiscoverView)
+      top = screenHeight -
+          safeBottom -
+          groupHeight -
+          120.0; // Same as DiscoverView
     } else {
       // HomeView: Perfect as is
       final desiredTop = bottomNavStart - paddingAboveNav - groupHeight;
@@ -1713,10 +1847,10 @@ class _VideoPlayerViewOptimizedState
             ),
             const SizedBox(height: 16),
 
-            // Comment button
+            // Comment button with real-time count
             _buildActionButton(
               icon: Icons.chat_bubble_outline,
-              count: widget.video.comments.toString(),
+              count: _commentCount.toString(),
               onTap: _handleComment,
             ),
             const SizedBox(height: 16),
@@ -1787,14 +1921,34 @@ class _VideoPlayerViewOptimizedState
                       ),
                     ),
                   )
-                : Icon(
-                    icon,
-                    color: isActive
-                        ? const Color(0xFF9248D2)
-                        : Colors.white.withValues(alpha: 0.85),
-                    size:
-                        34, // TikTok-style larger icons (increased from 28 to 34)
-                  ),
+                : (isActive && icon == Icons.bookmark)
+                    ? ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF9248D2), // Purple
+                            Color(0xFF7768DF), // Another purple
+                            Color(0xFF1670DE), // Blue
+                            Color(0xFF3C8BD6), // Lighter blue
+                            Color(0xFF4897D2), // Lightest blue
+                          ],
+                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                        ).createShader(bounds),
+                        child: Icon(
+                          icon,
+                          color: Colors.white,
+                          size: 34,
+                        ),
+                      )
+                    : Icon(
+                        icon,
+                        color: isActive
+                            ? const Color(0xFF9248D2)
+                            : Colors.white.withValues(alpha: 0.85),
+                        size:
+                            34, // TikTok-style larger icons (increased from 28 to 34)
+                      ),
             const SizedBox(height: 4),
             Text(
               count,

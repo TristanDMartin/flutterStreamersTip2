@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import 'signup_view.dart';
 import 'forgot_password_view.dart';
+import 'two_factor_verification_view.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 class EmailLoginView extends ConsumerStatefulWidget {
   final VoidCallback? dismiss;
@@ -398,6 +400,31 @@ class _EmailLoginViewState extends ConsumerState<EmailLoginView> {
           _alertMessage = _getUserFriendlyErrorMessage(result.error ?? '');
           _showAlert = true;
         });
+      } else if (result.success && result.requires2FA && mounted) {
+        // User requires 2FA verification
+        final user = firebase_auth.FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => TwoFactorVerificationView(
+                userId: user.uid,
+                onVerified: (bool verified) {
+                  if (verified && mounted) {
+                    Navigator.of(context).pop(); // Pop verification view
+                    // Auth state listener will handle the rest
+                  }
+                },
+                onCancel: () {
+                  // Sign out and pop verification view
+                  firebase_auth.FirebaseAuth.instance.signOut();
+                  if (mounted) {
+                    Navigator.of(context).pop();
+                  }
+                },
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint("❌ Sign-in error: $e");
