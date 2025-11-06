@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../services/robust_auth_service.dart';
 import '../services/calendar_cleanup_service.dart';
 import '../widgets/auth_modal_view.dart';
@@ -21,7 +22,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
   late Animation<double> _fadeAnimation;
   bool _showSplash = true;
   Timer? _splashTimer;
-  int _splashCountdown = 3;
+  int _splashCountdown = 1; // Reduced from 3 to 1 second for faster startup
 
   @override
   void initState() {
@@ -113,23 +114,60 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
   Widget build(BuildContext context) {
     return Consumer(
       builder: (context, ref, child) {
-        final authService = ref.watch(robustAuthServiceProvider);
+        // CRITICAL: Check if Firebase is ready before accessing auth service
+        // This prevents the red error screen when Firebase isn't initialized yet
+        if (Firebase.apps.isEmpty) {
+          debugPrint(
+              '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen');
+          return _buildLoadingScreen();
+        }
+
+        // Try to access auth service - wrap in try-catch to handle any errors
+        RobustAuthenticationService? authService;
+        try {
+          authService = ref.watch(robustAuthServiceProvider);
+        } catch (e) {
+          debugPrint('❌ AppStartupWrapper: Error accessing auth service: $e');
+          // Show splash screen if there's an error accessing auth service
+          return _buildLoadingScreen();
+        }
+
+        // If authService is null, show splash screen
+        if (authService == null) {
+          debugPrint(
+              '⚠️ AppStartupWrapper: Auth service is null - showing splash screen');
+          return _buildLoadingScreen();
+        }
 
         // Listen to auth state changes
-        ref.listen(robustAuthServiceProvider, (previous, next) {
-          if (previous != null && next.isLoggedIn != previous.isLoggedIn) {
-            debugPrint('🔄 AppStartupWrapper: Auth state changed');
-            debugPrint('   Previous: isLoggedIn=${previous.isLoggedIn}');
-            debugPrint('   Next: isLoggedIn=${next.isLoggedIn}');
+        try {
+          ref.listen(robustAuthServiceProvider, (previous, next) {
+            if (previous != null && next.isLoggedIn != previous.isLoggedIn) {
+              debugPrint('🔄 AppStartupWrapper: Auth state changed');
+              debugPrint('   Previous: isLoggedIn=${previous.isLoggedIn}');
+              debugPrint('   Next: isLoggedIn=${next.isLoggedIn}');
 
-            if (next.isLoggedIn && next.currentUser != null) {
-              debugPrint('✅ User logged in: ${next.currentUser!.displayName}');
-              debugPrint('✅ AppStartupWrapper will show MainTabView');
-            } else if (!next.isLoggedIn) {
-              debugPrint('❌ User logged out - showing AuthModalView');
+              if (next.isLoggedIn && next.currentUser != null) {
+                debugPrint(
+                    '✅ User logged in: ${next.currentUser!.displayName}');
+                debugPrint('✅ AppStartupWrapper will show MainTabView');
+                // Force rebuild when auth state changes
+                if (mounted) {
+                  setState(() {});
+                }
+              } else if (!next.isLoggedIn) {
+                debugPrint('❌ User logged out - showing AuthModalView');
+                // Force rebuild when auth state changes
+                if (mounted) {
+                  setState(() {});
+                }
+              }
             }
-          }
-        });
+          });
+        } catch (e) {
+          debugPrint('❌ AppStartupWrapper: Error listening to auth state: $e');
+          // Continue anyway - show splash screen
+        }
 
         // Debug: Log current state
         debugPrint(
@@ -167,6 +205,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
 
   Widget _buildLoadingScreen() {
     return Scaffold(
+      backgroundColor: const Color(0xFF1C135D),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(

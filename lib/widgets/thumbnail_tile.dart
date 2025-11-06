@@ -71,28 +71,6 @@ class ThumbnailTile extends StatelessWidget {
               if (showDraftBadge && video.isDraft == true) _buildDraftBadge(),
 
               if (showViewsBadge && video.views > 0) _buildViewsBadge(),
-
-              // DEBUG: Temporary overlay to see if images are loading
-              if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      '✓',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         ),

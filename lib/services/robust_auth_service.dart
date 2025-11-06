@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
@@ -32,9 +33,60 @@ class AuthRequestResult {
 
 /// Robust authentication service with single-flight, debounced, request-scoped operations
 class RobustAuthenticationService extends ChangeNotifier {
-  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Lazy initialization for Firebase instances to prevent iOS cold start crashes
+  firebase_auth.FirebaseAuth? _auth;
+  GoogleSignIn? _googleSignIn;
+  FirebaseFirestore? _firestore;
+
+  firebase_auth.FirebaseAuth get _authInstance {
+    if (_auth == null) {
+      try {
+        if (Firebase.apps.isEmpty) {
+          debugPrint(
+              '⚠️ RobustAuthenticationService: Firebase not initialized yet');
+          throw Exception('Firebase not initialized');
+        }
+        _auth = firebase_auth.FirebaseAuth.instance;
+      } catch (e) {
+        debugPrint(
+            '❌ RobustAuthenticationService: Error accessing FirebaseAuth: $e');
+        rethrow;
+      }
+    }
+    return _auth!;
+  }
+
+  GoogleSignIn get _googleSignInInstance {
+    if (_googleSignIn == null) {
+      try {
+        _googleSignIn = GoogleSignIn();
+      } catch (e) {
+        debugPrint(
+            '❌ RobustAuthenticationService: Error creating GoogleSignIn: $e');
+        _googleSignIn = GoogleSignIn();
+      }
+    }
+    return _googleSignIn!;
+  }
+
+  FirebaseFirestore get _firestoreInstance {
+    if (_firestore == null) {
+      try {
+        if (Firebase.apps.isEmpty) {
+          debugPrint(
+              '⚠️ RobustAuthenticationService: Firebase not initialized yet');
+          throw Exception('Firebase not initialized');
+        }
+        _firestore = FirebaseFirestore.instance;
+      } catch (e) {
+        debugPrint(
+            '❌ RobustAuthenticationService: Error accessing Firestore: $e');
+        rethrow;
+      }
+    }
+    return _firestore!;
+  }
+
   final AuthRateLimitingService _rateLimiter = AuthRateLimitingService();
   final UsernameLockService _usernameLockService = UsernameLockService();
   final TikTokAccountSwitcher _accountSwitcher = TikTokAccountSwitcher();
@@ -43,6 +95,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   User? _currentUser;
   bool _isLoggedIn = false;
   bool _isCheckingAuth = false;
+  StreamSubscription<firebase_auth.User?>? _authStateSubscription;
 
   // Request management
   String? _currentRequestId;
@@ -67,20 +120,49 @@ class RobustAuthenticationService extends ChangeNotifier {
     // Set initial loading state
     _isCheckingAuth = true;
 
-    // Check initial authentication state asynchronously
-    _checkInitialAuthState();
+    // CRITICAL: Defer Firebase access until after Firebase is initialized
+    // This prevents iOS cold start crashes
+    Future.microtask(() async {
+      try {
+        // Wait for Firebase to be ready (iOS cold start issue)
+        if (Firebase.apps.isEmpty) {
+          debugPrint(
+              '⏳ Firebase not ready yet - service will initialize when ready');
+          // Wait briefly and retry
+          await Future.delayed(const Duration(milliseconds: 100));
+          if (Firebase.apps.isEmpty) {
+            debugPrint('⚠️ Firebase still not ready - will retry auth check');
+            _isCheckingAuth = false;
+            notifyListeners();
+            return;
+          }
+        }
 
-    // Listen to authentication state changes
-    _auth.authStateChanges().listen((firebase_auth.User? user) {
-      debugPrint(
-          "🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
-      if (user != null) {
-        debugPrint("👤 User: ${user.email} (${user.uid})");
-        _handleUserSignIn(user);
-      } else {
-        debugPrint("👤 User logged out - clearing auth state");
-        _currentUser = null;
-        _isLoggedIn = false;
+        // Check initial authentication state asynchronously
+        _checkInitialAuthState();
+
+        // Listen to authentication state changes
+        _authStateSubscription =
+            _authInstance.authStateChanges().listen((firebase_auth.User? user) {
+          try {
+            debugPrint(
+                "🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
+            if (user != null) {
+              debugPrint("👤 User: ${user.email} (${user.uid})");
+              _handleUserSignIn(user);
+            } else {
+              debugPrint("👤 User logged out - clearing auth state");
+              _currentUser = null;
+              _isLoggedIn = false;
+              _isCheckingAuth = false;
+              notifyListeners();
+            }
+          } catch (e) {
+            debugPrint('❌ Error in auth state listener: $e');
+          }
+        });
+      } catch (e) {
+        debugPrint('❌ Error initializing RobustAuthenticationService: $e');
         _isCheckingAuth = false;
         notifyListeners();
       }
@@ -89,12 +171,28 @@ class RobustAuthenticationService extends ChangeNotifier {
 
   /// Check the initial authentication state when the service is created
   void _checkInitialAuthState() async {
-    final currentUser = _auth.currentUser;
-    if (currentUser != null) {
-      // User is already logged in, handle the sign in asynchronously
-      await _handleUserSignIn(currentUser);
-    } else {
-      // No user is logged in, set the state immediately
+    try {
+      // CRITICAL: Check if Firebase is ready before accessing
+      if (Firebase.apps.isEmpty) {
+        debugPrint('⚠️ Firebase not ready - will retry auth check');
+        _isCheckingAuth = false;
+        notifyListeners();
+        return;
+      }
+
+      final currentUser = _authInstance.currentUser;
+      if (currentUser != null) {
+        // User is already logged in, handle the sign in asynchronously
+        await _handleUserSignIn(currentUser);
+      } else {
+        // No user is logged in, set the state immediately
+        _currentUser = null;
+        _isLoggedIn = false;
+        _isCheckingAuth = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('❌ Error checking initial auth state: $e');
       _currentUser = null;
       _isLoggedIn = false;
       _isCheckingAuth = false;
@@ -106,6 +204,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   void dispose() {
     _debounceTimer?.cancel();
     _minimumSpinnerTimer?.cancel();
+    _authStateSubscription?.cancel();
     super.dispose();
   }
 
@@ -211,7 +310,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
       }
 
-      final userCredential = await _auth.signInWithEmailAndPassword(
+      final userCredential = await _authInstance.signInWithEmailAndPassword(
           email: email, password: password);
 
       if (userCredential.user != null) {
@@ -271,7 +370,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       }
 
       // First, find the user by username in Firestore (try both cases)
-      QuerySnapshot usersQuery = await _firestore
+      QuerySnapshot usersQuery = await _firestoreInstance
           .collection('users')
           .where('username', isEqualTo: username)
           .limit(1)
@@ -279,7 +378,7 @@ class RobustAuthenticationService extends ChangeNotifier {
 
       // If not found with original case, try lowercase
       if (usersQuery.docs.isEmpty) {
-        usersQuery = await _firestore
+        usersQuery = await _firestoreInstance
             .collection('users')
             .where('username', isEqualTo: username.toLowerCase())
             .limit(1)
@@ -288,7 +387,7 @@ class RobustAuthenticationService extends ChangeNotifier {
 
       // If still not found, try uppercase
       if (usersQuery.docs.isEmpty) {
-        usersQuery = await _firestore
+        usersQuery = await _firestoreInstance
             .collection('users')
             .where('username', isEqualTo: username.toUpperCase())
             .limit(1)
@@ -345,9 +444,10 @@ class RobustAuthenticationService extends ChangeNotifier {
       // print("🔐 Starting Google Sign-In process (request: $requestId)");
 
       // First, sign out any existing Google session to avoid conflicts
-      await _googleSignIn.signOut();
+      await _googleSignInInstance.signOut();
 
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      final GoogleSignInAccount? googleUser =
+          await _googleSignInInstance.signIn();
 
       if (googleUser == null) {
         return AuthRequestResult(
@@ -377,7 +477,8 @@ class RobustAuthenticationService extends ChangeNotifier {
         );
 
         // print("🔐 Signing in to Firebase with Google credential");
-        final userCredential = await _auth.signInWithCredential(credential);
+        final userCredential =
+            await _authInstance.signInWithCredential(credential);
 
         if (userCredential.user != null) {
           // print("✅ Firebase authentication successful for: ${userCredential.user!.email}");
@@ -396,7 +497,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         }
       } catch (authError) {
         // Sign out from Google if Firebase auth fails
-        await _googleSignIn.signOut();
+        await _googleSignInInstance.signOut();
         return AuthRequestResult(
           requestId: requestId,
           success: false,
@@ -467,7 +568,7 @@ class RobustAuthenticationService extends ChangeNotifier {
     try {
       // First try to sign in
       try {
-        final userCredential = await _auth.signInWithEmailAndPassword(
+        final userCredential = await _authInstance.signInWithEmailAndPassword(
           email: 'technqs@example.com', // cspell:ignore technqs Ntizzle
           password: 'Ntizzle1@1988',
         );
@@ -489,7 +590,8 @@ class RobustAuthenticationService extends ChangeNotifier {
 
         // If sign in fails, try to create the account
         try {
-          final userCredential = await _auth.createUserWithEmailAndPassword(
+          final userCredential =
+              await _authInstance.createUserWithEmailAndPassword(
             email: 'technqs@example.com', // cspell:ignore technqs Ntizzle
             password: 'Ntizzle1@1988',
           );
@@ -633,7 +735,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       await _handleExistingUserCheck(email);
 
       // Create user with Firebase Auth
-      final userCredential = await _auth.createUserWithEmailAndPassword(
+      final userCredential = await _authInstance.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -671,7 +773,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<void> _handleExistingUserCheck(String email) async {
     try {
       // Check if user exists in Firestore
-      final userQuery = await _firestore
+      final userQuery = await _firestoreInstance
           .collection('users')
           .where('email', isEqualTo: email)
           .limit(1)
@@ -693,7 +795,8 @@ class RobustAuthenticationService extends ChangeNotifier {
   Future<void> _createUserDocument(firebase_auth.User firebaseUser,
       {required String displayName, required String username}) async {
     try {
-      final userRef = _firestore.collection("users").doc(firebaseUser.uid);
+      final userRef =
+          _firestoreInstance.collection("users").doc(firebaseUser.uid);
 
       await userRef.set({
         'id': firebaseUser.uid,
@@ -722,7 +825,8 @@ class RobustAuthenticationService extends ChangeNotifier {
     debugPrint("👤 User display name: ${firebaseUser.displayName ?? 'nil'}");
 
     try {
-      final userRef = _firestore.collection("users").doc(firebaseUser.uid);
+      final userRef =
+          _firestoreInstance.collection("users").doc(firebaseUser.uid);
       final snapshot = await userRef.get();
 
       if (snapshot.exists) {
@@ -855,7 +959,11 @@ class RobustAuthenticationService extends ChangeNotifier {
   void _setupUserDataListener(String userId) {
     // print("👂 Setting up real-time listener for user: $userId");
 
-    _firestore.collection("users").doc(userId).snapshots().listen((snapshot) {
+    _firestoreInstance
+        .collection("users")
+        .doc(userId)
+        .snapshots()
+        .listen((snapshot) {
       if (snapshot.exists && _currentUser != null) {
         final data = snapshot.data()!;
 
@@ -967,7 +1075,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         userData['email'] = email;
       }
 
-      await _firestore.collection('users').doc(user.id).set(userData);
+      await _firestoreInstance.collection('users').doc(user.id).set(userData);
     } catch (e) {
       rethrow;
     }
@@ -985,7 +1093,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       debugPrint("🔐 Starting sign out process...");
 
       // Check if user is already signed out
-      if (_auth.currentUser == null) {
+      if (_authInstance.currentUser == null) {
         debugPrint("⚠️ User already signed out, cleaning up state...");
         _cleanupAuthState();
         return;
@@ -994,7 +1102,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       // Remove FCM token before signing out
       await _removeCurrentDeviceToken();
 
-      await _auth.signOut();
+      await _authInstance.signOut();
       await GoogleServicesFix.signOutFromGoogle();
       _cleanupAuthState();
       debugPrint("✅ User signed out successfully");
@@ -1037,13 +1145,14 @@ class RobustAuthenticationService extends ChangeNotifier {
         debugPrint("📱 FCM Token obtained: ${fcmToken.substring(0, 20)}...");
 
         // Check if token already saved in Firestore
-        final userDoc = await _firestore.collection('users').doc(userId).get();
+        final userDoc =
+            await _firestoreInstance.collection('users').doc(userId).get();
         final existingToken = userDoc.data()?['fcmToken'] as String?;
 
         // Only save if token changed
         if (existingToken != fcmToken) {
           // Save token to Firestore user document
-          await _firestore.collection('users').doc(userId).update({
+          await _firestoreInstance.collection('users').doc(userId).update({
             'fcmToken': fcmToken,
             'lastTokenUpdate': FieldValue.serverTimestamp(),
           });
@@ -1051,7 +1160,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           debugPrint("✅ FCM token saved to Firestore for user $userId");
 
           // Also save to deviceTokens subcollection for multi-device support
-          await _firestore
+          await _firestoreInstance
               .collection('users')
               .doc(userId)
               .collection('deviceTokens')
@@ -1072,7 +1181,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         messaging.onTokenRefresh.listen((newToken) async {
           debugPrint("🔄 FCM token refreshed");
           try {
-            await _firestore.collection('users').doc(userId).update({
+            await _firestoreInstance.collection('users').doc(userId).update({
               'fcmToken': newToken,
               'lastTokenUpdate': FieldValue.serverTimestamp(),
             });
@@ -1093,7 +1202,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Remove current device's FCM token from Firestore
   Future<void> _removeCurrentDeviceToken() async {
     try {
-      final userId = _auth.currentUser?.uid;
+      final userId = _authInstance.currentUser?.uid;
       if (userId == null) return;
 
       // Get current FCM token
@@ -1104,7 +1213,7 @@ class RobustAuthenticationService extends ChangeNotifier {
       }
 
       // Remove from deviceTokens subcollection
-      await _firestore
+      await _firestoreInstance
           .collection('users')
           .doc(userId)
           .collection('deviceTokens')
@@ -1147,7 +1256,10 @@ class RobustAuthenticationService extends ChangeNotifier {
               })
           .toList();
 
-      await _firestore.collection('users').doc(_currentUser!.id).update({
+      await _firestoreInstance
+          .collection('users')
+          .doc(_currentUser!.id)
+          .update({
         'calendarEvents': eventsData,
       });
 
@@ -1161,7 +1273,7 @@ class RobustAuthenticationService extends ChangeNotifier {
   /// Send password reset email
   Future<void> sendPasswordResetEmail(String email) async {
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      await _authInstance.sendPasswordResetEmail(email: email);
       debugPrint("✅ Password reset email sent to: $email");
     } catch (e) {
       debugPrint("❌ Password reset error: $e");
@@ -1173,5 +1285,13 @@ class RobustAuthenticationService extends ChangeNotifier {
 // Provider for the robust authentication service
 final robustAuthServiceProvider =
     ChangeNotifierProvider<RobustAuthenticationService>((ref) {
-  return RobustAuthenticationService();
+  try {
+    return RobustAuthenticationService();
+  } catch (e) {
+    debugPrint(
+        '❌ robustAuthServiceProvider: Error creating RobustAuthenticationService: $e');
+    // Return a safe instance even if initialization fails
+    // The service will handle Firebase not being ready gracefully
+    return RobustAuthenticationService();
+  }
 });

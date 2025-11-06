@@ -227,6 +227,25 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     state = currentVideos;
   }
 
+  /// Remove a video from the service (called after deletion)
+  void removeVideo(String videoId) {
+    final currentVideos = List<HomeVideo>.from(state);
+    final removedCount = currentVideos.length;
+
+    // Remove video from state
+    currentVideos.removeWhere((v) => v.id == videoId);
+
+    final newCount = currentVideos.length;
+    state = currentVideos;
+
+    if (removedCount != newCount) {
+      debugPrint(
+          '✅ VideoService: Removed video $videoId from state (${removedCount} -> ${newCount})');
+    } else {
+      debugPrint('⚠️ VideoService: Video $videoId not found in state');
+    }
+  }
+
   /// Get videos for a specific user
   List<HomeVideo> getUserVideos(String userId) {
     return state.where((video) => video.creator.id == userId).toList();

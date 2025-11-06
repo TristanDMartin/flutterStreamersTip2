@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'dart:ui';
+import 'dart:async';
 import 'widgets/app_startup_wrapper.dart';
 import 'services/analytics_service.dart';
 import 'services/error_handler_service.dart';
@@ -37,19 +39,30 @@ void main() async {
   _initializeGlobalErrorHandler();
   debugPrint('✅ Global Error Handler: Completed at ${DateTime.now()}');
 
-  // 🚀 CONSOLIDATED INITIALIZATION: Single point of service initialization
-  debugPrint('⏰ All Services: Starting initialization at ${DateTime.now()}');
-  await _initializeAllServices();
-  debugPrint('✅ All Services: Initialization completed at ${DateTime.now()}');
-
-  final appReadyTime = DateTime.now();
-  final totalStartupTime = appReadyTime.difference(appStartTime);
-  debugPrint(
-      '🎉 APP READY: Total startup time: ${totalStartupTime.inMilliseconds}ms');
-
-  // Run app immediately
-  debugPrint('🏃 Running app at ${DateTime.now()}');
+  // CRITICAL: Run app FIRST to avoid blocking first frame (iOS watchdog)
+  // iOS will kill apps that block too long before first frame
+  debugPrint('🏃 Running app immediately at ${DateTime.now()}');
   runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
+
+  // 🚀 CONSOLIDATED INITIALIZATION: Initialize services AFTER runApp
+  // This prevents blocking the first frame and triggering iOS watchdog
+  scheduleMicrotask(() async {
+    try {
+      debugPrint(
+          '⏰ All Services: Starting initialization after runApp at ${DateTime.now()}');
+      await _initializeAllServices();
+      debugPrint(
+          '✅ All Services: Initialization completed at ${DateTime.now()}');
+
+      final appReadyTime = DateTime.now();
+      final totalStartupTime = appReadyTime.difference(appStartTime);
+      debugPrint(
+          '🎉 APP READY: Total startup time: ${totalStartupTime.inMilliseconds}ms');
+    } catch (e) {
+      debugPrint('❌ Service initialization failed: $e');
+      // Don't crash - app is already running
+    }
+  });
 }
 
 /// Initialize global error handler for the entire app
@@ -110,8 +123,9 @@ Future<void> _initializeAllServices() async {
     debugPrint(
         '🔥 FIREBASE: Firebase initialization completed at ${DateTime.now()}');
 
-    // Give Firebase time to fully initialize
-    await Future.delayed(const Duration(milliseconds: 1000));
+    // Minimal delay - Firebase should be ready immediately after initialization
+    // Only wait if absolutely necessary (reduced from 1000ms to 200ms)
+    await Future.delayed(const Duration(milliseconds: 200));
 
     // 🔥 ANALYTICS: Initialize analytics immediately after Firebase
     debugPrint('⏰ AnalyticsService: Start time: ${DateTime.now()}');
@@ -279,8 +293,17 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Initialize the EventTriggerService provider to ensure it's set up
-    ref.read(eventTriggerServiceProvider);
+    // CRITICAL: Check if Firebase is ready before accessing EventTriggerService
+    // This prevents the red error screen when Firebase isn't initialized yet
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        // Only initialize EventTriggerService if Firebase is ready
+        ref.read(eventTriggerServiceProvider);
+      }
+    } catch (e) {
+      debugPrint('⚠️ MyApp: Error accessing EventTriggerService: $e');
+      // Continue anyway - app will work without EventTriggerService initially
+    }
 
     return MaterialApp(
       title: 'StreamersTip',
@@ -289,6 +312,11 @@ class MyApp extends ConsumerWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFF1C135D),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF6137EB),
+          surface: Color(0xFF1C135D),
+        ),
       ),
       home: const AppStartupWrapper(),
       debugShowCheckedModeBanner: false,

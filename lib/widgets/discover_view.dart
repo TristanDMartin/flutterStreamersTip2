@@ -822,9 +822,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             // Trending Creators Section with Lazy Loading
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
+                padding: const EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 20, // Increased top padding to move section down
+                  bottom: 8,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -857,131 +859,135 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               ),
             ),
 
-            // Small spacing between Trending Creators and Categories
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 4),
-            ),
-
-            // Categories Section
+            // Categories Section - brought up by using Transform.translate
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 0,
+                padding: const EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 0,
+                  bottom: 0,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Categories',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                child: Transform.translate(
+                  offset:
+                      const Offset(0, -12), // Move Categories up by 12 pixels
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Categories',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
 
-                    // Categories PageView with proper spacing
-                    SizedBox(
-                      height: 320,
-                      child: PageView.builder(
-                        onPageChanged: (page) {
-                          setState(() {
-                            _currentCategoryPage = page;
-                          });
-                        },
-                        itemCount: (discoverState.categories.length / 6).ceil(),
-                        itemBuilder: (context, pageIndex) {
-                          final startIndex = pageIndex * 6;
-                          final endIndex = (startIndex + 6).clamp(
-                            0,
-                            discoverState.categories.length,
-                          );
-                          final pageCategories = discoverState.categories
-                              .sublist(startIndex, endIndex);
+                      // Categories PageView with proper spacing
+                      SizedBox(
+                        height: 320,
+                        child: PageView.builder(
+                          onPageChanged: (page) {
+                            setState(() {
+                              _currentCategoryPage = page;
+                            });
+                          },
+                          itemCount:
+                              (discoverState.categories.length / 6).ceil(),
+                          itemBuilder: (context, pageIndex) {
+                            final startIndex = pageIndex * 6;
+                            final endIndex = (startIndex + 6).clamp(
+                              0,
+                              discoverState.categories.length,
+                            );
+                            final pageCategories = discoverState.categories
+                                .sublist(startIndex, endIndex);
 
-                          return Padding(
-                            // Add bottom padding to prevent overlap with dots
-                            padding: EdgeInsets.only(
-                              bottom: _getResponsiveSpacing(context, 12, 12) +
-                                  12, // Dots height + spacing
-                            ),
-                            child: GridView.builder(
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
+                            return Padding(
+                              // Add bottom padding to prevent overlap with dots
+                              padding: EdgeInsets.only(
+                                bottom: _getResponsiveSpacing(context, 12, 12) +
+                                    12, // Dots height + spacing
                               ),
-                              itemCount: pageCategories.length,
-                              itemBuilder: (context, index) {
-                                final category = pageCategories[index];
-                                return _accessibilityService
-                                    .createAccessibleButton(
-                                  semanticLabel: 'Category ${category.name}',
-                                  semanticHint: _selectedCategory == category.id
-                                      ? 'Currently selected category. Tap to deselect.'
-                                      : 'Tap to select this category',
-                                  onPressed: () => _onCategorySelected(
-                                    _selectedCategory == category.id
-                                        ? null
-                                        : category.id,
-                                  ),
-                                  hapticFeedbackType:
-                                      AccessibilityHapticFeedbackType.light,
-                                  child: CategoryCard(
-                                    key: ValueKey(category.id),
-                                    category: category,
-                                    isSelected:
-                                        _selectedCategory == category.id,
-                                    onTap: () => _onCategorySelected(
+                              child: GridView.builder(
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                ),
+                                itemCount: pageCategories.length,
+                                itemBuilder: (context, index) {
+                                  final category = pageCategories[index];
+                                  return _accessibilityService
+                                      .createAccessibleButton(
+                                    semanticLabel: 'Category ${category.name}',
+                                    semanticHint: _selectedCategory ==
+                                            category.id
+                                        ? 'Currently selected category. Tap to deselect.'
+                                        : 'Tap to select this category',
+                                    onPressed: () => _onCategorySelected(
                                       _selectedCategory == category.id
                                           ? null
                                           : category.id,
                                     ),
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    // Reduced spacing between categories and dots
-                    SizedBox(
-                      height: 8,
-                    ),
-
-                    // Page indicator with proper safe area handling
-                    Center(
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          bottom: MediaQuery.of(context).padding.bottom + 8,
+                                    hapticFeedbackType:
+                                        AccessibilityHapticFeedbackType.light,
+                                    child: CategoryCard(
+                                      key: ValueKey(category.id),
+                                      category: category,
+                                      isSelected:
+                                          _selectedCategory == category.id,
+                                      onTap: () => _onCategorySelected(
+                                        _selectedCategory == category.id
+                                            ? null
+                                            : category.id,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: List.generate(
-                            (discoverState.categories.length / 6).ceil(),
-                            (index) => Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: index == _currentCategoryPage
-                                    ? const Color(0xFF40DCD1)
-                                    : const Color(
-                                        0xFF6B5AE0,
-                                      ).withValues(alpha: 0.4),
+                      ),
+
+                      // Reduced spacing between categories and dots
+                      SizedBox(
+                        height: 8,
+                      ),
+
+                      // Page indicator with proper safe area handling
+                      Center(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            bottom: MediaQuery.of(context).padding.bottom + 8,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: List.generate(
+                              (discoverState.categories.length / 6).ceil(),
+                              (index) => Container(
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: index == _currentCategoryPage
+                                      ? const Color(0xFF40DCD1)
+                                      : const Color(
+                                          0xFF6B5AE0,
+                                        ).withValues(alpha: 0.4),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1742,90 +1748,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      // First, let's check what categories actually exist in the database
-      final allVideosSnapshot =
-          await FirebaseFirestore.instance.collection('videos').limit(10).get();
-
-      LoggingService.instance.debug(
-        'Found ${allVideosSnapshot.docs.length} total videos in database',
-        tag: 'DiscoverView',
-      );
-
-      final categories = <String>{};
-      for (final doc in allVideosSnapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>?;
-        final category = data?['category'] as String?;
-        final categoryId = data?['categoryId'] as String?;
-        if (category != null) {
-          categories.add(category);
-        }
-        if (categoryId != null) {
-          categories.add(categoryId);
-        }
-        LoggingService.instance.debug(
-          'Video ${doc.id}: category="$category", categoryId="$categoryId", status="${data?['status']}"',
-          tag: 'DiscoverView',
-        );
-      }
-
-      LoggingService.instance.debug(
-        'Found categories in database: ${categories.toList()}',
-        tag: 'DiscoverView',
-      );
       LoggingService.instance.debug(
         'Searching for category: "$categoryId"',
         tag: 'DiscoverView',
       );
 
-      // If no videos found with the specific category, try to find videos without categories
-      // and show them in the gaming category as a fallback
-      if (categories.isEmpty || !categories.contains(categoryId)) {
-        LoggingService.instance.debug(
-          'No videos found with category "$categoryId", trying to find videos without categories',
-          tag: 'DiscoverView',
-        );
-
-        // Try to find videos without category field
-        final videosWithoutCategory = await FirebaseFirestore.instance
-            .collection('videos')
-            .where('status', isEqualTo: 'published')
-            .where('privacy', isEqualTo: 'Everyone')
-            .orderBy('createdAt', descending: true)
-            .limit(_videosPerPage)
-            .get();
-
-        LoggingService.instance.debug(
-          'Found ${videosWithoutCategory.docs.length} videos without category',
-          tag: 'DiscoverView',
-        );
-
-        final videos = <Map<String, dynamic>>[];
-        for (final doc in videosWithoutCategory.docs) {
-          final data = doc.data() as Map<String, dynamic>?;
-          LoggingService.instance.debug(
-            'Video ${doc.id}: category="${data?['category']}", categoryId="${data?['categoryId']}"',
-            tag: 'DiscoverView',
-          );
-
-          videos.add({
-            'docId': doc.id,
-            'data': data,
-            'isNew': false,
-            'trendingScore': 0.0,
-          });
-        }
-
-        LoggingService.instance.debug(
-          'Returning ${videos.length} videos without category as fallback',
-          tag: 'DiscoverView',
-        );
-
-        return videos;
-      }
-
-      Query query = FirebaseFirestore.instance
+      // Query by 'category' field first, then try 'categoryId' if no results
+      Query? query = FirebaseFirestore.instance
           .collection('videos')
           .where('category', isEqualTo: categoryId)
+          .where('status', isEqualTo: 'published')
           .orderBy('createdAt', descending: true)
           .limit(_videosPerPage);
 
@@ -1834,11 +1766,91 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       }
 
       LoggingService.instance.debug(
-        'Executing fallback Firestore query: category=$categoryId, limit=$_videosPerPage',
+        'Executing Firestore query: category=$categoryId, status=published, limit=$_videosPerPage',
         tag: 'DiscoverView',
       );
 
-      final snapshot = await query.get();
+      QuerySnapshot snapshot;
+      try {
+        snapshot = await query.get();
+
+        LoggingService.instance.debug(
+          'Query with category field returned ${snapshot.docs.length} documents',
+          tag: 'DiscoverView',
+        );
+
+        // If no results, try with 'categoryId' field
+        if (snapshot.docs.isEmpty) {
+          LoggingService.instance.debug(
+            'No results with category field, trying categoryId field',
+            tag: 'DiscoverView',
+          );
+          query = FirebaseFirestore.instance
+              .collection('videos')
+              .where('categoryId', isEqualTo: categoryId)
+              .where('status', isEqualTo: 'published')
+              .orderBy('createdAt', descending: true)
+              .limit(_videosPerPage);
+
+          if (startAfter != null) {
+            query = query.startAfterDocument(startAfter);
+          }
+
+          snapshot = await query.get();
+
+          LoggingService.instance.debug(
+            'Query with categoryId field returned ${snapshot.docs.length} documents',
+            tag: 'DiscoverView',
+          );
+        }
+      } catch (e) {
+        // If query fails due to index or other issues, try without status filter
+        LoggingService.instance.debug(
+          'Query with status filter failed, trying without status filter: $e',
+          tag: 'DiscoverView',
+        );
+        try {
+          query = FirebaseFirestore.instance
+              .collection('videos')
+              .where('category', isEqualTo: categoryId)
+              .orderBy('createdAt', descending: true)
+              .limit(_videosPerPage);
+
+          if (startAfter != null) {
+            query = query.startAfterDocument(startAfter);
+          }
+
+          snapshot = await query.get();
+
+          LoggingService.instance.debug(
+            'Query without status filter returned ${snapshot.docs.length} documents',
+            tag: 'DiscoverView',
+          );
+        } catch (e2) {
+          // If still fails, try with categoryId without status filter
+          LoggingService.instance.debug(
+            'Query failed, trying categoryId without status filter: $e2',
+            tag: 'DiscoverView',
+          );
+          query = FirebaseFirestore.instance
+              .collection('videos')
+              .where('categoryId', isEqualTo: categoryId)
+              .orderBy('createdAt', descending: true)
+              .limit(_videosPerPage);
+
+          if (startAfter != null) {
+            query = query.startAfterDocument(startAfter);
+          }
+
+          snapshot = await query.get();
+
+          LoggingService.instance.debug(
+            'Query with categoryId (no status filter) returned ${snapshot.docs.length} documents',
+            tag: 'DiscoverView',
+          );
+        }
+      }
+
       final videos = <Map<String, dynamic>>[];
 
       LoggingService.instance.debug(
@@ -1891,7 +1903,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       final now = DateTime.now();
       final sevenDaysAgo = now.subtract(const Duration(days: 7));
 
-      Query query = FirebaseFirestore.instance
+      // Try to query by both 'category' and 'categoryId' fields
+      Query? query = FirebaseFirestore.instance
           .collection('videos')
           .where('category', isEqualTo: categoryId)
           .where('createdAt', isGreaterThan: sevenDaysAgo)
@@ -1907,7 +1920,67 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      final snapshot = await query.get();
+      QuerySnapshot snapshot;
+      try {
+        snapshot = await query.get();
+
+        // If no results, try with 'categoryId' field
+        if (snapshot.docs.isEmpty) {
+          LoggingService.instance.debug(
+            'No results with category field, trying categoryId field',
+            tag: 'DiscoverView',
+          );
+          query = FirebaseFirestore.instance
+              .collection('videos')
+              .where('categoryId', isEqualTo: categoryId)
+              .where('createdAt', isGreaterThan: sevenDaysAgo)
+              .orderBy('createdAt', descending: true)
+              .limit(_videosPerPage);
+
+          if (startAfter != null) {
+            query = query.startAfterDocument(startAfter);
+          }
+
+          snapshot = await query.get();
+        }
+      } catch (e) {
+        // If query fails, try with 'categoryId' field instead
+        LoggingService.instance.debug(
+          'Query with category field failed, trying categoryId field: $e',
+          tag: 'DiscoverView',
+        );
+        try {
+          query = FirebaseFirestore.instance
+              .collection('videos')
+              .where('categoryId', isEqualTo: categoryId)
+              .where('createdAt', isGreaterThan: sevenDaysAgo)
+              .orderBy('createdAt', descending: true)
+              .limit(_videosPerPage);
+
+          if (startAfter != null) {
+            query = query.startAfterDocument(startAfter);
+          }
+
+          snapshot = await query.get();
+        } catch (e2) {
+          // If still fails, try with categoryId without date filter
+          LoggingService.instance.debug(
+            'Query with date filter failed, trying categoryId without date filter: $e2',
+            tag: 'DiscoverView',
+          );
+          query = FirebaseFirestore.instance
+              .collection('videos')
+              .where('categoryId', isEqualTo: categoryId)
+              .orderBy('createdAt', descending: true)
+              .limit(_videosPerPage);
+
+          if (startAfter != null) {
+            query = query.startAfterDocument(startAfter);
+          }
+
+          snapshot = await query.get();
+        }
+      }
       final videos = <Map<String, dynamic>>[];
 
       LoggingService.instance.debug(
@@ -1946,7 +2019,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      Query query = FirebaseFirestore.instance
+      // Try to query by both 'category' and 'categoryId' fields
+      Query? query = FirebaseFirestore.instance
           .collection('videos')
           .where('category', isEqualTo: categoryId)
           .where('trendingScore', isGreaterThan: 50.0)
@@ -1962,7 +2036,63 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      final snapshot = await query.get();
+      QuerySnapshot snapshot;
+      try {
+        snapshot = await query.get();
+
+        LoggingService.instance.debug(
+          'Query with category field returned ${snapshot.docs.length} documents',
+          tag: 'DiscoverView',
+        );
+
+        // If no results, try with 'categoryId' field
+        if (snapshot.docs.isEmpty) {
+          LoggingService.instance.debug(
+            'No results with category field, trying categoryId field',
+            tag: 'DiscoverView',
+          );
+          query = FirebaseFirestore.instance
+              .collection('videos')
+              .where('categoryId', isEqualTo: categoryId)
+              .where('trendingScore', isGreaterThan: 50.0)
+              .orderBy('trendingScore', descending: true)
+              .limit(_videosPerPage);
+
+          if (startAfter != null) {
+            query = query.startAfterDocument(startAfter);
+          }
+
+          snapshot = await query.get();
+
+          LoggingService.instance.debug(
+            'Query with categoryId field returned ${snapshot.docs.length} documents',
+            tag: 'DiscoverView',
+          );
+        }
+      } catch (e) {
+        // If query fails, try with 'categoryId' field instead
+        LoggingService.instance.debug(
+          'Query with category field failed, trying categoryId field: $e',
+          tag: 'DiscoverView',
+        );
+        query = FirebaseFirestore.instance
+            .collection('videos')
+            .where('categoryId', isEqualTo: categoryId)
+            .where('trendingScore', isGreaterThan: 50.0)
+            .orderBy('trendingScore', descending: true)
+            .limit(_videosPerPage);
+
+        if (startAfter != null) {
+          query = query.startAfterDocument(startAfter);
+        }
+
+        snapshot = await query.get();
+
+        LoggingService.instance.debug(
+          'Query with categoryId field returned ${snapshot.docs.length} documents',
+          tag: 'DiscoverView',
+        );
+      }
       final videos = <Map<String, dynamic>>[];
 
       LoggingService.instance.debug(

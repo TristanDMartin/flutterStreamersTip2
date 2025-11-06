@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 /// Service to handle profile updates across all views
 /// This ensures that ProfileView, ProfileBackView, StreamerCardView, and StreamerCardBackView
-/// are all updated when user data changes in EditProfileView
+/// are all updated when user data changes in EditProfileView or from website
 class ProfileUpdateService extends ChangeNotifier {
   static final ProfileUpdateService _instance =
       ProfileUpdateService._internal();
@@ -15,6 +16,9 @@ class ProfileUpdateService extends ChangeNotifier {
   Map<String, dynamic>? _userData;
   bool _isLoading = false;
   DateTime? _lastNotificationTime;
+
+  // Real-time Firestore listener for avatar and profile updates
+  StreamSubscription<DocumentSnapshot>? _userDataSubscription;
 
   // Listeners for different views
   final List<VoidCallback> _profileViewListeners = [];
@@ -36,7 +40,7 @@ class ProfileUpdateService extends ChangeNotifier {
     }
   }
 
-  /// Load user data from Firestore
+  /// Load user data from Firestore and set up real-time listener
   Future<void> _loadUserData() async {
     if (_currentUser == null) return;
 
@@ -51,6 +55,8 @@ class ProfileUpdateService extends ChangeNotifier {
     try {
       debugPrint(
           "🔍 ProfileUpdateService: Loading user data for UID: ${_currentUser!.uid}");
+
+      // Load initial data
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(_currentUser!.uid)
@@ -59,16 +65,52 @@ class ProfileUpdateService extends ChangeNotifier {
       debugPrint("🔍 ProfileUpdateService: Document exists: ${doc.exists}");
       if (doc.exists) {
         final newData = doc.data();
-        // Only notify if data has actually changed
-        if (_userData == null || !_mapsEqual(_userData!, newData!)) {
-          _userData = newData;
-          debugPrint("🔍 ProfileUpdateService: Loaded user data: $_userData");
-          notifyAllListeners();
-        } else {
-          debugPrint(
-              "🔍 ProfileUpdateService: Data unchanged, skipping notification");
-        }
+        _userData = newData;
+        debugPrint("🔍 ProfileUpdateService: Loaded initial user data");
+        notifyAllListeners();
       }
+
+      // Set up real-time listener for avatar and profile updates (from website or app)
+      _userDataSubscription?.cancel();
+      _userDataSubscription = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          if (snapshot.exists && snapshot.data() != null) {
+            final newData = snapshot.data()!;
+
+            // Check if avatar URL changed
+            final newAvatarURL = newData['avatarURL'] as String?;
+            final currentAvatarURL = _userData?['avatarURL'] as String?;
+
+            // Only notify if data has actually changed
+            if (_userData == null || !_mapsEqual(_userData!, newData)) {
+              _userData = newData;
+              debugPrint(
+                  "🔄 ProfileUpdateService: User data updated from Firestore (real-time)");
+              debugPrint("   Avatar URL: ${newAvatarURL ?? 'null'}");
+              notifyAllListeners();
+            } else if (newAvatarURL != currentAvatarURL &&
+                newAvatarURL != null) {
+              // Avatar specifically changed, update and notify
+              _userData = newData;
+              debugPrint(
+                  "🔄 ProfileUpdateService: Avatar updated from Firestore (real-time)");
+              debugPrint("   Old: ${currentAvatarURL ?? 'null'}");
+              debugPrint("   New: ${newAvatarURL}");
+              notifyAllListeners();
+            }
+          }
+        },
+        onError: (error) {
+          debugPrint(
+              '❌ ProfileUpdateService: Error in user data listener: $error');
+        },
+      );
+
+      debugPrint("✅ ProfileUpdateService: Real-time listener set up");
     } catch (e) {
       debugPrint('❌ ProfileUpdateService: Error loading user data: $e');
     } finally {
@@ -208,6 +250,15 @@ class ProfileUpdateService extends ChangeNotifier {
     _profileBackViewListeners.clear();
     _streamerCardViewListeners.clear();
     _streamerCardBackViewListeners.clear();
+  }
+
+  /// Dispose the service and cancel subscriptions
+  @override
+  void dispose() {
+    _userDataSubscription?.cancel();
+    _userDataSubscription = null;
+    clearAllListeners();
+    super.dispose();
   }
 
   /// Helper method to compare two maps for equality

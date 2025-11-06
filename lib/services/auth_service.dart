@@ -730,23 +730,61 @@ class AuthenticationService extends ChangeNotifier {
       }
       debugPrint('✅ Network connectivity confirmed');
 
-      // Test Firebase Storage connectivity first
+      // Test Firebase Storage connectivity first with better error handling
       try {
         debugPrint('🧪 Testing Firebase Storage connectivity...');
-        await _storage.ref().child('test').getMetadata();
-        debugPrint('✅ Firebase Storage is accessible');
+        debugPrint('🔧 Storage bucket: ${_storage.bucket}');
+        debugPrint('🔧 Storage app: ${_storage.app.name}');
+
+        // Try a simple write test instead of metadata check
+        final testRef = _storage.ref().child('avatars/_connectivity_test');
+        try {
+          // Try to upload a small test file
+          final testData = 'test';
+          await testRef.putString(testData).timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw Exception('Storage connection timeout');
+            },
+          );
+
+          // Clean up test file
+          try {
+            await testRef.delete();
+          } catch (e) {
+            debugPrint('⚠️ Could not delete test file: $e');
+          }
+
+          debugPrint('✅ Firebase Storage is accessible');
+        } catch (e) {
+          // Check for specific storage errors
+          final errorString = e.toString();
+          if (errorString.contains('storage/unauthorized') ||
+              errorString.contains('storage/permission-denied')) {
+            throw Exception(
+                'Firebase Storage permission denied. Please check your Storage rules.');
+          } else if (errorString.contains('storage/bucket-not-found')) {
+            throw Exception(
+                'Firebase Storage bucket not configured. Please set up Storage in Firebase Console.');
+          } else if (errorString.contains('storage/quota-exceeded')) {
+            throw Exception(
+                'Firebase Storage quota exceeded. Please check your Firebase project limits.');
+          } else if (errorString.contains('TimeoutException')) {
+            throw Exception(
+                'Firebase Storage connection timeout. Please check your internet connection.');
+          } else {
+            // If it's not a critical error, try to continue with actual upload
+            debugPrint('⚠️ Storage test had issues but continuing: $e');
+          }
+        }
       } catch (e) {
         debugPrint('❌ Firebase Storage test failed: $e');
-        if (e.toString().contains('storage/bucket-not-found')) {
-          throw Exception(
-              'Firebase Storage bucket not configured. Please set up Storage in Firebase Console.');
-        } else if (e.toString().contains('storage/object-not-found')) {
-          // object-not-found is expected for a test file, so this is actually success
-          debugPrint(
-              '✅ Firebase Storage is accessible (object-not-found is expected for test file)');
+        // Re-throw with more context
+        if (e is Exception) {
+          rethrow;
         } else {
           throw Exception(
-              'Firebase Storage is not accessible. Please check your Firebase configuration.');
+              'Firebase Storage is not accessible: ${e.toString()}');
         }
       }
 

@@ -28,6 +28,7 @@ import '../widgets/streamer_card_view.dart';
 import '../services/follow_button_service.dart';
 import '../services/unified_algorithm_service.dart';
 import '../services/unified_bookmark_service.dart';
+import '../services/video_resume_service.dart';
 
 // DEPRECATED: GlobalVideoController replaced by UnifiedVideoControlService
 // This class is kept for backward compatibility but delegates to UnifiedVideoControlService
@@ -93,6 +94,7 @@ class _VideoPlayerViewOptimizedState
   final VideoControllerRegistry _registry = VideoControllerRegistry();
   final ProductionLoggingService _logger = ProductionLoggingService();
   late UnifiedBookmarkService _bookmarkService;
+  final VideoResumeService _resumeService = VideoResumeService();
 
   // Stream subscription for bookmark state changes
   StreamSubscription<BookmarkEvent>? _bookmarkSubscription;
@@ -373,6 +375,68 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
+  /// Handle video entering view with resume/restart logic
+  Future<void> _handleVideoEnter() async {
+    // Check if controller is initialized
+    if (_videoPlayerController == null || !_isInitialized) {
+      // Controller not ready yet - initialize and then handle enter
+      await _initializeVideo();
+      // After initialization, check resume again
+      if (_videoPlayerController == null || !_isInitialized) {
+        // Still not ready, just play from start
+        _applyAudioEnhancement().then((_) async {
+          await _safeSetVolume(1.0);
+          setState(() => _audioUnmuted = true);
+          await _safePlay();
+          setState(() => _isPlaying = true);
+        });
+        return;
+      }
+    }
+
+    // Get target position from resume service
+    final targetPosition = await _resumeService.onPageEnter(widget.video.id);
+    Duration seekTarget = Duration.zero;
+
+    if (targetPosition != null) {
+      // Resume from saved position
+      seekTarget = targetPosition;
+      log('▶️ VideoResume: Resuming ${widget.video.id} from ${seekTarget.inSeconds}s');
+    } else {
+      // Restart from beginning
+      seekTarget = Duration.zero;
+      log('▶️ VideoResume: Restarting ${widget.video.id} from beginning');
+    }
+
+    // Ensure controller is initialized before seeking
+    if (!_videoPlayerController!.value.isInitialized) {
+      await _videoPlayerController!.initialize();
+    }
+
+    // Seek to target position
+    try {
+      await _videoPlayerController!.seekTo(seekTarget);
+      log('▶️ VideoResume: Seeked to ${seekTarget.inSeconds}s for ${widget.video.id}');
+    } catch (e) {
+      log('⚠️ VideoResume: Error seeking to ${seekTarget.inSeconds}s: $e');
+      // Fallback to beginning on error
+      seekTarget = Duration.zero;
+    }
+
+    // Apply audio enhancement and play
+    _applyAudioEnhancement().then((_) async {
+      await _safeSetVolume(1.0);
+      setState(() => _audioUnmuted = true);
+
+      await _safePlay();
+      setState(() => _isPlaying = true);
+
+      log('🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
+      debugPrint(
+          '🔊 Video became current and is now playing with enhanced audio: ${widget.video.id} (position: ${seekTarget.inSeconds}s)');
+    });
+  }
+
   // Key for like button (for floating hearts animation)
   final GlobalKey _likeButtonKey = GlobalKey();
 
@@ -503,29 +567,27 @@ class _VideoPlayerViewOptimizedState
             .requestFocus(widget.video.id, widget.tabId);
         log('🎵 VideoPlayer: Requested focus for current video: ${widget.video.id}');
 
-        // This video is now current - play it with TikTok-style audio enhancement
-        _applyAudioEnhancement().then((_) async {
-          await _safeSetVolume(1.0);
-          setState(() => _audioUnmuted = true);
-
-          await _safePlay();
-          setState(() => _isPlaying = true);
-
-          log('🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
-          debugPrint(
-              '🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
-        });
+        // This video is now current - check if we should resume or restart
+        _handleVideoEnter();
       } else {
-        // Video is no longer current - just pause (GlobalPlaybackManager handles focus)
-        // Only pause if currently playing to avoid excessive calls
-        if (_isPlaying) {
+        // Video is no longer current - save playback state and pause
+        if (_isPlaying &&
+            _videoPlayerController != null &&
+            _videoPlayerController!.value.isInitialized) {
+          final position = _videoPlayerController!.value.position;
+          final duration = _videoPlayerController!.value.duration;
+
+          // Save playback state for resume logic
+          _resumeService.onPageLeave(widget.video.id, position, duration);
+
           _safePause().then((_) {
             _safeSetVolume(0.0); // Mute audio immediately
           });
           setState(() => _isPlaying = false);
 
-          log('⏸️ Video no longer current, paused: ${widget.video.id}');
-          debugPrint('⏸️ Video no longer current, paused: ${widget.video.id}');
+          log('⏸️ Video no longer current, paused: ${widget.video.id} (saved position: ${position.inSeconds}s)');
+          debugPrint(
+              '⏸️ Video no longer current, paused: ${widget.video.id} (saved position: ${position.inSeconds}s)');
         }
       }
     }
@@ -627,6 +689,18 @@ class _VideoPlayerViewOptimizedState
         // 🔊 AUDIO FIX: Use GlobalPlaybackManager exclusively
         final playbackManager = ref.read(globalPlaybackManagerProvider);
         playbackManager.activate(widget.video.id, owner: widget.tabId);
+
+        // Check if we should resume from saved position
+        final targetPosition =
+            await _resumeService.onPageEnter(widget.video.id);
+        if (targetPosition != null && targetPosition > Duration.zero) {
+          try {
+            await _videoPlayerController!.seekTo(targetPosition);
+            log('▶️ VideoResume: Auto-resuming from ${targetPosition.inSeconds}s for ${widget.video.id}');
+          } catch (e) {
+            log('⚠️ VideoResume: Error seeking during init: $e');
+          }
+        }
 
         // Apply audio enhancement and unmute for first video
         _applyAudioEnhancement().then((_) async {

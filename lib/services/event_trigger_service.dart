@@ -1,9 +1,28 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'notification_service.dart';
 
 class EventTriggerService extends ChangeNotifier {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  // Lazy initialization for Firestore to prevent iOS cold start crashes
+  FirebaseFirestore? _db;
+
+  FirebaseFirestore get _dbInstance {
+    if (_db == null) {
+      try {
+        if (Firebase.apps.isEmpty) {
+          debugPrint('⚠️ EventTriggerService: Firebase not initialized yet');
+          throw Exception('Firebase not initialized');
+        }
+        _db = FirebaseFirestore.instance;
+      } catch (e) {
+        debugPrint('❌ EventTriggerService: Error accessing Firestore: $e');
+        rethrow;
+      }
+    }
+    return _db!;
+  }
+
   NotificationService? _notificationService;
 
   void setNotificationService(NotificationService notificationService) {
@@ -277,7 +296,7 @@ class EventTriggerService extends ChangeNotifier {
 
   Future<void> _updateFollowerCount(String userId, int increment) async {
     try {
-      await _db.collection("users").doc(userId).update({
+      await _dbInstance.collection("users").doc(userId).update({
         "followerCount": FieldValue.increment(increment),
       });
       // print("✅ Updated follower count for user: $userId");
@@ -288,7 +307,7 @@ class EventTriggerService extends ChangeNotifier {
 
   Future<void> _updateLikeCount(String videoId, int increment) async {
     try {
-      await _db.collection("videos").doc(videoId).update({
+      await _dbInstance.collection("videos").doc(videoId).update({
         "likeCount": FieldValue.increment(increment),
       });
       // print("✅ Updated like count for video: $videoId");
@@ -299,7 +318,7 @@ class EventTriggerService extends ChangeNotifier {
 
   Future<void> _updateCommentCount(String videoId, int increment) async {
     try {
-      await _db.collection("videos").doc(videoId).update({
+      await _dbInstance.collection("videos").doc(videoId).update({
         "comments": FieldValue.increment(
             increment), // Fixed: Use 'comments' to match listener
       });
@@ -314,7 +333,7 @@ class EventTriggerService extends ChangeNotifier {
     required String followingId,
   }) async {
     try {
-      await _db.collection("relationships").add({
+      await _dbInstance.collection("relationships").add({
         "followerId": followerId,
         "followingId": followingId,
         "timestamp": FieldValue.serverTimestamp(),
@@ -330,7 +349,7 @@ class EventTriggerService extends ChangeNotifier {
     required String followingId,
   }) async {
     try {
-      final snapshot = await _db
+      final snapshot = await _dbInstance
           .collection("relationships")
           .where("followerId", isEqualTo: followerId)
           .where("followingId", isEqualTo: followingId)
@@ -350,7 +369,7 @@ class EventTriggerService extends ChangeNotifier {
     required String videoId,
   }) async {
     try {
-      await _db.collection("likes").add({
+      await _dbInstance.collection("likes").add({
         "likerId": likerId,
         "videoId": videoId,
         "timestamp": FieldValue.serverTimestamp(),
@@ -366,7 +385,7 @@ class EventTriggerService extends ChangeNotifier {
     required String videoId,
   }) async {
     try {
-      final snapshot = await _db
+      final snapshot = await _dbInstance
           .collection("likes")
           .where("likerId", isEqualTo: likerId)
           .where("videoId", isEqualTo: videoId)
@@ -387,7 +406,7 @@ class EventTriggerService extends ChangeNotifier {
     required String commentText,
   }) async {
     try {
-      await _db.collection("comments").add({
+      await _dbInstance.collection("comments").add({
         "commenterId": commenterId,
         "videoId": videoId,
         "commentText": commentText,
@@ -405,7 +424,7 @@ class EventTriggerService extends ChangeNotifier {
     required String videoId,
   }) async {
     try {
-      await _db.collection("tags").add({
+      await _dbInstance.collection("tags").add({
         "taggerId": taggerId,
         "taggedUserId": taggedUserId,
         "videoId": videoId,
@@ -423,7 +442,7 @@ class EventTriggerService extends ChangeNotifier {
     required String videoId,
   }) async {
     try {
-      await _db.collection("mentions").add({
+      await _dbInstance.collection("mentions").add({
         "mentionerId": mentionerId,
         "mentionedUserId": mentionedUserId,
         "videoId": videoId,

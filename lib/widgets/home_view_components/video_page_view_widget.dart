@@ -36,6 +36,8 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
 
 class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
   late PageController _pageController;
+  bool _isHorizontalSwipe = false;
+  bool _isVerticalSwipe = false;
 
   @override
   void initState() {
@@ -100,6 +102,8 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     }
 
     return GestureDetector(
+      onPanStart: _handlePanStart,
+      onPanUpdate: _handlePanUpdate,
       onPanEnd: _handleSwipe,
       child: PageView.builder(
         controller: _pageController,
@@ -165,27 +169,73 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     );
   }
 
+  void _handlePanStart(DragStartDetails details) {
+    // Reset swipe tracking
+    _isHorizontalSwipe = false;
+    _isVerticalSwipe = false;
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    final delta = details.delta;
+    final absDx = delta.dx.abs();
+    final absDy = delta.dy.abs();
+
+    // Track gesture direction early to prevent conflicts
+    if (absDx > absDy && absDx > 10) {
+      _isHorizontalSwipe = true;
+    } else if (absDy > absDx && absDy > 10) {
+      _isVerticalSwipe = true;
+    }
+  }
+
   void _handleSwipe(DragEndDetails details) {
     final velocity = details.velocity.pixelsPerSecond;
+    final absDx = velocity.dx.abs();
+    final absDy = velocity.dy.abs();
 
-    // Up swipe (negative Y velocity) - go to next video
-    if (velocity.dy < -300) {
-      log('⬆️ VideoPageView: Up swipe detected - next video');
-      if (widget.currentIndex < widget.videos.length - 1) {
-        _pageController.nextPage(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
+    // Use tracked gesture direction to avoid conflicts
+    // If we already detected horizontal swipe, prioritize it
+    if (_isHorizontalSwipe && absDx > 300) {
+      // Left swipe (negative X velocity) - show StreamerCardView
+      if (velocity.dx < -300) {
+        log('👈 VideoPageView: Left swipe detected');
+        if (widget.currentIndex < widget.videos.length) {
+          final currentVideo = widget.videos[widget.currentIndex];
+          widget.onLeftSwipe(currentVideo);
+        }
+      }
+      // Right swipe (positive X velocity) - show StreamerCardView
+      else if (velocity.dx > 300) {
+        log('👉 VideoPageView: Right swipe detected');
+        if (widget.currentIndex < widget.videos.length) {
+          final currentVideo = widget.videos[widget.currentIndex];
+          widget.onRightSwipe(currentVideo);
+        }
       }
     }
-    // Down swipe (positive Y velocity) - go to previous video
-    else if (velocity.dy > 300) {
-      log('⬇️ VideoPageView: Down swipe detected - previous video');
-      if (widget.currentIndex > 0) {
-        _pageController.previousPage(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
+    // Vertical swipe - handle video navigation
+    // Only if we didn't detect horizontal swipe
+    else if ((_isVerticalSwipe || (!_isHorizontalSwipe && absDy > absDx)) &&
+        absDy > 300) {
+      // Up swipe (negative Y velocity) - go to next video
+      if (velocity.dy < -300) {
+        log('⬆️ VideoPageView: Up swipe detected - next video');
+        if (widget.currentIndex < widget.videos.length - 1) {
+          _pageController.nextPage(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
+      }
+      // Down swipe (positive Y velocity) - go to previous video
+      else if (velocity.dy > 300) {
+        log('⬇️ VideoPageView: Down swipe detected - previous video');
+        if (widget.currentIndex > 0) {
+          _pageController.previousPage(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
       }
     }
   }

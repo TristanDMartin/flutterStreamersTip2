@@ -460,27 +460,32 @@ class _HomeViewState extends ConsumerState<HomeView>
   // Dead code removed - _buildEndOfFeedMessage UI not rendered in current implementation
 
   void _showStreamerCardModal(User user) {
-    HapticFeedback.lightImpact();
+    // Use async to prevent blocking the main thread
+    Future.microtask(() {
+      if (!mounted) return;
 
-    // Pause HomeView videos before showing StreamerCard
-    _pauseAllHomeViewVideos();
+      HapticFeedback.lightImpact();
 
-    // Convert User to StreamerCard
-    final streamerCard = StreamerCard(
-      id: user.id,
-      displayName: user.displayName,
-      username: user.username,
-      avatarURL: user.avatarURL,
-      bio: user.bio ?? '',
-      hashtags: user.hashtags,
-    );
+      // Pause HomeView videos before showing StreamerCard
+      _pauseAllHomeViewVideos();
 
-    if (mounted) {
-      setState(() {
-        _currentStreamerCard = streamerCard;
-        _showStreamerCard = true;
-      });
-    }
+      // Convert User to StreamerCard
+      final streamerCard = StreamerCard(
+        id: user.id,
+        displayName: user.displayName,
+        username: user.username,
+        avatarURL: user.avatarURL,
+        bio: user.bio ?? '',
+        hashtags: user.hashtags,
+      );
+
+      if (mounted) {
+        setState(() {
+          _currentStreamerCard = streamerCard;
+          _showStreamerCard = true;
+        });
+      }
+    });
   }
 
   void _dismissStreamerCard() {
@@ -561,8 +566,20 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _handleRightSwipe(HomeVideo video) {
-    // Handle right swipe - could show share options or other actions
+    // Handle right swipe - show StreamerCardView for current video's creator
     log('👉 HomeView: Right swipe on video: ${video.id}');
+    debugPrint('👉 HomeView: Right swipe detected - showing StreamerCardView');
+
+    try {
+      HapticFeedback.lightImpact();
+
+      // Show StreamerCardView for the video's creator
+      _showStreamerCardModal(video.creator);
+    } catch (e) {
+      if (kDebugMode) {
+        log('❌ Error handling right swipe: $e');
+      }
+    }
   }
 
   void _navigateToDiscover() {

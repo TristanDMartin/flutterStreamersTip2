@@ -16,7 +16,6 @@ import 'profile_back_view.dart';
 import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
-import 'tiktok_account_switch_button.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -128,11 +127,21 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _rebuildDebounceTimer?.cancel();
     _rebuildDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (mounted && !_isDisposed) {
-        // 🔴 FIX #5: Mark data as dirty
+        // 🔴 FIX #5: Mark data as dirty to force cache refresh
         _userDataDirty = true;
+        // Clear cached avatar URL to force image reload when avatar changes
+        final newAvatarURL =
+            _profileUpdateService?.userData?['avatarURL'] as String?;
+        if (newAvatarURL != null && newAvatarURL != _lastSavedAvatarUrl) {
+          _lastSavedAvatarUrl = null; // Clear to force image reload
+        }
         setState(() {
-          // Trigger rebuild when profile data is updated
+          // Trigger rebuild when profile data is updated (especially avatar)
         });
+        if (kDebugMode) {
+          debugPrint('🔄 ProfileView: Avatar updated, rebuilding UI');
+          debugPrint('   New avatar URL: ${newAvatarURL ?? 'null'}');
+        }
       }
     });
   }
@@ -702,6 +711,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                         userData['avatarURL'].toString().isNotEmpty
                     ? Image.network(
                         userData['avatarURL'],
+                        key: ValueKey(userData[
+                            'avatarURL']), // Force rebuild when avatar URL changes
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
                             const Icon(

@@ -23,86 +23,73 @@ class CustomBottomNav extends ConsumerWidget {
     final bottomPadding = mediaQuery.padding.bottom;
     final isIOS = Platform.isIOS;
 
-    // Platform-specific padding adjustments - increased to prevent overflow
-    final extraBottomPadding = isIOS ? 12.0 : 8.0;
-    final totalBottomPadding = bottomPadding + extraBottomPadding;
+    // Increased internal bottom padding to prevent text cutoff
+    final internalBottomPadding = isIOS ? 14.0 : 12.0;
+    // Bottom margin to lift nav bar above bottom edge, reduced by 3px to move down
+    final bottomMargin = 10.0 +
+        bottomPadding; // Account for safe area + extra lift (reduced by 3px)
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        minHeight:
-            60 + totalBottomPadding, // Minimum height to prevent overflow
-        maxHeight:
-            100 + totalBottomPadding, // Maximum height to prevent overflow
+    return Container(
+      margin: EdgeInsets.only(
+        bottom: bottomMargin,
+        left: 16,
+        right: 16,
       ),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(25),
-            topRight: Radius.circular(25),
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(25),
-            topRight: Radius.circular(25),
-          ),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(
-                sigmaX: 25, sigmaY: 25), // Stronger blur for liquid glass
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(25),
-                  topRight: Radius.circular(25),
-                ),
-                // Enhanced liquid glass effect with better contrast
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.white
-                        .withValues(alpha: 0.15), // Brighter top glass layer
-                    Colors.white.withValues(alpha: 0.08), // Middle glass layer
-                    Colors.black
-                        .withValues(alpha: 0.4), // Darker bottom glass layer
-                  ],
-                  stops: const [0.0, 0.5, 1.0],
-                ),
-                // Enhanced glass border effect
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  width: 1.5,
-                ),
-                // Enhanced shadows for more depth
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    blurRadius: 40,
-                    spreadRadius: 0,
-                    offset: const Offset(0, -15),
-                  ),
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    blurRadius: 25,
-                    spreadRadius: 0,
-                    offset: const Offset(0, 8),
-                  ),
-                  // Inner glow effect
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    blurRadius: 15,
-                    spreadRadius: -5,
-                    offset: const Offset(0, 0),
-                  ),
-                ],
+      child: SizedBox(
+        height:
+            96, // Fixed height to accommodate icon + text + padding (increased by 1px to prevent overflow)
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius:
+                BorderRadius.circular(30), // More rounded for liquid effect
+            boxShadow: [
+              // Outer shadow for depth
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 30,
+                spreadRadius: 0,
+                offset: const Offset(0, 10),
               ),
+              // Inner glow for glass effect
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.1),
+                blurRadius: 20,
+                spreadRadius: -5,
+                offset: const Offset(0, -5),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                  sigmaX: 40, sigmaY: 40), // Strong blur for liquid glass
               child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30),
+                  // Enhanced liquid glass gradient with multiple layers
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.25), // Bright top layer
+                      Colors.white.withValues(alpha: 0.15), // Mid-top layer
+                      Colors.white.withValues(alpha: 0.05), // Mid layer
+                      Colors.black.withValues(alpha: 0.3), // Dark bottom layer
+                    ],
+                    stops: const [0.0, 0.3, 0.7, 1.0],
+                  ),
+                  // Enhanced glass border with gradient effect
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    width: 1.5,
+                  ),
+                ),
                 padding: EdgeInsets.only(
                   left: 20,
                   right: 20,
-                  top: 15,
-                  bottom: totalBottomPadding,
+                  top: 12,
+                  bottom: internalBottomPadding,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -133,46 +120,54 @@ class CustomBottomNav extends ConsumerWidget {
       child: OptimizedButton(
         buttonId: 'nav_$index',
         onPressed: () => onTap(index),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isSelected
-                    ? Colors.white.withValues(
-                        alpha: 0.2) // More visible selected background
-                    : Colors.transparent,
-                border: isSelected
-                    ? Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
-                        width: 1,
-                      )
-                    : null,
+        child: Padding(
+          padding: const EdgeInsets.only(
+            top: 4,
+            bottom: 4,
+            left: 4,
+            right: 4,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected
+                      ? Colors.white.withValues(
+                          alpha: 0.2) // More visible selected background
+                      : Colors.transparent,
+                  border: isSelected
+                      ? Border.all(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          width: 1,
+                        )
+                      : null,
+                ),
+                child: Icon(
+                  icon,
+                  color: isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(
+                          alpha: 0.4), // More visible when not selected
+                  size: 24,
+                ),
               ),
-              child: Icon(
-                icon,
-                color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(
-                        alpha: 0.4), // More visible when not selected
-                size: 24,
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(
+                          alpha: 0.4), // More visible when not selected
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(
-                        alpha: 0.4), // More visible when not selected
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -200,78 +195,86 @@ class CustomBottomNav extends ConsumerWidget {
       child: OptimizedButton(
         buttonId: 'nav_inbox',
         onPressed: () => onTap(3),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isSelected
-                        ? Colors.white.withValues(alpha: 0.2)
-                        : Colors.transparent,
-                    border: isSelected
-                        ? Border.all(
-                            color: Colors.white.withValues(alpha: 0.3),
-                            width: 1,
-                          )
-                        : null,
+        child: Padding(
+          padding: const EdgeInsets.only(
+            top: 4,
+            bottom: 4,
+            left: 4,
+            right: 4,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : Colors.transparent,
+                      border: isSelected
+                          ? Border.all(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              width: 1,
+                            )
+                          : null,
+                    ),
+                    child: Icon(
+                      Icons.mail_outline,
+                      color: isSelected
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.4),
+                      size: 24,
+                    ),
                   ),
-                  child: Icon(
-                    Icons.mail_outline,
-                    color: isSelected
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.4),
-                    size: 24,
-                  ),
-                ),
-                // Combined unread badge
-                if (totalUnreadCount > 0)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Semantics(
-                      label: '$totalUnreadCount unread notifications',
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          totalUnreadCount > 99
-                              ? '99+'
-                              : totalUnreadCount.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                  // Combined unread badge
+                  if (totalUnreadCount > 0)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Semantics(
+                        label: '$totalUnreadCount unread notifications',
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
                           ),
-                          textAlign: TextAlign.center,
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            totalUnreadCount > 99
+                                ? '99+'
+                                : totalUnreadCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Inbox',
-              style: TextStyle(
-                color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.4),
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                'Inbox',
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.4),
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -282,35 +285,58 @@ class CustomBottomNav extends ConsumerWidget {
       label: 'Create content',
       hint: 'Tap to open camera and create new content',
       button: true,
-      child: GestureDetector(
-        onTap: () => onTap(2),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF9248D2), // AppColors.primary (purple)
-                Color(0xFF7768DF), // AppColors.secondary (purple)
-                Color(0xFF1670DE), // AppColors.tertiary (blue)
-              ],
-              stops: [0.0, 0.5, 1.0],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF9248D2).withValues(alpha: 0.4),
-                blurRadius: 15,
-                spreadRadius: 0,
-                offset: const Offset(0, 5),
+      child: OptimizedButton(
+        buttonId: 'nav_add',
+        onPressed: () => onTap(2),
+        child: Padding(
+          padding: const EdgeInsets.only(
+            top: 4,
+            bottom: 4,
+            left: 4,
+            right: 4,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF9248D2), // AppColors.primary (purple)
+                      Color(0xFF7768DF), // AppColors.secondary (purple)
+                      Color(0xFF1670DE), // AppColors.tertiary (blue)
+                    ],
+                    stops: [0.0, 0.5, 1.0],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF9248D2).withValues(alpha: 0.4),
+                      blurRadius: 15,
+                      spreadRadius: 0,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.add,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Create',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 12,
+                  fontWeight: FontWeight.normal,
+                ),
               ),
             ],
-          ),
-          child: const Icon(
-            Icons.add,
-            color: Colors.white,
-            size: 28,
           ),
         ),
       ),

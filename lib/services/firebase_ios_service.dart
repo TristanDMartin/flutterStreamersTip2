@@ -21,11 +21,29 @@ class FirebaseIOSService {
           '📱 Platform: iOS=$_isIOS, Web=$_isWeb, Android=${!_isIOS && !_isWeb}');
 
       if (_isIOS) {
-        // For iOS, we rely on AppDelegate.swift to initialize Firebase
-        // This is just a check to ensure it's working
-        debugPrint('🍎 Initializing Firebase for iOS...');
-        await Firebase.initializeApp();
-        debugPrint('✅ Firebase initialized on iOS via AppDelegate');
+        // For iOS, AppDelegate.swift already initializes Firebase synchronously
+        // Check if Firebase is already initialized before trying to initialize again
+        debugPrint('🍎 Checking Firebase initialization for iOS...');
+
+        // Check if Firebase is already initialized by AppDelegate
+        if (Firebase.apps.isEmpty) {
+          // Not initialized yet - wait briefly for AppDelegate to finish
+          debugPrint(
+              '⚠️ Firebase not initialized yet - waiting for AppDelegate...');
+          await Future.delayed(const Duration(milliseconds: 100));
+
+          // Check again - if still not initialized, initialize it ourselves
+          if (Firebase.apps.isEmpty) {
+            debugPrint(
+                '🔥 Initializing Firebase in Flutter (AppDelegate may have failed)...');
+            await Firebase.initializeApp();
+            debugPrint('✅ Firebase initialized in Flutter');
+          } else {
+            debugPrint('✅ Firebase initialized by AppDelegate (after wait)');
+          }
+        } else {
+          debugPrint('✅ Firebase already initialized by AppDelegate');
+        }
       } else if (_isWeb) {
         // For web, initialize with default options
         debugPrint('🌐 Initializing Firebase for Web...');
@@ -65,12 +83,18 @@ class FirebaseIOSService {
         }
       }
 
-      // Wait for Firebase to be fully ready
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Minimal delay - Firebase should be ready immediately after initialization
+      // Only wait if absolutely necessary (reduced from 500ms)
+      await Future.delayed(const Duration(milliseconds: 100));
 
       // Verify Firebase is properly initialized
       if (Firebase.apps.isEmpty) {
-        throw Exception('Firebase initialization failed - no apps found');
+        debugPrint('⚠️ Firebase.apps is empty after initialization attempt');
+        // Don't throw - allow app to continue in degraded mode
+        // The app will show auth screen and work without Firebase
+      } else {
+        debugPrint(
+            '✅ Firebase verified - ${Firebase.apps.length} app(s) initialized');
       }
 
       _isInitialized = true;
@@ -92,10 +116,11 @@ class FirebaseIOSService {
             '💡 Android: Make sure google-services.json is in android/app/ and Firebase is properly configured');
       }
 
-      // Re-throw the error to prevent the app from starting without Firebase
+      // Don't rethrow - allow app to continue in degraded mode
+      // The app will show auth screen and work without Firebase
       debugPrint(
-          '⚠️ FirebaseIOSService: Firebase is required - stopping app initialization');
-      rethrow;
+          '⚠️ FirebaseIOSService: Firebase initialization failed - app will continue in degraded mode');
+      _isInitialized = false;
     }
   }
 

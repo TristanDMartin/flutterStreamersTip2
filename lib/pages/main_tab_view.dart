@@ -346,8 +346,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             });
           }
         },
+        // Disable horizontal swipe gestures when on HomeView (index 0) to allow left/right swipes for StreamerCardView
         // Disable swipe gestures when on NetworkView (index 1)
-        physics: _currentIndex == 1
+        physics: _currentIndex == 0 || _currentIndex == 1
             ? const NeverScrollableScrollPhysics()
             : const ClampingScrollPhysics(),
         children: const [

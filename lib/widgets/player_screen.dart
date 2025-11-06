@@ -5,7 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/home_video.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/video_service_provider.dart';
+import '../providers/discover_provider.dart';
+import '../providers/favorites_provider.dart';
 import '../services/global_playback_manager.dart';
+import '../services/video_actions_service.dart';
 import 'video_player_view_optimized.dart';
 import 'insights_view.dart';
 
@@ -426,7 +429,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
   }
 
-  /// Handle Delete action
+  /// Handle Delete action - TikTok-style delete behavior
   void _handleDelete(BuildContext context, HomeVideo video) {
     showDialog(
       context: context,
@@ -443,15 +446,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // TODO: Implement actual delete functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Delete feature coming soon')),
-              );
+            onPressed: () async {
+              Navigator.pop(context); // Close confirmation dialog
+              await _performDelete(context, video);
             },
             child: const Text(
               'Delete',
@@ -461,6 +464,162 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         ],
       ),
     );
+  }
+
+  /// Perform video deletion with TikTok-style behavior
+  Future<void> _performDelete(BuildContext context, HomeVideo video) async {
+    try {
+      // Check if this is the only video BEFORE deletion
+      final deletedIndex = _currentIndex;
+      final wasOnlyVideo = _videos.length == 1;
+      final wasLastVideo = deletedIndex == _videos.length - 1;
+
+      // Show loading indicator - use rootNavigator to ensure it's on top
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black54,
+        builder: (dialogContext) => const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF9248D2),
+          ),
+        ),
+      );
+
+      // Import VideoActionsService
+      final videoActionsService = ref.read(videoActionsServiceProvider);
+
+      // Delete video from Firestore
+      await videoActionsService.deleteVideo(video.id);
+
+      // 🔥 GLOBAL UPDATE: Remove video from all providers and refresh feeds
+      // 1. Remove from VideoService state immediately
+      final videoService = ref.read(videoServiceProvider);
+      videoService.removeVideo(video.id);
+
+      // 2. Invalidate HomeProvider to refresh For You and Following feeds
+      ref.invalidate(hp.homeProvider);
+      final homeNotifier = ref.read(hp.homeProvider.notifier);
+      await homeNotifier.refreshFeed();
+
+      // 3. Invalidate DiscoverProvider to refresh discovery feeds
+      ref.invalidate(discoverProvider);
+
+      // 4. Invalidate FavoritesProvider if video was favorited
+      ref.invalidate(favoritesProvider);
+
+      // 5. Refresh VideoService to ensure consistency
+      await videoService.refresh();
+
+      // Close loading dialog FIRST - use rootNavigator to ensure proper closing
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // Close loading dialog
+      }
+
+      // Small delay to ensure dialog is fully closed before navigation
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // If this was the only video, navigate back immediately
+      if (wasOnlyVideo) {
+        // Pause all videos before navigation
+        GlobalPlaybackManager.instance.pauseAll();
+
+        // Navigate back to ProfileView using root navigator
+        if (context.mounted) {
+          Navigator.of(context).pop(); // Navigate back to ProfileView
+
+          // Show success message after navigation
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Video deleted successfully'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          });
+        }
+
+        debugPrint(
+            '✅ PlayerScreen: Video ${video.id} deleted successfully - navigated back to ProfileView');
+        return; // Exit early - don't update video list
+      }
+
+      // Remove video from current playlist (only if not the only video)
+      setState(() {
+        _videos.removeAt(deletedIndex);
+
+        // Adjust current index
+        if (wasLastVideo) {
+          // If it was the last video, go to previous video
+          _currentIndex = _videos.length - 1;
+        } else {
+          // Otherwise, stay on current index (next video slides into place)
+          _currentIndex = deletedIndex;
+          // Ensure index is within bounds
+          if (_currentIndex >= _videos.length) {
+            _currentIndex = _videos.length - 1;
+          }
+        }
+      });
+
+      // Pause current video before navigation
+      GlobalPlaybackManager.instance.pauseAll();
+
+      // Wait a brief moment for UI to update
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Navigate to next/previous video in PageView
+      if (context.mounted && _pageController.hasClients && _videos.isNotEmpty) {
+        if (wasLastVideo) {
+          // Go to previous video (sliding up)
+          await _pageController.animateToPage(
+            _currentIndex,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        } else {
+          // Stay on current position (next video slides up into place)
+          // Use jumpToPage for instant update, then animate for smooth transition
+          _pageController.jumpToPage(_currentIndex);
+        }
+
+        // Resume playback after navigation
+        await Future.delayed(const Duration(milliseconds: 150));
+        GlobalPlaybackManager.instance.resumeAfterTabSwitch();
+      }
+
+      // Show success message
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Video deleted'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      debugPrint('✅ PlayerScreen: Video ${video.id} deleted successfully');
+    } catch (e) {
+      // Close loading dialog if still open - use root navigator
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete video: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+      debugPrint('❌ PlayerScreen: Error deleting video: $e');
+    }
   }
 
   /// Open Insights view for the current video
