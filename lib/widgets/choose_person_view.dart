@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
-import '../models/user.dart';
-import '../services/connection_service.dart';
+import '../models/user_model.dart' as user_model;
 import '../services/chat_service.dart';
+import '../services/draft_sharing_service.dart';
+import '../services/follows_service.dart';
 import 'chat_view.dart';
+import 'draft_feedback_view.dart';
 
 class ChoosePersonView extends ConsumerStatefulWidget {
   final Map<String, dynamic>? selectedDraft;
@@ -18,7 +20,7 @@ class ChoosePersonView extends ConsumerStatefulWidget {
 class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  List<User> _connections = [];
+  List<user_model.User> _connections = [];
   bool _isLoading = true;
   String? _error;
 
@@ -50,22 +52,72 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
         _error = null;
       });
 
-      final connections =
-          await ConnectionService.shared.getConnections(currentUser.uid);
+      // Use FollowsService to get all users from NetworkView (connections + followers + following)
+      // This ensures consistency with the Connections tab in NetworkView
+      final followsService = FollowsService();
+      
+      // Load all three lists in parallel (same as NetworkView)
+      final results = await Future.wait([
+        followsService.getUsersForTab('connections'),
+        followsService.getUsersForTab('followers'),
+        followsService.getUsersForTab('following'),
+      ]);
+
+      // Combine all users (connections, followers, following) for maximum sharing options
+      final connectionsList = results[0];
+      final followersList = results[1];
+      final followingList = results[2];
+
+      // Create a combined list, prioritizing connections (mutual follows) first
+      // Filter out users with invalid IDs to prevent sharing failures
+      final allUsers = <user_model.User>[];
+      final userIds = <String>{};
+
+      // Add connections first (mutual follows - highest priority)
+      for (final user in connectionsList) {
+        if (user.id.isNotEmpty && !userIds.contains(user.id)) {
+          allUsers.add(user);
+          userIds.add(user.id);
+        }
+      }
+
+      // Add followers (they follow you)
+      for (final user in followersList) {
+        if (user.id.isNotEmpty && !userIds.contains(user.id)) {
+          allUsers.add(user);
+          userIds.add(user.id);
+        }
+      }
+
+      // Add following (you follow them)
+      for (final user in followingList) {
+        if (user.id.isNotEmpty && !userIds.contains(user.id)) {
+          allUsers.add(user);
+          userIds.add(user.id);
+        }
+      }
+
+      if (allUsers.length < connectionsList.length + followersList.length + followingList.length) {
+        final filteredCount = (connectionsList.length + followersList.length + followingList.length) - allUsers.length;
+        debugPrint('⚠️ ChoosePersonView: Filtered out $filteredCount users with invalid IDs');
+      }
 
       setState(() {
-        _connections = connections.cast<User>();
+        _connections = allUsers;
         _isLoading = false;
       });
+
+      debugPrint('🔗 ChoosePersonView: Loaded ${allUsers.length} total users (${connectionsList.length} connections, ${followersList.length} followers, ${followingList.length} following)');
     } catch (e) {
+      debugPrint('❌ ChoosePersonView: Error loading connections: $e');
       setState(() {
-        _error = 'Failed to load connections: $e';
+        _error = 'Failed to load connections: ${e.toString()}';
         _isLoading = false;
       });
     }
   }
 
-  List<User> get _filteredConnections {
+  List<user_model.User> get _filteredConnections {
     if (_searchQuery.isEmpty) {
       return _connections;
     }
@@ -77,7 +129,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
     }).toList();
   }
 
-  Future<void> _selectPerson(User person) async {
+  Future<void> _selectPerson(user_model.User person) async {
     try {
       // Show loading indicator
       showDialog(
@@ -88,27 +140,121 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
         ),
       );
 
-      // Create or fetch chat using ChatService
-      final chatService = ChatService.shared;
-      final chat = await chatService.fetchOrCreateChat(person.id);
+      if (widget.selectedDraft != null) {
+        // Share draft via DraftSharingService
+        final draftSharingService = DraftSharingService();
+        final draftId = widget.selectedDraft!['id'] as String?;
+        
+        if (draftId != null) {
+          // Validate person.id is not empty
+          if (person.id.isEmpty) {
+            if (mounted) Navigator.of(context).pop();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Invalid user: User ID is missing'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
 
-      // Close loading dialog
-      if (mounted) Navigator.of(context).pop();
+          debugPrint('🔗 ChoosePersonView: Sharing draft $draftId with user ${person.id} (${person.displayName})');
+          
+          final success = await draftSharingService.shareDraftWithConnections(
+            draftId: draftId,
+            connectionIds: [person.id],
+            message: 'Check out this draft and share your feedback!',
+          );
 
-      if (chat != null && mounted) {
-        // Navigate to chat view
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => ChatView(
+          // Close loading dialog
+          if (mounted) Navigator.of(context).pop();
+
+          if (success && mounted) {
+            // Create or fetch chat for feedback
+            final chatService = ChatService.shared;
+            final chat = await chatService.fetchOrCreateChat(person.id);
+
+            if (chat != null && chat.id != null && chat.id!.isNotEmpty) {
+              // Get shared draft data
+              final sharedDrafts = await draftSharingService.getDraftsSharedByMe();
+              final sharedDraft = sharedDrafts.firstWhere(
+                (d) => d['originalDraftId'] == draftId && 
+                       (d['recipients'] as List).contains(person.id),
+                orElse: () => widget.selectedDraft!,
+              );
+
+              // Add draft metadata to shared draft
+              sharedDraft['videoPath'] = widget.selectedDraft!['videoPath'];
+              sharedDraft['thumbnailPath'] = widget.selectedDraft!['thumbnailPath'];
+
+              // Navigate to draft feedback view
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => DraftFeedbackView(
+                    sharedDraft: sharedDraft,
+                    chat: chat,
+                    otherUserId: person.id,
+                    otherUserName: person.displayName,
+                    otherUserAvatarURL: person.avatarURL,
+                  ),
+                ),
+              );
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Draft shared successfully!'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            } else {
+              // Chat creation failed
+              debugPrint('❌ ChoosePersonView: Failed to create chat for user ${person.id}');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to create chat. The user may not be verified in the system.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          } else if (mounted) {
+            debugPrint('❌ ChoosePersonView: Draft sharing failed for user ${person.id}');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to share draft with ${person.displayName}. They may not be verified in the system.'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+        }
+      } else {
+        // No draft selected, just open regular chat
+        final chatService = ChatService.shared;
+        final chat = await chatService.fetchOrCreateChat(person.id);
+
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+
+        if (chat != null && mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => ChatView(
               chat: chat,
               otherUserId: person.id,
               otherUserName: person.displayName,
               otherUserAvatarURL: person.avatarURL,
-              otherUserIsOnline: person.onlineStatus == 'online',
-              draftToSend: widget.selectedDraft, // Pass draft if provided
+              otherUserIsOnline: person.onlineStatus == user_model.OnlineStatus.online,
+              ),
             ),
-          ),
-        );
+          );
+        }
       }
     } catch (e) {
       // Close loading dialog
@@ -117,7 +263,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error starting chat: $e'),
+            content: Text('Error: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -174,10 +320,10 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
-          const Expanded(
+          Expanded(
             child: Text(
-              'New Message',
-              style: TextStyle(
+              widget.selectedDraft != null ? 'Share Draft' : 'New Message',
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -326,7 +472,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
     );
   }
 
-  Widget _buildConnectionRow(User connection) {
+  Widget _buildConnectionRow(user_model.User connection) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
@@ -394,7 +540,8 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                       ),
                     ),
                     // Online indicator
-                    if (connection.onlineStatus == 'online')
+                    if (connection.onlineStatus == user_model.OnlineStatus.online ||
+                        connection.onlineStatus == user_model.OnlineStatus.streaming)
                       Positioned(
                         right: 0,
                         bottom: 0,
@@ -402,7 +549,9 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                           width: 14,
                           height: 14,
                           decoration: BoxDecoration(
-                            color: Colors.green,
+                            color: connection.onlineStatus == user_model.OnlineStatus.streaming
+                                ? Colors.purple
+                                : Colors.green,
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: const Color(0xFF1C135D),

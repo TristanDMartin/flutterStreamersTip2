@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'local_draft_service.dart';
+import 'chat_service.dart';
 
 /// Draft Sharing Service - Handles sharing drafts with connection network
 ///
@@ -19,6 +20,7 @@ class DraftSharingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final LocalDraftService _localDraftService = LocalDraftService();
+  final ChatService _chatService = ChatService.shared;
 
   /// Share a local draft with connection network
   Future<bool> shareDraftWithConnections({
@@ -36,6 +38,44 @@ class DraftSharingService {
         return false;
       }
 
+      // Validate draft ID
+      if (draftId.isEmpty) {
+        debugPrint('❌ Draft ID is empty');
+        return false;
+      }
+
+      // Filter out empty connection IDs
+      final validConnectionIds = connectionIds.where((id) => id.isNotEmpty).toList();
+      if (validConnectionIds.isEmpty) {
+        debugPrint('❌ No valid connection IDs provided');
+        return false;
+      }
+
+      // Verify all recipient users exist in Firestore before sharing
+      final verifiedConnectionIds = <String>[];
+      for (final recipientId in validConnectionIds) {
+        try {
+          final userDoc = await _firestore.collection('users').doc(recipientId).get();
+          if (userDoc.exists && userDoc.data() != null) {
+            verifiedConnectionIds.add(recipientId);
+            debugPrint('✅ Verified user exists: $recipientId');
+          } else {
+            debugPrint('⚠️ User does not exist in Firestore: $recipientId');
+          }
+        } catch (e) {
+          debugPrint('❌ Error verifying user $recipientId: $e');
+        }
+      }
+
+      if (verifiedConnectionIds.isEmpty) {
+        debugPrint('❌ No valid users found to share with (all users may not exist in Firestore)');
+        return false;
+      }
+
+      if (verifiedConnectionIds.length < validConnectionIds.length) {
+        debugPrint('⚠️ Only ${verifiedConnectionIds.length} of ${validConnectionIds.length} users exist in Firestore');
+      }
+
       // 1. Get draft from local storage
       final drafts = await _localDraftService.getAllDrafts();
       final draft = drafts.firstWhere(
@@ -48,15 +88,20 @@ class DraftSharingService {
         return false;
       }
 
-      // 2. Create shared draft document in Firestore
+      // 2. Create shared draft document in Firestore (only with verified recipients)
       final sharedDraftId = _generateSharedDraftId();
+      if (sharedDraftId.isEmpty) {
+        debugPrint('❌ Failed to generate shared draft ID');
+        return false;
+      }
+
       final sharedDraftData = {
         'id': sharedDraftId,
         'originalDraftId': draftId,
         'sharerId': currentUser.uid,
         'sharerUsername': currentUser.displayName ?? 'Unknown',
         'sharerAvatarUrl': currentUser.photoURL ?? '',
-        'recipients': connectionIds,
+        'recipients': verifiedConnectionIds, // Use verified recipients only
         'caption': draft['caption'],
         'hashtags': draft['hashtags'],
         'category': draft['category'],
@@ -79,15 +124,47 @@ class DraftSharingService {
 
       // 4. Update local draft to mark as shared
       await _localDraftService.shareDraftWithConnections(
-          draftId, connectionIds);
+          draftId, verifiedConnectionIds);
 
-      // 5. Create notification entries for each recipient
-      await _createShareNotifications(sharedDraftId, connectionIds, message);
+      // 5. Create chat conversations and send draft messages for each verified recipient
+      final failedRecipients = <String>[];
+      for (final recipientId in verifiedConnectionIds) {
+        try {
+          await _createDraftChatConversation(
+            sharedDraftId: sharedDraftId,
+            recipientId: recipientId,
+            draft: draft,
+            message: message,
+          );
+        } catch (e) {
+          debugPrint('❌ Failed to create chat conversation for $recipientId: $e');
+          failedRecipients.add(recipientId);
+        }
+      }
 
-      debugPrint('✅ Draft shared successfully with connections');
+      if (failedRecipients.isNotEmpty) {
+        debugPrint('⚠️ Failed to create chat conversations for ${failedRecipients.length} recipients: $failedRecipients');
+        // Don't fail the entire operation if some chats fail, but log it
+      }
+
+      // 6. Create notification entries for each verified recipient
+      await _createShareNotifications(sharedDraftId, verifiedConnectionIds, message);
+
+      debugPrint('✅ Draft shared successfully with ${verifiedConnectionIds.length} verified connections');
       return true;
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Error sharing draft: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
+      
+      // Provide more specific error information
+      if (e.toString().contains('permission-denied')) {
+        debugPrint('❌ Permission denied - check Firestore rules');
+      } else if (e.toString().contains('not-found')) {
+        debugPrint('❌ User document not found in Firestore');
+      } else if (e.toString().contains('invalid-argument')) {
+        debugPrint('❌ Invalid argument - check user IDs');
+      }
+      
       return false;
     }
   }
@@ -162,6 +239,12 @@ class DraftSharingService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         debugPrint('❌ User not authenticated');
+        return false;
+      }
+
+      // Validate shared draft ID
+      if (sharedDraftId.isEmpty) {
+        debugPrint('❌ Shared draft ID is empty');
         return false;
       }
 
@@ -241,6 +324,12 @@ class DraftSharingService {
         return false;
       }
 
+      // Validate shared draft ID
+      if (sharedDraftId.isEmpty) {
+        debugPrint('❌ Shared draft ID is empty');
+        return false;
+      }
+
       // Update shared draft to mark as declined
       await _firestore.collection('shared_drafts').doc(sharedDraftId).update({
         'declinedBy': FieldValue.arrayUnion([currentUser.uid]),
@@ -289,9 +378,21 @@ class DraftSharingService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return;
 
+      // Validate IDs
+      if (sharedDraftId.isEmpty) {
+        debugPrint('❌ Shared draft ID is empty for notifications');
+        return;
+      }
+
       final batch = _firestore.batch();
 
       for (final recipientId in recipientIds) {
+        // Skip empty recipient IDs
+        if (recipientId.isEmpty) {
+          debugPrint('⚠️ Skipping empty recipient ID');
+          continue;
+        }
+
         final notificationRef = _firestore
             .collection('notifications')
             .doc(recipientId)
@@ -318,6 +419,81 @@ class DraftSharingService {
           '✅ Created notifications for ${recipientIds.length} recipients');
     } catch (e) {
       debugPrint('❌ Error creating share notifications: $e');
+    }
+  }
+
+  /// Create chat conversation and send draft message
+  Future<void> _createDraftChatConversation({
+    required String sharedDraftId,
+    required String recipientId,
+    required Map<String, dynamic> draft,
+    String? message,
+  }) async {
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) return;
+
+      // Validate required IDs
+      if (sharedDraftId.isEmpty || recipientId.isEmpty) {
+        debugPrint('❌ Invalid IDs: sharedDraftId=$sharedDraftId, recipientId=$recipientId');
+        return;
+      }
+
+      // 1. Create or fetch chat
+      final chat = await _chatService.fetchOrCreateChat(recipientId);
+      if (chat == null || chat.id == null || chat.id!.isEmpty) {
+        debugPrint('❌ Failed to create/fetch chat for draft sharing');
+        return;
+      }
+
+      final chatId = chat.id!;
+      final draftId = draft['id'] as String? ?? '';
+      final originalDraftId = draftId.isNotEmpty ? draftId : sharedDraftId;
+
+      // 2. Create draft share message
+      final draftMessage = {
+        'type': 'draft_share',
+        'messageType': 'draft_share',
+        'from': currentUser.uid,
+        'senderId': currentUser.uid,
+        'to': recipientId,
+        'text': message ?? 'Check out this draft and share your feedback!',
+        'draftId': sharedDraftId,
+        'originalDraftId': originalDraftId,
+        'caption': draft['caption'] ?? '',
+        'hashtags': draft['hashtags'] ?? [],
+        'thumbnailPath': draft['thumbnailPath'] ?? '',
+        'videoPath': draft['videoPath'] ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+        'read': false,
+        'isRead': false,
+        'readBy': [currentUser.uid],
+        'recipients': [recipientId],
+        'chatId': chatId,
+      };
+
+      // 3. Add message to chat
+      await _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .add(draftMessage);
+
+      // 4. Update chat metadata
+      await _firestore.collection('chats').doc(chatId).update({
+        'lastMessage': message ?? 'Shared a draft for feedback',
+        'lastTimestamp': FieldValue.serverTimestamp(),
+        'unreadCount': FieldValue.increment(1),
+        'chatType': 'draft_feedback',
+      });
+
+      debugPrint('✅ Created draft chat conversation with $recipientId');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error creating draft chat conversation with $recipientId: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
+      
+      // Re-throw to allow caller to handle
+      rethrow;
     }
   }
 

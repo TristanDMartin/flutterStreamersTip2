@@ -9,9 +9,12 @@ import '../services/inbox_service_optimized.dart';
 import '../services/logging_service.dart';
 import '../services/offline_inbox_service.dart';
 import '../services/chat_service.dart';
+import '../services/draft_sharing_service.dart';
+import '../services/local_draft_service.dart';
 import '../providers/unread_messages_provider.dart';
 import 'chat_view.dart';
 import 'new_message_view.dart';
+import 'draft_feedback_view.dart';
 // import 'draft_creation_view.dart'; // Removed - unused
 
 class InboxViewOptimized extends ConsumerStatefulWidget {
@@ -87,12 +90,20 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     // Start real-time listeners
     _inboxService.startRealTimeListeners(
       onChatsUpdate: (chats) async {
-        await _loadUserDataForChats(chats);
-        await _offlineService.cacheChats(chats);
+        // Filter out invalid chats (with empty participant IDs)
+        final validChats = _filterValidChats(chats);
+
+        if (validChats.length < chats.length) {
+          debugPrint(
+              '⚠️ InboxView: Filtered out ${chats.length - validChats.length} invalid chats');
+        }
+
+        await _loadUserDataForChats(validChats);
+        await _offlineService.cacheChats(validChats);
         if (mounted) {
           setState(() {
-            _chats = chats;
-            _filteredChats = chats;
+            _chats = validChats;
+            _filteredChats = validChats;
             _isLoading = false;
           });
         }
@@ -117,10 +128,18 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     if (currentUser == null) return;
 
     for (final chat in _chats) {
-      final otherUserId = chat.participants.firstWhere(
-        (id) => id != currentUser.uid,
-        orElse: () => chat.participants.first,
-      );
+      // Filter out empty IDs and current user
+      final validParticipants = chat.participants
+          .where((id) => id.isNotEmpty && id != currentUser.uid)
+          .toList();
+
+      if (validParticipants.isEmpty) {
+        debugPrint(
+            '⚠️ InboxView: Skipping chat ${chat.id} - no valid participants');
+        continue;
+      }
+
+      final otherUserId = validParticipants.first;
 
       // Listen to user profile changes
       FirebaseFirestore.instance
@@ -174,11 +193,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         final cachedOnlineStatus =
             await _offlineService.getCachedOnlineStatus();
 
+        // Filter out invalid chats (with empty participant IDs)
+        final validCachedChats = _filterValidChats(cachedChats);
+
         if (mounted) {
           setState(() {
-            _chats = cachedChats;
+            _chats = validCachedChats;
             _sharedDrafts = cachedDrafts;
-            _filteredChats = cachedChats;
+            _filteredChats = validCachedChats;
             _filteredDrafts = cachedDrafts;
             _userProfiles.addAll(cachedUserProfiles);
             _unreadCounts.addAll(cachedUnreadCounts);
@@ -207,16 +229,24 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         _inboxService.getSharedDrafts(),
       ]);
 
-      final chats = results[0] as List<app_chat.Chat>;
+      final allChats = results[0] as List<app_chat.Chat>;
       final drafts = results[1] as List<SharedDraft>;
 
+      // Filter out invalid chats (with empty participant IDs)
+      final validChats = _filterValidChats(allChats);
+
+      if (validChats.length < allChats.length) {
+        debugPrint(
+            '⚠️ InboxView: Filtered out ${allChats.length - validChats.length} invalid chats');
+      }
+
       // Load user profiles and unread counts for each chat
-      await _loadUserDataForChats(chats);
+      await _loadUserDataForChats(validChats);
 
       setState(() {
-        _chats = chats;
+        _chats = validChats;
         _sharedDrafts = drafts;
-        _filteredChats = chats;
+        _filteredChats = validChats;
         _filteredDrafts = drafts;
         _isLoading = false;
       });
@@ -232,6 +262,19 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
   }
 
+  /// Filter out chats with invalid participants (empty IDs or only current user)
+  List<app_chat.Chat> _filterValidChats(List<app_chat.Chat> chats) {
+    final currentUser = _inboxService.auth.currentUser;
+    if (currentUser == null) return chats;
+
+    return chats.where((chat) {
+      final validParticipants = chat.participants
+          .where((id) => id.isNotEmpty && id != currentUser.uid)
+          .toList();
+      return validParticipants.isNotEmpty;
+    }).toList();
+  }
+
   Future<void> _loadUserDataForChats(List<app_chat.Chat> chats) async {
     final currentUser = _inboxService.auth.currentUser;
     if (currentUser == null) return;
@@ -242,11 +285,18 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final futures = <Future>[];
 
     for (final chat in chats) {
-      // Get other user ID
-      final otherUserId = chat.participants.firstWhere(
-        (id) => id != currentUser.uid,
-        orElse: () => chat.participants.first,
-      );
+      // Filter out empty IDs and current user
+      final validParticipants = chat.participants
+          .where((id) => id.isNotEmpty && id != currentUser.uid)
+          .toList();
+
+      if (validParticipants.isEmpty) {
+        debugPrint(
+            '⚠️ InboxView: Skipping chat ${chat.id} - no valid participants');
+        continue;
+      }
+
+      final otherUserId = validParticipants.first;
 
       debugPrint('InboxView: Loading data for other user: $otherUserId');
 
@@ -290,6 +340,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   void _onSearchChanged(String query) {
     setState(() {
       if (query.isEmpty) {
+        // _chats is already filtered, so we can use it directly
         _filteredChats = _chats;
         _filteredDrafts = _sharedDrafts;
       } else {
@@ -300,10 +351,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           final currentUser = _inboxService.auth.currentUser;
           if (currentUser == null) return false;
 
-          final otherUserId = chat.participants.firstWhere(
-            (id) => id != currentUser.uid,
-            orElse: () => chat.participants.first,
-          );
+          // Filter out empty IDs and current user
+          final validParticipants = chat.participants
+              .where((id) => id.isNotEmpty && id != currentUser.uid)
+              .toList();
+
+          if (validParticipants.isEmpty) return false;
+
+          final otherUserId = validParticipants.first;
 
           final userProfile = _userProfiles[otherUserId];
           final userName =
@@ -733,12 +788,23 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Widget _buildChatTile(app_chat.Chat chat) {
     final isSelected = _selectedItems.contains(chat.id);
     final currentUser = _inboxService.auth.currentUser;
-    final otherUserId = currentUser != null
-        ? chat.participants.firstWhere(
-            (id) => id != currentUser.uid,
-            orElse: () => chat.participants.first,
-          )
-        : chat.participants.first;
+
+    // Filter out empty IDs and current user
+    final validParticipants = chat.participants
+        .where((id) =>
+            id.isNotEmpty && (currentUser == null || id != currentUser.uid))
+        .toList();
+
+    if (validParticipants.isEmpty) {
+      // Show a placeholder for invalid chats
+      return ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.error)),
+        title: const Text('Invalid chat'),
+        subtitle: const Text('Missing participant information'),
+      );
+    }
+
+    final otherUserId = validParticipants.first;
 
     final userProfile = _userProfiles[otherUserId];
     final participantName =
@@ -1588,54 +1654,243 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     _isNavigating = true;
 
     try {
-      // Get other user ID
+      // Get current user
       final currentUser = _inboxService.auth.currentUser;
-      if (currentUser == null) return;
+      if (currentUser == null) {
+        _isNavigating = false;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please sign in to open chats'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
 
-      final otherUserId = chat.participants.firstWhere(
-        (id) => id != currentUser.uid,
-        orElse: () => chat.participants.first,
-      );
+      // Debug: Log chat information
+      debugPrint('🔍 InboxView: Chat ID: ${chat.id}');
+      debugPrint('🔍 InboxView: Chat participants: ${chat.participants}');
+      debugPrint('🔍 InboxView: Current user: ${currentUser.uid}');
 
-      debugPrint('InboxView: Opening chat with user: $otherUserId');
+      // Try to get other user ID from participants
+      String? otherUserId;
+
+      if (chat.participants.isNotEmpty) {
+        // Get other user ID - filter out empty IDs and current user
+        final validParticipants = chat.participants
+            .where((id) => id.isNotEmpty && id != currentUser.uid)
+            .toList();
+
+        if (validParticipants.isNotEmpty) {
+          otherUserId = validParticipants.first;
+          debugPrint(
+              '✅ InboxView: Found other user from participants: $otherUserId');
+        } else {
+          debugPrint(
+              '⚠️ InboxView: No valid other participant in participants list');
+        }
+      } else {
+        debugPrint('⚠️ InboxView: Chat has no participants list');
+      }
+
+      // If we couldn't determine other user from participants, try to fetch from Firestore
+      if (otherUserId == null && chat.id != null && chat.id!.isNotEmpty) {
+        debugPrint(
+            '🔄 InboxView: Attempting to fetch chat from Firestore: ${chat.id}');
+        try {
+          final chatDoc = await FirebaseFirestore.instance
+              .collection('chats')
+              .doc(chat.id!)
+              .get();
+
+          if (chatDoc.exists) {
+            final data = chatDoc.data();
+            final participants = List<String>.from(data?['participants'] ?? []);
+            debugPrint(
+                '🔄 InboxView: Fetched participants from Firestore: $participants');
+
+            // Update the chat object with fresh data from Firestore
+            final firestoreChat = app_chat.Chat.fromJson(data!);
+            final updatedChat = firestoreChat.copyWith(id: chat.id);
+
+            // Try to find other user from fresh participants
+            final validParticipants = participants
+                .where((id) => id.isNotEmpty && id != currentUser.uid)
+                .toList();
+
+            if (validParticipants.isNotEmpty) {
+              final foundOtherUserId = validParticipants.first;
+              debugPrint(
+                  '✅ InboxView: Found other user from Firestore: $foundOtherUserId');
+
+              // Use the updated chat from Firestore if it has valid participants
+              final validChatId = updatedChat.id;
+              if (validChatId != null && validChatId.isNotEmpty) {
+                // Mark messages as read
+                _inboxService.markAsRead(validChatId).catchError((error) {
+                  debugPrint('InboxView: Error marking as read: $error');
+                });
+
+                // Update unread count
+                if (mounted) {
+                  setState(() {
+                    _unreadCounts[validChatId] = 0;
+                  });
+                }
+
+                // Force refresh
+                ref.invalidate(unreadMessagesProvider);
+
+                final userProfile = _userProfiles[foundOtherUserId];
+
+                if (mounted) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => ChatView(
+                        chat: updatedChat,
+                        otherUserId: foundOtherUserId,
+                        otherUserName: userProfile?.displayName ??
+                            userProfile?.username ??
+                            'User',
+                        otherUserAvatarURL: userProfile?.avatarURL,
+                        otherUserIsOnline:
+                            _onlineStatus[foundOtherUserId] ?? false,
+                      ),
+                    ),
+                  );
+                }
+                _isNavigating = false;
+                return;
+              }
+
+              // Set otherUserId for fallback to normal flow
+              otherUserId = foundOtherUserId;
+            } else {
+              debugPrint(
+                  '⚠️ InboxView: Firestore participants also invalid: $participants');
+            }
+          } else {
+            debugPrint(
+                '⚠️ InboxView: Chat document does not exist in Firestore: ${chat.id}');
+          }
+        } catch (e) {
+          debugPrint('❌ InboxView: Error fetching chat from Firestore: $e');
+        }
+      }
+
+      // If still no other user ID, we can't proceed
+      if (otherUserId == null || otherUserId.isEmpty) {
+        _isNavigating = false;
+        debugPrint('❌ InboxView: Unable to determine other user ID');
+        debugPrint('❌ InboxView: Chat ID: ${chat.id}');
+        debugPrint('❌ InboxView: Chat participants: ${chat.participants}');
+        debugPrint('❌ InboxView: Current user ID: ${currentUser.uid}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text('Unable to open chat: missing participant information'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Store in non-nullable variable for type safety
+      final validOtherUserId = otherUserId;
+      debugPrint('✅ InboxView: Opening chat with user: $validOtherUserId');
 
       // Ensure chat document exists in Firestore BEFORE opening ChatView
       // This is the Instagram/TikTok pattern - create chat proactively
       final chatService = ChatService.shared;
-      final ensuredChat = await chatService.fetchOrCreateChat(otherUserId);
+
+      app_chat.Chat? ensuredChat;
+      try {
+        ensuredChat = await chatService.fetchOrCreateChat(validOtherUserId);
+      } catch (e) {
+        _isNavigating = false;
+        debugPrint('❌ InboxView: Exception while fetching/creating chat: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error opening chat: ${e.toString()}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
 
       if (ensuredChat == null) {
-        throw Exception('Failed to create or fetch chat');
+        _isNavigating = false;
+        debugPrint(
+            '❌ InboxView: fetchOrCreateChat returned null for user: $otherUserId');
+        debugPrint('❌ InboxView: Chat participants: ${chat.participants}');
+        debugPrint('❌ InboxView: Current user: ${currentUser.uid}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Unable to open chat. The chat may not exist or you may not have permission.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Store in a non-nullable variable for type safety
+      final validChat = ensuredChat;
+
+      // Validate validChat has a valid ID
+      final validChatId = validChat.id;
+      if (validChatId == null || validChatId.isEmpty) {
+        _isNavigating = false;
+        debugPrint('❌ InboxView: Ensured chat has no ID');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Invalid chat: chat ID is missing'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
       }
 
       // Mark messages as read when opening chat (non-blocking)
-      _inboxService.markAsRead(ensuredChat.id ?? '').catchError((error) {
+      _inboxService.markAsRead(validChatId).catchError((error) {
         debugPrint('InboxView: Error marking as read: $error');
       });
 
       // Update unread count
       if (mounted) {
         setState(() {
-          _unreadCounts[ensuredChat.id ?? ''] = 0;
+          _unreadCounts[validChatId] = 0;
         });
       }
 
       // Force refresh the unread messages provider
       ref.invalidate(unreadMessagesProvider);
 
-      final userProfile = _userProfiles[otherUserId];
+      final userProfile = _userProfiles[validOtherUserId];
 
       if (mounted) {
         // Use a simpler navigation without complex transitions
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ChatView(
-              chat: ensuredChat, // Use ensuredChat instead of chat
-              otherUserId: otherUserId,
+              chat: validChat,
+              otherUserId: validOtherUserId,
               otherUserName:
                   userProfile?.displayName ?? userProfile?.username ?? 'User',
               otherUserAvatarURL: userProfile?.avatarURL,
-              otherUserIsOnline: _onlineStatus[otherUserId] ?? false,
+              otherUserIsOnline: _onlineStatus[validOtherUserId] ?? false,
             ),
           ),
         );
@@ -1659,25 +1914,137 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   void _openDraft(SharedDraft draft) async {
     HapticFeedback.lightImpact();
 
-    // Mark draft as viewed
-    await _inboxService.markAsRead(draft.id);
+    // Prevent multiple simultaneous taps
+    if (_isNavigating) return;
+    _isNavigating = true;
 
-    // Navigate to draft creation view for editing
-    if (mounted) {
-      // final result = await Navigator.of(context).push(
-      //   _createSlideTransition(
-      //     page: DraftCreationView(existingDraft: draft),
-      //   ),
-      // );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Draft editing feature coming soon!')),
-      );
-      final result = null;
-
-      // Refresh data if draft was modified
-      if (result == true) {
-        _refreshData();
+    try {
+      // Validate draft ID
+      if (draft.id.isEmpty) {
+        _isNavigating = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid draft ID'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
+
+      // Mark draft as viewed
+      await _inboxService.markAsRead(draft.id);
+
+      // Get current user to determine if we're the sender or receiver
+      final currentUser = _inboxService.auth.currentUser;
+      if (currentUser == null) {
+        _isNavigating = false;
+        return;
+      }
+
+      // Determine the other user ID (if we're the sender, use receiverId; if receiver, use senderId)
+      final isSender = draft.senderId == currentUser.uid;
+      final otherUserId = isSender ? draft.receiverId : draft.senderId;
+
+      if (otherUserId.isEmpty) {
+        _isNavigating = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to open draft feedback'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Get or create chat
+      final chatService = ChatService.shared;
+      final chat = await chatService.fetchOrCreateChat(otherUserId);
+
+      if (chat == null || chat.id == null || chat.id!.isEmpty) {
+        _isNavigating = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to open draft feedback'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Get user profile
+      final userProfile = _userProfiles[otherUserId];
+      final otherUserName = userProfile?.displayName ?? draft.senderName;
+      final otherUserAvatarURL = userProfile?.avatarURL ?? draft.senderAvatar;
+
+      // Get shared draft data from Firestore
+      final draftSharingService = DraftSharingService();
+      final sharedDrafts = await draftSharingService.getSharedDraftsWithMe();
+      final sharedDraftsByMe = await draftSharingService.getDraftsSharedByMe();
+
+      // Find the shared draft document
+      final allDrafts = [...sharedDrafts, ...sharedDraftsByMe];
+      final foundDraft = allDrafts.firstWhere(
+        (d) => d['id'] == draft.id || d['originalDraftId'] == draft.draftId,
+        orElse: () => <String, dynamic>{},
+      );
+
+      Map<String, dynamic> sharedDraftData;
+      if (foundDraft.isNotEmpty) {
+        sharedDraftData = Map<String, dynamic>.from(foundDraft);
+      } else {
+        // Fallback: create shared draft data from SharedDraft model
+        sharedDraftData = {
+          'id': draft.id,
+          'originalDraftId': draft.draftId,
+          'caption': draft.draftTitle,
+          'hashtags': [],
+          'sharerId': draft.senderId,
+          'recipients': [draft.receiverId],
+        };
+      }
+
+      // Try to get video path from local draft service
+      try {
+        final localDraftService = LocalDraftService();
+        final localDrafts = await localDraftService.getAllDrafts();
+        final localDraft = localDrafts.firstWhere(
+          (d) => d['id'] == draft.draftId,
+          orElse: () => <String, dynamic>{},
+        );
+
+        if (localDraft.isNotEmpty) {
+          sharedDraftData['videoPath'] = localDraft['videoPath'];
+          sharedDraftData['thumbnailPath'] = localDraft['thumbnailPath'];
+        }
+      } catch (e) {
+        debugPrint('⚠️ Could not load local draft data: $e');
+      }
+
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => DraftFeedbackView(
+              sharedDraft: sharedDraftData,
+              chat: chat,
+              otherUserId: otherUserId,
+              otherUserName: otherUserName,
+              otherUserAvatarURL: otherUserAvatarURL,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error opening draft: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening draft: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      _isNavigating = false;
     }
   }
 
