@@ -15,6 +15,7 @@ class VideoControllerRegistry {
   final Map<String, VideoPlayerController> _controllers = {};
   final Map<String, bool> _isVisible = {};
   final Map<String, bool> _isRegistered = {};
+  final Map<String, bool> _disposedControllers = {};
 
   /// Register a video controller - REQUIRED before any play/pause operations
   /// Returns true if registration successful, false if already registered
@@ -27,6 +28,7 @@ class VideoControllerRegistry {
     _controllers[videoId] = controller;
     _isRegistered[videoId] = true;
     _isVisible[videoId] = false; // Start as hidden
+    _disposedControllers[videoId] = false;
 
     log('✅ VideoControllerRegistry: Registered controller for $videoId');
     return true;
@@ -34,7 +36,7 @@ class VideoControllerRegistry {
 
   /// Mark a video as visible (should be playing)
   void markVisible(String videoId) {
-    if (!_isRegistered[videoId]!) {
+    if (_isRegistered[videoId] != true) {
       log('❌ VideoControllerRegistry: Cannot mark visible - not registered: $videoId');
       return;
     }
@@ -45,7 +47,7 @@ class VideoControllerRegistry {
 
   /// Mark a video as hidden (should be paused)
   void markHidden(String videoId) {
-    if (!_isRegistered[videoId]!) {
+    if (_isRegistered[videoId] != true) {
       log('❌ VideoControllerRegistry: Cannot mark hidden - not registered: $videoId');
       return;
     }
@@ -63,6 +65,10 @@ class VideoControllerRegistry {
     }
 
     final isRegistered = _isRegistered[videoId] == true;
+    if (_disposedControllers[videoId] == true) {
+      return false;
+    }
+
     final controller = _controllers[videoId];
     final isInitialized = controller?.value.isInitialized == true;
     final hasNoError = controller?.value.hasError != true;
@@ -107,6 +113,12 @@ class VideoControllerRegistry {
     _controllers.remove(videoId);
     _isVisible.remove(videoId);
     _isRegistered.remove(videoId);
+    _disposedControllers[videoId] = true;
+  }
+
+  /// Check if controller has been disposed by the registry
+  bool isControllerDisposed(String videoId) {
+    return _disposedControllers[videoId] == true;
   }
 
   /// Get debug info

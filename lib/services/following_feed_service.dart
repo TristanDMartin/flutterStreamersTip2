@@ -23,48 +23,117 @@ class FollowingFeedService {
   }) async {
     try {
       log('👥 FollowingFeedService: Fetching videos for viewer $viewerId');
-
-      // 1) Get user's connections from the same source as NetworkView
-      final connections = await _getUserConnections(viewerId);
-
-      if (connections.isEmpty) {
-        log('👥 FollowingFeedService: No connections found for user $viewerId');
-        return [];
-      }
-
-      // 2) Extract author IDs from connections
-      log('👥 FollowingFeedService: Processing ${connections.length} total connections');
-      for (final conn in connections) {
-        log('   - Connection ${conn.connectionId}: followState=${conn.followState}');
-      }
-
-      final authorIds = connections
-          .where((conn) =>
-              conn.followState == 'mutual' || conn.followState == 'following')
-          .map((conn) => conn.connectionId)
-          .toList();
-
+      final authorIds = await _collectAuthorIds(viewerId);
       if (authorIds.isEmpty) {
-        log('👥 FollowingFeedService: No valid connections for videos (connections: ${connections.length})');
-        for (final conn in connections) {
-          log('   - Connection ${conn.connectionId}: followState=${conn.followState}');
-        }
+        log('👥 FollowingFeedService: No valid author IDs for viewer $viewerId');
         return [];
       }
-
-      log('👥 FollowingFeedService: Found ${authorIds.length} connections to fetch videos from');
-      log('👥 FollowingFeedService: Author IDs: $authorIds');
-
-      // 3) Fetch videos from these authors using chunked queries
-      final videos =
-          await _fetchVideosFromAuthors(authorIds, limit, startAfter);
-
+      log('👥 FollowingFeedService: Fetching videos for ${authorIds.length} authors');
+      final videos = await _fetchVideosFromAuthors(authorIds, limit, startAfter);
       log('👥 FollowingFeedService: Fetched ${videos.length} videos');
       return videos;
     } catch (e) {
       log('❌ FollowingFeedService: Error fetching following videos: $e');
       return [];
     }
+  }
+
+  Future<List<String>> _collectAuthorIds(String viewerId) async {
+    final Set<String> rawIds = <String>{};
+    try {
+      final connections = await _getUserConnections(viewerId);
+      if (connections.isNotEmpty) {
+        log('👥 FollowingFeedService: Processing ${connections.length} connections');
+        for (final connection in connections) {
+          final String peerId = connection.peerId.isNotEmpty
+              ? connection.peerId
+              : connection.connectionId;
+          if ((connection.followState == 'mutual' ||
+                  connection.followState == 'following') &&
+              peerId.isNotEmpty) {
+            rawIds.add(peerId);
+            log('   - Connection ${connection.connectionId} resolved to peer $peerId');
+          }
+        }
+      } else {
+        log('👥 FollowingFeedService: No connections documents for $viewerId');
+      }
+    } catch (e) {
+      log('❌ FollowingFeedService: Error reading connections: $e');
+    }
+    await _collectFromRelationships(viewerId, rawIds);
+    await _collectFromFollows(viewerId, rawIds);
+    rawIds.remove(viewerId);
+    final List<String> filteredIds =
+        await _filterExistingUserIds(rawIds.toList());
+    log('👥 FollowingFeedService: Collected ${filteredIds.length} verified author IDs');
+    if (filteredIds.length != rawIds.length) {
+      log('👥 FollowingFeedService: Filtered out ${rawIds.length - filteredIds.length} invalid IDs');
+    }
+    return filteredIds;
+  }
+
+  Future<void> _collectFromRelationships(
+      String viewerId, Set<String> rawIds) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('relationships')
+          .where('followerId', isEqualTo: viewerId)
+          .get();
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        final String followingId = data['followingId'] ?? '';
+        if (followingId.isNotEmpty) {
+          rawIds.add(followingId);
+          log('   - Relationship ${doc.id} -> $followingId');
+        }
+      }
+    } catch (e) {
+      log('❌ FollowingFeedService: Error collecting relationships: $e');
+    }
+  }
+
+  Future<void> _collectFromFollows(String viewerId, Set<String> rawIds) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('follows')
+          .where('followerId', isEqualTo: viewerId)
+          .get();
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        final String followedId = data['followedId'] ?? '';
+        if (followedId.isNotEmpty) {
+          rawIds.add(followedId);
+          log('   - Follows ${doc.id} -> $followedId');
+        }
+      }
+    } catch (e) {
+      log('❌ FollowingFeedService: Error collecting follows: $e');
+    }
+  }
+
+  Future<List<String>> _filterExistingUserIds(List<String> ids) async {
+    final Set<String> validIds = <String>{};
+    final List<String> cleaned = ids
+        .where((id) => id.isNotEmpty)
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList();
+    for (int i = 0; i < cleaned.length; i += 10) {
+      final chunk = cleaned.skip(i).take(10).toList();
+      try {
+        final snapshot = await _firestore
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final doc in snapshot.docs) {
+          validIds.add(doc.id);
+        }
+      } catch (e) {
+        log('❌ FollowingFeedService: Error validating user IDs chunk: $e');
+      }
+    }
+    return validIds.toList();
   }
 
   /// Get user's connections (same as NetworkView Connections tab)
@@ -75,9 +144,9 @@ class FollowingFeedService {
           .doc(viewerId)
           .collection('connections')
           .get();
-
       return querySnapshot.docs
           .map((doc) => _connectionFromFirestore(doc))
+          .where((connection) => connection.peerId.isNotEmpty)
           .toList();
     } catch (e) {
       log('❌ FollowingFeedService: Error fetching connections: $e');
@@ -195,11 +264,14 @@ class FollowingFeedService {
   /// Helper method to create Connection from Firestore document
   Connection _connectionFromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    final Timestamp? updatedAt = data['updatedAt'] as Timestamp?;
+    final String peerId = (data['peerId'] ?? data['userId'] ?? data['connectionId'] ?? doc.id) as String;
     return Connection(
       connectionId: doc.id,
+      peerId: peerId,
       followState: data['followState'] ?? 'follower',
       canDM: data['canDM'] ?? false,
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      updatedAt: updatedAt?.toDate(),
     );
   }
 
@@ -246,12 +318,14 @@ class FollowingFeedService {
 /// Connection model for Following feed
 class Connection {
   final String connectionId;
+  final String peerId;
   final String followState; // 'mutual', 'following', 'follower'
   final bool canDM;
-  final DateTime updatedAt;
+  final DateTime? updatedAt;
 
   Connection({
     required this.connectionId,
+    required this.peerId,
     required this.followState,
     required this.canDM,
     required this.updatedAt,
