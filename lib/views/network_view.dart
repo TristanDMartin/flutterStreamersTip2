@@ -1003,9 +1003,23 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     debugPrint('🔵 NetworkView: User username: ${user.username}');
     debugPrint('🔵 NetworkView: User displayName: ${user.displayName}');
 
-    // Use multiple approaches to prevent backgrounding
-    Future.microtask(() {
+    Future.microtask(() async {
       if (mounted) {
+        final userId = await _resolveUserDocumentId(user);
+        debugPrint('🔵 NetworkView: Resolved userId for StreamerCardView: $userId');
+        if (userId == null) {
+          debugPrint('❌ NetworkView: Unable to resolve user document for ${user.displayName} (${user.username})');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Unable to load profile. User record missing.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
         // Force the app to stay in foreground with multiple approaches
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
         SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -1014,7 +1028,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => StreamerCardView(
-              userId: user.id,
+              userId: userId,
               currentUserId: FirebaseAuth.instance.currentUser?.uid,
               onDismiss: () => Navigator.of(context).pop(),
               onFollow: (userId) async {
@@ -1058,6 +1072,45 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         );
       }
     });
+  }
+
+  Future<String?> _resolveUserDocumentId(user_model.User user) async {
+    // If the provided ID already looks like a Firestore UID, use it directly
+    if (user.id.isNotEmpty && user.id.length >= 20) {
+      return user.id;
+    }
+
+    try {
+      // Try looking up by username first
+      if (user.username.isNotEmpty) {
+        final usernameQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isEqualTo: user.username)
+            .limit(1)
+            .get();
+
+        if (usernameQuery.docs.isNotEmpty) {
+          return usernameQuery.docs.first.id;
+        }
+      }
+
+      // Fallback to display name (exact match)
+      if (user.displayName.isNotEmpty) {
+        final displayNameQuery = await FirebaseFirestore.instance
+            .collection('users')
+            .where('displayName', isEqualTo: user.displayName)
+            .limit(1)
+            .get();
+
+        if (displayNameQuery.docs.isNotEmpty) {
+          return displayNameQuery.docs.first.id;
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ NetworkView: Error resolving user document: $e');
+    }
+
+    return null;
   }
 
   Widget _buildUserCard(user_model.User user) {
