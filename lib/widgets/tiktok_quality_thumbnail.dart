@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import '../services/video_thumbnail_service.dart';
 
-/// TikTok-quality thumbnail widget with crisp, high-resolution thumbnails
+/// High-quality thumbnail widget with crisp, high-resolution thumbnails
 class TikTokQualityThumbnail extends StatefulWidget {
   final String videoUrl;
   final double? width;
@@ -57,9 +57,9 @@ class _TikTokQualityThumbnailState extends State<TikTokQualityThumbnail> {
     });
 
     try {
-      // Use TikTok-quality thumbnail generation
+      // Use high-quality thumbnail generation
       final thumbnailData =
-          await VideoThumbnailService.generateTikTokQualityThumbnail(
+          await VideoThumbnailService.generateHighQualityThumbnail(
         widget.videoUrl,
         maxWidth: widget.width?.toInt() ?? 720,
         maxHeight: widget.height?.toInt() ?? 1280,
@@ -74,7 +74,7 @@ class _TikTokQualityThumbnailState extends State<TikTokQualityThumbnail> {
         });
       }
     } catch (e) {
-      debugPrint('Error generating TikTok-quality thumbnail: $e');
+      debugPrint('Error generating high-quality thumbnail: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;

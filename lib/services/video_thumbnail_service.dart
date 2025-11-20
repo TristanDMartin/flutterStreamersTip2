@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
 class VideoThumbnailService {
-  // TikTok-quality thumbnail settings
+  // High-quality thumbnail settings
   static const int _maxWidth = 720; // High resolution for crisp thumbnails
   static const int _maxHeight = 1280; // High resolution for crisp thumbnails
   static const int _thumbnailTimeMs = 1000; // 1 second
@@ -131,8 +131,8 @@ class VideoThumbnailService {
     return thumbnails;
   }
 
-  /// Generates a TikTok-quality thumbnail with optimal settings
-  static Future<Uint8List?> generateTikTokQualityThumbnail(
+  /// Generates a high-quality thumbnail with optimal settings
+  static Future<Uint8List?> generateHighQualityThumbnail(
     String videoPath, {
     int? maxWidth,
     int? maxHeight,
@@ -151,15 +151,15 @@ class VideoThumbnailService {
       final thumbnail = await VideoThumbnail.thumbnailData(
         video: localPath,
         imageFormat: ImageFormat.JPEG,
-        maxWidth: maxWidth ?? 720, // TikTok uses high resolution
-        maxHeight: maxHeight ?? 1280, // TikTok uses high resolution
+        maxWidth: maxWidth ?? 720, // High resolution for crisp thumbnails
+        maxHeight: maxHeight ?? 1280, // High resolution for crisp thumbnails
         timeMs: timeMs ?? _thumbnailTimeMs,
         quality: 95, // Maximum quality for crisp images
       );
 
       return thumbnail;
     } catch (e) {
-      debugPrint('Error generating TikTok-quality thumbnail: $e');
+      debugPrint('Error generating high-quality thumbnail: $e');
       return null;
     }
   }

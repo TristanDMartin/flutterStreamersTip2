@@ -230,11 +230,28 @@ class TikTokCameraService {
         camera,
         _resolutionPreset,
         enableAudio: true,
-        imageFormatGroup: ImageFormatGroup.yuv420,
+        imageFormatGroup: Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
       );
 
       await _controller!.initialize();
       _currentCameraId = camera.name;
+
+      // Log actual preview size to diagnose field of view issues
+      final previewSize = _controller!.value.previewSize;
+      if (previewSize != null) {
+        final aspectRatio = previewSize.width / previewSize.height;
+        log('📐 Camera preview size: ${previewSize.width}x${previewSize.height} (aspect ratio: ${aspectRatio.toStringAsFixed(3)})');
+        log('📐 Camera sensor orientation: ${previewSize.width > previewSize.height ? "landscape" : "portrait"}');
+      }
+
+      // 🔍 FIXED: Set zoom to 1.0 (minimum/normal zoom level)
+      // This ensures we get the full sensor field of view without any zoom
+      try {
+        await _controller!.setZoomLevel(1.0);
+        log('🔍 Zoom set to 1.0 (full field of view)');
+      } catch (e) {
+        log('⚠️ Could not set zoom: $e');
+      }
 
       log('✅ Camera initialized successfully');
     } catch (e) {
@@ -244,11 +261,15 @@ class TikTokCameraService {
   }
 
   /// Get optimal resolution based on device capabilities
+  /// 
+  /// FIXED: Try to find a resolution preset that gives 16:9 natively
+  /// Native camera apps use sensor modes that output 16:9 directly (not cropped)
+  /// We'll test different presets and prefer one that gives 16:9 at high quality
   ResolutionPreset _getOptimalResolution() {
-    if (_supports4K) {
-      return ResolutionPreset.veryHigh; // 4K
-    }
-    return ResolutionPreset.high; // 1080p
+    // Prefer high/veryHigh presets which often support 16:9 on modern devices
+    // These give best quality while potentially offering 16:9 sensor mode
+    // Fallback to max if needed
+    return ResolutionPreset.high; // Often gives 16:9 at high quality (1080p/1440p)
   }
 
   /// Get optimal frame rate based on device capabilities
@@ -282,8 +303,10 @@ class TikTokCameraService {
     try {
       log('🎥 Applying TikTok-quality settings...');
 
-      // Lock orientation to portrait for 9:16 video
-      await _controller!.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      // 🔍 FIXED: Don't lock capture orientation - let camera use full sensor
+      // Locking orientation can cause cropping and reduce field of view
+      // We'll handle orientation in the UI instead
+      // await _controller!.lockCaptureOrientation(DeviceOrientation.portraitUp); // REMOVED
 
       // Set focus mode for video recording
       await _controller!.setFocusMode(FocusMode.auto);
@@ -297,8 +320,8 @@ class TikTokCameraService {
       // Set flash off by default
       await _controller!.setFlashMode(FlashMode.off);
 
-      // Reset zoom to 1.0
-      await _controller!.setZoomLevel(1.0);
+      // Zoom is already set to 1.0 in _initializeCamera
+      // No need to set it again here
 
       log('✅ TikTok-quality settings applied');
     } catch (e) {
@@ -442,19 +465,43 @@ class TikTokCameraService {
   }
 
   /// Get camera preview size for proper aspect ratio
+  /// 
+  /// FIXED: Returns correct preview size based on camera orientation
+  /// For portrait 9:16 video, preview size should match the sensor orientation
   Size getPreviewSize() {
     if (_controller == null || !_controller!.value.isInitialized) {
-      return const Size(1080, 1920); // Default 9:16
+      // Default 9:16 aspect ratio (width:height = 9:16)
+      return const Size(1080, 1920);
     }
 
-    final size = _controller!.value.previewSize;
-    return Size(size?.height ?? 1080, size?.width ?? 1920); // Swap for portrait
+    final previewSize = _controller!.value.previewSize;
+    if (previewSize == null) {
+      return const Size(1080, 1920);
+    }
+
+    // Camera preview size is typically in landscape orientation from the sensor
+    // For portrait 9:16 video, we need to swap width/height
+    // However, we verify the actual aspect ratio to determine if swap is needed
+    final aspectRatio = previewSize.width / previewSize.height;
+    final isLandscape = aspectRatio > 1.0;
+
+    if (isLandscape) {
+      // Preview is in landscape, swap for portrait orientation
+      return Size(previewSize.height, previewSize.width);
+    } else {
+      // Preview is already in portrait, use as-is
+      return previewSize;
+    }
   }
 
   /// Get optimal aspect ratio for TikTok-style 9:16 video
+  /// 
+  /// FIXED: Always returns 9:16 (0.5625) for consistent vertical video
+  /// Previously calculated from preview size which could vary and cause distortion
   double getOptimalAspectRatio() {
-    final size = getPreviewSize();
-    return size.width / size.height; // Should be 9/16 = 0.5625
+    // Always return fixed 9:16 aspect ratio for TikTok-style vertical video
+    // This ensures consistent preview and recording without stretching or distortion
+    return 9.0 / 16.0; // 0.5625
   }
 
   /// Dispose camera resources

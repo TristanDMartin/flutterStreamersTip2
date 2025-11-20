@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import '../models/home_video.dart';
 // import '../services/thumbnail_service.dart'; // Removed unused import
 
@@ -84,6 +85,12 @@ class ThumbnailTile extends StatelessWidget {
       return _buildGradientPlaceholder();
     }
 
+    // Check if this is a local file path (drafts use local paths)
+    if (_isLocalFilePath(thumbnailUrl)) {
+      debugPrint('🖼️ ThumbnailTile: Loading local file: $thumbnailUrl');
+      return _buildLocalFileImage(thumbnailUrl);
+    }
+
     debugPrint('🖼️ ThumbnailTile: Loading image from URL: $thumbnailUrl');
 
     return CachedNetworkImage(
@@ -125,6 +132,62 @@ class ThumbnailTile extends StatelessWidget {
         );
       },
     );
+  }
+
+  bool _isLocalFilePath(String path) {
+    // Check if path starts with / (absolute path) or doesn't start with http/https
+    return path.startsWith('/') || (!path.startsWith('http://') && !path.startsWith('https://'));
+  }
+
+  Widget _buildLocalFileImage(String filePath) {
+    try {
+      final file = File(filePath);
+      if (!file.existsSync()) {
+        debugPrint('🖼️ ThumbnailTile: Local file does not exist: $filePath');
+        return Container(
+          color: Colors.grey[900],
+          child: const Center(
+            child: Icon(
+              Icons.error_outline,
+              color: Colors.red,
+              size: 48,
+            ),
+          ),
+        );
+      }
+
+      return Image.file(
+        file,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('🖼️ ThumbnailTile: Error loading local file $filePath: $error');
+          return Container(
+            color: Colors.grey[900],
+            child: const Center(
+              child: Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
+              ),
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('🖼️ ThumbnailTile: Exception loading local file $filePath: $e');
+      return Container(
+        color: Colors.grey[900],
+        child: const Center(
+          child: Icon(
+            Icons.error_outline,
+            color: Colors.red,
+            size: 48,
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildGradientPlaceholder() {

@@ -293,9 +293,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -472,7 +476,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-				DEVELOPMENT_TEAM = J9AVW5SU93;
+				DEVELOPMENT_TEAM = RZA23Z9LAV;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -662,18 +666,18 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
 			buildSettings = {
-			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-			CLANG_ENABLE_MODULES = YES;
-			CODE_SIGNING_ALLOWED = YES;
-			CODE_SIGNING_REQUIRED = YES;
-			"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
-			"CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = NO;
-			CODE_SIGN_IDENTITY = "Apple Development";
-			"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "";
-			CODE_SIGN_STYLE = Automatic;
-			"CODE_SIGN_STYLE[sdk=iphonesimulator*]" = Manual;
-			CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-			DEVELOPMENT_TEAM = J9AVW5SU93;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = YES;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+				CODE_SIGNING_REQUIRED = YES;
+				"CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "";
+				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_STYLE[sdk=iphonesimulator*]" = Manual;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = RZA23Z9LAV;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -694,18 +698,18 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
-			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-			CLANG_ENABLE_MODULES = YES;
-			CODE_SIGNING_ALLOWED = YES;
-			CODE_SIGNING_REQUIRED = YES;
-			"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
-			"CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = NO;
-			CODE_SIGN_IDENTITY = "Apple Development";
-			"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "";
-			CODE_SIGN_STYLE = Automatic;
-			"CODE_SIGN_STYLE[sdk=iphonesimulator*]" = Manual;
-			CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-			DEVELOPMENT_TEAM = J9AVW5SU93;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = YES;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+				CODE_SIGNING_REQUIRED = YES;
+				"CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "";
+				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_STYLE[sdk=iphonesimulator*]" = Manual;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = RZA23Z9LAV;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -19,6 +19,21 @@ import '../services/hashtag_lock_service.dart';
 import '../widgets/schedule_post_widget.dart';
 import '../models/scheduled_post.dart';
 import '../services/firebase_ios_service.dart';
+import '../services/network_connectivity_service.dart';
+import '../services/firestore_scheduled_post_service.dart';
+import '../services/video_processing_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:developer' as developer;
+
+// Constants for video publishing validation
+class _VideoPublishingConstants {
+  static const int maxCaptionLength = 500;
+  static const int maxFileSizeMB = 500;
+  static const int minFileSizeBytes = 1024; // 1KB minimum
+  static const double minVideoDurationSeconds = 1.0;
+  static const double maxVideoDurationSeconds = 300.0; // 5 minutes
+}
 
 class VideoPublishingScreen extends ConsumerStatefulWidget {
   final File videoFile;
@@ -62,6 +77,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
+  String? _initializationError;
+  bool _hasError = false;
+  Duration? _videoDuration;
+  int _captionCharacterCount = 0;
+  final ScrollController _scrollController = ScrollController();
+  double _videoFlex = 3.0; // Initial flex value for video preview
 
   // Available categories
   static const List<VideoCategory> _categories = [
@@ -169,6 +190,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   final VideoWatermarkService _watermarkService = VideoWatermarkService();
   final OptimisticVideoService _optimisticVideoService =
       OptimisticVideoService();
+  final FirestoreScheduledPostService _scheduledPostService =
+      FirestoreScheduledPostService();
 
   // Text controllers
   late TextEditingController _captionController;
@@ -181,23 +204,115 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
     // Initialize text controller with the caption
     _captionController = TextEditingController(text: _caption);
+    _captionCharacterCount = _caption.length;
+    
+    // Listen to caption changes for real-time validation
+    _captionController.addListener(_onCaptionChanged);
+
+    // Listen to scroll to adjust video size
+    _scrollController.addListener(_onScroll);
 
     _initializeVideo();
   }
 
-  Future<void> _initializeVideo() async {
-    _controller = VideoPlayerController.file(widget.videoFile);
-    await _controller.initialize();
-    if (mounted) {
+  void _onCaptionChanged() {
+    setState(() {
+      _caption = _captionController.text;
+      _captionCharacterCount = _caption.length;
+    });
+  }
+
+  void _onScroll() {
+    final scrollOffset = _scrollController.offset;
+    // Calculate new flex based on scroll position
+    // When scrolled down, reduce video flex (min 1.0, max 3.0)
+    final newFlex = (3.0 - (scrollOffset / 200).clamp(0.0, 2.0)).clamp(1.0, 3.0);
+    if ((_videoFlex - newFlex).abs() > 0.1) {
       setState(() {
-        _isInitialized = true;
+        _videoFlex = newFlex;
       });
+    }
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      // Validate file exists and is readable
+      if (!await widget.videoFile.exists()) {
+        throw Exception('Video file does not exist');
+      }
+
+      final fileSize = await widget.videoFile.length();
+      if (fileSize < _VideoPublishingConstants.minFileSizeBytes) {
+        throw Exception('Video file is too small or corrupted');
+      }
+
+      final fileSizeMB = fileSize / (1024 * 1024);
+      if (fileSizeMB > _VideoPublishingConstants.maxFileSizeMB) {
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _initializationError =
+                'Video file is too large (${fileSizeMB.toStringAsFixed(1)}MB). Maximum size is ${_VideoPublishingConstants.maxFileSizeMB}MB.';
+          });
+        }
+        return;
+      }
+
+      _controller = VideoPlayerController.file(widget.videoFile);
+      await _controller.initialize();
+
+      // Validate video duration
+      _videoDuration = _controller.value.duration;
+      final durationSeconds = _videoDuration!.inSeconds.toDouble();
+      
+      if (durationSeconds < _VideoPublishingConstants.minVideoDurationSeconds) {
+        await _controller.dispose();
+        throw Exception('Video is too short (minimum 1 second)');
+      }
+      
+      if (durationSeconds > _VideoPublishingConstants.maxVideoDurationSeconds) {
+        await _controller.dispose();
+        throw Exception('Video is too long (maximum 5 minutes)');
+      }
+
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _hasError = false;
+          _initializationError = null;
+        });
+      }
+    } catch (e) {
+      developer.log('Error initializing video: $e',
+          name: 'VideoPublishingScreen');
+      if (mounted) {
+        setState(() {
+          _isInitialized = true; // Set to true to show error UI
+          _hasError = true;
+          _initializationError = e.toString().replaceAll('Exception: ', '');
+        });
+      }
+      // Don't dispose controller here as it might not be initialized
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _captionController.removeListener(_onCaptionChanged);
+    
+    // Safely dispose video controller
+    try {
+      if (_isInitialized && _controller.value.isInitialized) {
+        _controller.pause();
+        _controller.dispose();
+      }
+    } catch (e) {
+      developer.log('Error disposing video controller: $e',
+          name: 'VideoPublishingScreen');
+    }
+    
     _captionController.dispose();
     super.dispose();
   }
@@ -279,16 +394,17 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             // Header
             _buildHeader(),
 
-            // Video Player Area (matching Edit Video layout)
+            // Video Player Area (collapsible on scroll)
             Expanded(
-              flex: 3,
+              flex: _videoFlex.round(),
               child: _buildVideoPreview(),
             ),
 
             // Content
             Expanded(
-              flex: 4,
+              flex: (7 - _videoFlex).round().clamp(3, 6),
               child: SingleChildScrollView(
+                controller: _scrollController,
                 padding: const EdgeInsets.only(bottom: 20),
                 child: Column(
                   children: [
@@ -309,13 +425,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
                     const SizedBox(height: 20),
 
-                    // Cross-Platform Sharing
-                    _buildSharingSection(),
-
-                    const SizedBox(height: 20),
-
                     // Schedule Post
                     _buildSchedulePostSection(),
+
+                    // Cross-Platform Sharing - Hidden for now
+                    // _buildSharingSection(),
 
                     const SizedBox(
                         height: 120), // Space for bottom buttons with safe area
@@ -444,8 +558,45 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Video player
-              if (_isInitialized)
+              // Video player or error state
+              if (_hasError && _initializationError != null)
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _initializationError!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _hasError = false;
+                            _initializationError = null;
+                          });
+                          _initializeVideo();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF9248D2),
+                        ),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              else if (_isInitialized && !_hasError)
                 AspectRatio(
                   aspectRatio: _controller.value.aspectRatio,
                   child: VideoPlayer(_controller),
@@ -455,8 +606,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
 
-              // Play/Pause overlay
-              if (!_isPlaying)
+              // Play/Pause overlay (only show if no error and video is initialized)
+              if (!_isPlaying && _isInitialized && !_hasError)
                 Container(
                   width: 80,
                   height: 80,
@@ -610,14 +761,36 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Caption',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '${_captionCharacterCount}/${_VideoPublishingConstants.maxCaptionLength}',
+                style: TextStyle(
+                  color: _captionCharacterCount >
+                          _VideoPublishingConstants.maxCaptionLength
+                      ? Colors.red
+                      : _captionCharacterCount >=
+                              _VideoPublishingConstants.maxCaptionLength * 0.9
+                          ? Colors.orange
+                          : Colors.white.withValues(alpha: 0.7),
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _captionController,
-            onChanged: (value) {
-              setState(() {
-                _caption = value;
-              });
-            },
+            maxLength: _VideoPublishingConstants.maxCaptionLength,
             maxLines: 4,
             minLines: 1,
             textInputAction: TextInputAction.newline,
@@ -632,23 +805,42 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                    color: _caption.trim().isEmpty
+                        ? Colors.red.withValues(alpha: 0.5)
+                        : Colors.white.withValues(alpha: 0.3)),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                    color: _caption.trim().isEmpty
+                        ? Colors.red.withValues(alpha: 0.5)
+                        : Colors.white.withValues(alpha: 0.3)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF9248D2)),
+                borderSide: BorderSide(
+                    color: _caption.trim().isEmpty
+                        ? Colors.red
+                        : const Color(0xFF9248D2)),
               ),
               contentPadding: const EdgeInsets.all(16),
               filled: true,
               fillColor: Colors.white.withValues(alpha: 0.03),
+              counterText: '', // Hide default counter, we show our own
             ),
           ),
+          if (_caption.trim().isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Caption is required',
+                style: TextStyle(
+                  color: Colors.red.withValues(alpha: 0.9),
+                  fontSize: 12,
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
           // Hashtag suggestions
           Wrap(
@@ -694,91 +886,81 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     );
   }
 
-  Widget _buildSharingSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Cross-Platform Sharing',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _buildPlatformOption('Instagram', Icons.camera_alt,
-                  _selectedPlatforms.contains('Instagram')),
-              const SizedBox(width: 12),
-              _buildPlatformOption('TikTok', Icons.music_note,
-                  _selectedPlatforms.contains('TikTok')),
-              const SizedBox(width: 12),
-              _buildPlatformOption('YouTube', Icons.play_circle,
-                  _selectedPlatforms.contains('YouTube')),
-            ],
-          ),
-          if (_selectedPlatforms.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF9248D2).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.water_drop,
-                    color: Color(0xFF9248D2),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Watermark will be added to your video for cross-platform sharing',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+  // Cross-platform sharing section - hidden for now
+  // Widget _buildSharingSection() {
+  //   return Container(
+  //     margin: const EdgeInsets.symmetric(horizontal: 16),
+  //     padding: const EdgeInsets.all(16),
+  //     decoration: BoxDecoration(
+  //       color: Colors.white.withValues(alpha: 0.05),
+  //       borderRadius: BorderRadius.circular(12),
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         const Text(
+  //           'Cross-Platform Sharing',
+  //           style: TextStyle(
+  //             color: Colors.white,
+  //             fontSize: 18,
+  //             fontWeight: FontWeight.bold,
+  //           ),
+  //         ),
+  //         const SizedBox(height: 16),
+  //         Row(
+  //           children: [
+  //             _buildPlatformOption('Instagram', Icons.camera_alt,
+  //                 _selectedPlatforms.contains('Instagram')),
+  //             const SizedBox(width: 12),
+  //             _buildPlatformOption('TikTok', Icons.music_note,
+  //                 _selectedPlatforms.contains('TikTok')),
+  //             const SizedBox(width: 12),
+  //             _buildPlatformOption('YouTube', Icons.play_circle,
+  //                 _selectedPlatforms.contains('YouTube')),
+  //           ],
+  //         ),
+  //         if (_selectedPlatforms.isNotEmpty) ...[
+  //           const SizedBox(height: 12),
+  //           Container(
+  //             padding: const EdgeInsets.all(12),
+  //             decoration: BoxDecoration(
+  //               color: const Color(0xFF9248D2).withValues(alpha: 0.1),
+  //               borderRadius: BorderRadius.circular(8),
+  //               border: Border.all(
+  //                 color: const Color(0xFF9248D2).withValues(alpha: 0.3),
+  //               ),
+  //             ),
+  //             child: Row(
+  //               children: [
+  //                 const Icon(
+  //                   Icons.water_drop,
+  //                   color: Color(0xFF9248D2),
+  //                   size: 20,
+  //                 ),
+  //                 const SizedBox(width: 8),
+  //                 Expanded(
+  //                   child: Text(
+  //                     'Watermark will be added to your video for cross-platform sharing',
+  //                     style: TextStyle(
+  //                       color: Colors.white.withValues(alpha: 0.9),
+  //                       fontSize: 12,
+  //                       fontWeight: FontWeight.w500,
+  //                     ),
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //         ],
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildSchedulePostSection() {
-    // Convert selected platforms to PlatformKey enum
-    final List<PlatformKey> selectedPlatformKeys =
-        _selectedPlatforms.map((platform) {
-      switch (platform) {
-        case 'Instagram':
-          return PlatformKey.instagram;
-        case 'TikTok':
-          return PlatformKey.tiktok;
-        case 'YouTube':
-          return PlatformKey.youtube;
-        default:
-          return PlatformKey.instagram; // Default fallback
-      }
-    }).toList();
+    // Since cross-platform sharing is hidden, schedule for StreamersTip only
+    // Empty list means schedule for main platform only
+    final List<PlatformKey> selectedPlatformKeys = <PlatformKey>[];
 
     // Create media from video file
     final List<PostMedia> media = [
@@ -852,7 +1034,10 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             const SizedBox(width: 16),
             Expanded(
               child: GestureDetector(
-                onTap: (_isUploading || _isModerating)
+                onTap: (_isUploading ||
+                        _isModerating ||
+                        _caption.trim().isEmpty ||
+                        _hasError)
                     ? null
                     : () {
                         HapticFeedback.lightImpact();
@@ -861,14 +1046,20 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                 child: Container(
                   height: 56,
                   decoration: BoxDecoration(
-                    gradient: (_isUploading || _isModerating)
+                    gradient: (_isUploading ||
+                            _isModerating ||
+                            _caption.trim().isEmpty ||
+                            _hasError)
                         ? null
                         : const LinearGradient(
                             colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
                           ),
-                    color: (_isUploading || _isModerating)
+                    color: (_isUploading ||
+                            _isModerating ||
+                            _caption.trim().isEmpty ||
+                            _hasError)
                         ? Colors.grey.withValues(alpha: 0.3)
                         : null,
                     borderRadius: BorderRadius.circular(12),
@@ -1056,48 +1247,49 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     );
   }
 
-  Widget _buildPlatformOption(String platform, IconData icon, bool isSelected) {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (_selectedPlatforms.contains(platform)) {
-            _selectedPlatforms.remove(platform);
-          } else {
-            _selectedPlatforms.add(platform);
-          }
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF9248D2)
-              : Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected
-                ? const Color(0xFF9248D2)
-                : Colors.white.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 16),
-            const SizedBox(width: 8),
-            Text(
-              platform,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Platform option widget - hidden with cross-platform sharing
+  // Widget _buildPlatformOption(String platform, IconData icon, bool isSelected) {
+  //   return GestureDetector(
+  //     onTap: () {
+  //       setState(() {
+  //         if (_selectedPlatforms.contains(platform)) {
+  //           _selectedPlatforms.remove(platform);
+  //         } else {
+  //           _selectedPlatforms.add(platform);
+  //         }
+  //       });
+  //     },
+  //     child: Container(
+  //       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+  //       decoration: BoxDecoration(
+  //         color: isSelected
+  //             ? const Color(0xFF9248D2)
+  //             : Colors.white.withValues(alpha: 0.1),
+  //         borderRadius: BorderRadius.circular(8),
+  //         border: Border.all(
+  //           color: isSelected
+  //               ? const Color(0xFF9248D2)
+  //               : Colors.white.withValues(alpha: 0.3),
+  //         ),
+  //       ),
+  //       child: Row(
+  //         mainAxisSize: MainAxisSize.min,
+  //         children: [
+  //           Icon(icon, color: Colors.white, size: 16),
+  //           const SizedBox(width: 8),
+  //           Text(
+  //             platform,
+  //             style: const TextStyle(
+  //               color: Colors.white,
+  //               fontSize: 12,
+  //               fontWeight: FontWeight.w600,
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   Future<void> _publishVideo() async {
     // Check if Firebase is initialized
@@ -1135,9 +1327,33 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       return;
     }
 
+    // Validate caption
     if (_caption.trim().isEmpty) {
       _showUploadErrorDialog('Please add a caption to your video');
       return;
+    }
+
+    if (_caption.length > _VideoPublishingConstants.maxCaptionLength) {
+      _showUploadErrorDialog(
+          'Caption is too long (maximum ${_VideoPublishingConstants.maxCaptionLength} characters)');
+      return;
+    }
+
+    // Check network connectivity
+    final networkService = NetworkConnectivityService();
+    final isConnected = await networkService.checkConnectivity();
+    if (!isConnected) {
+      _showUploadErrorDialog(
+          'No internet connection. Please check your network and try again.');
+      return;
+    }
+
+    // Pause video during upload
+    if (_isPlaying && _controller.value.isInitialized) {
+      await _controller.pause();
+      setState(() {
+        _isPlaying = false;
+      });
     }
 
     setState(() {
@@ -1218,20 +1434,38 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       debugPrint(
           '✅ VideoPublishingScreen: Optimistic video created successfully');
 
-      // 4. Upload video directly to all required feeds
+      // 4. Check if this is a scheduled post
+      if (_schedule != null) {
+        // SCHEDULED POST: Upload video and save as scheduled post
+        await _scheduleVideo(
+          videoFileToUpload: videoFileToUpload,
+          videoId: videoId,
+          currentUser: currentUser,
+          moderationResult: moderationResult,
+        );
+        return; // Exit early, scheduling is handled
+      }
+
+      // IMMEDIATE PUBLISH: Upload video directly to all required feeds
       setState(() {
         _isUploading = true;
         _uploadProgress = 0.0;
       });
 
       try {
-        debugPrint('🚀 Starting video upload...');
-        debugPrint('📁 Video file: ${videoFileToUpload.path}');
-        debugPrint('📝 Caption: $_caption');
-        debugPrint('🏷️ Hashtags: $_hashtags');
-        debugPrint('🔒 Privacy: $_selectedPrivacy');
-        debugPrint('📂 Category: $_selectedCategory');
-        debugPrint('👤 User ID: ${currentUser.uid}');
+        developer.log('🚀 Starting video upload (immediate publish)...',
+            name: 'VideoPublishingScreen');
+        developer.log('📁 Video file: ${videoFileToUpload.path}',
+            name: 'VideoPublishingScreen');
+        developer.log('📝 Caption: $_caption', name: 'VideoPublishingScreen');
+        developer.log('🏷️ Hashtags: $_hashtags',
+            name: 'VideoPublishingScreen');
+        developer.log('🔒 Privacy: $_selectedPrivacy',
+            name: 'VideoPublishingScreen');
+        developer.log('📂 Category: $_selectedCategory',
+            name: 'VideoPublishingScreen');
+        developer.log('👤 User ID: ${currentUser.uid}',
+            name: 'VideoPublishingScreen');
 
         final uploadResult = await _uploadService.uploadVideo(
           videoFile: videoFileToUpload,
@@ -1251,8 +1485,9 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           },
         );
 
-        debugPrint(
-            '📤 Upload result: success=${uploadResult.success}, error=${uploadResult.error}');
+        developer.log(
+            '📤 Upload result: success=${uploadResult.success}, error=${uploadResult.error}',
+            name: 'VideoPublishingScreen');
 
         setState(() {
           _isUploading = false;
@@ -1260,7 +1495,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
         if (uploadResult.success) {
           // Add video to centralized VideoService for immediate display
-          await _addVideoToService(uploadResult);
+          final newVideoId = await _addVideoToService(uploadResult);
 
           // Show success message
           if (mounted) {
@@ -1272,9 +1507,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               ),
             );
           }
+          
           // Navigate back to main tab view (which shows HomeView by default)
           if (mounted) {
             Navigator.of(context).popUntil((route) => route.isFirst);
+            // Feed refresh will happen automatically when HomeView becomes visible via _reactivateFeed()
+            developer.log('✅ VideoPublishingScreen: Navigated back to HomeView, feed will refresh for video: $newVideoId');
           }
         } else {
           if (mounted) {
@@ -1519,6 +1757,14 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         // Navigate back to HomeView after saving draft
         if (mounted) {
           Navigator.of(context).popUntil((route) => route.isFirst);
+          
+          // 🚀 REFRESH FEED: Trigger feed refresh after navigation (drafts won't show but refresh for consistency)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Future.delayed(const Duration(milliseconds: 300), () {
+              // Refresh will happen in HomeView when it becomes visible
+              developer.log('🔄 VideoPublishingScreen: Draft saved, feed will refresh on return to HomeView');
+            });
+          });
         }
       } else {
         if (mounted) {
@@ -1552,10 +1798,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   /// Add uploaded video to centralized VideoService for immediate display
-  Future<void> _addVideoToService(VideoUploadResult uploadResult) async {
+  /// Returns the video ID for use in feed refresh
+  Future<String?> _addVideoToService(VideoUploadResult uploadResult) async {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
+      if (currentUser == null) return null;
 
       // Create a HomeVideo object from the upload result
       final video = HomeVideo(
@@ -1576,18 +1823,241 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         isDraft: false,
       );
 
-      // Add to VideoService for immediate display
+      // Add to VideoService for immediate display (at the top - newest first)
       final videoService = ref.read(videoServiceProvider.notifier);
       videoService.addVideo(video);
 
-      // Refresh HomeView to show the new video immediately
+      // 🚀 REFRESH FEED: Refresh HomeView to show the new video immediately
       final homeProviderNotifier = ref.read(homeProvider.notifier);
-      await homeProviderNotifier.refreshAfterUpload();
+      await homeProviderNotifier.refreshAfterUpload(newVideoId: video.id);
 
       debugPrint(
           '✅ Video added to VideoService and HomeView refreshed: ${video.caption}');
+      
+      return video.id;
     } catch (e) {
       debugPrint('❌ Error adding video to VideoService: $e');
+      return null;
+    }
+  }
+
+  /// Schedule a video for future publishing
+  Future<void> _scheduleVideo({
+    required File videoFileToUpload,
+    required String videoId,
+    required User currentUser,
+    required VideoModerationResult moderationResult,
+  }) async {
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0.0;
+    });
+
+    try {
+      developer.log('📅 Scheduling video for future publish...',
+          name: 'VideoPublishingScreen');
+      developer.log(
+          '📅 Scheduled time: ${_schedule!.scheduledAtUtc}',
+          name: 'VideoPublishingScreen');
+
+      // 1. Upload video to Storage (but don't publish to feeds yet)
+      final videoUrl = await _uploadVideoForScheduled(videoFileToUpload, videoId);
+      if (videoUrl == null) {
+        throw Exception('Failed to upload video file');
+      }
+
+      // 2. Generate thumbnail
+      final thumbnailUrl = await _generateThumbnailForScheduled(
+          videoFileToUpload, videoId);
+      if (thumbnailUrl == null) {
+        throw Exception('Failed to generate thumbnail');
+      }
+
+      // 3. Save video to Firestore with status 'scheduled'
+      await _saveScheduledVideoToFirestore(
+        videoId: videoId,
+        videoUrl: videoUrl,
+        thumbnailUrl: thumbnailUrl,
+        currentUser: currentUser,
+        moderationResult: moderationResult,
+      );
+
+      // 4. Save scheduled post to Firestore
+      final scheduledPostId = await _scheduledPostService.saveScheduledPost(
+        videoId: videoId,
+        videoUrl: videoUrl,
+        thumbnailUrl: thumbnailUrl,
+        caption: _caption,
+        hashtags: _hashtags,
+        category: _selectedCategory,
+        privacy: _selectedPrivacy,
+        allowComments: _allowComments,
+        schedule: _schedule!,
+        metadata: {
+          'moderation_confidence': moderationResult.confidence,
+          'moderation_checked_at': DateTime.now().toIso8601String(),
+          'duration': _videoDuration?.inSeconds ?? 0,
+          'fileSize': await videoFileToUpload.length(),
+          'cross_platform_sharing': _selectedPlatforms.toList(),
+          'watermark_applied':
+              _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+        },
+      );
+
+      developer.log('✅ Video scheduled successfully: $scheduledPostId',
+          name: 'VideoPublishingScreen');
+
+      setState(() {
+        _isUploading = false;
+      });
+
+      // Show success message
+      if (mounted) {
+        final scheduledTime = _schedule!.scheduledAtUtc;
+        final timeStr = '${scheduledTime.month}/${scheduledTime.day} at ${scheduledTime.hour}:${scheduledTime.minute.toString().padLeft(2, '0')}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Video scheduled for $timeStr 📅'),
+            backgroundColor: const Color(0xFF9248D2),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // Navigate back to main tab view
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      developer.log('❌ Error scheduling video: $e',
+          name: 'VideoPublishingScreen');
+      setState(() {
+        _isUploading = false;
+      });
+      if (mounted) {
+        _showUploadErrorDialog('Failed to schedule video: ${e.toString()}');
+      }
+    }
+  }
+
+  /// Upload video file for scheduled post (without publishing to feeds)
+  Future<String?> _uploadVideoForScheduled(
+      File videoFile, String videoId) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return null;
+
+      final storage = FirebaseStorage.instance;
+      final ref = storage
+          .ref()
+          .child('videos')
+          .child(currentUser.uid)
+          .child('$videoId.mp4');
+
+      final uploadTask = ref.putFile(videoFile);
+
+      // Monitor progress
+      uploadTask.snapshotEvents.listen((snapshot) {
+        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+        if (mounted) {
+          setState(() {
+            _uploadProgress = progress;
+          });
+        }
+      });
+
+      final snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      developer.log('❌ Error uploading video for scheduled post: $e',
+          name: 'VideoPublishingScreen');
+      return null;
+    }
+  }
+
+  /// Generate thumbnail for scheduled post
+  Future<String?> _generateThumbnailForScheduled(
+      File videoFile, String videoId) async {
+    try {
+      final videoProcessingService = VideoProcessingService();
+      final result = await videoProcessingService.processVideo(
+        inputFile: videoFile,
+        videoId: videoId,
+        userId: FirebaseAuth.instance.currentUser?.uid ?? '',
+      );
+      return result.thumbnailUrl.isEmpty ? null : result.thumbnailUrl;
+    } catch (e) {
+      developer.log('❌ Error generating thumbnail for scheduled post: $e',
+          name: 'VideoPublishingScreen');
+      return null;
+    }
+  }
+
+  /// Save scheduled video to Firestore (with status 'scheduled', not 'published')
+  Future<void> _saveScheduledVideoToFirestore({
+    required String videoId,
+    required String videoUrl,
+    required String thumbnailUrl,
+    required User currentUser,
+    required VideoModerationResult moderationResult,
+  }) async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final videoData = {
+        'id': videoId,
+        'userId': currentUser.uid,
+        'creatorId': currentUser.uid,
+        'videoUrl': videoUrl,
+        'thumbnailUrl': thumbnailUrl,
+        'caption': _caption,
+        'hashtags': _hashtags,
+        'privacy': _selectedPrivacy,
+        'allowComments': _allowComments,
+        'category': _selectedCategory,
+        'status': 'scheduled', // NOT 'published' - will be updated when scheduled time arrives
+        'scheduledAtUtc': Timestamp.fromDate(_schedule!.scheduledAtUtc),
+        'views': 0,
+        'likes': 0,
+        'comments': 0,
+        'shares': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'moderation': {
+          'approved': true,
+          'checkedAt': FieldValue.serverTimestamp(),
+          'confidence': moderationResult.confidence,
+          'violations': [],
+        },
+        'metadata': {
+          'fileSize': await widget.videoFile.length(),
+          'duration': _videoDuration?.inSeconds.toDouble() ?? 0.0,
+          'resolution': '1080x1920',
+          'format': 'mp4',
+          'uploadedAt': FieldValue.serverTimestamp(),
+          'moderation_confidence': moderationResult.confidence,
+          'moderation_checked_at': DateTime.now().toIso8601String(),
+        },
+      };
+
+      await firestore.collection('videos').doc(videoId).set(videoData);
+
+      // Add to user's videos collection
+      await firestore
+          .collection('users')
+          .doc(currentUser.uid)
+          .collection('videos')
+          .doc(videoId)
+          .set({
+        'status': 'scheduled',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      developer.log('✅ Scheduled video saved to Firestore: $videoId',
+          name: 'VideoPublishingScreen');
+    } catch (e) {
+      developer.log('❌ Error saving scheduled video to Firestore: $e',
+          name: 'VideoPublishingScreen');
+      rethrow;
     }
   }
 }

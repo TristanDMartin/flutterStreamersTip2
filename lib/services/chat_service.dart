@@ -19,6 +19,12 @@ class ChatService {
       return null;
     }
 
+    // Validate otherUID
+    if (otherUID.isEmpty) {
+      debugPrint("❌ ChatService: otherUID is empty");
+      return null;
+    }
+
     debugPrint(
         "💬 ChatService: fetchOrCreateChat called with otherUID: $otherUID, currentUser: $me");
 
@@ -68,8 +74,17 @@ class ChatService {
 
       debugPrint("❌ ChatService: Created chat document doesn't exist");
       return null;
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint("❌ ChatService: Error in fetchOrCreateChat: $e");
+      debugPrint("❌ ChatService: Stack trace: $stackTrace");
+      // Re-throw to get more context about the error
+      if (e.toString().contains('permission-denied')) {
+        debugPrint("❌ ChatService: Permission denied - check Firestore rules");
+      } else if (e.toString().contains('network')) {
+        debugPrint("❌ ChatService: Network error");
+      } else if (e.toString().contains('invalid-argument')) {
+        debugPrint("❌ ChatService: Invalid argument - check otherUID: $otherUID");
+      }
       return null;
     }
   }

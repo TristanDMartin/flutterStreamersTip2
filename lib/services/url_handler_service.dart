@@ -164,24 +164,19 @@ class URLHandlerService extends ChangeNotifier {
     // Get the current navigator context
     final context = nav.NavigationService.navigatorKey.currentContext;
     if (context != null) {
-      // Show StreamerCardView as modal (matching app-wide pattern)
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        isDismissible: true,
-        enableDrag: true,
-        builder: (context) {
-          return StreamerCardView(
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => StreamerCardView(
             userId: user.id,
-            currentUserId: null, // Could get from FirebaseAuth if needed
+            currentUserId: null,
             onDismiss: () => Navigator.of(context).pop(),
             onFollow: (userId) async {},
             onMessage: (userId) {},
             onNavigateToTab: (tabName) {},
             onShare: (userId) {},
-          );
-        },
+          ),
+          fullscreenDialog: true,
+        ),
       );
     }
 

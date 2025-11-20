@@ -1,10 +1,10 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../services/robust_auth_service.dart';
 import '../services/calendar_cleanup_service.dart';
+import '../services/scheduled_post_publisher_service.dart';
 import '../widgets/auth_modal_view.dart';
 import '../pages/main_tab_view.dart';
 
@@ -16,39 +16,15 @@ class AppStartupWrapper extends ConsumerStatefulWidget {
   ConsumerState<AppStartupWrapper> createState() => _AppStartupWrapperState();
 }
 
-class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
-    with TickerProviderStateMixin {
-  late AnimationController _fadeController;
-  late Animation<double> _fadeAnimation;
-  bool _showSplash = true;
-  Timer? _splashTimer;
-  int _splashCountdown = 1; // Reduced from 3 to 1 second for faster startup
-
+class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlayStyle();
-    _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeInOut,
-    ));
-    _fadeController.forward();
-
-    // Show splash screen for minimum 3 seconds like TikTok with countdown
-    _startSplashCountdown();
   }
 
   @override
   void dispose() {
-    _fadeController.dispose();
-    _splashTimer?.cancel();
     _resetSystemUIOverlayStyle();
     super.dispose();
   }
@@ -56,9 +32,9 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
   void _setSystemUIOverlayStyle() {
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
+        statusBarColor: Color(0xFF6137EB),
         statusBarIconBrightness: Brightness.light,
-        systemNavigationBarColor: Color(0xFF1C135D),
+        systemNavigationBarColor: Color(0xFF6137EB),
         systemNavigationBarIconBrightness: Brightness.light,
       ),
     );
@@ -73,26 +49,6 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
         systemNavigationBarIconBrightness: Brightness.light,
       ),
     );
-  }
-
-  void _startSplashCountdown() {
-    _splashTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _splashCountdown--;
-        });
-
-        if (_splashCountdown <= 0) {
-          timer.cancel();
-          setState(() {
-            _showSplash = false;
-          });
-
-          // Run calendar cleanup on app startup
-          _runCalendarCleanup();
-        }
-      }
-    });
   }
 
   /// Run calendar cleanup for logged-in user
@@ -110,192 +66,133 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper>
     }
   }
 
+  /// Start scheduled post publisher service for logged-in user
+  void _startScheduledPostPublisher() {
+    final authService = ref.read(robustAuthServiceProvider);
+    final currentUser = authService.currentUser;
+
+    if (currentUser != null) {
+      // Start the scheduled post publisher service (checks every minute)
+      ScheduledPostPublisherService().startPeriodicCheck(
+        interval: const Duration(minutes: 1),
+      );
+      debugPrint('✅ App startup: Scheduled post publisher started');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Consumer(
-      builder: (context, ref, child) {
-        // CRITICAL: Check if Firebase is ready before accessing auth service
-        // This prevents the red error screen when Firebase isn't initialized yet
-        if (Firebase.apps.isEmpty) {
-          debugPrint(
-              '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen');
-          return _buildLoadingScreen();
+    // Watch auth service to rebuild when state changes
+    final authService = ref.watch(robustAuthServiceProvider);
+    
+    // CRITICAL: Check if Firebase is ready before accessing auth service
+    if (Firebase.apps.isEmpty) {
+      debugPrint(
+          '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen');
+      return _buildLoadingScreen();
+    }
+
+    // Listen to auth state changes and force rebuild
+    ref.listen(robustAuthServiceProvider, (previous, next) {
+      if (previous != null) {
+        final loadingChanged = previous.shouldShowLoading != next.shouldShowLoading;
+        final loginChanged = previous.isLoggedIn != next.isLoggedIn;
+        
+        if (loadingChanged || loginChanged) {
+          debugPrint('🔄 AppStartupWrapper: Auth state changed');
+          debugPrint('   Loading: ${previous.shouldShowLoading} -> ${next.shouldShowLoading}');
+          debugPrint('   Logged in: ${previous.isLoggedIn} -> ${next.isLoggedIn}');
+          
+          if (mounted) {
+            setState(() {});
+          }
         }
+      }
+    });
 
-        // Try to access auth service - wrap in try-catch to handle any errors
-        RobustAuthenticationService? authService;
-        try {
-          authService = ref.watch(robustAuthServiceProvider);
-        } catch (e) {
-          debugPrint('❌ AppStartupWrapper: Error accessing auth service: $e');
-          // Show splash screen if there's an error accessing auth service
-          return _buildLoadingScreen();
-        }
+    // Debug logging
+    debugPrint(
+        '🎯 AppStartupWrapper: isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}, isCheckingAuth=${authService.isCheckingAuth}');
 
-        // If authService is null, show splash screen
-        if (authService == null) {
-          debugPrint(
-              '⚠️ AppStartupWrapper: Auth service is null - showing splash screen');
-          return _buildLoadingScreen();
-        }
+    // Show splash screen while loading or checking auth
+    if (authService.shouldShowLoading) {
+      return _buildLoadingScreen();
+    }
 
-        // Listen to auth state changes
-        try {
-          ref.listen(robustAuthServiceProvider, (previous, next) {
-            if (previous != null && next.isLoggedIn != previous.isLoggedIn) {
-              debugPrint('🔄 AppStartupWrapper: Auth state changed');
-              debugPrint('   Previous: isLoggedIn=${previous.isLoggedIn}');
-              debugPrint('   Next: isLoggedIn=${next.isLoggedIn}');
+    // Show main app if logged in
+    if (authService.isLoggedIn) {
+      debugPrint('🏠 AppStartupWrapper: Returning MainTabView');
+      // Run calendar cleanup in background
+      _runCalendarCleanup();
+      // Start scheduled post publisher service
+      _startScheduledPostPublisher();
+      return const MainTabView();
+    }
 
-              if (next.isLoggedIn && next.currentUser != null) {
-                debugPrint(
-                    '✅ User logged in: ${next.currentUser!.displayName}');
-                debugPrint('✅ AppStartupWrapper will show MainTabView');
-                // Force rebuild when auth state changes
-                if (mounted) {
-                  setState(() {});
-                }
-              } else if (!next.isLoggedIn) {
-                debugPrint('❌ User logged out - showing AuthModalView');
-                // Force rebuild when auth state changes
-                if (mounted) {
-                  setState(() {});
-                }
-              }
-            }
-          });
-        } catch (e) {
-          debugPrint('❌ AppStartupWrapper: Error listening to auth state: $e');
-          // Continue anyway - show splash screen
-        }
-
-        // Debug: Log current state
-        debugPrint(
-            '🎯 AppStartupWrapper build: isLoggedIn=${authService.isLoggedIn}, shouldShowLoading=${authService.shouldShowLoading}, _showSplash=$_showSplash');
-
-        if (authService.currentUser != null) {
-          debugPrint(
-              '   Current user: ${authService.currentUser!.displayName}');
-        }
-
-        // Show main app if logged in (bypass splash screen)
-        if (authService.isLoggedIn) {
-          debugPrint('🏠 AppStartupWrapper: Returning MainTabView');
-          return const MainTabView();
-        }
-
-        // Show splash screen for minimum duration like TikTok (only when not logged in)
-        if (_showSplash) {
-          debugPrint('🎬 AppStartupWrapper: Showing splash screen');
-          return _buildLoadingScreen();
-        }
-
-        // Show loading while checking auth (but not if user is already logged in)
-        if (authService.shouldShowLoading) {
-          debugPrint('⏳ AppStartupWrapper: Showing loading screen');
-          return _buildLoadingScreen();
-        }
-
-        // Show auth modal if not logged in
-        debugPrint('🔐 AppStartupWrapper: Showing auth modal');
-        return const AuthModalView();
-      },
-    );
+    // Show auth modal if not logged in
+    debugPrint('🔐 AppStartupWrapper: Showing auth modal');
+    return const AuthModalView();
   }
 
   Widget _buildLoadingScreen() {
     return Scaffold(
-      backgroundColor: const Color(0xFF1C135D),
+      backgroundColor: const Color(0xFF6137EB),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-          ),
-        ),
+        color: const Color(0xFF6137EB),
         child: Center(
-          child: AnimatedBuilder(
-            animation: _fadeAnimation,
-            builder: (context, child) {
-              return Opacity(
-                opacity: _fadeAnimation.value,
-                child: Transform.scale(
-                  scale: 0.8 + (0.2 * _fadeAnimation.value),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // App Logo
-                      Container(
-                        width: 160,
-                        height: 160,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(32),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              blurRadius: 25,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(32),
-                          child: Image.asset(
-                            'assets/logo.png',
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              // Fallback to gradient icon if logo fails to load
-                              return Container(
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF6633CC),
-                                      Color(0xFF1A1A4D)
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(32),
-                                ),
-                                child: const Icon(
-                                  Icons.play_circle_fill,
-                                  color: Colors.white,
-                                  size: 80,
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // App Name
-                      const Text(
-                        'StreamersTip',
-                        style: TextStyle(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // App Logo - White icon matching splash screen design
+              Container(
+                width: 120,
+                height: 120,
+                child: Image.asset(
+                  'assets/091225_ST_logo_white.PNG',
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    // Fallback to regular logo with white color filter
+                    return Image.asset(
+                      'assets/logo.png',
+                      fit: BoxFit.contain,
+                      color: Colors.white,
+                      errorBuilder: (context, error, stackTrace) {
+                        // Final fallback to icon
+                        return const Icon(
+                          Icons.gamepad,
                           color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Tagline
-                      Text(
-                        'Connect • Create • Share',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
+                          size: 80,
+                        );
+                      },
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: 40),
+
+              // App Name
+              const Text(
+                'StreamersTip',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Tagline
+              const Text(
+                'Connect • Create • Share',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
           ),
         ),
       ),

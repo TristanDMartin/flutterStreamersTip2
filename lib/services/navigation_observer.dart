@@ -91,7 +91,13 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     }
 
     // 🔊 AUDIO FIX: Block playback when leaving home
-    final isHomeRoute = owner == 'home' || owner == '/';
+    // HomeView is not a route itself, it's inside MainTabView
+    // Check if we're returning to a route that contains HomeView
+    final routeName = route.runtimeType.toString().toLowerCase();
+    final isHomeRoute = owner == 'home' || 
+                       owner == '/' || 
+                       routeName.contains('hometab') ||
+                       routeName.contains('maintab');
 
     if (!isHomeRoute && isForeground) {
       _manager.block(reason: 'route_change_$owner');
@@ -100,11 +106,11 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     } else if (isHomeRoute && isForeground) {
       _manager.unblock();
       // 🔥 FIX: Force resume video playback when returning to home
-      Future.delayed(const Duration(milliseconds: 100), () {
+      Future.delayed(const Duration(milliseconds: 150), () {
         _manager.resumeAfterTabSwitch();
       });
       debugPrint(
-          '✅ NavigationObserver: Unblocking playback for home route: $owner');
+          '✅ NavigationObserver: Unblocking and resuming playback for home route: $owner');
     }
 
     if (route.settings.name != null) {

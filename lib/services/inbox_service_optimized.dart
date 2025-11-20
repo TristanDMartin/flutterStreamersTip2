@@ -60,18 +60,65 @@ class InboxServiceOptimized {
     if (currentUser == null) return [];
 
     try {
-      final query = await _firestore
+      // Get drafts shared with me (I'm in recipients array)
+      final receivedQuery = await _firestore
           .collection('shared_drafts')
-          .where('receiverId', isEqualTo: currentUser.uid)
+          .where('recipients', arrayContains: currentUser.uid)
+          .where('status', isEqualTo: 'shared')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      // Get drafts shared by me (I'm the sharer)
+      final sentQuery = await _firestore
+          .collection('shared_drafts')
+          .where('sharerId', isEqualTo: currentUser.uid)
+          .where('status', isEqualTo: 'shared')
           .orderBy('createdAt', descending: true)
           .get();
 
       final drafts = <SharedDraft>[];
-      for (final doc in query.docs) {
-        final draft = _mapSharedDraft(doc.id, doc.data());
-        _draftCache[doc.id] = draft;
-        drafts.add(draft);
+      
+      // Process received drafts
+      for (final doc in receivedQuery.docs) {
+        final data = doc.data();
+        // Convert to SharedDraft format (using first recipient as receiverId for compatibility)
+        final recipients = List<String>.from(data['recipients'] ?? []);
+        if (recipients.isNotEmpty) {
+          final draftData = {
+            ...data,
+            'receiverId': currentUser.uid,
+            'senderId': data['sharerId'],
+            'draftId': data['originalDraftId'] ?? doc.id,
+          };
+          final draft = _mapSharedDraft(doc.id, draftData);
+          _draftCache[doc.id] = draft;
+          drafts.add(draft);
+        }
       }
+
+      // Process sent drafts
+      for (final doc in sentQuery.docs) {
+        final data = doc.data();
+        final recipients = List<String>.from(data['recipients'] ?? []);
+        // Create a SharedDraft for each recipient
+        for (final recipientId in recipients) {
+          final draftData = {
+            ...data,
+            'receiverId': recipientId,
+            'senderId': currentUser.uid,
+            'draftId': data['originalDraftId'] ?? doc.id,
+          };
+          final draftId = '${doc.id}_$recipientId';
+          if (!_draftCache.containsKey(draftId)) {
+            final draft = _mapSharedDraft(draftId, draftData);
+            _draftCache[draftId] = draft;
+            drafts.add(draft);
+          }
+        }
+      }
+
+      // Sort by creation time
+      drafts.sort((a, b) => b.sharedAt.compareTo(a.sharedAt));
 
       return drafts;
     } catch (e) {
@@ -383,21 +430,37 @@ class InboxServiceOptimized {
 
   /// Map Firestore document to SharedDraft model
   SharedDraft _mapSharedDraft(String id, Map<String, dynamic> data) {
+    // Handle both old format (receiverId) and new format (sharerId/recipients)
+    final senderId = data['senderId'] ?? data['sharerId'] ?? '';
+    final senderName = data['senderName'] ?? data['sharerUsername'] ?? '';
+    final senderAvatar = data['senderAvatar'] ?? data['sharerAvatarUrl'] ?? '';
+    final receiverId = data['receiverId'] ?? '';
+    final draftId = data['draftId'] ?? data['originalDraftId'] ?? '';
+    final caption = data['caption'] ?? '';
+    final draftTitle = data['draftTitle'] ?? caption.isNotEmpty ? caption : 'Draft';
+    final draftThumbnailUrl = data['draftThumbnailUrl'] ?? data['thumbnailPath'] ?? '';
+    final draftDuration = data['draftDuration'] ?? (data['metadata']?['duration'] ?? 0);
+    final sharedAt = (data['sharedAt'] as Timestamp?)?.toDate() ?? 
+                     (data['createdAt'] as Timestamp?)?.toDate() ?? 
+                     DateTime.now();
+    final statusStr = data['status'] ?? 'pending';
+    final status = SharedDraftStatus.values.firstWhere(
+      (e) => e.name == statusStr,
+      orElse: () => SharedDraftStatus.pending,
+    );
+
     return SharedDraft(
       id: id,
-      draftId: data['draftId'] ?? '',
-      senderId: data['senderId'] ?? '',
-      receiverId: data['receiverId'] ?? '',
-      senderName: data['senderName'] ?? '',
-      senderAvatar: data['senderAvatar'] ?? '',
-      draftTitle: data['draftTitle'] ?? '',
-      draftThumbnailUrl: data['draftThumbnailUrl'] ?? '',
-      draftDuration: data['draftDuration'] ?? 0,
-      sharedAt: (data['sharedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      status: SharedDraftStatus.values.firstWhere(
-        (e) => e.name == data['status'],
-        orElse: () => SharedDraftStatus.pending,
-      ),
+      draftId: draftId,
+      senderId: senderId,
+      receiverId: receiverId,
+      senderName: senderName,
+      senderAvatar: senderAvatar,
+      draftTitle: draftTitle,
+      draftThumbnailUrl: draftThumbnailUrl,
+      draftDuration: draftDuration is int ? draftDuration : (draftDuration as num).toInt(),
+      sharedAt: sharedAt,
+      status: status,
       message: data['message'],
       viewedAt: (data['viewedAt'] as Timestamp?)?.toDate(),
     );

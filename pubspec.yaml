@@ -121,3 +121,4 @@ flutter_launcher_icons:
   image_path: "assets/logo1-0.PNG"
   min_sdk_android: 21
   remove_alpha_ios: true
+

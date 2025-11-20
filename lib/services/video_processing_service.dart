@@ -54,6 +54,9 @@ class VideoProcessingService {
   }
 
   /// Trim video to specified start and end times
+  /// 
+  /// **NOTE:** Video trimming is not yet implemented. FFmpeg integration required.
+  /// This method currently throws an UnimplementedError with instructions.
   Future<File> trimVideo({
     required File inputFile,
     required Duration startTime,
@@ -61,102 +64,64 @@ class VideoProcessingService {
     required String videoId,
     Function(double progress)? onProgress,
   }) async {
-    try {
-      onProgress?.call(0.1);
-
-      // Create output file
-      final tempDir = await getTemporaryDirectory();
-      final outputFile = File('${tempDir.path}/trimmed_$videoId.mp4');
-
-      // Simulate video trimming (in production, use FFmpeg)
-      await _simulateVideoProcessing(
-          outputFile, startTime, endTime, onProgress);
-
-      onProgress?.call(1.0);
-      LoggingService.instance
-          .debug('Video trimmed successfully', tag: 'VideoProcessingService');
-
-      return outputFile;
-    } catch (e) {
-      LoggingService.instance.error('Error trimming video',
-          tag: 'VideoProcessingService', error: e);
-      rethrow;
-    }
+    LoggingService.instance.warning(
+        'Video trimming attempted but not implemented. FFmpeg required.',
+        tag: 'VideoProcessingService');
+    
+    // Clear error message for user
+    throw UnimplementedError(
+        'Video trimming is not yet available. This feature requires FFmpeg integration and will be available in a future update. For now, please use the full video length.');
   }
 
   /// Apply audio effects (volume, mute, etc.)
+  /// 
+  /// **NOTE:** Audio effects are not yet implemented. FFmpeg integration required.
   Future<File> applyAudioEffects({
     required File inputFile,
     required AudioEffects effects,
     required String videoId,
     Function(double progress)? onProgress,
   }) async {
-    try {
-      onProgress?.call(0.1);
-
-      final tempDir = await getTemporaryDirectory();
-      final outputFile = File('${tempDir.path}/audio_$videoId.mp4');
-
-      // Simulate audio processing
-      await _simulateAudioProcessing(outputFile, effects, onProgress);
-
-      onProgress?.call(1.0);
-      return outputFile;
-    } catch (e) {
-      LoggingService.instance.error('Error applying audio effects',
-          tag: 'VideoProcessingService', error: e);
-      rethrow;
-    }
+    LoggingService.instance.warning(
+        'Audio effects attempted but not implemented. FFmpeg required.',
+        tag: 'VideoProcessingService');
+    
+    throw UnimplementedError(
+        'Audio effects are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
   }
 
   /// Apply visual effects and filters
+  /// 
+  /// **NOTE:** Visual effects are not yet implemented. FFmpeg integration required.
   Future<File> applyVisualEffects({
     required File inputFile,
     required List<VisualEffect> effects,
     required String videoId,
     Function(double progress)? onProgress,
   }) async {
-    try {
-      onProgress?.call(0.1);
-
-      final tempDir = await getTemporaryDirectory();
-      final outputFile = File('${tempDir.path}/effects_$videoId.mp4');
-
-      // Simulate visual effects processing
-      await _simulateVisualProcessing(outputFile, effects, onProgress);
-
-      onProgress?.call(1.0);
-      return outputFile;
-    } catch (e) {
-      LoggingService.instance.error('Error applying visual effects',
-          tag: 'VideoProcessingService', error: e);
-      rethrow;
-    }
+    LoggingService.instance.warning(
+        'Visual effects attempted but not implemented. FFmpeg required.',
+        tag: 'VideoProcessingService');
+    
+    throw UnimplementedError(
+        'Visual effects and filters are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
   }
 
   /// Add text overlay to video
+  /// 
+  /// **NOTE:** Text overlays are not yet implemented. FFmpeg integration required.
   Future<File> addTextOverlay({
     required File inputFile,
     required List<TextOverlay> textOverlays,
     required String videoId,
     Function(double progress)? onProgress,
   }) async {
-    try {
-      onProgress?.call(0.1);
-
-      final tempDir = await getTemporaryDirectory();
-      final outputFile = File('${tempDir.path}/text_$videoId.mp4');
-
-      // Simulate text overlay processing
-      await _simulateTextProcessing(outputFile, textOverlays, onProgress);
-
-      onProgress?.call(1.0);
-      return outputFile;
-    } catch (e) {
-      LoggingService.instance.error('Error adding text overlay',
-          tag: 'VideoProcessingService', error: e);
-      rethrow;
-    }
+    LoggingService.instance.warning(
+        'Text overlay attempted but not implemented. FFmpeg required.',
+        tag: 'VideoProcessingService');
+    
+    throw UnimplementedError(
+        'Text overlays are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
   }
 
   /// Generate thumbnail from video
@@ -421,48 +386,6 @@ class VideoProcessingService {
     }
   }
 
-  // Private helper methods for simulation
-  Future<void> _simulateVideoProcessing(File outputFile, Duration start,
-      Duration end, Function(double)? onProgress) async {
-    // Simulate processing time
-    for (int i = 0; i < 10; i++) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      onProgress?.call(0.1 + (i * 0.08));
-    }
-
-    // Create a dummy output file
-    await outputFile.writeAsString('trimmed_video_content');
-  }
-
-  Future<void> _simulateAudioProcessing(File outputFile, AudioEffects effects,
-      Function(double)? onProgress) async {
-    for (int i = 0; i < 8; i++) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      onProgress?.call(0.1 + (i * 0.1));
-    }
-
-    await outputFile.writeAsString('audio_processed_video');
-  }
-
-  Future<void> _simulateVisualProcessing(File outputFile,
-      List<VisualEffect> effects, Function(double)? onProgress) async {
-    for (int i = 0; i < 12; i++) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      onProgress?.call(0.1 + (i * 0.07));
-    }
-
-    await outputFile.writeAsString('visual_effects_applied');
-  }
-
-  Future<void> _simulateTextProcessing(File outputFile,
-      List<TextOverlay> textOverlays, Function(double)? onProgress) async {
-    for (int i = 0; i < 6; i++) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      onProgress?.call(0.1 + (i * 0.15));
-    }
-
-    await outputFile.writeAsString('text_overlay_added');
-  }
 }
 
 // Data models

@@ -39,12 +39,22 @@ void main() async {
   _initializeGlobalErrorHandler();
   debugPrint('✅ Global Error Handler: Completed at ${DateTime.now()}');
 
-  // CRITICAL: Run app FIRST to avoid blocking first frame (iOS watchdog)
-  // iOS will kill apps that block too long before first frame
-  debugPrint('🏃 Running app immediately at ${DateTime.now()}');
+  // 🔥 CRITICAL: Initialize Firebase BEFORE runApp to prevent "[core/no-app]" errors
+  // Firebase must be ready before any Firebase-dependent services are accessed
+  debugPrint('🔥 FIREBASE: Initializing Firebase BEFORE runApp at ${DateTime.now()}');
+  try {
+    await FirebaseIOSService.initialize();
+    debugPrint('✅ FIREBASE: Firebase initialized successfully at ${DateTime.now()}');
+  } catch (e) {
+    debugPrint('❌ FIREBASE: Initialization failed: $e');
+    // Continue anyway - app will show splash screen and retry
+  }
+
+  // CRITICAL: Run app AFTER Firebase is initialized
+  debugPrint('🏃 Running app at ${DateTime.now()}');
   runApp(const ProviderScope(child: IOSMinimalStartup(child: MyApp())));
 
-  // 🚀 CONSOLIDATED INITIALIZATION: Initialize services AFTER runApp
+  // 🚀 CONSOLIDATED INITIALIZATION: Initialize remaining services AFTER runApp
   // This prevents blocking the first frame and triggering iOS watchdog
   scheduleMicrotask(() async {
     try {
@@ -116,16 +126,14 @@ Future<void> _initializeAllServices() async {
     PerformanceEmergencyService().initialize();
     debugPrint('✅ PerformanceEmergencyService: Completed at ${DateTime.now()}');
 
-    // 🔥 FIREBASE: Initialize Firebase first before any Firebase-dependent services
-    debugPrint(
-        '🔥 FIREBASE: Starting Firebase initialization at ${DateTime.now()}');
-    await FirebaseIOSService.initialize();
-    debugPrint(
-        '🔥 FIREBASE: Firebase initialization completed at ${DateTime.now()}');
-
-    // Minimal delay - Firebase should be ready immediately after initialization
-    // Only wait if absolutely necessary (reduced from 1000ms to 200ms)
-    await Future.delayed(const Duration(milliseconds: 200));
+    // 🔥 FIREBASE: Already initialized in main() before runApp()
+    // Just verify it's ready
+    if (Firebase.apps.isEmpty) {
+      debugPrint('⚠️ FIREBASE: Not initialized, initializing now...');
+      await FirebaseIOSService.initialize();
+    } else {
+      debugPrint('✅ FIREBASE: Already initialized');
+    }
 
     // 🔥 ANALYTICS: Initialize analytics immediately after Firebase
     debugPrint('⏰ AnalyticsService: Start time: ${DateTime.now()}');
@@ -144,7 +152,7 @@ Future<void> _initializeAllServices() async {
     // PERFORMANCE OPTIMIZATIONS
     _initializePerformanceOptimizations();
 
-    // TIKTOK SERVICES (needed for UI)
+    // StreamersTip SERVICES (needed for UI)
     // Note: Full initialization with userId happens after login in HomeView
     StreamersTipLikeService().initialize().catchError((e) {
       debugPrint('⚠️ StreamersTipLikeService init failed: $e');

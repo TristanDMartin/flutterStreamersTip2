@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'dart:io';
 import '../providers/favorites_provider.dart';
 import '../services/unified_bookmark_service.dart';
 import '../models/home_video.dart';
@@ -10,6 +11,8 @@ import '../services/video_service.dart';
 import '../services/local_draft_service.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
+import 'video_publishing_screen.dart';
+import 'drafts_sheet_view.dart';
 
 // Grid item configuration class
 class GridItem {
@@ -140,25 +143,44 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         debugPrint(
             '🎬 ProfileView: Found ${userVideos.length} user videos for userId: ${widget.userId}');
 
-        // Get drafts from LocalDraftService
-        return FutureBuilder<List<Map<String, dynamic>>>(
-          future: LocalDraftService().getAllDrafts(),
-          builder: (context, snapshot) {
-            final drafts = snapshot.data ?? [];
+        // Check if viewing own profile - only show drafts for current user
+        final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+        final isViewingOwnProfile = currentUser != null && 
+            widget.userId != null && 
+            widget.userId == currentUser.uid;
 
-            debugPrint('🎬 ProfileView: Found ${drafts.length} drafts');
+        // Only load drafts if viewing own profile
+        if (isViewingOwnProfile) {
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: LocalDraftService().getAllDrafts(),
+            builder: (context, snapshot) {
+              final drafts = snapshot.data ?? [];
 
-            if (userVideos.isEmpty && drafts.isEmpty) {
-              return _buildEmptyState(
-                icon: Icons.videocam_outlined,
-                title: 'No Videos Yet',
-                subtitle: 'Start creating content to see your videos here',
-              );
-            }
+              debugPrint('🎬 ProfileView: Found ${drafts.length} drafts (own profile)');
 
-            return _buildVideoGridWithDrafts(userVideos, drafts);
-          },
-        );
+              if (userVideos.isEmpty && drafts.isEmpty) {
+                return _buildEmptyState(
+                  icon: Icons.videocam_outlined,
+                  title: 'No Videos Yet',
+                  subtitle: 'Start creating content to see your videos here',
+                );
+              }
+
+              return _buildVideoGridWithDrafts(userVideos, drafts);
+            },
+          );
+        } else {
+          // Viewing someone else's profile - don't show drafts
+          if (userVideos.isEmpty) {
+            return _buildEmptyState(
+              icon: Icons.videocam_outlined,
+              title: 'No Videos Yet',
+              subtitle: 'This user hasn\'t posted any videos yet',
+            );
+          }
+
+          return _buildVideoGridWithoutDrafts(userVideos);
+        }
       },
     );
   }
@@ -361,16 +383,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           mainAxisSpacing: 16, // Tight gutters = 16pt
           childAspectRatio: 9 / 16, // Strict 9:16 aspect ratio (portrait)
         ),
-        itemCount: (drafts.isNotEmpty ? 1 : 0) + videos.length,
+        itemCount: drafts.length + videos.length,
         itemBuilder: (context, index) {
-          // Show drafts card first if there are drafts
-          if (drafts.isNotEmpty && index == 0) {
-            // Show the first draft as a thumbnail instead of placeholder text
-            final draft = drafts.first;
+          // Show all drafts first
+          if (index < drafts.length) {
+            final draft = drafts[index];
             debugPrint(
-                '🎬 ProfileView: Building draft card - videoPath: "${draft['videoPath']}", thumbnailPath: "${draft['thumbnailPath']}"');
+                '🎬 ProfileView: Building draft card ${index + 1}/${drafts.length} - videoPath: "${draft['videoPath']}", thumbnailPath: "${draft['thumbnailPath']}"');
             final draftVideo = HomeVideo(
-              id: draft['id'] ?? 'draft_${index}',
+              id: draft['id'] ?? 'draft_$index',
               videoURL: draft['videoPath'] ?? '',
               thumbnailURL: draft['thumbnailPath'] ?? '',
               creator: User(
@@ -394,20 +415,57 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
             return GridThumbnail(
               video: draftVideo,
-              onTap: _showDraftsSheet,
+              onTap: () => _openDraft(draft),
               showDraftBadge: true,
               showDurationBadge: false,
             );
           }
 
-          // Adjust index for published videos
-          final videoIndex = drafts.isNotEmpty ? index - 1 : index;
+          // Show published videos after drafts
+          final videoIndex = index - drafts.length;
           if (videoIndex < videos.length) {
             final video = videos[videoIndex];
             return _buildHomeVideoCard(video, videoIndex);
           }
 
           return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  Widget _buildVideoGridWithoutDrafts(List<HomeVideo> videos) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        // Refresh data based on feed type
+        switch (widget.feedType) {
+          case ProfileVideoFeedType.favorites:
+            await ref.read(favoritesProvider.notifier).forceSync();
+            break;
+          case ProfileVideoFeedType.videos:
+          case ProfileVideoFeedType.tagged:
+            // Refresh for user videos and tagged content - placeholder for future implementation
+            break;
+        }
+      },
+      color: const Color(0xFF9248d2),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 9 / 16,
+        ),
+        itemCount: videos.length,
+        itemBuilder: (context, index) {
+          final video = videos[index];
+          // Ensure we're not showing drafts (safety check)
+          if (video.isDraft == true) {
+            return const SizedBox.shrink();
+          }
+          return _buildHomeVideoCard(video, index);
         },
       ),
     );
@@ -541,46 +599,96 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     );
   }
 
-  void _showDraftsSheet() {
-    // Get drafts from LocalDraftService
-    LocalDraftService().getAllDrafts().then((drafts) {
-      if (mounted) {
-        // Navigator.of(context).push(
-        //   MaterialPageRoute(
-        //     builder: (context) => DraftsSheetView(
-        //       drafts: drafts,
-        //       onDelete: (draft) async {
-        //         // Delete draft using LocalDraftService
-        //         final success = await LocalDraftService().deleteDraft(draft['id']);
-        //         if (success) {
-        //           ScaffoldMessenger.of(context).showSnackBar(
-        //             SnackBar(
-        //               content: Text('Deleted draft: ${draft['caption']?.isNotEmpty == true ? draft['caption'] : 'Untitled Draft'}'),
-        //               backgroundColor: Colors.red,
-        //             ),
-        //           );
-        //           // Refresh the UI
-        //           setState(() {});
-        //         } else {
-        //           ScaffoldMessenger.of(context).showSnackBar(
-        //             const SnackBar(
-        //               content: Text('Failed to delete draft'),
-        //               backgroundColor: Colors.red,
-        //             ),
-        //           );
-        //         }
-        //       },
-        //       onEdit: (draft) {
-        //         _editDraft(draft);
-        //       },
-        //     ),
-        //   ),
-        // );
+  void _openDraft(Map<String, dynamic> draft) {
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => DraftsSheetView(
+            drafts: const [],
+            onDraftTap: (selectedDraft) => _editDraft(selectedDraft),
+            onDelete: (draftToDelete) async {
+              final success = await LocalDraftService().deleteDraft(draftToDelete['id']);
+              if (success) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Deleted draft: ${draftToDelete['caption']?.isNotEmpty == true ? draftToDelete['caption'] : 'Untitled Draft'}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to delete draft'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+              return success;
+            },
+          ),
+        ),
+      ).then((_) {
+        // Refresh when returning from drafts sheet
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
+  }
+
+  void _editDraft(Map<String, dynamic> draft) {
+    try {
+      final videoFile = File(draft['videoPath']);
+      if (!videoFile.existsSync()) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Drafts sheet feature coming soon!')),
+          const SnackBar(
+            content: Text('Video file not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final hashtags = (draft['hashtags'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => VideoPublishingScreen(
+              videoFile: videoFile,
+              caption: draft['caption'] ?? '',
+              hashtags: hashtags,
+              onPublish: () {
+                // Delete draft after successful publish
+                LocalDraftService().deleteDraft(draft['id']);
+                Navigator.of(context).pop();
+                setState(() {});
+              },
+              onCancel: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ),
         );
       }
-    });
+    } catch (e) {
+      debugPrint('❌ Error editing draft: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening draft: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // Helper methods

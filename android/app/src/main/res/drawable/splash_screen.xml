@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Custom splash screen drawable with logo -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Purple background -->
+    <item>
+        <color android:color="#6137EB" />
+    </item>
+    <!-- White logo centered, positioned slightly above center -->
+    <item
+        android:width="120dp"
+        android:height="120dp"
+        android:gravity="center"
+        android:top="-60dp">
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/splash_logo" />
+    </item>
+</layer-list>
+

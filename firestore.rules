@@ -539,6 +539,29 @@ service cloud.firestore {
           request.auth.uid == resource.data.senderId;
       }
     }
+    
+    // Scheduled posts collection - for video scheduling
+    match /scheduled_posts/{scheduledPostId} {
+      // Allow reading scheduled posts if user is the author
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.authorId;
+      
+      // Allow listing scheduled posts for authenticated users (filtered by authorId in query)
+      allow list: if request.auth != null;
+      
+      // Allow creating scheduled posts if user is the author
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.authorId &&
+        request.resource.data.status == 'scheduled';
+      
+      // Allow updating scheduled posts if user is the author (can update status, schedule, etc.)
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.authorId;
+      
+      // Allow deleting scheduled posts if user is the author
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.authorId;
+    }
   }
   
   // Validation functions

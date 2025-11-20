@@ -72,14 +72,30 @@ class HomeViewModel extends StateNotifier<HomeState> {
   // MARK: - Initial Load with Instant Play
 
   /// Refresh videos when a new video is uploaded
-  Future<void> refreshAfterUpload() async {
-    log('🔄 Refreshing videos after upload...');
+  /// If newVideoId is provided, ensure it appears at the top of the feed
+  Future<void> refreshAfterUpload({String? newVideoId}) async {
+    log('🔄 Refreshing videos after upload... (newVideoId: $newVideoId)');
     try {
-      // Refresh VideoService to get latest videos
+      // Refresh VideoService to get latest videos from Firestore
       await _videoService.refresh();
-      final updatedVideos = _videoService.getAllVideos();
+      var updatedVideos = _videoService.getAllVideos();
 
-      // Update state with fresh videos
+      // 🚀 NEWEST FIRST: If newVideoId is provided, ensure it's at the top
+      if (newVideoId != null && updatedVideos.isNotEmpty) {
+        final newVideoIndex = updatedVideos.indexWhere((v) => v.id == newVideoId);
+        if (newVideoIndex > 0) {
+          // Move new video to the top
+          final newVideo = updatedVideos.removeAt(newVideoIndex);
+          updatedVideos.insert(0, newVideo);
+          log('✅ Moved new video to top of feed: $newVideoId');
+        } else if (newVideoIndex == 0) {
+          log('✅ New video already at top of feed: $newVideoId');
+        } else {
+          log('⚠️ New video not found in feed yet (may need Firestore sync): $newVideoId');
+        }
+      }
+
+      // Update state with fresh videos (newest first)
       state = state.copyWith(forYouVideos: updatedVideos);
       log('✅ Videos refreshed after upload: ${updatedVideos.length} videos');
     } catch (e) {
@@ -676,13 +692,16 @@ class HomeViewModel extends StateNotifier<HomeState> {
       );
       log('🔄 _refreshFollowing: Fetched ${videos.length} Following videos');
       if (state.followingSlice?.requestId != rid) return;
+      final updatedSlice = state.followingSlice?.copyWith(
+        items: videos,
+        nextCursor: null, // We'll implement pagination later
+        isLoading: false,
+        error: null,
+      );
+
       state = state.copyWith(
-        followingSlice: state.followingSlice?.copyWith(
-          items: videos,
-          nextCursor: null, // We'll implement pagination later
-          isLoading: false,
-          error: null,
-        ),
+        followingSlice: updatedSlice,
+        followingVideos: videos,
       );
       log('✅ _refreshFollowing: Following feed updated with ${videos.length} videos');
     } catch (e) {
@@ -699,15 +718,18 @@ class HomeViewModel extends StateNotifier<HomeState> {
         final fallbackVideos = page['videos'] as List<HomeVideo>;
         log('🔄 _refreshFollowing: Fallback loaded ${fallbackVideos.length} For You videos');
 
+        final fallbackSlice = state.followingSlice?.copyWith(
+          items: fallbackVideos,
+          nextCursor: page['lastDocument'] == null
+              ? null
+              : <String, dynamic>{'lastDoc': page['lastDocument']},
+          isLoading: false,
+          error: null, // Clear error since we have fallback data
+        );
+
         state = state.copyWith(
-          followingSlice: state.followingSlice?.copyWith(
-            items: fallbackVideos,
-            nextCursor: page['lastDocument'] == null
-                ? null
-                : <String, dynamic>{'lastDoc': page['lastDocument']},
-            isLoading: false,
-            error: null, // Clear error since we have fallback data
-          ),
+          followingSlice: fallbackSlice,
+          followingVideos: fallbackVideos,
         );
         log('✅ _refreshFollowing: Following feed updated with fallback For You videos');
       } catch (fallbackError) {
@@ -771,19 +793,24 @@ class HomeViewModel extends StateNotifier<HomeState> {
           limit: 20,
         );
         if (state.followingSlice?.requestId != rid) return;
+        final pagedSlice = state.followingSlice?.copyWith(
+          items: [...s.items, ...videos],
+          nextCursor: null, // We'll implement pagination later
+          isLoading: false,
+          error: null,
+        );
+
         state = state.copyWith(
-          followingSlice: state.followingSlice?.copyWith(
-            items: [...s.items, ...videos],
-            nextCursor: null, // We'll implement pagination later
-            isLoading: false,
-            error: null,
-          ),
+          followingSlice: pagedSlice,
+          followingVideos: pagedSlice?.items ?? state.followingVideos,
         );
       } catch (e) {
         if (state.followingSlice?.requestId != rid) return;
+        final errorSlice = state.followingSlice
+            ?.copyWith(isLoading: false, error: e.toString());
         state = state.copyWith(
-          followingSlice: state.followingSlice
-              ?.copyWith(isLoading: false, error: e.toString()),
+          followingSlice: errorSlice,
+          followingVideos: errorSlice?.items ?? state.followingVideos,
         );
       }
     }

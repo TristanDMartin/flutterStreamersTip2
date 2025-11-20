@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
@@ -10,7 +11,7 @@ import '../services/tiktok_camera_service.dart';
 import '../services/global_playback_manager.dart';
 import '../providers/home_provider.dart';
 import 'video_recording_preview.dart';
-import 'video_edit_view.dart';
+import 'video_publishing_screen.dart';
 
 /// TikTok-quality camera view with professional video recording
 ///
@@ -38,7 +39,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   bool _showGrid = false;
   bool _showQualityInfo = false;
   Offset? _focusPoint;
-  double _currentZoom = 1.0;
+  double _currentZoom = 1.0; // Will be updated to minZoom after initialization
   Timer? _recordingTimer;
   int _recordingDuration = 0;
 
@@ -47,8 +48,30 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // 🔊 AUDIO FIX: Block playback when opening camera
+    // 🔊 AUDIO FIX: Immediately pause all videos to prevent audio bleeding
+    // Block playback first to prevent any new videos from starting
     GlobalPlaybackManager.instance.block(reason: 'cameraViewOpened');
+    // Also explicitly pause all videos for immediate effect
+    GlobalPlaybackManager.instance.pauseAll();
+
+    // 🔧 FIXED: Delay provider modification until after widget tree is built
+    // Cannot modify providers during initState - use post-frame callback
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        final homeNotifier = ref.read(homeProvider.notifier);
+        homeNotifier.pauseAllVideos();
+        log('🔇 TikTokCameraView: Paused all HomeView videos via provider');
+      } catch (e) {
+        log('⚠️ TikTokCameraView: Could not pause via home provider: $e');
+      }
+    });
+
+    // 🔒 FIXED: Lock screen orientation to portrait for camera
+    // This prevents preview from rotating and ensures consistent 9:16 video
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
 
     _initializeCamera();
   }
@@ -61,6 +84,15 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
 
     // 🔊 AUDIO FIX: Unblock playback when leaving camera
     GlobalPlaybackManager.instance.unblock();
+
+    // 🔒 FIXED: Unlock screen orientation when leaving camera
+    // Allow all orientations to be used in other parts of the app
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
 
     super.dispose();
   }
@@ -82,6 +114,27 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       log('🎥 TikTokCameraView: Initializing camera...');
 
       await _cameraService.initialize();
+
+      // 🔍 FIXED: Set zoom to minimum level for widest field of view
+      // This prevents camera from starting zoomed in and ensures full sensor coverage
+      if (_cameraService.controller != null &&
+          _cameraService.controller!.value.isInitialized) {
+        try {
+          // Try setting to 0.1 first - camera will clamp to actual minimum automatically
+          await _cameraService.controller!.setZoomLevel(0.1);
+          _currentZoom = 0.1; // Camera will clamp this to the actual minimum
+          log('🔍 TikTokCameraView: Zoom set to minimum (attempted 0.1, camera will clamp)');
+        } catch (e) {
+          // Fallback to 1.0
+          try {
+            await _cameraService.controller!.setZoomLevel(1.0);
+            _currentZoom = 1.0;
+            log('🔍 TikTokCameraView: Zoom set to 1.0 (fallback)');
+          } catch (e2) {
+            log('⚠️ TikTokCameraView: Could not set zoom: $e2');
+          }
+        }
+      }
 
       if (mounted) {
         setState(() {
@@ -226,18 +279,23 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
               videoFile: File(videoFile.path),
               onRetake: () => Navigator.of(context).pop(),
               onUseVideo: () {
-                // Close VideoRecordingPreview and navigate to VideoEditView
+                // Close VideoRecordingPreview and navigate directly to Publishing
                 Navigator.of(context).pop(); // Close VideoRecordingPreview
                 Navigator.of(context).pop(); // Close CameraView
-                // Navigate to VideoEditView
+                // Navigate directly to VideoPublishingScreen
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => VideoEditView(
+                    builder: (context) => VideoPublishingScreen(
                       videoFile: File(videoFile.path),
-                      onCancel: () => Navigator.of(context).pop(),
-                      onNext: () {
-                        // Handle next step (publishing, etc.)
-                        Navigator.of(context).pop();
+                      caption:
+                          '', // Empty caption - user can add in publishing screen
+                      hashtags: const [], // Empty hashtags - user can add in publishing screen
+                      onPublish: () {
+                        // Handle successful publishing
+                        Navigator.of(context).pop(); // Close publishing screen
+                      },
+                      onCancel: () {
+                        Navigator.of(context).pop(); // Go back to camera
                       },
                     ),
                   ),
@@ -359,18 +417,23 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
               videoFile: File(video.path),
               onRetake: () => Navigator.of(context).pop(),
               onUseVideo: () {
-                // Close VideoRecordingPreview and navigate to VideoEditView
+                // Close VideoRecordingPreview and navigate directly to Publishing
                 Navigator.of(context).pop(); // Close VideoRecordingPreview
                 Navigator.of(context).pop(); // Close CameraView
-                // Navigate to VideoEditView
+                // Navigate directly to VideoPublishingScreen
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => VideoEditView(
+                    builder: (context) => VideoPublishingScreen(
                       videoFile: File(video.path),
-                      onCancel: () => Navigator.of(context).pop(),
-                      onNext: () {
-                        // Handle next step (publishing, etc.)
-                        Navigator.of(context).pop();
+                      caption:
+                          '', // Empty caption - user can add in publishing screen
+                      hashtags: const [], // Empty hashtags - user can add in publishing screen
+                      onPublish: () {
+                        // Handle successful publishing
+                        Navigator.of(context).pop(); // Close publishing screen
+                      },
+                      onCancel: () {
+                        Navigator.of(context).pop(); // Go back to camera
                       },
                     ),
                   ),
@@ -439,7 +502,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Camera preview with proper aspect ratio
+          // Camera preview with proper aspect ratio - fills entire screen
           _buildCameraPreview(),
 
           // Grid overlay
@@ -464,38 +527,115 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     );
   }
 
-  /// Build camera preview with TikTok-quality aspect ratio
+  /// Build camera preview with native camera field of view (no cropping)
+  ///
+  /// FIXED:
+  /// - Uses camera's native aspect ratio (no forced cropping)
+  /// - Uses BoxFit.contain to show full FOV without zoom effect
+  /// - Front camera is mirrored horizontally for natural selfie experience
+  /// - Never crops the preview (shows full sensor width)
   Widget _buildCameraPreview() {
-    return GestureDetector(
-      onTapDown: _onTapToFocus,
-      onScaleUpdate: _onScaleUpdate,
-      child: SizedBox(
-        width: double.infinity,
-        height: double.infinity,
-        child: _cameraService.controller != null &&
-                _cameraService.controller!.value.isInitialized
-            ? AspectRatio(
-                aspectRatio: _cameraService.getOptimalAspectRatio(),
-                child: CameraPreview(
-                  _cameraService.controller!,
-                  key: ValueKey(_cameraService.currentLensDirection.toString()),
-                ),
-              )
-            : const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Initializing Camera...',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                  ],
-                ),
-              ),
+    final isFrontCamera =
+        _cameraService.currentLensDirection == CameraLensDirection.front;
+
+    final controller = _cameraService.controller;
+    if (controller == null ||
+        !controller.value.isInitialized ||
+        controller.value.previewSize == null) {
+      return const Positioned.fill(
+        child: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        ),
+      );
+    }
+
+    // The plugin reports previewSize in LANDSCAPE orientation (width > height)
+    // For a portrait UI, we need to swap them to get the correct portrait aspect ratio
+    final Size ps = controller.value.previewSize!;
+    final double cameraAspectPortrait =
+        ps.height / ps.width; // e.g., 16/9 ≈ 1.778 or 4/3 ≈ 1.333
+
+    log('📐 Camera preview size (landscape): ${ps.width}x${ps.height}');
+    log('📐 Camera aspect ratio (portrait): ${cameraAspectPortrait.toStringAsFixed(3)}');
+
+    // Calculate what aspect ratio this is (16:9 = 1.778, 4:3 = 1.333, etc.)
+    String aspectRatioName = 'Unknown';
+    bool is16by9 = false;
+    if ((cameraAspectPortrait - 1.778).abs() < 0.02) {
+      aspectRatioName = '16:9';
+      is16by9 = true;
+    } else if ((cameraAspectPortrait - 1.333).abs() < 0.02) {
+      aspectRatioName = '4:3';
+    } else if ((cameraAspectPortrait - 1.5).abs() < 0.02) {
+      aspectRatioName = '3:2';
+    } else if ((cameraAspectPortrait - 2.0).abs() < 0.02) {
+      aspectRatioName = '2:1';
+    }
+    log('📐 Aspect ratio type: $aspectRatioName (${cameraAspectPortrait.toStringAsFixed(3)})');
+
+    // Target 16:9 aspect ratio for portrait (9:16 = 0.5625, but in portrait it's height/width)
+    // 16:9 in landscape becomes 9:16 in portrait = height/width = 9/16 = 0.5625
+    // But we're calculating portrait aspect as height/width, so 16:9 = 16/9 ≈ 1.778
+    const double target16by9Portrait = 16.0 / 9.0; // ≈ 1.778
+
+    // If we have 16:9 natively, use it and fill screen with BoxFit.cover
+    // If we don't have 16:9, crop to 16:9 with BoxFit.cover (native camera behavior)
+    final double displayAspectRatio =
+        is16by9 ? cameraAspectPortrait : target16by9Portrait;
+
+    log('📐 Display aspect ratio: ${displayAspectRatio.toStringAsFixed(3)} (${is16by9 ? "native 16:9" : "cropped to 16:9"})');
+
+    // Build camera preview
+    // If native 16:9, use camera's aspect ratio
+    // If not 16:9, crop to 16:9 to match native camera behavior
+    final cameraPreview = AspectRatio(
+      aspectRatio: displayAspectRatio,
+      child: Transform(
+        alignment: Alignment.center,
+        // Mirror front camera horizontally for natural selfie experience
+        transform:
+            isFrontCamera ? Matrix4.rotationY(math.pi) : Matrix4.identity(),
+        child: ClipRect(
+          // Clip to 16:9 if camera doesn't provide it natively
+          child: CameraPreview(
+            controller,
+            key: ValueKey(_cameraService.currentLensDirection.toString()),
+          ),
+        ),
+      ),
+    );
+
+    // Use BoxFit.cover to fill screen (native camera behavior)
+    // This will crop to 16:9 if needed, matching how native camera apps work
+    // If camera is already 16:9, no cropping happens - perfect match
+    return Positioned.fill(
+      child: GestureDetector(
+        onTapDown: _onTapToFocus,
+        onScaleUpdate: _onScaleUpdate,
+        child: ColoredBox(
+          // Clean black background (shouldn't show if 16:9 matches screen)
+          color: Colors.black,
+          child: FittedBox(
+            fit: BoxFit
+                .cover, // Fill screen - crop to 16:9 if needed (native camera behavior)
+            alignment: Alignment.center,
+            child: SizedBox(
+              // Use 16:9 aspect ratio for display (portrait orientation)
+              // Portrait 16:9: height/width = 16/9, so width = height * 9/16
+              // In portrait: height = ps.width (landscape width), width = ps.height (landscape height)
+              // If native 16:9: width = ps.height (already correct)
+              // If not 16:9: crop to width = ps.width * 9/16 (crop width, keep full height)
+              width: is16by9
+                  ? ps.height // Native 16:9 - already correct width
+                  : ps.width * (9.0 / 16.0), // Crop to 16:9 width
+              height: ps
+                  .width, // Use full height from camera (portrait orientation)
+              child: cameraPreview,
+            ),
+          ),
+        ),
       ),
     );
   }

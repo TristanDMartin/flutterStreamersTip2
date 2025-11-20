@@ -102,6 +102,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     }
 
     return GestureDetector(
+      behavior: HitTestBehavior.translucent, // Allow gestures to pass through
       onPanStart: _handlePanStart,
       onPanUpdate: _handlePanUpdate,
       onPanEnd: _handleSwipe,
@@ -109,6 +110,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
         controller: _pageController,
         scrollDirection: Axis.vertical, // Enable vertical swiping
         physics: const ClampingScrollPhysics(), // Better physics for mobile
+        allowImplicitScrolling: false, // Prevent interference with gestures
         onPageChanged: (index) {
           log('🎬 VideoPageView: Page changed to index $index');
           widget.onPageChanged(index);

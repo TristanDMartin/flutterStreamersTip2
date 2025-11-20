@@ -3,11 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../services/tiktok_account_switcher.dart';
-import '../services/robust_auth_service.dart';
 import 'instant_response_button.dart';
 import 'auth_modal_view.dart';
 
-/// TikTok-style account switching modal with instant switching
+/// StreamersTip account switching modal with instant switching
 class TikTokAccountSwitcherModal extends ConsumerStatefulWidget {
   const TikTokAccountSwitcherModal({super.key});
 
@@ -399,7 +398,7 @@ class _TikTokAccountSwitcherModalState
           ),
           const SizedBox(height: 8),
           Text(
-            'Sign in with a different Google account to enable instant switching like TikTok',
+            'Sign in with a different Google account to enable instant account switching',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.5),
               fontSize: 14,
@@ -539,7 +538,7 @@ class _TikTokAccountSwitcherModalState
     // Close current modal
     _closeModal();
 
-    // Show sign-in prompt with TikTok-style explanation
+    // Show sign-in prompt with StreamersTip explanation
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -557,7 +556,7 @@ class _TikTokAccountSwitcherModalState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('To switch accounts like TikTok, you need to sign in with:'),
+            Text('To switch accounts, you need to sign in with:'),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(12),

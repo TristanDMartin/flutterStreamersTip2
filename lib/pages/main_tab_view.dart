@@ -184,7 +184,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     // AUDIO FIX: Add delay to ensure disposal completes before navigation
     _cameraNavTimer = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
-      // Navigate directly to TikTok-quality camera view
+      // Navigate directly to StreamersTip camera view
       Navigator.of(context)
           .push(
         MaterialPageRoute(

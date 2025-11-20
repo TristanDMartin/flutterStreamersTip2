@@ -2,6 +2,107 @@ const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
+const firestore = admin.firestore();
+const FieldValue = admin.firestore.FieldValue;
+
+// ============================================================================
+// USER PROFILE HELPERS
+// ============================================================================
+
+/**
+ * Generate a unique username by checking the usernames collection.
+ * Falls back to the user's uid prefix if display name/email are missing.
+ */
+async function generateUniqueUsername(base, uid) {
+  let sanitizedBase = (base || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .substring(0, 20);
+
+  if (!sanitizedBase) {
+    sanitizedBase = `user${uid.substring(0, 6)}`;
+  }
+
+  let username = sanitizedBase;
+  let counter = 1;
+
+  while (true) {
+    const usernameDoc = await firestore.collection('usernames').doc(username).get();
+    if (!usernameDoc.exists) {
+      return username;
+    }
+    username = `${sanitizedBase}${counter}`;
+    counter += 1;
+  }
+}
+
+/**
+ * Ensure a Firestore user profile exists for the given auth user.
+ */
+async function ensureUserProfile(userRecord) {
+  const uid = userRecord.uid;
+  const userRef = firestore.collection('users').doc(uid);
+  const existingUser = await userRef.get();
+
+  if (existingUser.exists) {
+    console.log(`ℹ️ User document already exists for ${uid}`);
+    return;
+  }
+
+  const baseName =
+    userRecord.displayName ||
+    (userRecord.email ? userRecord.email.split('@')[0] : '') ||
+    `user${uid.substring(0, 6)}`;
+
+  const username = await generateUniqueUsername(baseName, uid);
+  const displayName = userRecord.displayName || baseName || 'Streamer';
+
+  const profileData = {
+    id: uid,
+    uid,
+    email: userRecord.email || null,
+    displayName,
+    username,
+    avatarURL: userRecord.photoURL || null,
+    bio: '',
+    hashtags: [],
+    onlineStatus: 'offline',
+    postCount: 0,
+    followerCount: 0,
+    followingCount: 0,
+    isActive: true,
+    isVerified: false,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  await userRef.set(profileData);
+
+  await firestore
+    .collection('usernames')
+    .doc(username)
+    .set({
+      uid,
+      username,
+      displayName,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+  console.log(`✅ Created Firestore user profile for ${uid}`);
+}
+
+// ============================================================================
+// AUTH TRIGGERS
+// ============================================================================
+
+exports.onAuthUserCreate = functions.auth.user().onCreate(async (user) => {
+  try {
+    console.log(`👤 Auth user created: ${user.uid}`);
+    await ensureUserProfile(user);
+  } catch (error) {
+    console.error(`❌ Failed to create Firestore profile for ${user.uid}:`, error);
+  }
+});
 
 // Cloud Function to schedule notifications when a bookmark is created
 exports.onBookmarkCreate = functions.firestore

@@ -34,10 +34,26 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   void _setupChat() {
     if (!validateChat()) return;
-    _setupMessageListener(chatId: chat.id!);
+    final chatId = chat.id;
+    if (chatId == null || chatId.isEmpty) {
+      state = state.copyWith(
+        error: "Invalid chat ID",
+        isLoading: false,
+      );
+      return;
+    }
+    _setupMessageListener(chatId: chatId);
   }
 
   void _setupMessageListener({required String chatId}) {
+    if (chatId.isEmpty) {
+      state = state.copyWith(
+        error: "Chat ID cannot be empty",
+        isLoading: false,
+      );
+      return;
+    }
+
     _messageListener?.cancel();
     state = state.copyWith(isLoading: true, error: null);
     _messageListener = FirebaseFirestore.instance

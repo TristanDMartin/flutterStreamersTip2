@@ -10,7 +10,7 @@ import '../services/comments_service.dart';
 import '../services/unified_avatar_service.dart';
 import 'optimized_comment_tile.dart';
 
-/// CommentsView2 - TikTok-Style Comments Overlay
+/// CommentsView2 - StreamersTip Comments Overlay
 ///
 /// Features:
 /// - Real-time updates with Firestore streams
@@ -20,7 +20,7 @@ import 'optimized_comment_tile.dart';
 /// - Backdrop blur for readability
 /// - Touch-blocking overlay prevents video interaction
 ///
-/// Audio Policy: Video keeps playing at normal volume (TikTok pattern)
+/// Audio Policy: Video keeps playing at normal volume
 class CommentsView2 extends ConsumerStatefulWidget {
   final String videoId;
   final String videoOwnerId;
@@ -420,7 +420,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
 
     return Stack(
       children: [
-        // Block all touches to video beneath - TikTok pattern
+        // Block all touches to video beneath
         Positioned.fill(
           child: GestureDetector(
             onTap: () => Navigator.of(context).pop(),

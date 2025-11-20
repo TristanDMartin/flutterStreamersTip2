@@ -8,7 +8,7 @@ import '../providers/follows_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// TikTok-style search screen with unified results feed
+/// StreamersTip search screen with unified results feed
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 

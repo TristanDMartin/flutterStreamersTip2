@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/scheduled_post.dart';
-import '../services/scheduled_post_service.dart';
+import '../services/firestore_scheduled_post_service.dart';
+import '../services/scheduled_post_publisher_service.dart';
 // import 'edit_post_view.dart'; // Removed - unused
 // import 'post_progress_view.dart'; // Removed - unused
 // import 'post_analytics_view.dart'; // Removed - unused
@@ -32,7 +33,7 @@ class ManagePostsView extends StatefulWidget {
 
 class _ManagePostsViewState extends State<ManagePostsView>
     with TickerProviderStateMixin {
-  final ScheduledPostService _postService = ScheduledPostService();
+  final FirestoreScheduledPostService _postService = FirestoreScheduledPostService();
   List<ScheduledPost> _posts = [];
   bool _isLoading = true;
   PostStatus? _filterStatus;
@@ -59,6 +60,21 @@ class _ManagePostsViewState extends State<ManagePostsView>
     _tabController = TabController(length: 3, vsync: this);
     _loadPosts();
     _startRealTimeUpdates();
+    _checkAndPublishOverduePosts();
+  }
+  
+  /// Check for posts that are past their scheduled time and trigger publishing
+  Future<void> _checkAndPublishOverduePosts() async {
+    try {
+      final publisherService = ScheduledPostPublisherService();
+      await publisherService.checkNow();
+      // Reload posts to reflect status changes
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _loadPosts();
+      });
+    } catch (e) {
+      // Silently fail - the periodic publisher will handle it
+    }
   }
 
   void _startRealTimeUpdates() {
@@ -311,6 +327,10 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   Widget _buildPostHeader(ScheduledPost post, bool isSelected) {
+    final isOverdue = post.status == PostStatus.scheduled &&
+        post.schedule?.scheduledAtUtc != null &&
+        post.schedule!.scheduledAtUtc.isBefore(DateTime.now());
+    
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -323,14 +343,41 @@ class _ManagePostsViewState extends State<ManagePostsView>
             ),
             const SizedBox(width: 8),
           ],
-          _buildStatusChip(post.status),
+          _buildStatusChip(post.status, isOverdue: isOverdue),
           const Spacer(),
+          if (isOverdue) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.orange, width: 1),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.schedule, color: Colors.orange, size: 14),
+                  SizedBox(width: 4),
+                  Text(
+                    'Overdue',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           Text(
             _formatScheduleTime(
                 post.schedule?.scheduledAtUtc ?? DateTime.now()),
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: isOverdue ? Colors.orange : Colors.white70,
               fontSize: 12,
+              fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
             ),
           ),
         ],
@@ -399,21 +446,36 @@ class _ManagePostsViewState extends State<ManagePostsView>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: media.type == MediaType.image
-            ? Image.network(
-                media.src,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const Icon(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Show thumbnail/image
+            Image.network(
+              media.src,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(
+                color: Colors.white.withValues(alpha: 0.1),
+                child: const Icon(
                   Icons.image,
                   color: Colors.white30,
                   size: 32,
                 ),
-              )
-            : const Icon(
-                Icons.play_circle_outline,
-                color: Colors.white30,
-                size: 32,
               ),
+            ),
+            // Show play icon overlay for videos
+            if (media.type == MediaType.video)
+              Container(
+                color: Colors.black.withValues(alpha: 0.3),
+                child: const Center(
+                  child: Icon(
+                    Icons.play_circle_outline,
+                    color: Colors.white,
+                    size: 48,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -555,8 +617,8 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget _buildStatusChip(PostStatus status) {
-    final color = _getStatusColor(status);
+  Widget _buildStatusChip(PostStatus status, {bool isOverdue = false}) {
+    final color = isOverdue ? Colors.orange : _getStatusColor(status);
     final text = _getStatusText(status);
 
     return Container(

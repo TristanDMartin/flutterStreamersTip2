@@ -180,17 +180,35 @@ class RobustAuthenticationService extends ChangeNotifier {
         return;
       }
 
-      final currentUser = _authInstance.currentUser;
-      if (currentUser != null) {
-        // User is already logged in, handle the sign in asynchronously
-        await _handleUserSignIn(currentUser);
-      } else {
-        // No user is logged in, set the state immediately
-        _currentUser = null;
-        _isLoggedIn = false;
-        _isCheckingAuth = false;
-        notifyListeners();
-      }
+      // Add timeout to prevent infinite loading
+      final authCheck = Future.any([
+        Future(() async {
+          final currentUser = _authInstance.currentUser;
+          if (currentUser != null) {
+            // User is already logged in, handle the sign in asynchronously
+            await _handleUserSignIn(currentUser);
+          } else {
+            // No user is logged in, set the state immediately
+            _currentUser = null;
+            _isLoggedIn = false;
+            _isCheckingAuth = false;
+            notifyListeners();
+          }
+        }),
+        Future.delayed(const Duration(seconds: 5), () {
+          debugPrint('⚠️ Auth check timeout - forcing completion');
+          if (_isCheckingAuth) {
+            _isCheckingAuth = false;
+            if (!_isLoggedIn) {
+              _currentUser = null;
+              _isLoggedIn = false;
+            }
+            notifyListeners();
+          }
+        }),
+      ]);
+      
+      await authCheck;
     } catch (e) {
       debugPrint('❌ Error checking initial auth state: $e');
       _currentUser = null;
