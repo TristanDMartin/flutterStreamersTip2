@@ -112,6 +112,22 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   @override
   void initState() {
     super.initState();
+    
+    // 🔊 AUDIO FIX: Block playback IMMEDIATELY (synchronously) when DiscoverView opens
+    // This prevents audio bleeding from HomeView - must happen before any widgets build
+    // CRITICAL: This must be synchronous, not in postFrameCallback, to prevent any audio
+    final manager = GlobalPlaybackManager.instance;
+    
+    // Step 1: Block first to prevent any new videos from starting
+    manager.block(reason: 'discoverViewOpened');
+    
+    // Step 2: Aggressively mute and pause ALL videos synchronously
+    manager.pauseAll();
+    
+    if (kDebugMode) {
+      debugPrint('🔇 DiscoverView: Blocked playback and paused all videos IMMEDIATELY');
+    }
+    
     // Initialize accessibility service
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _accessibilityService.initialize(context);
@@ -129,9 +145,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     // Clear cached videos to free memory
     _cachedVideos.clear();
 
-    // Clean up audio when disposing DiscoverView
+    // 🔊 AUDIO FIX: Don't block here - let HomeView detect return and handle reactivation
+    // Blocking here would interfere with HomeView's reactivation logic
     GlobalPlaybackManager.instance.pauseAll();
-    GlobalPlaybackManager.instance.block(reason: 'discover_view_disposed');
 
     super.dispose();
   }
@@ -2171,7 +2187,7 @@ class _CategoryVideoFeedStatefulState
   late PageController _pageController;
   int _currentIndex = 0;
   List<HomeVideo> _videos = [];
-  final Map<String, StreamSubscription> _videoListeners = {};
+  final Map<String, StreamSubscription<DocumentSnapshot>> _videoListeners = {};
 
   @override
   void initState() {
@@ -2180,6 +2196,15 @@ class _CategoryVideoFeedStatefulState
     _pageController = PageController(initialPage: widget.startIndex);
     _videos = List.from(widget.videos);
     _setupRealtimeDeletionListeners();
+    
+    // 🔊 CRITICAL FIX: Unblock playback when category feed opens
+    // DiscoverView blocks playback, but category feed needs videos to play
+    // This allows VideoPlayerViewOptimized to initialize and play videos
+    final manager = GlobalPlaybackManager.instance;
+    manager.unblock(); // Unblock to allow video initialization
+    if (kDebugMode) {
+      debugPrint('🔊 CategoryVideoFeed: Unblocked playback to allow video loading');
+    }
   }
 
   @override
@@ -2190,6 +2215,15 @@ class _CategoryVideoFeedStatefulState
     }
     _videoListeners.clear();
     _pageController.dispose();
+    
+    // 🔥 CRITICAL MEMORY FIX: Dispose all controllers for this category feed
+    // This prevents MediaCodec NO_MEMORY errors by freeing resources immediately
+    final tabId = 'discoverView_${widget.categoryId}';
+    GlobalPlaybackManager.instance.disposeControllersForOwner(tabId);
+    
+    // 🔊 AUDIO FIX: Pause all videos when category feed closes
+    GlobalPlaybackManager.instance.pauseAll();
+    
     super.dispose();
   }
 
@@ -2269,6 +2303,10 @@ class _CategoryVideoFeedStatefulState
             'Category video feed closed, current index: $_currentIndex',
             tag: 'DiscoverView',
           );
+          // 🔊 AUDIO FIX: Block playback when returning to DiscoverView
+          // This prevents audio bleeding from category feed videos
+          GlobalPlaybackManager.instance.block(reason: 'returnedToDiscoverView');
+          GlobalPlaybackManager.instance.pauseAll();
         }
       },
       child: Material(
@@ -2364,6 +2402,13 @@ class _CategoryVideoFeedStatefulState
                         builder: (context) => EnhancedShareSheet(
                           video: video,
                           onClose: () => Navigator.pop(context),
+                          onReport: (videoId, creatorId) async {
+                            // Report callback for additional handling if needed
+                            LoggingService.instance.debug(
+                              'Report submitted for video $videoId',
+                              tag: 'DiscoverView',
+                            );
+                          },
                         ),
                       );
                     },

@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/home_video.dart';
@@ -420,7 +421,19 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
     );
   }
 
-  void _handleReport() {
+  void _handleReport() async {
+    // ✅ FIX: Check if user has already reported this video before showing dialog
+    try {
+      final hasReported = await ReportService().hasUserReportedVideo(widget.video.id);
+      if (hasReported) {
+        _showErrorSnackBar('You have already reported this video');
+        return;
+      }
+    } catch (e) {
+      debugPrint('❌ Error checking report status: $e');
+      // Continue anyway - let user try to report
+    }
+    
     _showReportDialog();
   }
 

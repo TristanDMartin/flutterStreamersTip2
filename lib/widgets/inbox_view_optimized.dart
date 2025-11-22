@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,6 +49,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   final Map<String, app_user.User> _userProfiles = {};
   final Map<String, int> _unreadCounts = {};
   final Map<String, bool> _onlineStatus = {};
+  final Map<String, StreamSubscription<DocumentSnapshot>> _unreadCountSubscriptions = {};
 
   // State
   bool _isLoading = true;
@@ -75,6 +77,11 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     _tabController.dispose();
     _searchController.dispose();
     _inboxService.stopRealTimeListeners();
+    // Cancel all unread count subscriptions
+    for (final subscription in _unreadCountSubscriptions.values) {
+      subscription.cancel();
+    }
+    _unreadCountSubscriptions.clear();
     super.dispose();
   }
 
@@ -97,6 +104,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           debugPrint(
               '⚠️ InboxView: Filtered out ${chats.length - validChats.length} invalid chats');
         }
+
+        // Set up real-time unread count listeners for each chat
+        _setupUnreadCountListeners(validChats);
 
         await _loadUserDataForChats(validChats);
         await _offlineService.cacheChats(validChats);
@@ -121,6 +131,62 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
     // Set up real-time user profile listeners for existing chats
     _setupUserProfileListeners();
+  }
+
+  /// Set up real-time listeners for unread counts per chat
+  void _setupUnreadCountListeners(List<app_chat.Chat> chats) {
+    final currentUser = _inboxService.auth.currentUser;
+    if (currentUser == null) return;
+
+    // Cancel subscriptions for chats that no longer exist
+    final currentChatIds = chats
+        .map((c) => c.id ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final subscriptionsToCancel = <String>[];
+    _unreadCountSubscriptions.forEach((chatId, subscription) {
+      if (!currentChatIds.contains(chatId)) {
+        subscriptionsToCancel.add(chatId);
+      }
+    });
+    for (final chatId in subscriptionsToCancel) {
+      _unreadCountSubscriptions[chatId]?.cancel();
+      _unreadCountSubscriptions.remove(chatId);
+    }
+
+    // Set up listeners for each chat
+    for (final chat in chats) {
+      final chatId = chat.id ?? '';
+      if (chatId.isEmpty || _unreadCountSubscriptions.containsKey(chatId)) {
+        continue; // Already listening or invalid chat ID
+      }
+
+      // Listen to chat document for unread count changes
+      final subscription = FirebaseFirestore.instance
+          .collection('chats')
+          .doc(chatId)
+          .snapshots()
+          .listen((snapshot) {
+        if (!snapshot.exists || !mounted) return;
+
+        final data = snapshot.data()!;
+        final unreadField = 'unreadCount_${currentUser.uid}';
+        final dynamic unreadValue = data[unreadField];
+        final unreadCount = unreadValue != null
+            ? (unreadValue is int
+                ? unreadValue
+                : (unreadValue as num).toInt())
+            : 0;
+
+        if (mounted) {
+          setState(() {
+            _unreadCounts[chatId] = unreadCount;
+          });
+        }
+      });
+
+      _unreadCountSubscriptions[chatId] = subscription;
+    }
   }
 
   void _setupUserProfileListeners() {
@@ -311,11 +377,33 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         }
       }));
 
-      // Load unread count
-      futures
-          .add(_inboxService.getUnreadCount(chat.id ?? '').then((unreadCount) {
-        _unreadCounts[chat.id ?? ''] = unreadCount;
-      }));
+      // Load initial unread count from chat document (real-time updates handled by listener)
+      final chatId = chat.id ?? '';
+      if (chatId.isNotEmpty) {
+        // Get unread count from chat document directly
+        futures.add(
+          FirebaseFirestore.instance
+              .collection('chats')
+              .doc(chatId)
+              .get()
+              .then((doc) {
+            if (doc.exists) {
+              final data = doc.data()!;
+              final currentUser = _inboxService.auth.currentUser;
+              if (currentUser != null) {
+                final unreadField = 'unreadCount_${currentUser.uid}';
+                final dynamic unreadValue = data[unreadField];
+                final unreadCount = unreadValue != null
+                    ? (unreadValue is int
+                        ? unreadValue
+                        : (unreadValue as num).toInt())
+                    : 0;
+                _unreadCounts[chatId] = unreadCount;
+              }
+            }
+          }),
+        );
+      }
 
       // Load online status
       futures.add(_inboxService.isUserOnline(otherUserId).then((isOnline) {

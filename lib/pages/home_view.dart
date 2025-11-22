@@ -54,7 +54,6 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   // 🚀 VIRAL ALGORITHM: Ranking cache to prevent excessive re-ranking
   DateTime? _lastRankingTime;
-  bool _isRanking = false;
 
   // ⏱️ MEMORY FIX: Timers for proper cancellation
   Timer? _resumeTimer;
@@ -99,6 +98,38 @@ class _HomeViewState extends ConsumerState<HomeView>
     });
   }
 
+  bool _hasReactivated = false; // Flag to prevent multiple reactivations
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // 🔥 CRITICAL FIX: Detect when HomeView becomes visible again after navigation
+    // This handles returns from NetworkView, ProfileView, etc.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      // Check if this route is currently active (visible)
+      final route = ModalRoute.of(context);
+      if (route != null && route.isCurrent) {
+        // Check if playback is blocked (meaning we just returned from another view)
+        final playbackManager = GlobalPlaybackManager.instance;
+        if (playbackManager.isPlaybackBlocked && !_hasReactivated) {
+          log('🔄 HomeView: Detected return from another view - reactivating feed');
+          _hasReactivated = true; // Prevent multiple calls
+          // Unblock and reactivate
+          playbackManager.onEnterHomeView();
+          _reactivateFeed();
+          
+          // Reset flag after a delay to allow future reactivations
+          Future.delayed(const Duration(seconds: 1), () {
+            _hasReactivated = false;
+          });
+        }
+      }
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -125,6 +156,10 @@ class _HomeViewState extends ConsumerState<HomeView>
     try {
       log('🚀 HomeView: Reactivating feed after return from other view');
 
+      // 🔥 CRITICAL: Ensure playback is unblocked first
+      final playbackManager = GlobalPlaybackManager.instance;
+      playbackManager.onEnterHomeView();
+
       // SEAMLESS RETURN: Reload videos to ensure fresh controllers
       _loadVideos();
 
@@ -150,8 +185,7 @@ class _HomeViewState extends ConsumerState<HomeView>
 
             // 🔊 AUDIO FIX: Use GlobalPlaybackManager for focus
             log('🎵 HomeView: Reactivating focus for current video: ${currentVideo.id}');
-            GlobalPlaybackManager.instance
-                .requestFocus(currentVideo.id, ownerId);
+            playbackManager.requestFocus(currentVideo.id, ownerId);
           }
 
           log('✅ HomeView: Feed reactivated successfully');
@@ -289,11 +323,6 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       if (candidateVideos.isEmpty) return;
 
-      // 🎨 LOADING INDICATOR: Show user-friendly feedback
-      if (mounted) {
-        setState(() => _isRanking = true);
-      }
-
       log('🎯 UnifiedAlgorithm: Ranking ${candidateVideos.length} videos...');
 
       // Get personalized feed with all 7 systems applied
@@ -332,10 +361,7 @@ class _HomeViewState extends ConsumerState<HomeView>
       }
       // Non-critical error, continue with original order
     } finally {
-      // Hide loading indicator
-      if (mounted) {
-        setState(() => _isRanking = false);
-      }
+      // Ranking complete
     }
   }
 
@@ -593,7 +619,17 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (!mounted) return;
 
     HapticFeedback.lightImpact();
+    
+    // 🔥 CRITICAL: Cancel any pending timers that might resume playback
+    _resumeTimer?.cancel();
+    _focusTimer?.cancel();
+    
     _pauseAllHomeViewVideos();
+    
+    // 🔊 AUDIO FIX: Ensure blocking happens BEFORE navigation
+    // This prevents any race condition where videos might resume during navigation
+    GlobalPlaybackManager.instance.block(reason: 'navigatingToDiscoverView');
+    GlobalPlaybackManager.instance.pauseAll();
 
     if (mounted) {
       Navigator.push(
@@ -738,55 +774,55 @@ class _HomeViewState extends ConsumerState<HomeView>
 
             // Feed dropdown is now handled by HomeContentWidget
 
-            // 🎨 LOADING INDICATOR: Show when ranking videos
-            if (_isRanking)
-              Positioned(
-                top: 60,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF9248D2).withValues(alpha: 0.95),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Personalizing your feed...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+            // 🎨 LOADING INDICATOR: Hidden per user request
+            // if (_isRanking)
+            //   Positioned(
+            //     top: 60,
+            //     left: 0,
+            //     right: 0,
+            //     child: Center(
+            //       child: Container(
+            //         padding: const EdgeInsets.symmetric(
+            //           horizontal: 16,
+            //           vertical: 8,
+            //         ),
+            //         decoration: BoxDecoration(
+            //           color: const Color(0xFF9248D2).withValues(alpha: 0.95),
+            //           borderRadius: BorderRadius.circular(20),
+            //           boxShadow: [
+            //             BoxShadow(
+            //               color: Colors.black.withValues(alpha: 0.3),
+            //               blurRadius: 8,
+            //               offset: const Offset(0, 2),
+            //             ),
+            //           ],
+            //         ),
+            //         child: Row(
+            //           mainAxisSize: MainAxisSize.min,
+            //           children: [
+            //             const SizedBox(
+            //               width: 16,
+            //               height: 16,
+            //               child: CircularProgressIndicator(
+            //                 strokeWidth: 2,
+            //                 valueColor:
+            //                     AlwaysStoppedAnimation<Color>(Colors.white),
+            //               ),
+            //             ),
+            //             const SizedBox(width: 12),
+            //             const Text(
+            //               'Personalizing your feed...',
+            //               style: TextStyle(
+            //                 color: Colors.white,
+            //                 fontSize: 14,
+            //                 fontWeight: FontWeight.w600,
+            //               ),
+            //             ),
+            //           ],
+            //         ),
+            //       ),
+            //     ),
+            //   ),
 
             // StreamerCard full-screen modal
             if (_showStreamerCard && _currentStreamerCard != null)

@@ -419,6 +419,22 @@ class InboxServiceOptimized {
 
   /// Map Firestore document to Chat model
   app_chat.Chat _mapChat(String id, Map<String, dynamic> data) {
+    final currentUser = _auth.currentUser;
+    // Extract unread count for current user from chat document
+    // Cloud Functions stores it as unreadCount_{userId}
+    int unreadCount = 0;
+    if (currentUser != null) {
+      final unreadField = 'unreadCount_${currentUser.uid}';
+      final dynamic unreadValue = data[unreadField];
+      if (unreadValue != null) {
+        unreadCount = unreadValue is int
+            ? unreadValue
+            : (unreadValue as num).toInt();
+      }
+      // Cache the unread count
+      _unreadCounts[id] = unreadCount;
+    }
+
     return app_chat.Chat(
       id: id,
       participants: List<String>.from(data['participants'] ?? []),

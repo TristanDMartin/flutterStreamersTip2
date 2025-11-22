@@ -180,35 +180,28 @@ class RobustAuthenticationService extends ChangeNotifier {
         return;
       }
 
-      // Add timeout to prevent infinite loading
-      final authCheck = Future.any([
-        Future(() async {
-          final currentUser = _authInstance.currentUser;
-          if (currentUser != null) {
-            // User is already logged in, handle the sign in asynchronously
-            await _handleUserSignIn(currentUser);
-          } else {
-            // No user is logged in, set the state immediately
-            _currentUser = null;
-            _isLoggedIn = false;
-            _isCheckingAuth = false;
-            notifyListeners();
-          }
-        }),
-        Future.delayed(const Duration(seconds: 5), () {
-          debugPrint('⚠️ Auth check timeout - forcing completion');
-          if (_isCheckingAuth) {
-            _isCheckingAuth = false;
-            if (!_isLoggedIn) {
-              _currentUser = null;
-              _isLoggedIn = false;
-            }
-            notifyListeners();
-          }
-        }),
-      ]);
+      // OPTIMIZED: Fast auth check with shorter timeout
+      final currentUser = _authInstance.currentUser;
       
-      await authCheck;
+      if (currentUser != null) {
+        // User is logged in - show UI immediately, load data in background
+        debugPrint('✅ User logged in - showing UI immediately');
+        _isLoggedIn = true;
+        _isCheckingAuth = false;
+        notifyListeners();
+        
+        // Load user data in background (non-blocking)
+        _handleUserSignIn(currentUser).catchError((e) {
+          debugPrint('❌ Background user data load failed: $e');
+          // Don't change login state - user is still logged in
+        });
+      } else {
+        // No user is logged in, set the state immediately
+        _currentUser = null;
+        _isLoggedIn = false;
+        _isCheckingAuth = false;
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('❌ Error checking initial auth state: $e');
       _currentUser = null;
@@ -966,10 +959,19 @@ class RobustAuthenticationService extends ChangeNotifier {
     } catch (e) {
       debugPrint("❌ Error in handleUserSignIn: $e");
       debugPrint("❌ Error type: ${e.runtimeType}");
-      _currentUser = null;
-      _isLoggedIn = false;
+      // Don't reset login state on error - user is still authenticated with Firebase
+      // Just mark auth check as complete
       _isCheckingAuth = false;
       notifyListeners();
+      // Retry loading user data after a delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (_isLoggedIn && _currentUser == null) {
+          debugPrint('🔄 Retrying user data load...');
+          _handleUserSignIn(firebaseUser).catchError((retryError) {
+            debugPrint('❌ Retry failed: $retryError');
+          });
+        }
+      });
     }
   }
 

@@ -143,29 +143,39 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App Logo - White icon matching splash screen design
+              // App Logo - Fits within a circular container with extra padding for rings
               Container(
-                width: 120,
-                height: 120,
-                child: Image.asset(
-                  'assets/091225_ST_logo_white.PNG',
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    // Fallback to regular logo with white color filter
-                    return Image.asset(
-                      'assets/logo.png',
+                width: 192,
+                height: 192,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.transparent,
+                ),
+                child: Center(
+                  child: Container(
+                    width: 140,
+                    height: 140,
+                    child: Image.asset(
+                      'assets/091225_ST_logo_white.PNG',
                       fit: BoxFit.contain,
-                      color: Colors.white,
                       errorBuilder: (context, error, stackTrace) {
-                        // Final fallback to icon
-                        return const Icon(
-                          Icons.gamepad,
+                        // Fallback to regular logo with white color filter
+                        return Image.asset(
+                          'assets/logo.png',
+                          fit: BoxFit.contain,
                           color: Colors.white,
-                          size: 80,
+                          errorBuilder: (context, error, stackTrace) {
+                            // Final fallback to icon
+                            return const Icon(
+                              Icons.gamepad,
+                              color: Colors.white,
+                              size: 140,
+                            );
+                          },
                         );
                       },
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 40),

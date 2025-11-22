@@ -5,12 +5,12 @@
     <item>
         <color android:color="#6137EB" />
     </item>
-    <!-- White logo centered, positioned slightly above center -->
+    <!-- White logo centered, positioned slightly above center - 192x192px -->
     <item
-        android:width="120dp"
-        android:height="120dp"
+        android:width="192dp"
+        android:height="192dp"
         android:gravity="center"
-        android:top="-60dp">
+        android:top="-96dp">
         <bitmap
             android:gravity="center"
             android:src="@drawable/splash_logo" />

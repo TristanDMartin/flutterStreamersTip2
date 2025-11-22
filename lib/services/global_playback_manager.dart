@@ -69,6 +69,7 @@ class GlobalPlaybackManager {
   /// Configuration
   static const int poolRadius = 1; // previous, current, next
   static const int recoveryTimeoutMs = 5000;
+  static const int maxControllerPoolSize = 5; // 🔥 CRITICAL: Prevent MediaCodec NO_MEMORY errors
 
   // ============================================
   // BLOCKING SYSTEM (from Coordinator)
@@ -229,18 +230,26 @@ class GlobalPlaybackManager {
     }
 
     if (_activeVideoId == videoId) {
-      log('🎵 PlaybackManager: Video $videoId already active - ensuring it\'s playing');
-      // Even if already active, ensure it's playing and unmuted
+      log('🎵 PlaybackManager: Video $videoId already active - checking if it should play');
+      // Even if already active, check if it's actually playing
+      // If user manually paused it, don't auto-resume
       final controller = _controllerPool[videoId];
       if (controller != null && _isControllerSafe(videoId, controller)) {
         try {
-          controller.setVolume(1.0);
-          _muteStates[videoId] = false;
-          if (!controller.value.isPlaying) {
-            controller.play();
+          // Only unmute and play if the controller is actually playing
+          // If user manually paused, the controller should be paused and muted
+          if (controller.value.isPlaying) {
+            controller.setVolume(1.0);
+            _muteStates[videoId] = false;
+            log('🎵 PlaybackManager: Active video is playing - ensuring unmuted');
+          } else {
+            // Video is paused - keep it muted to prevent audio bleeding
+            controller.setVolume(0.0);
+            _muteStates[videoId] = true;
+            log('🔇 PlaybackManager: Active video is paused - keeping muted');
           }
         } catch (e) {
-          log('⚠️ PlaybackManager: Error ensuring active video is playing: $e');
+          log('⚠️ PlaybackManager: Error checking active video state: $e');
         }
       }
       return;
@@ -519,6 +528,14 @@ class GlobalPlaybackManager {
   void registerController(String videoId, VideoPlayerController controller,
       {String? owner}) {
     log('📝 PlaybackManager: Registering controller for video $videoId (owner: $owner)');
+    
+    // 🔥 CRITICAL MEMORY FIX: Enforce maximum pool size to prevent MediaCodec NO_MEMORY errors
+    // If pool is full, dispose the oldest non-active controller
+    if (_controllerPool.length >= maxControllerPoolSize && !_controllerPool.containsKey(videoId)) {
+      log('⚠️ PlaybackManager: Pool size limit reached (${_controllerPool.length}), disposing oldest controller');
+      _disposeOldestController();
+    }
+    
     _controllerPool[videoId] = controller;
     
     // 🔥 AUDIO FIX: Always start muted and ensure muted if blocked
@@ -614,6 +631,44 @@ class GlobalPlaybackManager {
     _activeOwnerController.add(null);
 
     log('✅ PlaybackManager: All controllers disposed and state cleared');
+  }
+
+  /// Dispose controllers for a specific owner (e.g., when category feed closes)
+  /// 🔥 CRITICAL MEMORY FIX: Prevents MediaCodec NO_MEMORY errors
+  void disposeControllersForOwner(String owner) {
+    log('🗑️ PlaybackManager: Disposing controllers for owner: $owner');
+    
+    final toDispose = <String>[];
+    for (final entry in _controllerOwners.entries) {
+      if (entry.value == owner) {
+        toDispose.add(entry.key);
+      }
+    }
+    
+    for (final videoId in toDispose) {
+      log('🗑️ PlaybackManager: Disposing controller for video $videoId (owner: $owner)');
+      unregisterController(videoId);
+    }
+    
+    log('✅ PlaybackManager: Disposed ${toDispose.length} controllers for owner: $owner');
+  }
+
+  /// Dispose the oldest non-active controller to make room
+  /// 🔥 CRITICAL MEMORY FIX: Prevents MediaCodec NO_MEMORY errors
+  void _disposeOldestController() {
+    // Find the oldest controller that's not the active video
+    String? oldestVideoId;
+    for (final entry in _controllerPool.entries) {
+      if (entry.key != _activeVideoId) {
+        oldestVideoId = entry.key;
+        break; // Dispose the first non-active one
+      }
+    }
+    
+    if (oldestVideoId != null) {
+      log('🗑️ PlaybackManager: Disposing oldest controller: $oldestVideoId (pool size: ${_controllerPool.length})');
+      unregisterController(oldestVideoId);
+    }
   }
 
   // ============================================
@@ -723,6 +778,13 @@ class GlobalPlaybackManager {
     unblock();
     if (_currentFeedIndex != null) {
       log('📺 PlaybackManager: Current index is $_currentFeedIndex');
+      // 🔥 CRITICAL FIX: Request focus for the current video to ensure it plays
+      // This prevents audio bleeding from other videos when returning from DiscoverView
+      final videoId = _indexToVideoId[_currentFeedIndex];
+      if (videoId != null) {
+        log('🎵 PlaybackManager: Requesting focus for video $videoId at index $_currentFeedIndex on HomeView entry');
+        requestFocus(videoId, 'home/feed'); // Request focus to ensure playback
+      }
     }
   }
 
@@ -748,8 +810,23 @@ class GlobalPlaybackManager {
     _indexToVideoId[newIndex] = video.id;
     _videoIdToIndex[video.id] = newIndex;
 
-    // Pause all, then request focus (which will coordinate with VideoPlayerViewOptimized)
+    // 🔥 CRITICAL AUDIO FIX: Pause and mute ALL videos FIRST (including manually paused ones)
+    // This ensures no audio bleeding when switching videos
     pauseAll();
+    
+    // 🔥 ADDITIONAL SAFETY: Force mute all controllers again to catch any that might have been missed
+    // This is a double-check to prevent audio bleeding
+    final entries = List<MapEntry<String, VideoPlayerController>>.from(_controllerPool.entries);
+    for (final entry in entries) {
+      try {
+        if (_isControllerSafe(entry.key, entry.value)) {
+          entry.value.setVolume(0.0);
+          _muteStates[entry.key] = true;
+        }
+      } catch (e) {
+        log('⚠️ PlaybackManager: Error force-muting video ${entry.key}: $e');
+      }
+    }
 
     // Ensure controller is ready, then request focus (not direct play)
     // This lets VideoPlayerViewOptimized handle the actual playback to avoid duplicate play calls
@@ -870,6 +947,7 @@ class GlobalPlaybackManager {
 
   /// Dispose controllers far from current index
   /// 🔒 SAFETY: Only disposes controllers that are definitely not in use
+  /// 🔥 CRITICAL MEMORY FIX: Also enforces maximum pool size
   void disposeFarControllers(int index) {
     final toDispose = <String>[];
 
@@ -899,6 +977,21 @@ class GlobalPlaybackManager {
             _lastKnownPositions.remove(indexToRemove.key);
           }
           _controllerPool.remove(videoId);
+        }
+      }
+    }
+
+    // 🔥 CRITICAL MEMORY FIX: If pool is still too large, dispose more aggressively
+    if (_controllerPool.length > maxControllerPoolSize) {
+      log('⚠️ PlaybackManager: Pool size (${_controllerPool.length}) exceeds limit ($maxControllerPoolSize), aggressive cleanup');
+      final excessCount = _controllerPool.length - maxControllerPoolSize;
+      int disposedCount = 0;
+      for (final entry in _controllerPool.entries) {
+        if (disposedCount >= excessCount) break;
+        final videoId = entry.key;
+        if (videoId != _activeVideoId && !toDispose.contains(videoId)) {
+          toDispose.add(videoId);
+          disposedCount++;
         }
       }
     }
