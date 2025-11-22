@@ -98,19 +98,27 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
                        owner == '/' || 
                        routeName.contains('hometab') ||
                        routeName.contains('maintab');
+    
+    // 🔥 CRITICAL: Explicitly detect NetworkView to ensure blocking
+    final isNetworkView = routeName.contains('networkview') || 
+                         owner?.toLowerCase().contains('network') == true;
 
     if (!isHomeRoute && isForeground) {
       _manager.block(reason: 'route_change_$owner');
       debugPrint(
           '🚫 NavigationObserver: Blocking playback for non-home route: $owner');
+      // 🔥 CRITICAL: Explicitly handle NetworkView
+      if (isNetworkView) {
+        debugPrint('🚫 NavigationObserver: NetworkView detected - ensuring playback is blocked');
+        _manager.pauseAll(); // Extra safety: pause all videos
+      }
     } else if (isHomeRoute && isForeground) {
       _manager.unblock();
-      // 🔥 FIX: Force resume video playback when returning to home
-      Future.delayed(const Duration(milliseconds: 150), () {
-        _manager.resumeAfterTabSwitch();
-      });
+      // 🚀 TIKTOK FIX: Instantly resume video playback when returning to home
+      // No delay - resume immediately for TikTok-like experience
+      _manager.resumeAfterTabSwitch();
       debugPrint(
-          '✅ NavigationObserver: Unblocking and resuming playback for home route: $owner');
+          '✅ NavigationObserver: Unblocking and instantly resuming playback for home route: $owner');
     }
 
     if (route.settings.name != null) {

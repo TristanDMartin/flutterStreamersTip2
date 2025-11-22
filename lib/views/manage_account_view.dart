@@ -481,6 +481,8 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildProfileHeader(user),
+                  const SizedBox(height: 32),
                   _buildAccountInfo(user),
                   const SizedBox(height: 32),
                   _buildSecuritySection(),
@@ -489,6 +491,87 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildProfileHeader(firebase_auth.User? user) {
+    final avatarURL = _userData?['avatarURL'] as String?;
+    final displayName = _userData?['displayName'] as String? ?? user?.displayName ?? 'User';
+    final username = _userData?['username'] as String? ?? 'username';
+
+    return Column(
+      children: [
+        _buildAvatarWithGradientRing(avatarURL),
+        const SizedBox(height: 16),
+        Text(
+          displayName,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '@$username',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 16,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAvatarWithGradientRing(String? avatarURL) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 112,
+          height: 112,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: SweepGradient(
+              colors: [
+                Color(0xFFFF6CAB),
+                Color(0xFF8E54E9),
+                Color(0xFF3D99F7),
+                Color(0xFFFF6CAB),
+              ],
+            ),
+          ),
+          child: Center(
+            child: Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.2),
+              ),
+              child: ClipOval(
+                child: avatarURL != null && avatarURL.isNotEmpty
+                    ? Image.network(
+                        avatarURL,
+                        key: ValueKey(avatarURL),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

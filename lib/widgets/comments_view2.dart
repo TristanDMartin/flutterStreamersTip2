@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -7,7 +8,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/comment.dart';
 import '../models/user.dart' as app_user;
 import '../services/comments_service.dart';
-import '../services/unified_avatar_service.dart';
 import 'optimized_comment_tile.dart';
 
 /// CommentsView2 - StreamersTip Comments Overlay
@@ -415,8 +415,10 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     final double modalHeight =
         screenHeight * 0.5; // Fixed height - keyboard will overlap comments
 
-    print(
-        '🎬 CommentsView2: Building modal with height: $modalHeight, keyboard: $keyboardHeight');
+    if (kDebugMode) {
+      debugPrint(
+          '🎬 CommentsView2: Building modal with height: $modalHeight, keyboard: $keyboardHeight');
+    }
 
     return Stack(
       children: [

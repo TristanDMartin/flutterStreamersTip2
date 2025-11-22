@@ -96,6 +96,41 @@ class LocalDraftService {
       final List<Map<String, dynamic>> drafts =
           draftsList.map((draft) => Map<String, dynamic>.from(draft)).toList();
 
+      // Check and regenerate missing thumbnails with high quality
+      final draftThumbnailService = DraftThumbnailService();
+      for (final draft in drafts) {
+        final videoPath = draft['videoPath'] as String?;
+        final thumbnailPath = draft['thumbnailPath'] as String?;
+        final draftId = draft['id'] as String?;
+
+        if (videoPath != null && draftId != null) {
+          // Check if thumbnail exists and is valid
+          bool needsRegeneration = false;
+          if (thumbnailPath == null || thumbnailPath.isEmpty) {
+            needsRegeneration = true;
+          } else {
+            final thumbnailFile = File(thumbnailPath);
+            if (!await thumbnailFile.exists()) {
+              needsRegeneration = true;
+            }
+          }
+
+          // Regenerate high-quality thumbnail if needed
+          if (needsRegeneration) {
+            debugPrint('🖼️ Regenerating high-quality thumbnail for draft: $draftId');
+            final newThumbnailPath = await draftThumbnailService.generateLocalThumbnail(
+              videoPath: videoPath,
+              videoId: draftId,
+            );
+            if (newThumbnailPath != null) {
+              draft['thumbnailPath'] = newThumbnailPath;
+              // Update in SharedPreferences
+              await _saveDraftToPreferences(draft);
+            }
+          }
+        }
+      }
+
       // Sort by creation date (newest first)
       drafts.sort((a, b) {
         final dateA = DateTime.parse(a['createdAt']);

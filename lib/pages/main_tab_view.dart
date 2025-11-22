@@ -15,6 +15,7 @@ import '../services/network_view_model_advanced.dart';
 import '../services/profile_update_service.dart';
 import '../services/clean_relationship_service.dart';
 import '../providers/home_provider.dart';
+import '../providers/feed_state_provider.dart';
 import '../services/global_playback_manager.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
@@ -151,14 +152,15 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       curve: Curves.easeInOut,
     )
         .then((_) {
-      // Unblock after animation completes
-      _unblockTimer = Timer(const Duration(milliseconds: 100), () {
+      // 🚀 TIKTOK FIX: Instantly unblock and resume when returning to home tab
+      if (index == 0) {
         playbackManager.unblock();
-        // Request focus for current video if on home tab
-        if (index == 0) {
-          _requestFocusForCurrentVideo();
-        }
-      });
+        // Resume immediately - no delay for TikTok-like experience
+        _requestFocusForCurrentVideo();
+      } else {
+        // For other tabs, unblock immediately but don't resume
+        playbackManager.unblock();
+      }
     });
   }
 
@@ -218,7 +220,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       )
           .then((_) {
         // SEAMLESS RETURN: Reactivate HomeView when returning from InboxView
-        log('🔄 MainTabView: Returned from InboxView - reactivating HomeView');
+        log('🔄 MainTabView: Returned from InboxView - triggering HomeView reactivation');
+        // Trigger HomeView to reactivate via provider
+        ref.read(homeViewReactivateProvider.notifier).state = true;
+        // Also call local reactivation for immediate playback resume
         _reactivateHomeView();
       });
     });
@@ -311,11 +316,14 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     try {
       log('🔄 MainTabView: Reactivating HomeView after return from other view');
 
-      // 🔊 AUDIO FIX: Simply unblock and resume - no aggressive disposal
+      // 🚀 TIKTOK FIX: Instantly unblock and resume - no delays!
       final playbackManager = ref.read(globalPlaybackManagerProvider);
+      playbackManager.unblock();
       playbackManager.resumeAfterTabSwitch();
+      // Also request focus for current video immediately
+      _requestFocusForCurrentVideo();
 
-      log('✅ MainTabView: HomeView reactivated - videos should resume automatically');
+      log('✅ MainTabView: HomeView instantly reactivated - TikTok-like experience');
     } catch (e) {
       log('❌ MainTabView: Error reactivating HomeView: $e');
     }
@@ -339,11 +347,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             // Leaving home tab - block playback
             playbackManager.block(reason: 'tabSwitch');
           } else {
-            // Returning to home tab - unblock and request focus
+            // 🚀 TIKTOK FIX: Instantly resume when returning to home tab
             playbackManager.unblock();
-            Timer(const Duration(milliseconds: 100), () {
-              _requestFocusForCurrentVideo();
-            });
+            // Resume immediately - no delay for TikTok-like experience
+            _requestFocusForCurrentVideo();
           }
         },
         // Disable horizontal swipe gestures when on HomeView (index 0) to allow left/right swipes for StreamerCardView

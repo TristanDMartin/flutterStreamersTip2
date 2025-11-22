@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/home_video.dart';
 import '../services/share_service_optimized.dart';
+import 'video_qr_code_dialog.dart';
 
 class ShareSheetOptimized extends StatefulWidget {
   final HomeVideo video;
@@ -322,12 +323,11 @@ class _ShareSheetOptimizedState extends State<ShareSheetOptimized> {
 
   void _generateQRCode() {
     HapticFeedback.lightImpact();
-    // QR code generation functionality - placeholder for future implementation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('QR Code feature coming soon'),
-        backgroundColor: Color(0xFF9248D2),
-        duration: Duration(seconds: 2),
+    // ✅ FIX: Show QR code dialog
+    showDialog<void>(
+      context: context,
+      builder: (context) => VideoQRCodeDialog(
+        video: widget.video,
       ),
     );
     widget.onDismiss?.call();

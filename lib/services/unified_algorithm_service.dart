@@ -26,7 +26,63 @@ class UnifiedAlgorithmService {
   final _realtimeTrending = RealtimeTrendingService.instance;
   final _velocityScoring = VelocityScoringService.instance;
 
-  /// Score and rank videos using all 7 systems
+  /// Score and rank videos using all 7 advanced engagement systems
+  ///
+  /// This is the core algorithm method that orchestrates all 7 engagement systems
+  /// to score and rank videos for personalized feed generation.
+  ///
+  /// **The 7 Systems:**
+  /// 1. **Creator Growth System** - Boosts new, consistent, growing, and comeback creators
+  /// 2. **Network Effects** - Amplifies content from connections and similar users
+  /// 3. **Real-time Trending** - Boosts videos with burst, hourly, or prime-time engagement
+  /// 4. **Velocity Scoring** - Rewards videos with high engagement, viral, quality, or speed signals
+  /// 5. **Advanced Watch Time** - Tracks granular watch segments and replays
+  /// 6. **Retention Prediction** - Predicts user retention and churn risk
+  /// 7. **Content Diversity** - Ensures variety in feed (applied after scoring)
+  ///
+  /// **Scoring Formula:**
+  /// ```
+  /// Final Score = Base Score (ML) ×
+  ///               Creator Boost ×
+  ///               Network Boost ×
+  ///               Trending Boost ×
+  ///               Velocity Boost
+  /// ```
+  ///
+  /// **Scoring Process:**
+  /// 1. For each video, calculate all boost multipliers in parallel
+  /// 2. Apply multipliers to base ML score
+  /// 3. Cap final score at 500.0 to prevent outliers
+  /// 4. Sort videos by score (highest first)
+  /// 5. Apply content diversity rules (max 2 videos per creator)
+  ///
+  /// **Error Handling:**
+  /// - If any boost calculation fails, uses base score with 1.0x multipliers
+  /// - Continues processing remaining videos
+  /// - Logs errors for debugging
+  ///
+  /// **Performance:**
+  /// - Processes videos in sequence (can be optimized to parallel if needed)
+  /// - Each boost calculation may involve Firestore queries
+  /// - Caching is handled by individual services
+  ///
+  /// **Parameters:**
+  /// - [videos]: List of videos to score and rank
+  /// - [userId]: Current user ID for personalization
+  /// - [userLocation]: Optional user location for location-based boosts
+  ///
+  /// **Returns:**
+  /// List of ScoredVideo objects sorted by score (highest first), with diversity rules applied
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final scored = await UnifiedAlgorithmService.instance.scoreAndRankVideos(
+  ///   videos: allVideos,
+  ///   userId: currentUserId,
+  ///   userLocation: 'US',
+  /// );
+  /// // Use scored[0..N] for feed
+  /// ```
   Future<List<ScoredVideo>> scoreAndRankVideos({
     required List<HomeVideo> videos,
     required String userId,

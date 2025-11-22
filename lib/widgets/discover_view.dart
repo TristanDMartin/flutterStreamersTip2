@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -25,6 +26,8 @@ import 'video_player_view_optimized.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../providers/home_provider.dart' as hp;
+import 'comments_view2.dart';
+import 'enhanced_share_sheet.dart';
 // import 'video_thumbnail_view.dart'; // Removed - unused
 
 /// 🔥 FIX: Field mapping utility for data model consistency
@@ -148,7 +151,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         stackTrace: stackTrace,
       );
       // Safe error handling - don't call ErrorHandlerService during startup
-      debugPrint('❌ DiscoverView initialization error: $e');
+      if (kDebugMode) {
+        debugPrint('❌ DiscoverView initialization error: $e');
+      }
     }
   }
 
@@ -209,7 +214,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         stackTrace: stackTrace,
       );
       // Safe error handling - don't call ErrorHandlerService during startup
-      debugPrint('❌ DiscoverView real-time setup error: $e');
+      if (kDebugMode) {
+        debugPrint('❌ DiscoverView real-time setup error: $e');
+      }
     }
   }
 
@@ -544,7 +551,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         stackTrace: stackTrace,
       );
       // Safe error handling - don't call ErrorHandlerService during startup
-      debugPrint('❌ DiscoverView category selection error: $e');
+      if (kDebugMode) {
+        debugPrint('❌ DiscoverView category selection error: $e');
+      }
     }
   }
 
@@ -588,7 +597,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         stackTrace: stackTrace,
       );
       // Safe error handling - don't call ErrorHandlerService during startup
-      debugPrint('❌ DiscoverView navigation error: $e');
+      if (kDebugMode) {
+        debugPrint('❌ DiscoverView navigation error: $e');
+      }
     }
   }
 
@@ -1904,9 +1915,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       final sevenDaysAgo = now.subtract(const Duration(days: 7));
 
       // Try to query by both 'category' and 'categoryId' fields
+      // 🔥 FIX: Filter out deleted videos by only getting published videos
       Query? query = FirebaseFirestore.instance
           .collection('videos')
           .where('category', isEqualTo: categoryId)
+          .where('status', isEqualTo: 'published')
           .where('createdAt', isGreaterThan: sevenDaysAgo)
           .orderBy('createdAt', descending: true)
           .limit(_videosPerPage);
@@ -1933,6 +1946,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           query = FirebaseFirestore.instance
               .collection('videos')
               .where('categoryId', isEqualTo: categoryId)
+              .where('status', isEqualTo: 'published')
               .where('createdAt', isGreaterThan: sevenDaysAgo)
               .orderBy('createdAt', descending: true)
               .limit(_videosPerPage);
@@ -2020,9 +2034,11 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       );
 
       // Try to query by both 'category' and 'categoryId' fields
+      // 🔥 FIX: Filter out deleted videos by only getting published videos
       Query? query = FirebaseFirestore.instance
           .collection('videos')
           .where('category', isEqualTo: categoryId)
+          .where('status', isEqualTo: 'published')
           .where('trendingScore', isGreaterThan: 50.0)
           .orderBy('trendingScore', descending: true)
           .limit(_videosPerPage);
@@ -2054,6 +2070,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           query = FirebaseFirestore.instance
               .collection('videos')
               .where('categoryId', isEqualTo: categoryId)
+              .where('status', isEqualTo: 'published')
               .where('trendingScore', isGreaterThan: 50.0)
               .orderBy('trendingScore', descending: true)
               .limit(_videosPerPage);
@@ -2153,18 +2170,93 @@ class _CategoryVideoFeedStatefulState
     extends ConsumerState<_CategoryVideoFeedStateful> {
   late PageController _pageController;
   int _currentIndex = 0;
+  List<HomeVideo> _videos = [];
+  final Map<String, StreamSubscription> _videoListeners = {};
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.startIndex;
     _pageController = PageController(initialPage: widget.startIndex);
+    _videos = List.from(widget.videos);
+    _setupRealtimeDeletionListeners();
   }
 
   @override
   void dispose() {
+    // Cancel all video listeners
+    for (final subscription in _videoListeners.values) {
+      subscription.cancel();
+    }
+    _videoListeners.clear();
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// Set up real-time listeners to detect when videos are deleted
+  void _setupRealtimeDeletionListeners() {
+    for (final video in _videos) {
+      final subscription = FirebaseFirestore.instance
+          .collection('videos')
+          .doc(video.id)
+          .snapshots()
+          .listen((snapshot) {
+        if (!mounted) return;
+
+        // If video document doesn't exist or status is 'deleted', remove from feed
+        if (!snapshot.exists) {
+          _removeVideoFromFeed(video.id);
+          return;
+        }
+
+        final data = snapshot.data();
+        final status = data?['status'] as String?;
+
+        // Remove video if status is 'deleted' or not 'published'
+        if (status == 'deleted' || status != 'published') {
+          _removeVideoFromFeed(video.id);
+        }
+      });
+
+      _videoListeners[video.id] = subscription;
+    }
+  }
+
+  /// Remove a video from the feed when it's deleted
+  void _removeVideoFromFeed(String videoId) {
+    if (!mounted) return;
+
+    setState(() {
+      // Remove the video from the list
+      _videos.removeWhere((video) => video.id == videoId);
+
+      // Cancel the listener for this video
+      _videoListeners[videoId]?.cancel();
+      _videoListeners.remove(videoId);
+
+      // Adjust current index if needed
+      if (_currentIndex >= _videos.length && _videos.isNotEmpty) {
+        _currentIndex = _videos.length - 1;
+      } else if (_videos.isEmpty) {
+        // If no videos left, navigate back
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        });
+        return;
+      }
+
+      // Update page controller if needed
+      if (_currentIndex < _videos.length) {
+        _pageController.jumpToPage(_currentIndex);
+      }
+    });
+
+    LoggingService.instance.debug(
+      'Removed deleted video $videoId from category feed ${widget.categoryId}',
+      tag: 'DiscoverView',
+    );
   }
 
   @override
@@ -2198,9 +2290,9 @@ class _CategoryVideoFeedStatefulState
                     _currentIndex = index;
                   });
                 },
-                itemCount: widget.videos.length,
+                itemCount: _videos.length,
                 itemBuilder: (context, index) {
-                  final video = widget.videos[index];
+                  final video = _videos[index];
                   final isCurrentVideo =
                       index == _currentIndex; // HomeView pattern
 
@@ -2249,42 +2341,29 @@ class _CategoryVideoFeedStatefulState
                       );
                     },
                     onShowComments: () {
-                      // Handle comments
+                      // ✅ FIX: Use actual CommentsView2 instead of placeholder
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (context) => Scaffold(
-                            backgroundColor: Colors.black,
-                            appBar: AppBar(
-                              backgroundColor: Colors.transparent,
-                              elevation: 0,
-                              leading: IconButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                icon: const Icon(
-                                  Icons.arrow_back,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              title: const Text(
-                                'Comments',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ),
-                            body: const Center(
-                              child: Text(
-                                'Comments coming soon!',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ),
+                          fullscreenDialog: true,
+                          builder: (context) => CommentsView2(
+                            videoId: video.id,
+                            videoOwnerId: video.creator.id,
                           ),
                         ),
                       );
                     },
                     onShowShare: () {
-                      // Handle share
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Share feature coming soon!'),
-                          backgroundColor: Color(0xFF6633CC),
+                      // ✅ FIX: Use actual EnhancedShareSheet instead of placeholder
+                      HapticFeedback.lightImpact();
+                      showModalBottomSheet<void>(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        isDismissible: true,
+                        enableDrag: true,
+                        builder: (context) => EnhancedShareSheet(
+                          video: video,
+                          onClose: () => Navigator.pop(context),
                         ),
                       );
                     },

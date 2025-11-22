@@ -106,7 +106,8 @@ service cloud.firestore {
     match /videos/{videoId}/comments/{commentId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.user.id;
+        request.auth.uid == request.resource.data.user.id &&
+        (isUserAdmin() || isWithinCommentLimit(request.auth.uid));
       allow update: if request.auth != null && 
         (request.auth.uid == resource.data.user.id || 
          // Allow adding replies to any comment
@@ -125,8 +126,9 @@ service cloud.firestore {
     match /videos/{videoId} {
       allow read: if request.auth != null;
       allow list: if request.auth != null;
-      // Allow creating videos for any authenticated user
-      allow create: if request.auth != null;
+      // Allow creating videos for any authenticated user (with rate limiting)
+      allow create: if request.auth != null && 
+        (isUserAdmin() || isWithinVideoUploadLimit(request.auth.uid));
       // Allow updating videos - owner can update anything, others can only update stats
       // Owner can update: allowSave, allowRemix, visibility, status, isPinned, tags, playlistIds, caption, deletedAt
       allow update: if request.auth != null && 
@@ -177,7 +179,8 @@ service cloud.firestore {
     // Users can read public likes and write their own likes
     match /likes/{videoId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if request.auth != null &&
+        (isUserAdmin() || isWithinLikeLimit(request.auth.uid));
       
       // Allow subcollections for user-specific likes
       match /byUser/{userId} {
@@ -191,9 +194,10 @@ service cloud.firestore {
       // Allow reading all follow relationships for authenticated users
       allow read: if request.auth != null;
       
-      // Allow creating follow relationships for authenticated users
+      // Allow creating follow relationships for authenticated users (with rate limiting)
       // This is needed for migration and mutual follow scenarios
-      allow create: if request.auth != null;
+      allow create: if request.auth != null &&
+        (isUserAdmin() || isWithinFollowLimit(request.auth.uid));
       
       // Allow updating follow relationships for authenticated users
       allow update: if request.auth != null;
@@ -354,7 +358,14 @@ service cloud.firestore {
     
     // Rate limiting collection - for tracking operation frequency
     match /rate_limits/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Users can read their own rate limit data
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // System can write rate limit data (for server-side rate limiting)
+      // Users can also write their own rate limit data (for client-side tracking)
+      allow write: if request.auth != null && (
+        request.auth.uid == userId ||
+        isUserAdmin()
+      );
     }
     
     // Creator stats - analytics data for content creators
@@ -466,14 +477,15 @@ service cloud.firestore {
     
     // Admin logs - only admins can read/write
     match /admin_logs/{logId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
+      allow read: if isUserAdmin();
+      allow create: if isUserAdmin();
+      allow update, delete: if isUserAdmin();
     }
     
     // System settings - only admins can write
     match /system/{settingId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if isUserAdmin();
     }
     
     // Admin notifications subcollection under users
@@ -585,9 +597,65 @@ service cloud.firestore {
       && ts > timestamp.date(2020, 1, 1);  // Not too old
   }
   
-  function isWithinRateLimit(userId, operation) {
-    // Check if user has exceeded rate limit for this operation
-    // This would require implementing rate limiting logic
-    return true; // For now, allow all operations
+  // Helper function to check if user is admin
+  function isAdmin() {
+    return request.auth != null && (
+      // Check by UID (hardcoded admin list)
+      request.auth.uid == 'bU0RxyZ2L4ULAv1Co5L4f825yV73' ||
+      // Check by role field in user document
+      (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+    );
+  }
+  
+  // Helper function to check admin by username (backup check)
+  function isAdminByUsername() {
+    return request.auth != null &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username == 'technqs';
+  }
+  
+  // Combined admin check function
+  function isUserAdmin() {
+    return isAdmin() || isAdminByUsername();
+  }
+  
+  // Rate limiting function - checks rate_limits collection
+  // Note: Firestore rules don't support dynamic key access, so we use specific operation checks
+  function isWithinVideoUploadLimit(userId) {
+    // Admin users bypass rate limiting
+    return isUserAdmin() ||
+           !exists(/databases/$(database)/documents/rate_limits/$(userId)) ||
+           (!('video_upload_time' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
+           (request.time.seconds - get(/databases/$(database)/documents/rate_limits/$(userId)).data.video_upload_time.seconds > 300) ||
+           (!('video_upload_count' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
+           (get(/databases/$(database)/documents/rate_limits/$(userId)).data.video_upload_count < 5);
+  }
+  
+  function isWithinCommentLimit(userId) {
+    return isUserAdmin() ||
+           !exists(/databases/$(database)/documents/rate_limits/$(userId)) ||
+           (!('comment_time' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
+           (request.time.seconds - get(/databases/$(database)/documents/rate_limits/$(userId)).data.comment_time.seconds > 60) ||
+           (!('comment_count' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
+           (get(/databases/$(database)/documents/rate_limits/$(userId)).data.comment_count < 20);
+  }
+  
+  function isWithinLikeLimit(userId) {
+    return isUserAdmin() ||
+           !exists(/databases/$(database)/documents/rate_limits/$(userId)) ||
+           (!('like_time' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
+           (request.time.seconds - get(/databases/$(database)/documents/rate_limits/$(userId)).data.like_time.seconds > 60) ||
+           (!('like_count' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
+           (get(/databases/$(database)/documents/rate_limits/$(userId)).data.like_count < 100);
+  }
+  
+  function isWithinFollowLimit(userId) {
+    return isUserAdmin() ||
+           !exists(/databases/$(database)/documents/rate_limits/$(userId)) ||
+           (!('follow_time' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
+           (request.time.seconds - get(/databases/$(database)/documents/rate_limits/$(userId)).data.follow_time.seconds > 60) ||
+           (!('follow_count' in get(/databases/$(database)/documents/rate_limits/$(userId)).data)) ||
+           (get(/databases/$(database)/documents/rate_limits/$(userId)).data.follow_count < 30);
   }
 }

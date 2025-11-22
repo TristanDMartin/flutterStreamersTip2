@@ -842,6 +842,38 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
               ),
             ),
           const SizedBox(height: 12),
+          // Tag users hint
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.2),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tip: Tag users in your caption by typing "tagged: @username"',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           // Hashtag suggestions
           Wrap(
             spacing: 8,

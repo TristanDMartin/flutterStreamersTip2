@@ -68,3 +68,7 @@ final pagingStateProvider =
   // Separate paging state for each feed
   return {};
 });
+
+/// Provider to trigger HomeView feed reactivation
+/// Used by MainTabView to notify HomeView to reactivate when returning from navigation
+final homeViewReactivateProvider = StateProvider<bool>((ref) => false);

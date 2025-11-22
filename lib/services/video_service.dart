@@ -16,13 +16,14 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   /// Load all videos from Firestore and store them in memory
   Future<void> loadAllVideos() async {
     try {
-      debugPrint('🎬 VideoService: Loading all videos...');
+      debugPrint('🎬 VideoService: ========== LOADING ALL VIDEOS ==========');
 
       // Check authentication first
       final user = _auth.currentUser;
       if (user == null) {
         debugPrint(
             '❌ VideoService: User not authenticated, cannot load videos');
+        debugPrint('   💡 User must be logged in to load videos');
         return;
       }
       debugPrint('✅ VideoService: User authenticated: ${user.uid}');
@@ -131,10 +132,29 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           debugPrint(
               '   💡 To fix: Ensure videoUrl is set in Firestore for this video');
           continue;
-        } else {
-          debugPrint(
-              '🎬 VideoService: ✅ Video URL check passed for ${doc.id} - URL length: ${videoUrl.length}');
         }
+        
+        // 🔍 FIX: Validate URL format (must be HTTP/HTTPS, not localhost)
+        if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
+          debugPrint(
+              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - invalid URL format: "$videoUrl"');
+          debugPrint(
+              '   💡 To fix: Video URL must start with http:// or https://');
+          continue;
+        }
+        
+        // 🔍 FIX: Skip localhost URLs (these won't work in production)
+        // BUT: Allow localhost in debug mode for development
+        if (!kDebugMode && (videoUrl.contains('localhost') || videoUrl.contains('127.0.0.1'))) {
+          debugPrint(
+              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - localhost URL: "$videoUrl"');
+          debugPrint(
+              '   💡 To fix: Video URL must point to Firebase Storage or CDN, not localhost');
+          continue;
+        }
+        
+        debugPrint(
+            '🎬 VideoService: ✅ Video URL check passed for ${doc.id} - URL length: ${videoUrl.length}, valid format: ✅');
 
         debugPrint(
             '🎬 VideoService: Video ${doc.id} - thumbnailUrl: "$thumbnailUrl", videoUrl: "$videoUrl"');

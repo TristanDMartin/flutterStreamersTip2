@@ -10,6 +10,7 @@ import '../services/logging_service.dart';
 import '../services/analytics_service.dart';
 import '../services/error_handler_service.dart';
 import 'brand_icons.dart';
+import 'video_qr_code_dialog.dart';
 
 class StreamerShareSheet extends ConsumerWidget {
   final String userId;
@@ -307,6 +308,7 @@ class StreamerShareSheet extends ConsumerWidget {
 
   Widget _buildSecondaryActions(BuildContext context) {
     final actions = [
+      {'icon': Icons.qr_code, 'label': 'QR Code'},
       {'icon': Icons.flag, 'label': 'Report'},
       {'icon': Icons.block, 'label': 'Block'},
       {'icon': Icons.send, 'label': 'Send message'},
@@ -518,6 +520,9 @@ class StreamerShareSheet extends ConsumerWidget {
           break;
         case 'Send message':
           await _openMessage(context);
+          break;
+        case 'QR Code':
+          await _showQRCode(context);
           break;
         default:
           LoggingService.instance
@@ -987,6 +992,27 @@ class StreamerShareSheet extends ConsumerWidget {
     // Navigate to message view
     Navigator.of(context).pop();
     _showSuccessSnackbar(context, 'Opening message...');
+  }
+
+  Future<void> _showQRCode(BuildContext context) async {
+    try {
+      Navigator.of(context).pop(); // Close share sheet first
+      showDialog<void>(
+        context: context,
+        builder: (context) => ProfileQRCodeDialog(
+          userId: userId,
+          username: _sanitizedUserId,
+          displayName: displayName ?? _sanitizedUserId,
+          shareUrl: _profileUrl,
+        ),
+      );
+    } catch (e) {
+      LoggingService.instance.error('Failed to show QR code',
+          tag: 'ShareSheet', error: e);
+      if (context.mounted) {
+        _showErrorSnackbar(context, 'Failed to generate QR code');
+      }
+    }
   }
 
   Future<void> _showContactAction(

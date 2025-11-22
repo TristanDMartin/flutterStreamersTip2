@@ -17,7 +17,6 @@ import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
 import '../services/engagement_analytics_service.dart';
 import '../services/unified_algorithm_service.dart';
-import '../services/enhanced_algorithm_service.dart';
 import '../services/global_playback_manager.dart';
 import '../services/streamers_tip_like_service.dart';
 import '../services/favorites_service_optimized.dart';
@@ -55,13 +54,11 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   // 🚀 VIRAL ALGORITHM: Ranking cache to prevent excessive re-ranking
   DateTime? _lastRankingTime;
+  bool _isRanking = false;
 
   // ⏱️ MEMORY FIX: Timers for proper cancellation
   Timer? _resumeTimer;
   Timer? _focusTimer;
-  
-  // Scroll to top callback for navigating to newest video
-  VoidCallback? _scrollToTopCallback;
 
   // _returnCounter removed - now using stable ValueKey(video.id) instead
   // _videoEngagementScores removed - tracked in EngagementAnalyticsService instead
@@ -90,7 +87,6 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (currentUser != null) {
       UnifiedAlgorithmService.instance.startSession(currentUser.uid);
       log('🎯 UnifiedAlgorithm: Session started for user ${currentUser.uid}');
-      // Also initialize enhanced algorithm (for backward compatibility)
     }
 
     // Setup favorites manager and load videos
@@ -106,13 +102,12 @@ class _HomeViewState extends ConsumerState<HomeView>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    
+    // TIKTOK-STYLE: Notify GlobalPlaybackManager of lifecycle change
+    GlobalPlaybackManager.instance.onAppLifecycleChanged(state);
 
     if (state == AppLifecycleState.resumed) {
       log('🔄 HomeView: App resumed - reactivating feed');
-      
-      // Don't refresh VideoService immediately - it can block UI
-      // Refresh will happen in background after a delay if needed
-      // Users can manually pull-to-refresh if needed
 
       // _returnCounter removed - now using stable ValueKey(video.id) for widget identification
 
@@ -124,75 +119,42 @@ class _HomeViewState extends ConsumerState<HomeView>
       });
     }
   }
-  
-  /// Reactivate the feed when returning from other views (CameraView, ManagePostsView, etc.)
+
+  /// Reactivate the feed when returning from other views (CameraView, etc.)
   void _reactivateFeed() {
     try {
       log('🚀 HomeView: Reactivating feed after return from other view');
 
-      // 🚀 REFRESH FEED: Refresh videos when returning (especially after upload/draft save)
-      final videoService = ref.read(videoServiceProvider.notifier);
-      final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
-      
-      // Refresh VideoService and HomeProvider in background
-      videoService.refresh().then((_) {
+      // SEAMLESS RETURN: Reload videos to ensure fresh controllers
+      _loadVideos();
+
+      // Resume current video playback after a brief delay
+      _resumeTimer = Timer(const Duration(milliseconds: 300), () {
         if (mounted) {
-          homeProviderNotifier.refreshAfterUpload().then((_) {
-            log('✅ HomeView: Feed refreshed after return');
-          }).catchError((e) {
-            log('⚠️ HomeView: Error refreshing after upload: $e');
-          });
-        }
-      }).catchError((e) {
-        log('⚠️ HomeView: Error refreshing VideoService: $e');
-      });
+          final homeVM = ref.read(hp.homeProvider.notifier);
+          homeVM.resumeCurrentVideo();
 
-      // 🚀 INSTANT RESUME: Unblock playback immediately
-      GlobalPlaybackManager.instance.unblock();
+          // Ensure the current video is playing
+          final homeState = ref.read(hp.homeProvider);
+          final activeFeed = ref.read(activeFeedProvider);
+          final currentVideos = activeFeed == FeedTab.forYou
+              ? homeState.forYouVideos
+              : homeState.followingVideos;
 
-      // Resume current video playback after a brief delay to ensure UI is ready
-      _resumeTimer = Timer(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          try {
-            final homeState = ref.read(hp.homeProvider);
-            final activeFeed = ref.read(activeFeedProvider);
-            final currentVideos = activeFeed == FeedTab.forYou
-                ? homeState.forYouVideos
-                : homeState.followingVideos;
+          if (_currentIndex < currentVideos.length) {
+            _pauseAllOtherVideos(_currentIndex);
 
-            // 🚀 NEWEST VIDEO: If videos were refreshed, start at index 0 (newest video)
-            if (currentVideos.isNotEmpty) {
-              // Reset to first video (newest) after upload/refresh
-              if (mounted) {
-                setState(() {
-                  _currentIndex = 0;
-                });
-              }
-              
-              // Scroll to top programmatically if callback is available
-              if (_scrollToTopCallback != null) {
-                _scrollToTopCallback!();
-                log('📜 HomeView: Scrolled to top (newest video)');
-              }
-              
-              final currentVideo = currentVideos[0];
-              final ownerId = activeFeed.tabId;
+            // Ensure current video gets focus for TikTok-style autoplay
+            final currentVideo = currentVideos[_currentIndex];
+            final ownerId = activeFeed.tabId;
 
-              // 🔊 AUDIO FIX: Request focus to resume playback immediately
-              log('🎵 HomeView: Reactivating focus for newest video: ${currentVideo.id}');
-              GlobalPlaybackManager.instance.requestFocus(currentVideo.id, ownerId);
-
-              // Also resume via HomeProvider for additional safety
-              final homeVM = ref.read(hp.homeProvider.notifier);
-              homeVM.resumeCurrentVideo();
-
-              log('✅ HomeView: Feed reactivated successfully - showing newest video');
-            } else {
-              log('⚠️ HomeView: No videos available after refresh');
-            }
-          } catch (e) {
-            log('❌ HomeView: Error in resume timer: $e');
+            // 🔊 AUDIO FIX: Use GlobalPlaybackManager for focus
+            log('🎵 HomeView: Reactivating focus for current video: ${currentVideo.id}');
+            GlobalPlaybackManager.instance
+                .requestFocus(currentVideo.id, ownerId);
           }
+
+          log('✅ HomeView: Feed reactivated successfully');
         }
       });
     } catch (e) {
@@ -286,10 +248,7 @@ class _HomeViewState extends ConsumerState<HomeView>
       await homeVM.loadVideos();
 
       // 🚀 VIRAL ALGORITHM: Apply personalized ranking to loaded videos
-      // Run in background to avoid blocking UI/button initialization
-      _applyAlgorithmRanking().catchError((e) {
-        log('⚠️ EnhancedAlgorithm: Error in background ranking: $e');
-      });
+      await _applyAlgorithmRanking();
 
       // Prewarm the first video for instant play (TikTok style)
       await _prewarmFirstVideo();
@@ -317,7 +276,7 @@ class _HomeViewState extends ConsumerState<HomeView>
         final minutesSinceRanking =
             DateTime.now().difference(_lastRankingTime!).inMinutes;
         if (minutesSinceRanking < 5) {
-          log('⏭️ EnhancedAlgorithm: Skipping re-ranking (cached ${minutesSinceRanking}min ago)');
+          log('⏭️ UnifiedAlgorithm: Skipping re-ranking (cached ${minutesSinceRanking}min ago)');
           return;
         }
       }
@@ -329,71 +288,36 @@ class _HomeViewState extends ConsumerState<HomeView>
           : homeState.followingVideos;
 
       if (candidateVideos.isEmpty) return;
-      
-      // 🔒 FIX: Only run algorithm ranking in background, don't block UI
-      // Run asynchronously after a longer delay to avoid interrupting gestures and button interactions
-      await Future.delayed(const Duration(milliseconds: 500));
 
-      log('🚀 EnhancedAlgorithm: Ranking ${candidateVideos.length} videos...');
+      // 🎨 LOADING INDICATOR: Show user-friendly feedback
+      if (mounted) {
+        setState(() => _isRanking = true);
+      }
 
-      // Get personalized feed with enhanced algorithm (perfect feed)
+      log('🎯 UnifiedAlgorithm: Ranking ${candidateVideos.length} videos...');
+
+      // Get personalized feed with all 7 systems applied
       final rankedVideos =
-          await EnhancedAlgorithmService.instance.getPersonalizedFeed(
+          await UnifiedAlgorithmService.instance.getPersonalizedFeed(
         userId: currentUser.uid,
         candidateVideos: candidateVideos,
-        userLocation: null, // TODO: Get from user profile if available
         limit: candidateVideos.length, // Keep all videos, just reorder
       );
 
       // Update provider with ranked videos
-      // Preserve current video position OR newest video at top (after upload)
-      final adjustedVideos = List<HomeVideo>.from(rankedVideos);
-      final homeStateBefore = ref.read(hp.homeProvider);
-      final videosBefore = activeFeed == FeedTab.forYou
-          ? homeStateBefore.forYouVideos
-          : homeStateBefore.followingVideos;
-      
-      // 🚀 NEWEST VIDEO FIRST: If we're at index 0 (newest), ensure it stays at top after ranking
-      if (_currentIndex == 0 && videosBefore.isNotEmpty) {
-        final newestVideo = videosBefore[0];
-        final int newIndex = adjustedVideos.indexWhere((video) => video.id == newestVideo.id);
-        
-        if (newIndex > 0) {
-          // Newest video was moved by algorithm, move it back to top
-          final HomeVideo preservedVideo = adjustedVideos.removeAt(newIndex);
-          adjustedVideos.insert(0, preservedVideo);
-          log('🔁 EnhancedAlgorithm: Preserved newest video ${newestVideo.id} at index 0');
-        }
-      } else if (_currentIndex > 0 && 
-          _currentIndex < videosBefore.length && 
-          videosBefore.isNotEmpty) {
-        // Preserve current video position if user is viewing other videos
-        final currentVideo = videosBefore[_currentIndex];
-        final int newIndex = adjustedVideos.indexWhere((video) => video.id == currentVideo.id);
-        
-        if (newIndex != -1 && newIndex != _currentIndex) {
-          // Current video exists in ranked list but at different position
-          // Preserve it at current position to avoid interrupting playback
-          final HomeVideo preservedVideo = adjustedVideos.removeAt(newIndex);
-          final int insertIndex = _currentIndex.clamp(0, adjustedVideos.length).toInt();
-          adjustedVideos.insert(insertIndex, preservedVideo);
-          log('🔁 EnhancedAlgorithm: Preserved focused video ${currentVideo.id} at index $insertIndex');
-        }
-      }
-
       final homeVM = ref.read(hp.homeProvider.notifier);
       if (activeFeed == FeedTab.forYou) {
-        homeVM.updateForYouVideos(adjustedVideos);
+        homeVM.updateForYouVideos(rankedVideos);
       } else {
-        homeVM.updateFollowingVideos(adjustedVideos);
+        homeVM.updateFollowingVideos(rankedVideos);
       }
 
       // Update cache timestamp
       _lastRankingTime = DateTime.now();
 
-      log('✅ EnhancedAlgorithm: ${adjustedVideos.length} videos ranked with perfect feed algorithm');
+      log('✅ UnifiedAlgorithm: ${rankedVideos.length} videos ranked and ready for viral boost');
     } catch (e) {
-      log('❌ EnhancedAlgorithm: Error applying ranking: $e');
+      log('❌ UnifiedAlgorithm: Error applying ranking: $e');
 
       // 💬 ERROR FEEDBACK: Show user-friendly message
       if (mounted) {
@@ -407,6 +331,11 @@ class _HomeViewState extends ConsumerState<HomeView>
         );
       }
       // Non-critical error, continue with original order
+    } finally {
+      // Hide loading indicator
+      if (mounted) {
+        setState(() => _isRanking = false);
+      }
     }
   }
 
@@ -483,21 +412,19 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   // Dead code removed - _disposeInactiveTabVideos now handled by GlobalPlaybackManager.disposeAll()
 
-  /// SIMPLE: Pause all videos when scrolling (current video will be activated separately)
+  /// SIMPLE: Pause all other videos when scrolling within same tab
   void _pauseAllOtherVideos(int currentIndex) {
     if (!mounted) return;
 
-    log('⏸️ HomeView: Pausing all videos before activating index $currentIndex');
+    log('⏸️ HomeView: Pausing all other videos, current index: $currentIndex');
 
     try {
-      // 🔊 AUDIO FIX: Use GlobalPlaybackManager to pause and mute all videos
-      // The current video will be activated immediately after this call
-      final playbackManager = ref.read(globalPlaybackManagerProvider);
-      playbackManager.pauseAll(); // This pauses and mutes all videos
+      // 🔊 AUDIO FIX: Use GlobalPlaybackManager to pause all videos
+      GlobalPlaybackManager.instance.pauseAll();
 
-      log('✅ HomeView: All videos paused and muted (current will be activated next)');
+      log('✅ HomeView: All other videos paused, only current video should play');
     } catch (e) {
-      log('❌ HomeView: Error pausing videos: $e');
+      log('❌ HomeView: Error pausing other videos: $e');
     }
   }
 
@@ -589,9 +516,9 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
 
     try {
-      // 🔊 AUDIO FIX: Use GlobalPlaybackManager for consistent audio control
-      final playbackManager = ref.read(globalPlaybackManagerProvider);
-      playbackManager.pauseAllForTabSwitch(); // Pause + mute
+      // TIKTOK-STYLE: Notify GlobalPlaybackManager that we're leaving HomeView
+      // This already calls pauseAll() and block(), so no need for duplicate pauseAllForTabSwitch()
+      GlobalPlaybackManager.instance.onLeaveHomeView();
 
       log('✅ HomeView: All videos paused and muted successfully');
     } catch (e) {
@@ -600,6 +527,11 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _navigateToNetworkViewWithTab(String tabName) {
+    // 🔊 AUDIO FIX: Ensure blocking happens BEFORE navigation
+    // This prevents any race condition where videos might resume during navigation
+    GlobalPlaybackManager.instance.block(reason: 'navigatingToNetworkView');
+    GlobalPlaybackManager.instance.pauseAll();
+    
     // Navigate to NetworkView with the specified tab
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -657,28 +589,17 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  void _navigateToDiscover() async {
+  void _navigateToDiscover() {
     if (!mounted) return;
 
     HapticFeedback.lightImpact();
     _pauseAllHomeViewVideos();
 
     if (mounted) {
-      // Wait for navigation to complete, then resume when returning
-      await Navigator.push(
+      Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const DiscoverView()),
       );
-      
-      // When returning from DiscoverView, resume video playback
-      if (mounted) {
-        log('🔄 HomeView: Returned from DiscoverView - resuming video');
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _reactivateFeed();
-          }
-        });
-      }
     }
   }
 
@@ -686,6 +607,11 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (!mounted) return;
 
     HapticFeedback.lightImpact();
+    
+    // 🔥 CRITICAL: Cancel any pending timers that might resume playback
+    _resumeTimer?.cancel();
+    _focusTimer?.cancel();
+    
     _pauseAllHomeViewVideos();
     _navigateToNetworkViewWithTab('discover');
   }
@@ -696,46 +622,39 @@ class _HomeViewState extends ConsumerState<HomeView>
         _currentIndex = index;
       });
 
-      // 🔊 AUDIO FIX: Pause all videos first, then immediately activate current video
-      _pauseAllOtherVideos(index);
-      
-      // 🔥 CRITICAL: Immediately activate the current video after pausing all
-      // This prevents audio bleeding from previous videos
-      _activateCurrentVideo(index);
+      // TIKTOK-STYLE: Get current video for feed management (with safety checks)
+      try {
+        final homeState = ref.read(hp.homeProvider);
+        final activeFeed = ref.read(activeFeedProvider);
+        final videos = activeFeed == FeedTab.forYou
+            ? homeState.forYouVideos
+            : homeState.followingVideos;
+
+        if (index >= 0 && index < videos.length) {
+          final currentVideo = videos[index];
+          
+          // TIKTOK-STYLE: Notify GlobalPlaybackManager of index change
+          GlobalPlaybackManager.instance.onVisibleIndexChanged(index, currentVideo);
+          
+          // TIKTOK-STYLE: Preload adjacent videos for smooth transitions
+          GlobalPlaybackManager.instance.preloadAround(index, videos);
+        }
+      } catch (e) {
+        // Safety: If provider access fails, continue with existing logic
+        if (kDebugMode) {
+          log('⚠️ HomeView: Error in TikTok-style feed management: $e');
+        }
+      }
 
       // 🚀 INSTANT SWITCHING: Preload adjacent videos for seamless swiping
       _preloadAdjacentVideos(index);
-    }
-  }
 
-  /// 🔊 AUDIO FIX: Activate the current video immediately after page change
-  void _activateCurrentVideo(int index) {
-    try {
-      final homeState = ref.read(hp.homeProvider);
-      final activeFeed = ref.read(activeFeedProvider);
-      final videos = activeFeed == FeedTab.forYou
-          ? homeState.forYouVideos
-          : homeState.followingVideos;
-
-      if (index >= 0 && index < videos.length) {
-        final currentVideo = videos[index];
-        final ownerId = activeFeed.tabId;
-        
-        log('🎵 HomeView: Activating current video at index $index: ${currentVideo.id}');
-        
-        // Immediately request focus for the current video
-        // This will pause all others and play this one
-        GlobalPlaybackManager.instance.requestFocus(currentVideo.id, ownerId);
-        
-        log('✅ HomeView: Current video activated: ${currentVideo.id}');
-      }
-    } catch (e) {
-      log('❌ HomeView: Error activating current video: $e');
+      // ✅ FIX: Removed _pauseAllOtherVideos call - onVisibleIndexChanged already calls pauseAll()
+      // This prevents duplicate pause calls that could interfere with playback coordination
     }
   }
 
   /// 🚀 INSTANT SWITCHING: Preload adjacent videos for seamless swiping experience
-  /// This ensures adjacent videos are initialized BEFORE user swipes to them
   void _preloadAdjacentVideos(int currentIndex) {
     try {
       final homeState = ref.read(hp.homeProvider);
@@ -746,12 +665,29 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       if (videos.length <= 1) return; // No adjacent videos to preload
 
-      // Videos are automatically initialized when their widgets are created by PageView
-      // The widgets initialize in initState(), so adjacent videos are already initializing
-      // This method just logs that we're ready for swiping
-      log('🚀 INSTANT SWITCHING: Adjacent videos will initialize automatically when widgets are created');
+      // Preload next video (index + 1)
+      if (currentIndex + 1 < videos.length) {
+        final nextVideo = videos[currentIndex + 1];
+        log('🚀 INSTANT SWITCHING: Preloading next video: ${nextVideo.id}');
+        // Trigger preloading in background without blocking UI
+        Future.microtask(() {
+          GlobalPlaybackManager.instance
+              .requestFocus(nextVideo.id, activeFeed.tabId);
+        });
+      }
 
-      log('✅ INSTANT SWITCHING: Adjacent videos pre-initialized for seamless swiping');
+      // Preload previous video (index - 1) if exists
+      if (currentIndex > 0) {
+        final prevVideo = videos[currentIndex - 1];
+        log('🚀 INSTANT SWITCHING: Preloading previous video: ${prevVideo.id}');
+        // Trigger preloading in background without blocking UI
+        Future.microtask(() {
+          GlobalPlaybackManager.instance
+              .requestFocus(prevVideo.id, activeFeed.tabId);
+        });
+      }
+
+      log('✅ INSTANT SWITCHING: Adjacent videos preloaded for seamless swiping');
     } catch (e) {
       log('⚠️ INSTANT SWITCHING: Error preloading adjacent videos: $e (non-critical)');
     }
@@ -790,8 +726,7 @@ class _HomeViewState extends ConsumerState<HomeView>
                     onDiscoverTap: _navigateToDiscover,
                     onNetworkTap: _navigateToNetwork,
                     onScrollControllerReady: (callback) {
-                      // Store scroll callback for scrolling to top after upload
-                      _scrollToTopCallback = callback;
+                      // Scroll callback now handled by HomeContentWidget
                       log('✅ HomeView: Scroll callback registered');
                     },
                   );
@@ -803,8 +738,55 @@ class _HomeViewState extends ConsumerState<HomeView>
 
             // Feed dropdown is now handled by HomeContentWidget
 
-            // 🎨 LOADING INDICATOR: Hidden per user request (toast was interrupting UX)
-            // Personalizing feed happens in background without user notification
+            // 🎨 LOADING INDICATOR: Show when ranking videos
+            if (_isRanking)
+              Positioned(
+                top: 60,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF9248D2).withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Personalizing your feed...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
 
             // StreamerCard full-screen modal
             if (_showStreamerCard && _currentStreamerCard != null)

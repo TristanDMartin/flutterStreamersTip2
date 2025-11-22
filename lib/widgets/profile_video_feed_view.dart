@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'dart:io';
+import 'dart:async';
 import '../providers/favorites_provider.dart';
 import '../services/unified_bookmark_service.dart';
 import '../models/home_video.dart';
@@ -46,9 +48,77 @@ enum ProfileVideoFeedType {
 }
 
 class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
+  // Real-time deletion listeners
+  final Map<String, StreamSubscription<DocumentSnapshot>> _videoListeners = {};
+
+  @override
+  void dispose() {
+    // Cancel all video deletion listeners
+    for (final subscription in _videoListeners.values) {
+      subscription.cancel();
+    }
+    _videoListeners.clear();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return _buildGridLayout();
+  }
+
+  /// Set up real-time deletion listeners for videos
+  void _setupRealtimeDeletionListeners(List<HomeVideo> videos) {
+    // Cancel existing listeners for videos no longer in the list
+    final currentVideoIds = videos.map((v) => v.id).toSet();
+    final listenersToRemove = _videoListeners.keys
+        .where((id) => !currentVideoIds.contains(id))
+        .toList();
+    for (final id in listenersToRemove) {
+      _videoListeners[id]?.cancel();
+      _videoListeners.remove(id);
+    }
+
+    // Add listeners for new videos
+    for (final video in videos) {
+      if (_videoListeners.containsKey(video.id)) continue;
+
+      final subscription = FirebaseFirestore.instance
+          .collection('videos')
+          .doc(video.id)
+          .snapshots()
+          .listen((snapshot) {
+        if (!mounted) return;
+
+        // If video document doesn't exist or status is 'deleted', invalidate provider
+        if (!snapshot.exists) {
+          _handleVideoDeletion(video.id);
+          return;
+        }
+
+        final data = snapshot.data();
+        final status = data?['status'] as String?;
+
+        // Remove video if status is 'deleted' or not 'published'
+        if (status == 'deleted' || status != 'published') {
+          _handleVideoDeletion(video.id);
+        }
+      });
+
+      _videoListeners[video.id] = subscription;
+    }
+  }
+
+  /// Handle video deletion by invalidating the provider
+  void _handleVideoDeletion(String videoId) {
+    if (!mounted) return;
+
+    // Cancel listener for deleted video
+    _videoListeners[videoId]?.cancel();
+    _videoListeners.remove(videoId);
+
+    // Invalidate providers to refresh the feed
+    ref.invalidate(userVideosProvider(widget.userId ?? ''));
+    ref.invalidate(videoServiceProvider);
   }
 
   /// Check if favorites should be visible based on privacy settings
@@ -76,8 +146,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
       return showFavoritesOnCard;
     } catch (e) {
-      debugPrint(
-          '❌ ProfileVideoFeedView: Error checking favorites visibility: $e');
+      if (kDebugMode) {
+        debugPrint(
+            '❌ ProfileVideoFeedView: Error checking favorites visibility: $e');
+      }
       return false; // Default to hidden on error
     }
   }
@@ -92,11 +164,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           .get();
 
       final favorites = favoritesSnapshot.docs.map((doc) => doc.id).toList();
-      debugPrint(
-          '🎯 ProfileVideoFeedView: Fetched ${favorites.length} favorites for user $userId');
+      if (kDebugMode) {
+        debugPrint(
+            '🎯 ProfileVideoFeedView: Fetched ${favorites.length} favorites for user $userId');
+      }
       return favorites;
     } catch (e) {
-      debugPrint('❌ ProfileVideoFeedView: Error fetching user favorites: $e');
+      if (kDebugMode) {
+        debugPrint('❌ ProfileVideoFeedView: Error fetching user favorites: $e');
+      }
       return [];
     }
   }
@@ -131,8 +207,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           final videoServiceState = ref.read(videoServiceProvider);
           final videoService = ref.read(videoServiceProvider.notifier);
           if (videoServiceState.isEmpty) {
-            debugPrint(
-                '🎬 ProfileView: VideoService is empty, loading videos...');
+            if (kDebugMode) {
+              debugPrint(
+                  '🎬 ProfileView: VideoService is empty, loading videos...');
+            }
             videoService.loadAllVideos();
           }
         });
@@ -140,8 +218,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         // Watch user videos from centralized VideoService
         final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
 
-        debugPrint(
-            '🎬 ProfileView: Found ${userVideos.length} user videos for userId: ${widget.userId}');
+        if (kDebugMode) {
+          debugPrint(
+              '🎬 ProfileView: Found ${userVideos.length} user videos for userId: ${widget.userId}');
+        }
 
         // Check if viewing own profile - only show drafts for current user
         final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
@@ -156,7 +236,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             builder: (context, snapshot) {
               final drafts = snapshot.data ?? [];
 
-              debugPrint('🎬 ProfileView: Found ${drafts.length} drafts (own profile)');
+              if (kDebugMode) {
+                debugPrint('🎬 ProfileView: Found ${drafts.length} drafts (own profile)');
+              }
 
               if (userVideos.isEmpty && drafts.isEmpty) {
                 return _buildEmptyState(
@@ -224,8 +306,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
               .map((entry) => entry.key)
               .toList();
 
-          debugPrint(
-              '📚 ProfileVideoFeedView: Found ${favorites.length} bookmarked videos');
+          if (kDebugMode) {
+            debugPrint(
+                '📚 ProfileVideoFeedView: Found ${favorites.length} bookmarked videos');
+          }
 
           if (favorites.isEmpty) {
             return _buildEmptyState(
@@ -344,10 +428,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildTaggedVideosGrid() {
-    // Tagged videos data - placeholder implementation for future development
-    final taggedVideos = _getSampleTaggedVideos();
+    // ✅ FIX: Load real tagged videos from Firestore
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    final targetUserId = widget.userId ?? currentUser?.uid;
 
-    if (taggedVideos.isEmpty) {
+    if (targetUserId == null) {
       return _buildEmptyState(
         icon: Icons.person_outline,
         title: 'No Tagged Content',
@@ -355,11 +440,52 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       );
     }
 
-    return _buildVideoGridContent(taggedVideos);
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _fetchTaggedVideos(targetUserId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: Color(0xFF9248d2),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          if (kDebugMode) {
+            debugPrint('❌ ProfileVideoFeedView: Error loading tagged videos: ${snapshot.error}');
+          }
+          return _buildEmptyState(
+            icon: Icons.error_outline,
+            title: 'Error Loading Tagged Videos',
+            subtitle: 'Please try again later',
+          );
+        }
+
+        final taggedVideos = snapshot.data ?? [];
+
+        if (taggedVideos.isEmpty) {
+          return _buildEmptyState(
+            icon: Icons.person_outline,
+            title: 'No Tagged Content',
+            subtitle: 'Videos where you\'re tagged will appear here',
+          );
+        }
+
+        return _buildVideoGridContent(taggedVideos);
+      },
+    );
   }
 
   Widget _buildVideoGridWithDrafts(
       List<HomeVideo> videos, List<Map<String, dynamic>> drafts) {
+    // Set up real-time deletion listeners for videos
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupRealtimeDeletionListeners(videos);
+    });
+
+    final itemCount = (drafts.isNotEmpty ? 1 : 0) + videos.length;
+
     return RefreshIndicator(
       onRefresh: () async {
         // Refresh data based on feed type
@@ -383,49 +509,50 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           mainAxisSpacing: 16, // Tight gutters = 16pt
           childAspectRatio: 9 / 16, // Strict 9:16 aspect ratio (portrait)
         ),
-        itemCount: drafts.length + videos.length,
+        itemCount: itemCount,
         itemBuilder: (context, index) {
-          // Show all drafts first
-          if (index < drafts.length) {
-            final draft = drafts[index];
-            debugPrint(
-                '🎬 ProfileView: Building draft card ${index + 1}/${drafts.length} - videoPath: "${draft['videoPath']}", thumbnailPath: "${draft['thumbnailPath']}"');
+          // Show all drafts in the first position (index 0)
+          if (drafts.isNotEmpty && index == 0) {
+            final firstDraft = drafts[0];
+            if (kDebugMode) {
+              debugPrint(
+                  '🎬 ProfileView: Building combined drafts card with ${drafts.length} drafts');
+            }
             final draftVideo = HomeVideo(
-              id: draft['id'] ?? 'draft_$index',
-              videoURL: draft['videoPath'] ?? '',
-              thumbnailURL: draft['thumbnailPath'] ?? '',
+              id: 'all_drafts',
+              videoURL: firstDraft['videoPath'] ?? '',
+              thumbnailURL: firstDraft['thumbnailPath'] ?? '',
               creator: User(
                 id: 'current_user',
                 displayName: 'You',
                 username: 'you',
-                bio: 'Your draft video',
+                bio: 'Your draft videos',
                 avatarURL: '',
               ),
-              caption: draft['caption'] ?? 'Draft',
+              caption: '${drafts.length} Draft${drafts.length > 1 ? 's' : ''}',
               categoryId: 'draft',
               views: 0,
               likes: 0,
               comments: 0,
               isDraft: true,
               createdAt: Timestamp.fromDate(
-                DateTime.tryParse(draft['createdAt']?.toString() ?? '') ??
+                DateTime.tryParse(firstDraft['createdAt']?.toString() ?? '') ??
                     DateTime.now(),
               ),
             );
 
-            return GridThumbnail(
-              video: draftVideo,
-              onTap: () => _openDraft(draft),
-              showDraftBadge: true,
-              showDurationBadge: false,
+            return _buildCombinedDraftsThumbnail(
+              draftVideo,
+              drafts.length,
+              drafts,
             );
           }
 
-          // Show published videos after drafts
-          final videoIndex = index - drafts.length;
-          if (videoIndex < videos.length) {
+          // Show published videos after the drafts thumbnail
+          final videoIndex = drafts.isNotEmpty ? index - 1 : index;
+          if (videoIndex >= 0 && videoIndex < videos.length) {
             final video = videos[videoIndex];
-            return _buildHomeVideoCard(video, videoIndex);
+            return _buildHomeVideoCard(video, videoIndex, videos);
           }
 
           return const SizedBox.shrink();
@@ -435,6 +562,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildVideoGridWithoutDrafts(List<HomeVideo> videos) {
+    // Set up real-time deletion listeners for videos
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupRealtimeDeletionListeners(videos);
+    });
+
     return RefreshIndicator(
       onRefresh: () async {
         // Refresh data based on feed type
@@ -465,13 +597,46 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           if (video.isDraft == true) {
             return const SizedBox.shrink();
           }
-          return _buildHomeVideoCard(video, index);
+          return _buildHomeVideoCard(video, index, videos);
         },
       ),
     );
   }
 
   Widget _buildVideoGridContent(List<Map<String, dynamic>> videos) {
+    // Convert Map videos to HomeVideo for deletion listeners
+    final homeVideos = videos.map((v) {
+      try {
+        return HomeVideo(
+          id: v['id'] as String? ?? '',
+          creator: User(
+            id: v['creatorId'] as String? ?? '',
+            displayName: v['creatorName'] as String? ?? 'Unknown',
+            username: v['creatorUsername'] as String? ?? 'unknown',
+            avatarURL: v['creatorAvatar'] as String?,
+          ),
+          videoURL: v['videoURL'] as String? ?? v['videoUrl'] as String? ?? '',
+          thumbnailURL: v['thumbnailURL'] as String? ?? v['thumbnailUrl'] as String?,
+          caption: v['caption'] as String? ?? '',
+          likes: (v['likes'] as int?) ?? 0,
+          comments: (v['comments'] as int?) ?? 0,
+          views: (v['views'] as int?) ?? 0,
+          duration: (v['duration'] as double?) ?? 0.0,
+          categoryId: v['categoryId'] as String? ?? '',
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('❌ Error converting video to HomeVideo: $e');
+        }
+        return null;
+      }
+    }).whereType<HomeVideo>().toList();
+
+    // Set up real-time deletion listeners for videos
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupRealtimeDeletionListeners(homeVideos);
+    });
+
     return RefreshIndicator(
       onRefresh: () async {
         // Refresh data based on feed type
@@ -498,36 +663,75 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         itemCount: videos.length,
         itemBuilder: (context, index) {
           final video = videos[index];
-          return _buildPublishedVideoCard(video, index);
+          return _buildPublishedVideoCard(video, index, videos);
         },
       ),
     );
   }
 
-  Widget _buildHomeVideoCard(HomeVideo video, int index) {
-    debugPrint('🎬 ProfileView: Building video card ${video.id}');
-    debugPrint('  - thumbnailURL: "${video.thumbnailURL}"');
-    debugPrint('  - videoURL: "${video.videoURL}"');
-    debugPrint('  - thumbnails: ${video.thumbnails != null ? "YES" : "NO"}');
-    if (video.thumbnails != null) {
-      debugPrint('  - thumbnails.urls: ${video.thumbnails!.urls}');
-      debugPrint(
-          '  - thumbnails.generatedAt: ${video.thumbnails!.generatedAt}');
+  Widget _buildCombinedDraftsThumbnail(
+    HomeVideo draftVideo,
+    int draftCount,
+    List<Map<String, dynamic>> allDrafts,
+  ) {
+    return Stack(
+      children: [
+        GridThumbnail(
+          video: draftVideo,
+          onTap: () => _openAllDrafts(allDrafts),
+          showDraftBadge: false,
+          showDurationBadge: false,
+        ),
+        Positioned(
+          top: 8,
+          right: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              '$draftCount Draft${draftCount > 1 ? 's' : ''}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHomeVideoCard(HomeVideo video, int index, List<HomeVideo> allVideos) {
+    if (kDebugMode) {
+      debugPrint('🎬 ProfileView: Building video card ${video.id}');
+      debugPrint('  - thumbnailURL: "${video.thumbnailURL}"');
+      debugPrint('  - videoURL: "${video.videoURL}"');
+      debugPrint('  - thumbnails: ${video.thumbnails != null ? "YES" : "NO"}');
+      if (video.thumbnails != null) {
+        debugPrint('  - thumbnails.urls: ${video.thumbnails!.urls}');
+        debugPrint(
+            '  - thumbnails.generatedAt: ${video.thumbnails!.generatedAt}');
+      }
+      debugPrint('  - isDraft: ${video.isDraft}');
+      debugPrint('  - createdAt: ${video.createdAt}');
     }
-    debugPrint('  - isDraft: ${video.isDraft}');
-    debugPrint('  - createdAt: ${video.createdAt}');
     return GridThumbnail(
       video: video,
       onTap: () {
         widget.onVideoTap?.call();
-        _openVideoPlayer(video, index, [video]);
+        // ✅ FIX: Pass all videos so user can swipe up/down to see other videos
+        _openVideoPlayer(video, index, allVideos);
       },
       showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
       showDurationBadge: true,
     );
   }
 
-  Widget _buildPublishedVideoCard(Map<String, dynamic> video, int index) {
+  Widget _buildPublishedVideoCard(Map<String, dynamic> video, int index, List<Map<String, dynamic>> allVideos) {
     // Convert Map to HomeVideo for GridThumbnail
     final homeVideo = HomeVideo(
       id: video['id'] ?? '',
@@ -555,7 +759,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       video: homeVideo,
       onTap: () {
         widget.onVideoTap?.call();
-        _openVideoPlayerFromMap(video, index);
+        // ✅ FIX: Pass all videos and find correct index so user can swipe through them
+        final correctIndex = allVideos.indexWhere((v) => (v['id'] ?? '') == homeVideo.id);
+        final videoIndex = correctIndex >= 0 ? correctIndex : index;
+        _openVideoPlayerFromMap(video, videoIndex, allVideos);
       },
       showDraftBadge: widget.feedType == ProfileVideoFeedType.videos,
       showDurationBadge: true,
@@ -599,12 +806,12 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     );
   }
 
-  void _openDraft(Map<String, dynamic> draft) {
+  void _openAllDrafts(List<Map<String, dynamic>> drafts) {
     if (mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => DraftsSheetView(
-            drafts: const [],
+            drafts: drafts,
             onDraftTap: (selectedDraft) => _editDraft(selectedDraft),
             onDelete: (draftToDelete) async {
               final success = await LocalDraftService().deleteDraft(draftToDelete['id']);
@@ -679,7 +886,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         );
       }
     } catch (e) {
-      debugPrint('❌ Error editing draft: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Error editing draft: $e');
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -692,45 +901,99 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   // Helper methods
-  List<Map<String, dynamic>> _getSampleTaggedVideos() {
-    return [
-      {
-        'id': 'tagged1',
-        'title': 'Tagged Video 1',
-        'likes': 2500, // Use integer instead of string
-        'comments': 120,
-        'views': 15000,
-        'duration': 45.0, // Use double for duration
-        'thumbnail': 'https://example.com/tagged1.jpg',
-        'videoUrl': 'https://example.com/tagged1.mp4',
-        'creatorId': 'tagged_creator1',
-        'creatorName': 'Tagged Creator 1',
-        'creatorUsername': 'tagged_creator1',
-        'creatorAvatar': 'https://example.com/avatar1.jpg',
-        'caption': 'This is a tagged video 1',
-        'categoryId': 'general',
-        'createdAt': Timestamp.fromDate(
-            DateTime.now().subtract(const Duration(days: 1))),
-      },
-      {
-        'id': 'tagged2',
-        'title': 'Tagged Video 2',
-        'likes': 1800, // Use integer instead of string
-        'comments': 85,
-        'views': 12000,
-        'duration': 80.0, // Use double for duration
-        'thumbnail': 'https://example.com/tagged2.jpg',
-        'videoUrl': 'https://example.com/tagged2.mp4',
-        'creatorId': 'tagged_creator2',
-        'creatorName': 'Tagged Creator 2',
-        'creatorUsername': 'tagged_creator2',
-        'creatorAvatar': 'https://example.com/avatar2.jpg',
-        'caption': 'This is a tagged video 2',
-        'categoryId': 'general',
-        'createdAt': Timestamp.fromDate(
-            DateTime.now().subtract(const Duration(days: 2))),
-      },
-    ];
+
+  /// ✅ FIX: Fetch real tagged videos from Firestore
+  Future<List<Map<String, dynamic>>> _fetchTaggedVideos(String userId) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('🏷️ ProfileVideoFeedView: Fetching tagged videos for user: $userId');
+      }
+
+      // Query tags collection to find videos where this user is tagged
+      final tagsSnapshot = await FirebaseFirestore.instance
+          .collection('tags')
+          .where('taggedUserId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      if (tagsSnapshot.docs.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('🏷️ ProfileVideoFeedView: No tags found for user: $userId');
+        }
+        return [];
+      }
+
+      // Extract unique video IDs
+      final videoIds = tagsSnapshot.docs
+          .map((doc) => doc.data()['videoId'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .toSet()
+          .toList();
+
+      if (videoIds.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('🏷️ ProfileVideoFeedView: No valid video IDs found');
+        }
+        return [];
+      }
+
+      if (kDebugMode) {
+        debugPrint('🏷️ ProfileVideoFeedView: Found ${videoIds.length} tagged video IDs');
+      }
+
+      // Fetch video documents in batches (Firestore limit is 10 for 'whereIn')
+      final List<Map<String, dynamic>> taggedVideos = [];
+      const batchSize = 10;
+
+      for (int i = 0; i < videoIds.length; i += batchSize) {
+        final batch = videoIds.skip(i).take(batchSize).toList();
+        final videosSnapshot = await FirebaseFirestore.instance
+            .collection('videos')
+            .where(FieldPath.documentId, whereIn: batch)
+            .where('status', isEqualTo: 'published') // Only published videos
+            .get();
+
+        for (final doc in videosSnapshot.docs) {
+          final data = doc.data();
+          final videoCreatorId = data['userId'] ?? data['creatorId'] ?? '';
+
+          // Fetch creator data
+          final creatorDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(videoCreatorId)
+              .get();
+
+          if (!creatorDoc.exists) continue;
+
+          final creatorData = creatorDoc.data()!;
+
+          taggedVideos.add({
+            'id': doc.id,
+            'videoUrl': data['videoUrl'] ?? data['videoURL'] ?? '',
+            'videoURL': data['videoUrl'] ?? data['videoURL'] ?? '',
+            'thumbnailUrl': data['thumbnailUrl'] ?? data['thumbnailURL'] ?? '',
+            'thumbnailURL': data['thumbnailUrl'] ?? data['thumbnailURL'] ?? '',
+            'creatorId': videoCreatorId,
+            'creatorName': creatorData['displayName'] ?? creatorData['username'] ?? 'Unknown',
+            'creatorUsername': creatorData['username'] ?? 'unknown',
+            'creatorAvatar': creatorData['avatarURL'] ?? creatorData['avatarUrl'] ?? '',
+            'likes': data['likes'] ?? data['likeCount'] ?? 0,
+            'comments': data['comments'] ?? data['commentCount'] ?? 0,
+            'views': data['views'] ?? data['viewCount'] ?? 0,
+            'caption': data['caption'] ?? data['title'] ?? data['description'] ?? '',
+            'duration': (data['duration'] ?? 0.0).toDouble(),
+            'categoryId': data['categoryId'] ?? data['category'] ?? 'general',
+            'createdAt': data['createdAt'] ?? Timestamp.now(),
+          });
+        }
+      }
+
+      debugPrint('✅ ProfileVideoFeedView: Loaded ${taggedVideos.length} tagged videos');
+      return taggedVideos;
+    } catch (e) {
+      debugPrint('❌ ProfileVideoFeedView: Error fetching tagged videos: $e');
+      return [];
+    }
   }
 
   /// Fetch real video data from Firebase for favorite video IDs
@@ -772,11 +1035,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         }
       }
 
-      debugPrint(
-          '🎯 ProfileVideoFeedView: Fetched ${videos.length} favorite videos from Firebase');
+      if (kDebugMode) {
+        debugPrint(
+            '🎯 ProfileVideoFeedView: Fetched ${videos.length} favorite videos from Firebase');
+      }
       return videos;
     } catch (e) {
-      debugPrint('❌ ProfileVideoFeedView: Error fetching favorite videos: $e');
+      if (kDebugMode) {
+        debugPrint('❌ ProfileVideoFeedView: Error fetching favorite videos: $e');
+      }
       return [];
     }
   }
@@ -798,26 +1065,58 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Future<void> _openVideoPlayerFromMap(
-      Map<String, dynamic> video, int index) async {
+      Map<String, dynamic> video, int index, List<Map<String, dynamic>>? providedVideos) async {
     // Get all videos from the current feed based on feed type
-    List<Map<String, dynamic>> allVideos = [];
+    List<Map<String, dynamic>> allVideos;
 
-    switch (widget.feedType) {
-      case ProfileVideoFeedType.favorites:
-        final favoritesState = ref.read(favoritesProvider);
-        final favorites = favoritesState.favorites.toList();
-        // Fetch real video data for favorites
-        final favoriteVideos = await _fetchFavoriteVideos(favorites);
-        allVideos = favoriteVideos;
-        break;
-      case ProfileVideoFeedType.tagged:
-        allVideos = _getSampleTaggedVideos();
-        break;
-      case ProfileVideoFeedType.videos:
-        // For user videos, we'd need to get them from the provider
-        // For now, create a single-item list
-        allVideos = [video];
-        break;
+    // If videos are provided (for user videos feed), use them directly
+    if (providedVideos != null && providedVideos.isNotEmpty) {
+      allVideos = providedVideos;
+    } else {
+      // Otherwise, fetch based on feed type (for favorites and tagged)
+      allVideos = [];
+      switch (widget.feedType) {
+        case ProfileVideoFeedType.favorites:
+          final favoritesState = ref.read(favoritesProvider);
+          final favorites = favoritesState.favorites.toList();
+          // Fetch real video data for favorites
+          final favoriteVideos = await _fetchFavoriteVideos(favorites);
+          allVideos = favoriteVideos;
+          break;
+        case ProfileVideoFeedType.tagged:
+          // ✅ FIX: Fetch real tagged videos from Firestore
+          final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+          final targetUserId = widget.userId ?? currentUser?.uid;
+          if (targetUserId != null) {
+            allVideos = await _fetchTaggedVideos(targetUserId);
+          } else {
+            allVideos = [];
+          }
+          break;
+        case ProfileVideoFeedType.videos:
+          // ✅ FIX: Get all user videos from provider so user can swipe through them
+          final userVideos = ref.read(userVideosProvider(widget.userId ?? ''));
+          // Convert HomeVideo list to Map format for consistency
+          allVideos = userVideos.map((v) => {
+            'id': v.id,
+            'videoUrl': v.videoURL,
+            'videoURL': v.videoURL,
+            'thumbnailUrl': v.thumbnailURL,
+            'thumbnailURL': v.thumbnailURL,
+            'creatorId': v.creator.id,
+            'creatorName': v.creator.displayName,
+            'creatorUsername': v.creator.username,
+            'creatorAvatar': v.creator.avatarURL,
+            'likes': v.likes,
+            'comments': v.comments,
+            'views': v.views,
+            'caption': v.caption,
+            'duration': v.duration,
+            'categoryId': v.categoryId,
+            'createdAt': v.createdAt,
+          }).toList();
+          break;
+      }
     }
 
     // Convert all videos to HomeVideo objects

@@ -8,6 +8,7 @@ import '../services/report_service.dart';
 import '../constants/app_colors.dart';
 import 'connections_row.dart';
 import 'connections_search_overlay.dart';
+import 'video_qr_code_dialog.dart';
 
 class EnhancedShareSheet extends StatefulWidget {
   final HomeVideo video;
@@ -300,6 +301,11 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _buildActionButton(
+            icon: Icons.qr_code,
+            label: 'QR Code',
+            onTap: () => _handleQRCode(),
+          ),
+          _buildActionButton(
             icon: Icons.favorite_border,
             label: 'Favorite',
             onTap: () => _handleFavorite(),
@@ -399,6 +405,19 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
   void _handleFavorite() {
     widget.onFavorite?.call(widget.video.id, widget.video.creator.id);
     _showSuccessSnackBar('Added to favorites');
+  }
+
+  void _handleQRCode() {
+    HapticFeedback.lightImpact();
+    // ✅ FIX: Show QR code dialog
+    Navigator.pop(context); // Close share sheet first
+    showDialog<void>(
+      context: context,
+      builder: (context) => VideoQRCodeDialog(
+        video: widget.video,
+        shareUrl: _sharePayload?.links.webShareUrl,
+      ),
+    );
   }
 
   void _handleReport() {

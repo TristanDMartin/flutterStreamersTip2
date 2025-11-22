@@ -236,10 +236,17 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> loadVideos() async {
     log('🔄 loadVideos() called - hasLoaded: ${state.hasLoaded}');
+    log('📊 Current state - forYouVideos: ${state.forYouVideos.length}, followingVideos: ${state.followingVideos.length}');
 
-    if (state.hasLoaded) {
-      log('⏭️ Videos already loaded, skipping...');
+    if (state.hasLoaded && state.forYouVideos.isNotEmpty) {
+      log('⏭️ Videos already loaded (${state.forYouVideos.length} videos), skipping...');
       return;
+    }
+    
+    // If hasLoaded but videos are empty, force reload
+    if (state.hasLoaded && state.forYouVideos.isEmpty) {
+      log('⚠️ Videos marked as loaded but list is empty - forcing reload');
+      state = state.copyWith(hasLoaded: false);
     }
 
     log('🚀 Starting video loading...');

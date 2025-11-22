@@ -350,13 +350,15 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       }
 
       // ✅ FIX #4: Use captured scaffold messenger instead of context
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('Avatar updated successfully!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Avatar updated successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
 
       if (kDebugMode) {
         // ✅ FIX #2: Wrap in kDebugMode

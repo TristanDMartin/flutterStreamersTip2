@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'video_download_service.dart';
 
 final videoActionsServiceProvider = Provider<VideoActionsService>((ref) {
   return VideoActionsService();
@@ -22,15 +23,23 @@ class VideoActionsService {
       if (!videoDoc.exists) {
         throw Exception('Video not found');
       }
+      final data = videoDoc.data()!;
       final userId = await getCurrentUserId();
-      final ownerUid = videoDoc.data()?['userId'] as String?;
-      final allowSave = videoDoc.data()?['allowSave'] as bool? ?? true;
+      final ownerUid = data['userId'] as String?;
+      final allowSave = data['allowSave'] as bool? ?? true;
+      final videoUrl = data['videoUrl'] ?? data['videoURL'] as String?;
+      
+      if (videoUrl == null || videoUrl.isEmpty) {
+        throw Exception('Video URL not available');
+      }
+      
       if (userId != ownerUid && !allowSave) {
         throw Exception('Video owner has disabled downloads');
       }
-      throw UnimplementedError(
-        'Video download feature requires additional dependencies. Coming soon!',
-      );
+      
+      // Use VideoDownloadService to download the video
+      final downloadService = VideoDownloadService();
+      await downloadService.downloadVideo(videoId, videoUrl);
     } catch (e) {
       rethrow;
     }

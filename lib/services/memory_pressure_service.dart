@@ -6,9 +6,9 @@ class MemoryPressureService {
   factory MemoryPressureService() => _instance;
   MemoryPressureService._internal();
 
-  // Adaptive memory limits based on device performance
-  static int _maxImageCount = 3; // Start with 3 images, adapt based on performance
-  static int _maxAvatarCount = 5; // Start with 5 avatars, adapt based on performance
+  // OPTIMIZED: Increased memory limits for better performance
+  static int _maxImageCount = 10; // Increased from 3 to 10 for faster loading
+  static int _maxAvatarCount = 15; // Increased from 5 to 15 for better UX
   static int _currentImageCount = 0;
   static int _currentAvatarCount = 0;
   static bool _isMemoryPressureHigh = false;
@@ -103,14 +103,14 @@ class MemoryPressureService {
     final recentCleanups = _memoryCleanupTimes.length;
     
     if (recentCleanups > 3) {
-      // Too many cleanups - reduce limits
-      _maxImageCount = (_maxImageCount * 0.8).round().clamp(1, 3);
-      _maxAvatarCount = (_maxAvatarCount * 0.8).round().clamp(1, 5);
+      // Too many cleanups - reduce limits (but keep higher baseline)
+      _maxImageCount = (_maxImageCount * 0.8).round().clamp(5, 10);
+      _maxAvatarCount = (_maxAvatarCount * 0.8).round().clamp(8, 15);
       debugPrint('📉 Reduced memory limits due to frequent cleanups: $_maxImageCount images, $_maxAvatarCount avatars');
     } else if (recentCleanups < 1 && _cleanupCount > 5) {
-      // Stable performance - can increase limits slightly
-      _maxImageCount = (_maxImageCount * 1.1).round().clamp(1, 5);
-      _maxAvatarCount = (_maxAvatarCount * 1.1).round().clamp(1, 8);
+      // Stable performance - can increase limits
+      _maxImageCount = (_maxImageCount * 1.1).round().clamp(10, 15);
+      _maxAvatarCount = (_maxAvatarCount * 1.1).round().clamp(15, 20);
       debugPrint('📈 Increased memory limits due to stable performance: $_maxImageCount images, $_maxAvatarCount avatars');
     }
   }

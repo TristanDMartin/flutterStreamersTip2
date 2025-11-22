@@ -2499,85 +2499,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   // MARK: - Video Navigation
 
-  void _navigateToPlayerScreen(ProfileVideoFeedType feedType) {
-    try {
-      // For now, we'll navigate to a simple player screen
-      // In a real implementation, you would pass the actual video data
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => Scaffold(
-            backgroundColor: Colors.black,
-            appBar: AppBar(
-              backgroundColor: Colors.black,
-              title: Text(_getFeedTypeTitle(feedType)),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.play_circle_outline,
-                    color: Colors.white,
-                    size: 64,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Video Player',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Feed Type: ${_getFeedTypeTitle(feedType)}',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'User: $displayName',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        // debugPrint("❌ Error navigating to player screen: $e");
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening video player: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
+  // ✅ FIX: Removed placeholder _navigateToPlayerScreen method
+  // ProfileVideoFeedView now handles video taps directly and opens the real PlayerScreen
 
-  String _getFeedTypeTitle(ProfileVideoFeedType feedType) {
-    switch (feedType) {
-      case ProfileVideoFeedType.videos:
-        return 'Videos';
-      case ProfileVideoFeedType.favorites:
-        return 'Favorites';
-      case ProfileVideoFeedType.tagged:
-        return 'Tagged';
-    }
-  }
 
   // MARK: - Helper Methods for Follow/Unfollow Operations
 
@@ -2668,11 +2592,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildContentArea() {
-    return SizedBox(
-      height:
-          MediaQuery.of(context).size.height * 0.5, // Use 50% of screen height
-      child: _buildVideoFeed(),
-    );
+    return _buildVideoFeed();
   }
 
   Widget _buildVideoFeed() {
@@ -2681,25 +2601,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         return ProfileVideoFeedView(
           userId: widget.userId,
           feedType: ProfileVideoFeedType.videos,
-          onVideoTap: () {
-            _navigateToPlayerScreen(ProfileVideoFeedType.videos);
-          },
+          // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
+          // It will open the real PlayerScreen with actual videos
+          onVideoTap: null,
         );
       case 1: // Favorites
         return ProfileVideoFeedView(
           userId: widget.userId,
           feedType: ProfileVideoFeedType.favorites,
-          onVideoTap: () {
-            _navigateToPlayerScreen(ProfileVideoFeedType.favorites);
-          },
+          // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
+          onVideoTap: null,
         );
       case 2: // Tagged
         return ProfileVideoFeedView(
           userId: widget.userId,
           feedType: ProfileVideoFeedType.tagged,
-          onVideoTap: () {
-            _navigateToPlayerScreen(ProfileVideoFeedType.tagged);
-          },
+          // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
+          onVideoTap: null,
         );
       default:
         return const Center(

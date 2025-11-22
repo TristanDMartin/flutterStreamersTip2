@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:developer';
 import '../../models/home_video.dart';
 import '../../providers/home_provider.dart' as hp;
+import '../../models/feed_tab.dart';
+import '../../services/global_playback_manager.dart';
 import 'feed_selector_widget.dart';
 import 'video_page_view_widget.dart';
 import 'loading_state_widget.dart';
@@ -43,6 +46,36 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
   bool _showScrollToTop = false;
   VoidCallback? _scrollCallback;
 
+  /// Handle pull-to-refresh at top of feed (index 0)
+  Future<void> _handlePullToRefresh(String activeTab) async {
+    log('🔄 HomeContent: Pull-to-refresh triggered for $activeTab feed at index 0');
+    try {
+      final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
+      final feedTab = activeTab == 'For You' ? FeedTab.forYou : FeedTab.following;
+      
+      // Refresh feed - this will get newest videos from Firestore (newest first)
+      await homeProviderNotifier.refreshFeedByTab(feedTab);
+      
+      // 🎬 TIKTOK-STYLE: Preserve index 0 after refresh
+      if (mounted) {
+        // Notify GlobalPlaybackManager to update index 0 with new video
+        final homeState = ref.read(hp.homeProvider);
+        final videos = feedTab == FeedTab.forYou
+            ? homeState.forYouVideos
+            : homeState.followingVideos;
+        
+        if (videos.isNotEmpty) {
+          final newTopVideo = videos[0];
+          GlobalPlaybackManager.instance.onVisibleIndexChanged(0, newTopVideo);
+          log('✅ HomeContent: Feed refreshed - newest video at index 0: ${newTopVideo.id}');
+        }
+      }
+    } catch (e) {
+      log('❌ HomeContent: Error refreshing feed: $e');
+      rethrow;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final homeState = ref.watch(hp.homeProvider);
@@ -56,8 +89,17 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
         ? homeState.isLoading
         : homeState.isLoading;
 
-    final hasError =
-        false; // HomeState doesn't have error field, handle differently
+    final hasError = homeState.error != null && homeState.error!.isNotEmpty;
+
+    // 🔍 DIAGNOSTIC: Log video count for debugging
+    if (kDebugMode) {
+      debugPrint('📊 HomeContent: Building - videos: ${videos.length}, isLoading: $isLoading, activeTab: ${widget.activeTab}');
+      if (videos.isEmpty && !isLoading) {
+        debugPrint('⚠️ HomeContent: ⚠️⚠️⚠️ NO VIDEOS AVAILABLE! ⚠️⚠️⚠️');
+        debugPrint('   Check console for "SKIPPING" messages from VideoService');
+        debugPrint('   Check Firestore for videos with status="published" and privacy="Everyone"');
+      }
+    }
 
     return Stack(
       children: [
@@ -131,11 +173,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
   Widget _buildVideoContent(
       List<HomeVideo> videos, bool isLoading, bool hasError) {
     if (hasError) {
+      final homeState = ref.read(hp.homeProvider);
       return ErrorStateWidget(
-        message: 'Failed to load videos. Please try again.',
+        message: homeState.error ?? 'Failed to load videos. Please try again.',
         onRetry: () {
           log('🔄 HomeContent: Retrying video load');
-          // Trigger retry logic here
+          final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
+          homeProviderNotifier.retryLoadVideos();
         },
       );
     }
@@ -177,6 +221,9 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           widget.onScrollControllerReady!(callback);
         }
       },
+      onRefresh: widget.currentIndex == 0 
+          ? () => _handlePullToRefresh(widget.activeTab)
+          : null,
     );
   }
 }

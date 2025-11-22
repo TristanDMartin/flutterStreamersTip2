@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../services/video_actions_service.dart';
+import 'streamer_card_view.dart';
+import 'dart:developer' as developer;
 
 enum VideoOption {
   saveVideo,
@@ -282,6 +288,7 @@ class _VideoOptionsBottomSheetState
     final String? newCaption = await showDialog<String>(
       context: context,
       builder: (context) => _EditCaptionDialog(
+        videoId: widget.video.id,
         currentCaption: widget.video.caption,
         currentTags: widget.video.tags,
       ),
@@ -666,11 +673,13 @@ class _PrivacyDialogState extends State<_PrivacyDialog> {
 }
 
 class _EditCaptionDialog extends StatefulWidget {
+  final String videoId;
   final String currentCaption;
   final List<String> currentTags;
 
   const _EditCaptionDialog({
     Key? key,
+    required this.videoId,
     required this.currentCaption,
     required this.currentTags,
   }) : super(key: key);
@@ -681,11 +690,14 @@ class _EditCaptionDialog extends StatefulWidget {
 
 class _EditCaptionDialogState extends State<_EditCaptionDialog> {
   late TextEditingController _captionController;
+  List<Map<String, dynamic>> _taggedUsers = [];
+  bool _isLoadingTaggedUsers = true;
 
   @override
   void initState() {
     super.initState();
     _captionController = TextEditingController(text: widget.currentCaption);
+    _loadTaggedUsers();
   }
 
   @override
@@ -694,17 +706,146 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
     super.dispose();
   }
 
+  Future<void> _loadTaggedUsers() async {
+    try {
+      final tagsSnapshot = await FirebaseFirestore.instance
+          .collection('tags')
+          .where('videoId', isEqualTo: widget.videoId)
+          .get();
+
+      if (tagsSnapshot.docs.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _taggedUsers = [];
+            _isLoadingTaggedUsers = false;
+          });
+        }
+        return;
+      }
+
+      final List<Map<String, dynamic>> taggedUsers = [];
+      for (final tagDoc in tagsSnapshot.docs) {
+        final tagData = tagDoc.data();
+        final taggedUserId = tagData['taggedUserId'] as String?;
+        if (taggedUserId == null) continue;
+
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(taggedUserId)
+            .get();
+
+        if (userDoc.exists) {
+          final userData = userDoc.data()!;
+          taggedUsers.add({
+            'userId': taggedUserId,
+            'username': userData['username'] ?? 'unknown',
+            'displayName': userData['displayName'] ?? userData['username'] ?? 'Unknown',
+            'avatarURL': userData['avatarURL'] ?? userData['avatarUrl'] ?? '',
+          });
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _taggedUsers = taggedUsers;
+          _isLoadingTaggedUsers = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading tagged users: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingTaggedUsers = false;
+        });
+      }
+    }
+  }
+
+  void _navigateToTaggedUserProfile(String userId) {
+    HapticFeedback.lightImpact();
+    developer.log('👤 EditCaptionDialog: Opening StreamerCard for tagged user: $userId');
+
+    // Get current user ID
+    final currentUserId = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+
+    // Navigate to StreamerCardView for tagged user
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => StreamerCardView(
+          userId: userId,
+          currentUserId: currentUserId,
+          onDismiss: () => Navigator.of(context).pop(),
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Edit Caption'),
-      content: TextField(
-        controller: _captionController,
-        maxLines: 3,
-        maxLength: 500,
-        decoration: const InputDecoration(
-          hintText: 'Enter caption...',
-          border: OutlineInputBorder(),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _captionController,
+              maxLines: 3,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                hintText: 'Enter caption...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_taggedUsers.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Tagged Users:',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _taggedUsers.map((user) {
+                  return GestureDetector(
+                    onTap: () => _navigateToTaggedUserProfile(user['userId'] as String),
+                    child: Chip(
+                      avatar: CircleAvatar(
+                        radius: 12,
+                        backgroundImage: user['avatarURL'] != null &&
+                                user['avatarURL'].toString().isNotEmpty
+                            ? NetworkImage(user['avatarURL'].toString())
+                            : null,
+                        child: user['avatarURL'] == null ||
+                                user['avatarURL'].toString().isEmpty
+                            ? Text(
+                                (user['displayName'] as String? ?? 'U')
+                                    .substring(0, 1)
+                                    .toUpperCase(),
+                                style: const TextStyle(fontSize: 12),
+                              )
+                            : null,
+                      ),
+                      label: Text('@${user['username']}'),
+                      backgroundColor: Colors.blue.withValues(alpha: 0.1),
+                      labelStyle: const TextStyle(fontSize: 12),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ] else if (_isLoadingTaggedUsers) ...[
+              const SizedBox(height: 16),
+              const Center(
+                child: CircularProgressIndicator(),
+              ),
+            ],
+          ],
         ),
       ),
       actions: [

@@ -16,6 +16,7 @@ import 'profile_back_view.dart';
 import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
+import '../services/global_playback_manager.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -72,6 +73,13 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   @override
   void initState() {
     super.initState();
+    
+    // 🔊 AUDIO FIX: Block playback immediately when ProfileView opens
+    GlobalPlaybackManager.instance.block(reason: 'profileViewOpened');
+    if (kDebugMode) {
+      debugPrint('🚫 ProfileView: Blocking playback on init');
+    }
+    
     _segmentedController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
@@ -1043,10 +1051,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     return Column(
       children: [
         _buildSegments(),
-        SizedBox(
-          height: 400, // Fixed height for content area
-          child: _buildContentArea(),
-        ),
+        _buildContentArea(),
       ],
     );
   }

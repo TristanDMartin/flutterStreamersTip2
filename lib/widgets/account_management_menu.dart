@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/simple_logout_service.dart';
-import 'tiktok_account_switcher_modal.dart';
 import 'instant_response_button.dart';
 
 class AccountManagementMenu extends ConsumerWidget {
@@ -124,41 +123,8 @@ class AccountManagementMenu extends ConsumerWidget {
     );
   }
 
-  Widget _buildDivider() {
-    return Container(
-      height: 1,
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      color: Colors.white.withValues(alpha: 0.1),
-    );
-  }
-
-  void _handleSwitchAccount(BuildContext context) {
-    Navigator.of(context).pop(); // Close the menu
-    _showSwitchAccountModal(context);
-  }
-
-  void _showSwitchAccountModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => const TikTokAccountSwitcherModal(),
-    );
-  }
-
-  void _handleAddAccount(BuildContext context) {
-    Navigator.of(context).pop(); // Close the menu
-    _showAddAccountModal(context);
-  }
-
-  void _showAddAccountModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => const TikTokAccountSwitcherModal(),
-    );
-  }
+  // Removed unused methods: _buildDivider, _handleSwitchAccount, _handleAddAccount
+  // These were commented out in the UI and are not currently used
 
   void _handleLogOut(BuildContext context, WidgetRef ref) {
     Navigator.of(context).pop(); // Close the menu

@@ -150,6 +150,47 @@ class EnhancedAlgorithmService {
   }
 
   /// Score a single video with all enhancements
+  ///
+  /// This is the core scoring method that applies all enhancement systems to calculate
+  /// a personalized score for a single video. It orchestrates multiple boost calculations
+  /// and applies them multiplicatively to the base ML score.
+  ///
+  /// **Scoring Process:**
+  /// 1. Calculate ML-based base score (from MLRecommendationService)
+  /// 2. Calculate boost multipliers (creator, network, trending, velocity)
+  /// 3. Apply negative signal penalties (skips, reports, etc.)
+  /// 4. Apply location boost (if user location available)
+  /// 5. Apply preference boost (real-time learned preferences)
+  /// 6. Apply recency boost (newer videos get slight boost)
+  /// 7. Calculate final score by multiplying all factors
+  /// 8. Cap at 1000.0 to prevent outliers
+  ///
+  /// **Scoring Formula:**
+  /// ```
+  /// Final Score = ML Base Score ×
+  ///               Creator Boost ×
+  ///               Network Boost ×
+  ///               Trending Boost ×
+  ///               Velocity Boost ×
+  ///               Negative Penalty ×
+  ///               Location Boost ×
+  ///               Preference Boost ×
+  ///               Recency Boost
+  /// ```
+  ///
+  /// **Parameters:**
+  /// - [video]: The video to score
+  /// - [userId]: Current user ID for personalization
+  /// - [userLocation]: Optional user location for location-based boosts
+  /// - [cache]: User preference cache for performance
+  ///
+  /// **Returns:**
+  /// EnhancedScoredVideo with final score and detailed breakdown
+  ///
+  /// **Performance:**
+  /// - Makes multiple async calls to various services
+  /// - Uses caching to minimize redundant calculations
+  /// - Each boost calculation may involve Firestore queries
   Future<EnhancedScoredVideo> _scoreSingleVideo(
     HomeVideo video,
     String userId,

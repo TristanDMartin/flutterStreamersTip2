@@ -860,7 +860,7 @@ class _ChatViewState extends ConsumerState<ChatView>
                 const Icon(Icons.error_outline, color: Colors.red, size: 48),
                 const SizedBox(height: 16),
                 Text(
-                  'Error: ${chatState.error}',
+                  'Unable to load messages. Please check your connection and try again.',
                   style: const TextStyle(color: Colors.white70, fontSize: 16),
                   textAlign: TextAlign.center,
                 ),

@@ -9,8 +9,12 @@ import '../providers/discover_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../services/global_playback_manager.dart';
 import '../services/video_actions_service.dart';
+import '../services/video_download_service.dart';
+import '../services/streamers_tip_like_service.dart';
+import '../services/unified_bookmark_service.dart';
 import 'video_player_view_optimized.dart';
 import 'insights_view.dart';
+import 'package:flutter/services.dart';
 
 enum PlayerMode {
   homeFeed,
@@ -36,21 +40,23 @@ class PlayerScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen> {
-  late PageController _pageController;
+  PageController? _pageController;
   late List<HomeVideo> _videos;
   int _currentIndex = 0;
+  final Map<String, bool> _likeStates = {}; // Cache like states
+  final Map<String, bool> _bookmarkStates = {}; // Cache bookmark states
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
-    _pageController = PageController(initialPage: _currentIndex);
+    // Don't create PageController until videos are loaded
     _loadVideos();
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _pageController?.dispose();
     // Video controllers are disposed by their respective VideoPlayerViewSimple widgets
     super.dispose();
   }
@@ -78,14 +84,76 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
 
     // Safety check: ensure _currentIndex is within bounds
-    if (_videos.isNotEmpty && _currentIndex >= _videos.length) {
-      debugPrint(
-          '⚠️ PlayerScreen: _currentIndex ($_currentIndex) out of bounds, clamping to ${_videos.length - 1}');
-      _currentIndex = _videos.length - 1;
-      _pageController = PageController(initialPage: _currentIndex);
+    if (_videos.isNotEmpty) {
+      if (_currentIndex >= _videos.length) {
+        debugPrint(
+            '⚠️ PlayerScreen: _currentIndex ($_currentIndex) out of bounds, clamping to ${_videos.length - 1}');
+        _currentIndex = _videos.length - 1;
+      }
+      // Create or recreate PageController with safe index
+      _pageController?.dispose();
+      _pageController = PageController(initialPage: _currentIndex.clamp(0, _videos.length - 1));
+      debugPrint('✅ PlayerScreen: PageController created with index $_currentIndex');
+    } else {
+      // No videos - dispose controller if it exists
+      _pageController?.dispose();
+      _pageController = null;
+      debugPrint('⚠️ PlayerScreen: No videos available, PageController not created');
     }
 
+    // ✅ FIX: Load like and bookmark states for all videos
+    await _loadVideoStates();
+
     setState(() {}); // Trigger rebuild to show videos
+  }
+
+  /// Load like and bookmark states for all videos
+  Future<void> _loadVideoStates() async {
+    final currentUser = fa.FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      debugPrint('⚠️ PlayerScreen: No user logged in, skipping state load');
+      return;
+    }
+
+    debugPrint('🔄 PlayerScreen: Loading like/bookmark states for ${_videos.length} videos');
+
+    final likeService = StreamersTipLikeService();
+    final bookmarkService = UnifiedBookmarkService.instance;
+
+    // ✅ FIX: Ensure bookmark service is initialized
+    try {
+      await bookmarkService.initialize(currentUser.uid);
+    } catch (e) {
+      debugPrint('⚠️ PlayerScreen: Bookmark service already initialized or error: $e');
+    }
+
+    // Load states for all videos in parallel
+    final futures = _videos.map((video) async {
+      try {
+        // Load like state
+        final isLiked = await likeService.isVideoLikedByUser(
+          video.id,
+          currentUser.uid,
+        );
+        _likeStates[video.id] = isLiked;
+
+        // Load bookmark state
+        final isBookmarked = bookmarkService.isBookmarked(video.id);
+        _bookmarkStates[video.id] = isBookmarked;
+
+        debugPrint(
+          '✅ PlayerScreen: Loaded state for ${video.id} - liked: $isLiked, bookmarked: $isBookmarked',
+        );
+      } catch (e) {
+        debugPrint('❌ PlayerScreen: Error loading state for ${video.id}: $e');
+        // Default to false on error
+        _likeStates[video.id] = false;
+        _bookmarkStates[video.id] = false;
+      }
+    });
+
+    await Future.wait(futures);
+    debugPrint('✅ PlayerScreen: Finished loading states for all videos');
   }
 
   void _onVideoChanged(int index) {
@@ -415,17 +483,64 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   /// Handle Privacy Settings action
   void _handlePrivacySettings(BuildContext context, HomeVideo video) {
-    // TODO: Implement privacy settings functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Privacy Settings feature coming soon')),
+    // ✅ FIX: Show privacy settings dialog
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => _PrivacySettingsDialog(
+        video: video,
+        currentVisibility: video.visibility,
+        onPrivacyChanged: (newVisibility) async {
+          try {
+            final videoActionsService = VideoActionsService();
+            await videoActionsService.setPrivacy(video.id, newVisibility);
+            if (dialogContext.mounted) {
+              Navigator.pop(dialogContext);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Privacy updated to ${newVisibility}'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          } catch (e) {
+            if (dialogContext.mounted) {
+              Navigator.pop(dialogContext);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Failed to update privacy: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        },
+      ),
     );
   }
 
   /// Handle Download action
-  void _handleDownload(BuildContext context, HomeVideo video) {
-    // TODO: Implement download functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Download feature coming soon')),
+  Future<void> _handleDownload(BuildContext context, HomeVideo video) async {
+    if (!mounted) return;
+
+    // Show loading dialog with progress
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _DownloadProgressDialog(
+        video: video,
+        onComplete: (success, message) {
+          Navigator.of(dialogContext).pop();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: success ? Colors.green : Colors.red,
+                duration: Duration(seconds: success ? 2 : 4),
+              ),
+            );
+          }
+        },
+      ),
     );
   }
 
@@ -572,10 +687,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       await Future.delayed(const Duration(milliseconds: 100));
 
       // Navigate to next/previous video in PageView
-      if (context.mounted && _pageController.hasClients && _videos.isNotEmpty) {
+      if (context.mounted && _pageController != null && _pageController!.hasClients && _videos.isNotEmpty) {
         if (wasLastVideo) {
           // Go to previous video (sliding up)
-          await _pageController.animateToPage(
+          await _pageController!.animateToPage(
             _currentIndex,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
@@ -583,7 +698,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         } else {
           // Stay on current position (next video slides up into place)
           // Use jumpToPage for instant update, then animate for smooth transition
-          _pageController.jumpToPage(_currentIndex);
+          _pageController!.jumpToPage(_currentIndex);
         }
 
         // Resume playback after navigation
@@ -703,14 +818,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Video player
-          PageView.builder(
-            controller: _pageController,
-            onPageChanged: _onVideoChanged,
-            itemCount: _videos.length,
-            itemBuilder: (context, index) {
+          // Video player with vertical swiping (like HomeView)
+          if (_pageController != null && _videos.isNotEmpty)
+            PageView.builder(
+              controller: _pageController!,
+              scrollDirection: Axis.vertical, // ✅ Enable vertical swiping like HomeView
+              physics: const ClampingScrollPhysics(), // Better physics for mobile
+              onPageChanged: _onVideoChanged,
+              itemCount: _videos.length,
+              itemBuilder: (context, index) {
               final video = _videos[index];
+              // ✅ FIX: Get real like and bookmark states from cache
+              final isLiked = _likeStates[video.id] ?? false;
+              final isBookmarked = _bookmarkStates[video.id] ?? false;
+              
               return VideoPlayerViewOptimized(
+                key: ValueKey(video.id), // Stable key to prevent audio bleeding
                 video: video,
                 isCurrentVideo: _currentIndex == index,
                 isFirstVideo: index == 0,
@@ -719,9 +842,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 showSheet: false,
                 sheetType: '',
                 // Callbacks are null - will use internal methods (comments, share, etc.)
-                isLiked: false, // TODO: Get real like state from service
-                isBookmarked:
-                    false, // TODO: Get real bookmark state from service
+                isLiked: isLiked, // ✅ Real like state from service
+                isBookmarked: isBookmarked, // ✅ Real bookmark state from service
                 showHUD:
                     true, // Enable HUD - Use VideoPlayerViewOptimized's full functionality like HomeView
               );
@@ -1013,5 +1135,272 @@ class _EditPostSheetState extends ConsumerState<EditPostSheet> {
         });
       }
     }
+  }
+}
+
+/// Privacy Settings Dialog
+class _PrivacySettingsDialog extends StatelessWidget {
+  final HomeVideo video;
+  final String currentVisibility;
+  final Function(String) onPrivacyChanged;
+
+  const _PrivacySettingsDialog({
+    required this.video,
+    required this.currentVisibility,
+    required this.onPrivacyChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1A1A1A),
+      title: const Text(
+        'Change Privacy',
+        style: TextStyle(color: Colors.white),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildPrivacyOption(
+            context,
+            'Public',
+            'Everyone can see this video',
+            'public',
+            Icons.public,
+          ),
+          const SizedBox(height: 16),
+          _buildPrivacyOption(
+            context,
+            'Followers',
+            'Only your followers can see this video',
+            'followers',
+            Icons.people,
+          ),
+          const SizedBox(height: 16),
+          _buildPrivacyOption(
+            context,
+            'Private',
+            'Only you can see this video',
+            'private',
+            Icons.lock,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrivacyOption(
+    BuildContext context,
+    String title,
+    String subtitle,
+    String value,
+    IconData icon,
+  ) {
+    final isSelected = currentVisibility.toLowerCase() == value.toLowerCase();
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onPrivacyChanged(value);
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFF9248d2).withValues(alpha: 0.2)
+              : Colors.transparent,
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF9248d2)
+                : Colors.grey.withValues(alpha: 0.3),
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isSelected
+                  ? const Color(0xFF9248d2)
+                  : Colors.grey.withValues(alpha: 0.7),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.grey.withValues(alpha: 0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check_circle,
+                color: Color(0xFF9248d2),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Download Progress Dialog
+class _DownloadProgressDialog extends StatefulWidget {
+  final HomeVideo video;
+  final Function(bool success, String message) onComplete;
+
+  const _DownloadProgressDialog({
+    required this.video,
+    required this.onComplete,
+  });
+
+  @override
+  State<_DownloadProgressDialog> createState() => _DownloadProgressDialogState();
+}
+
+class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
+  double _progress = 0.0;
+  bool _isDownloading = true;
+  String _statusMessage = 'Preparing download...';
+
+  @override
+  void initState() {
+    super.initState();
+    _startDownload();
+  }
+
+  Future<void> _startDownload() async {
+    try {
+      final downloadService = VideoDownloadService();
+      final videoUrl = widget.video.videoURL;
+
+      if (videoUrl.isEmpty) {
+        setState(() {
+          _isDownloading = false;
+          _statusMessage = 'Video URL not available';
+        });
+        widget.onComplete(false, 'Video URL not available');
+        return;
+      }
+
+      setState(() {
+        _statusMessage = 'Downloading video...';
+      });
+
+      await downloadService.downloadVideo(
+        widget.video.id,
+        videoUrl,
+        onProgress: (received, total) {
+          if (mounted) {
+            setState(() {
+              _progress = received / total;
+              _statusMessage = 'Downloading... ${(_progress * 100).toStringAsFixed(0)}%';
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _progress = 1.0;
+          _statusMessage = 'Download complete!';
+        });
+
+        await Future.delayed(const Duration(milliseconds: 500));
+        widget.onComplete(true, 'Video downloaded successfully!');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _statusMessage = 'Download failed: ${e.toString()}';
+        });
+
+        String errorMessage = 'Failed to download video';
+        if (e.toString().contains('permission')) {
+          errorMessage = 'Storage permission denied. Please grant permission in settings.';
+        } else if (e.toString().contains('disabled')) {
+          errorMessage = 'Video owner has disabled downloads';
+        } else if (e.toString().contains('network') || e.toString().contains('connection')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        }
+
+        widget.onComplete(false, errorMessage);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1A1A1A),
+      title: const Text(
+        'Downloading Video',
+        style: TextStyle(color: Colors.white),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isDownloading)
+            const CircularProgressIndicator(
+              color: Color(0xFF9248D2),
+            )
+          else
+            Icon(
+              _progress >= 1.0 ? Icons.check_circle : Icons.error,
+              color: _progress >= 1.0 ? Colors.green : Colors.red,
+              size: 48,
+            ),
+          const SizedBox(height: 16),
+          LinearProgressIndicator(
+            value: _progress,
+            backgroundColor: Colors.grey[800],
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _statusMessage,
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+      actions: [
+        if (!_isDownloading)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: Color(0xFF9248D2)),
+            ),
+          ),
+      ],
+    );
   }
 }

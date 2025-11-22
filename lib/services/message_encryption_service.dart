@@ -2,13 +2,26 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'logging_service.dart';
 
+/// ✅ SECURITY FIX: Uses FlutterSecureStorage for encryption key storage
 class MessageEncryptionService {
   static final MessageEncryptionService _instance = MessageEncryptionService._internal();
   factory MessageEncryptionService() => _instance;
   MessageEncryptionService._internal();
 
+  // ✅ SECURITY FIX: Use FlutterSecureStorage for encryption keys
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
+
+  static const String _encryptionKeyKey = 'message_encryption_key';
   late final String _encryptionKey;
 
   /// Initialize encryption service
@@ -23,12 +36,32 @@ class MessageEncryptionService {
     }
   }
 
-  /// Get or generate encryption key
+  /// Get or generate encryption key from secure storage
   Future<String> _getOrGenerateKey() async {
-    // In a real app, this would be stored securely (e.g., Keychain on iOS, Keystore on Android)
-    // For now, we'll generate a consistent key based on user ID
-    const keyString = 'inbox_encryption_key_2024_secure';
-    return sha256.convert(utf8.encode(keyString)).toString();
+    try {
+      // ✅ SECURITY FIX: Try to load existing key from secure storage
+      final existingKey = await _storage.read(key: _encryptionKeyKey);
+      if (existingKey != null && existingKey.isNotEmpty) {
+        LoggingService.instance.info('Loaded encryption key from secure storage');
+        return existingKey;
+      }
+
+      // Generate new secure key
+      final random = Random.secure();
+      final keyBytes = List<int>.generate(32, (i) => random.nextInt(256));
+      final newKey = base64Encode(keyBytes);
+      
+      // Store in secure storage
+      await _storage.write(key: _encryptionKeyKey, value: newKey);
+      LoggingService.instance.info('Generated and stored new encryption key in secure storage');
+      
+      return newKey;
+    } catch (e) {
+      LoggingService.instance.error('Error getting/generating encryption key: $e');
+      // Fallback to hashed constant (not ideal but better than crashing)
+      const keyString = 'inbox_encryption_key_2024_secure_fallback';
+      return sha256.convert(utf8.encode(keyString)).toString();
+    }
   }
 
   /// Encrypt message content (simplified encoding)

@@ -25,6 +25,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
   final List<Map<String, dynamic>> _recentNotifications = [];
   final List<Map<String, dynamic>> _recentReports = [];
   final List<Map<String, dynamic>> _userReports = [];
+  final List<Map<String, dynamic>> _errorLogs = [];
 
   StreamSubscription<QuerySnapshot>? _usersSub;
   StreamSubscription<QuerySnapshot>? _videosSub;
@@ -32,6 +33,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
   StreamSubscription<QuerySnapshot>? _notificationsSub;
   StreamSubscription<QuerySnapshot>? _reportsSub;
   StreamSubscription<QuerySnapshot>? _userReportsSub;
+  StreamSubscription<QuerySnapshot>? _errorsSub;
 
   int _totalUsers = 0;
   int _totalVideos = 0;
@@ -44,6 +46,11 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
   int _totalReports = 0;
   int _pendingReports = 0;
   int _resolvedReports = 0;
+  int _totalErrors = 0;
+  int _networkErrors = 0;
+  int _firebaseErrors = 0;
+  int _nullSafetyErrors = 0;
+  int _crashReports = 0;
   bool _showAllUsers = true;
   bool _showAllVideos = false;
 
@@ -56,7 +63,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 10, vsync: this);
+    _tabController = TabController(length: 11, vsync: this);
     _startMonitoring();
     _loadSystemSettings();
     _loadFeatureFlags();
@@ -72,6 +79,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     _notificationsSub?.cancel();
     _reportsSub?.cancel();
     _userReportsSub?.cancel();
+    _errorsSub?.cancel();
     super.dispose();
   }
 
@@ -83,6 +91,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     _monitorNotifications();
     _monitorReports();
     _monitorUserReports();
+    _monitorErrors();
     _fetchStats();
   }
 
@@ -344,6 +353,59 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     });
   }
 
+  void _monitorErrors() {
+    _errorsSub = FirebaseFirestore.instance
+        .collection('error_logs')
+        .orderBy('timestamp', descending: true)
+        .limit(100)
+        .snapshots()
+        .listen((snapshot) {
+      setState(() {
+        _errorLogs.clear();
+        _networkErrors = 0;
+        _firebaseErrors = 0;
+        _nullSafetyErrors = 0;
+        _crashReports = 0;
+        
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          final errorType = data['errorType'] ?? 'unknown';
+          final isFatal = data['fatal'] ?? false;
+          
+          // Count error types
+          if (errorType == 'network') {
+            _networkErrors++;
+          } else if (errorType == 'firebase') {
+            _firebaseErrors++;
+          } else if (errorType == 'null_safety') {
+            _nullSafetyErrors++;
+          }
+          
+          if (isFatal) {
+            _crashReports++;
+          }
+          
+          _errorLogs.add({
+            'id': doc.id,
+            'errorType': errorType,
+            'errorMessage': data['errorMessage'] ?? 'Unknown error',
+            'stackTrace': data['stackTrace'] ?? '',
+            'userId': data['userId'],
+            'userAgent': data['userAgent'] ?? '',
+            'platform': data['platform'] ?? 'unknown',
+            'fatal': isFatal,
+            'timestamp': data['timestamp'],
+            'recovered': data['recovered'] ?? false,
+            'userFriendlyMessage': data['userFriendlyMessage'] ?? '',
+          });
+        }
+        
+        _totalErrors = _errorLogs.length;
+      });
+      _addLog('🚨 Updated error logs: ${_errorLogs.length}');
+    });
+  }
+
   Future<void> _fetchStats() async {
     try {
       final usersCount =
@@ -367,15 +429,50 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
           .count()
           .get();
 
+      // Get error statistics
+      final errorsCount = await FirebaseFirestore.instance
+          .collection('error_logs')
+          .count()
+          .get();
+      
+      final networkErrorsCount = await FirebaseFirestore.instance
+          .collection('error_logs')
+          .where('errorType', isEqualTo: 'network')
+          .count()
+          .get();
+      
+      final firebaseErrorsCount = await FirebaseFirestore.instance
+          .collection('error_logs')
+          .where('errorType', isEqualTo: 'firebase')
+          .count()
+          .get();
+      
+      final nullSafetyErrorsCount = await FirebaseFirestore.instance
+          .collection('error_logs')
+          .where('errorType', isEqualTo: 'null_safety')
+          .count()
+          .get();
+      
+      final crashReportsCount = await FirebaseFirestore.instance
+          .collection('error_logs')
+          .where('fatal', isEqualTo: true)
+          .count()
+          .get();
+
       setState(() {
         _totalUsers = usersCount.count ?? 0;
         _totalVideos = videosCount.count ?? 0;
         _totalReports = reportsCount.count ?? 0;
         _pendingReports = pendingReportsQuery.count ?? 0;
         _resolvedReports = resolvedReportsQuery.count ?? 0;
+        _totalErrors = errorsCount.count ?? 0;
+        _networkErrors = networkErrorsCount.count ?? 0;
+        _firebaseErrors = firebaseErrorsCount.count ?? 0;
+        _nullSafetyErrors = nullSafetyErrorsCount.count ?? 0;
+        _crashReports = crashReportsCount.count ?? 0;
       });
       _addLog(
-          '📊 Fetched stats - Users: $_totalUsers, Videos: $_totalVideos, Reports: $_totalReports (Pending: $_pendingReports)');
+          '📊 Fetched stats - Users: $_totalUsers, Videos: $_totalVideos, Reports: $_totalReports, Errors: $_totalErrors');
     } catch (e) {
       _addLog('❌ Error fetching stats: $e');
     }
@@ -459,6 +556,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
             Tab(text: '🔍 Search'),
             Tab(text: '📧 Notifications'),
             Tab(text: '⚙️ Settings'),
+            Tab(text: '🚨 Errors'),
             Tab(text: '📝 Logs'),
           ],
         ),
@@ -475,6 +573,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
           _buildSearchTab(),
           _buildNotificationsTab(),
           _buildSettingsTab(),
+          _buildErrorsTab(),
           _buildLogsTab(),
         ],
       ),
@@ -1677,6 +1776,403 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
             fontWeight: FontWeight.bold,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildErrorsTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Error Statistics
+          const Text(
+            '🚨 Error Statistics',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildErrorStatCard(
+                  'Total Errors',
+                  '$_totalErrors',
+                  Colors.red,
+                  Icons.error_outline,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildErrorStatCard(
+                  'Network',
+                  '$_networkErrors',
+                  Colors.orange,
+                  Icons.wifi_off,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildErrorStatCard(
+                  'Firebase',
+                  '$_firebaseErrors',
+                  Colors.blue,
+                  Icons.cloud_off,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildErrorStatCard(
+                  'Null Safety',
+                  '$_nullSafetyErrors',
+                  Colors.purple,
+                  Icons.bug_report,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildErrorStatCard(
+            'Crashes',
+            '$_crashReports',
+            Colors.red.shade700,
+            Icons.warning,
+            fullWidth: true,
+          ),
+          const SizedBox(height: 24),
+          
+          // Error Handling Features Status
+          const Text(
+            '✅ Error Handling Features',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildFeatureStatusCard(
+            'Network Errors',
+            'Handled gracefully with retry mechanisms',
+            Icons.wifi_off,
+            Colors.orange,
+          ),
+          const SizedBox(height: 8),
+          _buildFeatureStatusCard(
+            'Firebase Errors',
+            'Handled with user-friendly messages',
+            Icons.cloud_off,
+            Colors.blue,
+          ),
+          const SizedBox(height: 8),
+          _buildFeatureStatusCard(
+            'Null Safety',
+            'Comprehensive null checks throughout',
+            Icons.bug_report,
+            Colors.purple,
+          ),
+          const SizedBox(height: 8),
+          _buildFeatureStatusCard(
+            'User-Friendly Messages',
+            'Clear error messages for all scenarios',
+            Icons.message,
+            Colors.green,
+          ),
+          const SizedBox(height: 8),
+          _buildFeatureStatusCard(
+            'Error Recovery',
+            'Automatic retry and fallback mechanisms',
+            Icons.refresh,
+            Colors.teal,
+          ),
+          const SizedBox(height: 8),
+          _buildFeatureStatusCard(
+            'Crash Reporting',
+            'Firebase Crashlytics integrated',
+            Icons.report,
+            Colors.red,
+          ),
+          const SizedBox(height: 24),
+          
+          // Recent Error Logs
+          const Text(
+            '📋 Recent Error Logs',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _errorLogs.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: Text(
+                      'No errors logged yet',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _errorLogs.length > 20 ? 20 : _errorLogs.length,
+                  itemBuilder: (context, index) {
+                    final error = _errorLogs[index];
+                    return _buildErrorLogCard(error);
+                  },
+                ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorStatCard(String label, String value, Color color, IconData icon,
+      {bool fullWidth = false}) {
+    return Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureStatusCard(
+      String title, String description, IconData icon, Color color) {
+    return Card(
+      color: const Color(0xFF1A1A1A),
+      child: ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          description,
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        trailing: const Icon(Icons.check_circle, color: Colors.green),
+      ),
+    );
+  }
+
+  Widget _buildErrorLogCard(Map<String, dynamic> error) {
+    final errorType = error['errorType'] ?? 'unknown';
+    final isFatal = error['fatal'] ?? false;
+    final recovered = error['recovered'] ?? false;
+    
+    Color typeColor = Colors.grey;
+    IconData typeIcon = Icons.error_outline;
+    
+    if (errorType == 'network') {
+      typeColor = Colors.orange;
+      typeIcon = Icons.wifi_off;
+    } else if (errorType == 'firebase') {
+      typeColor = Colors.blue;
+      typeIcon = Icons.cloud_off;
+    } else if (errorType == 'null_safety') {
+      typeColor = Colors.purple;
+      typeIcon = Icons.bug_report;
+    }
+    
+    if (isFatal) {
+      typeColor = Colors.red;
+      typeIcon = Icons.warning;
+    }
+
+    return Card(
+      color: const Color(0xFF1A1A1A),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ExpansionTile(
+        leading: Icon(typeIcon, color: typeColor),
+        title: Text(
+          error['errorMessage'] ?? 'Unknown error',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: isFatal ? FontWeight.bold : FontWeight.normal,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: typeColor.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    errorType.toUpperCase(),
+                    style: TextStyle(
+                      color: typeColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                if (isFatal) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'FATAL',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+                if (recovered) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'RECOVERED',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _formatTimestamp(error['timestamp']),
+              style: const TextStyle(color: Colors.white54, fontSize: 11),
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (error['userFriendlyMessage'] != null &&
+                    error['userFriendlyMessage'].toString().isNotEmpty) ...[
+                  const Text(
+                    'User Message:',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    error['userFriendlyMessage'],
+                    style: const TextStyle(color: Colors.green, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (error['stackTrace'] != null &&
+                    error['stackTrace'].toString().isNotEmpty) ...[
+                  const Text(
+                    'Stack Trace:',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      error['stackTrace'].toString().length > 500
+                          ? '${error['stackTrace'].toString().substring(0, 500)}...'
+                          : error['stackTrace'].toString(),
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ],
+                if (error['userId'] != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'User ID: ${error['userId']}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
+                ],
+                if (error['platform'] != null) ...[
+                  Text(
+                    'Platform: ${error['platform']}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'instant_data_refresh_service.dart';
 
@@ -28,6 +28,16 @@ class TikTokAccountSwitcher extends ChangeNotifier {
   // Animation state
   bool _isAnimating = false;
   double _switchProgress = 0.0;
+
+  // ✅ SECURITY FIX: Use FlutterSecureStorage instead of SharedPreferences
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
 
   // Constants
   static const String _accountsKey = 'tiktok_saved_accounts';
@@ -55,13 +65,12 @@ class TikTokAccountSwitcher extends ChangeNotifier {
     });
   }
 
-  /// Load saved accounts from local storage
+  /// Load saved accounts from secure storage
   Future<void> _loadSavedAccounts() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final accountsJson = prefs.getString(_accountsKey);
+      final accountsJson = await _storage.read(key: _accountsKey);
 
-      if (accountsJson != null) {
+      if (accountsJson != null && accountsJson.isNotEmpty) {
         final List<dynamic> accountsList = json.decode(accountsJson);
         _savedAccounts = accountsList
             .map((account) => SavedAccount.fromJson(account))
@@ -69,23 +78,28 @@ class TikTokAccountSwitcher extends ChangeNotifier {
 
         // Sort by last used (most recent first)
         _savedAccounts.sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
+        debugPrint('✅ TikTokAccountSwitcher: Loaded ${_savedAccounts.length} accounts from secure storage');
+      } else {
+        debugPrint('ℹ️ TikTokAccountSwitcher: No saved accounts found');
+        _savedAccounts = [];
       }
     } catch (e) {
-      debugPrint('Error loading saved accounts: $e');
+      debugPrint('❌ TikTokAccountSwitcher: Error loading saved accounts: $e');
       _savedAccounts = [];
     }
   }
 
-  /// Save accounts to local storage
+  /// Save accounts to secure storage
   Future<void> _saveAccounts() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
       final accountsJson = json.encode(
         _savedAccounts.map((account) => account.toJson()).toList(),
       );
-      await prefs.setString(_accountsKey, accountsJson);
+      await _storage.write(key: _accountsKey, value: accountsJson);
+      debugPrint('✅ TikTokAccountSwitcher: Saved ${_savedAccounts.length} accounts to secure storage');
     } catch (e) {
-      debugPrint('Error saving accounts: $e');
+      debugPrint('❌ TikTokAccountSwitcher: Error saving accounts: $e');
+      // Don't throw - account switching should be resilient
     }
   }
 

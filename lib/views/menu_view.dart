@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'settings_view.dart';
 import '../pages/bookmark_view.dart';
 import '../widgets/account_management_menu.dart';
@@ -7,8 +9,42 @@ import '../widgets/insights_view.dart';
 import 'manage_posts_view.dart';
 import 'contact_support_view.dart';
 
-class MenuView extends StatelessWidget {
+class MenuView extends ConsumerStatefulWidget {
   const MenuView({super.key});
+
+  @override
+  ConsumerState<MenuView> createState() => _MenuViewState();
+}
+
+class _MenuViewState extends ConsumerState<MenuView> {
+  Map<String, dynamic>? _userData;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = fa.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (mounted && doc.exists) {
+        setState(() {
+          _userData = doc.data();
+        });
+      }
+    } catch (e) {
+      // Handle error silently
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,51 +112,21 @@ class MenuView extends StatelessWidget {
 
   Widget _buildProfileSection(BuildContext context) {
     final user = fa.FirebaseAuth.instance.currentUser;
+    final avatarURL = _userData?['avatarURL'] as String?;
+    final displayName = _userData?['displayName'] as String? ?? user?.displayName ?? 'User';
+    final username = _userData?['username'] as String? ?? user?.email?.split('@')[0] ?? 'username';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Profile Avatar Card
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: Center(
-            child: user?.photoURL != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      user!.photoURL!,
-                      fit: BoxFit.cover,
-                      width: 80,
-                      height: 80,
-                      errorBuilder: (context, error, stackTrace) => const Icon(
-                        Icons.person,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                  )
-                : const Icon(
-                    Icons.person,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-          ),
-        ),
+        // Profile Avatar with Gradient Ring (matching ProfileView)
+        _buildAvatarWithGradientRing(avatarURL),
 
         const SizedBox(height: 16),
 
         // User Info
         Text(
-          user?.displayName ?? 'User',
+          displayName,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 24,
@@ -129,10 +135,62 @@ class MenuView extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '@${user?.email?.split('@')[0] ?? 'username'}',
+          '@$username',
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.7),
             fontSize: 16,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAvatarWithGradientRing(String? avatarURL) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 112,
+          height: 112,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: SweepGradient(
+              colors: [
+                Color(0xFFFF6CAB),
+                Color(0xFF8E54E9),
+                Color(0xFF3D99F7),
+                Color(0xFFFF6CAB),
+              ],
+            ),
+          ),
+          child: Center(
+            child: Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.2),
+              ),
+              child: ClipOval(
+                child: avatarURL != null && avatarURL.isNotEmpty
+                    ? Image.network(
+                        avatarURL,
+                        key: ValueKey(avatarURL),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+              ),
+            ),
           ),
         ),
       ],

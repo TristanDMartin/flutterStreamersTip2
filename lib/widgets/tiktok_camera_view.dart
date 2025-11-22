@@ -881,7 +881,6 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   }
 
   /// Pause all HomeView videos to prevent audio bleeding
-  // _pauseAllHomeViewVideos method removed - now handled by UnifiedVideoControlService
   // ignore: unused_element
   void _pauseAllHomeViewVideos() {
     try {
@@ -901,7 +900,6 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   }
 
   /// Reactivate HomeView when returning from camera
-  // _reactivateHomeView method removed - now handled by UnifiedVideoControlService
   // ignore: unused_element
   void _reactivateHomeView() {
     try {

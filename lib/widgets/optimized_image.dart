@@ -44,7 +44,7 @@ class _OptimizedImageState extends State<OptimizedImage> {
   }
 
   void _scheduleLoad() {
-    // CRITICAL: Ultra-conservative image loading to prevent buffer overflow
+    // OPTIMIZED: Faster image loading with smart queue management
     _loadTimer?.cancel();
 
     // Add to queue if not already there
@@ -56,7 +56,8 @@ class _OptimizedImageState extends State<OptimizedImage> {
     if (_activeImageCount < _maxActiveImages &&
         _imageQueue.isNotEmpty &&
         _imageQueue.first == widget.imageUrl) {
-      _loadTimer = Timer(const Duration(milliseconds: 1000), () {
+      // OPTIMIZED: Reduced delay from 1000ms to 100ms for faster loading
+      _loadTimer = Timer(const Duration(milliseconds: 100), () {
         if (mounted && _activeImageCount < _maxActiveImages) {
           setState(() {
             _shouldLoad = true;
@@ -66,8 +67,8 @@ class _OptimizedImageState extends State<OptimizedImage> {
         }
       });
     } else {
-      // Wait longer if queue is full
-      _loadTimer = Timer(const Duration(milliseconds: 3000), () {
+      // OPTIMIZED: Reduced retry delay from 3000ms to 500ms
+      _loadTimer = Timer(const Duration(milliseconds: 500), () {
         _scheduleLoad(); // Retry
       });
     }
@@ -105,24 +106,47 @@ class _OptimizedImageState extends State<OptimizedImage> {
       height: widget.height,
       fit: widget.fit,
       placeholder: (context, url) => _buildPlaceholder(),
-      errorWidget: (context, url, error) => _buildPlaceholder(),
+      errorWidget: (context, url, error) {
+        // Network error recovery: Retry loading on network errors
+        final errorString = error.toString().toLowerCase();
+        final isNetworkError = errorString.contains('network') ||
+            errorString.contains('connection') ||
+            errorString.contains('timeout') ||
+            errorString.contains('socket') ||
+            errorString.contains('failed host lookup');
+
+        if (isNetworkError && mounted) {
+          // Retry after a delay
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                _shouldLoad = false;
+              });
+              _scheduleLoad(); // Retry loading
+            }
+          });
+        }
+
+        return _buildPlaceholder();
+      },
+      // OPTIMIZED: Increased cache sizes for better quality while maintaining performance
       memCacheWidth:
-          (widget.width ?? 100) > 200 ? 200 : (widget.width ?? 100).toInt(),
+          (widget.width ?? 100) > 400 ? 400 : (widget.width ?? 100).toInt(),
       memCacheHeight:
-          (widget.height ?? 100) > 200 ? 200 : (widget.height ?? 100).toInt(),
-      maxWidthDiskCache: 200,
-      maxHeightDiskCache: 200,
+          (widget.height ?? 100) > 400 ? 400 : (widget.height ?? 100).toInt(),
+      maxWidthDiskCache: 400, // OPTIMIZED: Increased from 200 to 400
+      maxHeightDiskCache: 400, // OPTIMIZED: Increased from 200 to 400
       cacheManager: CacheManager(
         Config(
           'optimized_images',
-          stalePeriod: const Duration(hours: 6),
-          maxNrOfCacheObjects: 20,
+          stalePeriod: const Duration(hours: 24), // OPTIMIZED: Increased from 6 to 24 hours
+          maxNrOfCacheObjects: 50, // OPTIMIZED: Increased from 20 to 50 for better caching
           repo: JsonCacheInfoRepository(databaseName: 'optimized_images'),
           fileService: HttpFileService(),
         ),
       ),
-      fadeInDuration: const Duration(milliseconds: 300),
-      fadeOutDuration: const Duration(milliseconds: 100),
+      fadeInDuration: const Duration(milliseconds: 150), // OPTIMIZED: Faster fade-in
+      fadeOutDuration: const Duration(milliseconds: 50), // OPTIMIZED: Faster fade-out
     );
   }
 

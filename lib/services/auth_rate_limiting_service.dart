@@ -1,11 +1,23 @@
 import 'dart:async';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Service for managing authentication rate limiting and brute force protection
+/// ✅ SECURITY FIX: Uses FlutterSecureStorage for secure data storage
 class AuthRateLimitingService {
   static final AuthRateLimitingService _instance = AuthRateLimitingService._internal();
   factory AuthRateLimitingService() => _instance;
   AuthRateLimitingService._internal();
+
+  // ✅ SECURITY FIX: Use FlutterSecureStorage instead of SharedPreferences
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
 
   static const String _attemptsKey = 'auth_attempts';
   static const String _lastAttemptKey = 'last_auth_attempt';
@@ -16,48 +28,62 @@ class AuthRateLimitingService {
 
   /// Check if authentication is currently rate limited
   Future<bool> isRateLimited() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lockoutUntil = prefs.getInt(_lockoutKey) ?? 0;
-    
-    if (lockoutUntil > 0) {
-      final lockoutTime = DateTime.fromMillisecondsSinceEpoch(lockoutUntil);
-      if (DateTime.now().isBefore(lockoutTime)) {
-        return true;
-      } else {
-        // Lockout period has expired, reset
-        await _resetAttempts();
+    try {
+      final lockoutUntilStr = await _storage.read(key: _lockoutKey);
+      if (lockoutUntilStr == null) return false;
+      
+      final lockoutUntil = int.tryParse(lockoutUntilStr) ?? 0;
+      if (lockoutUntil > 0) {
+        final lockoutTime = DateTime.fromMillisecondsSinceEpoch(lockoutUntil);
+        if (DateTime.now().isBefore(lockoutTime)) {
+          return true;
+        } else {
+          // Lockout period has expired, reset
+          await _resetAttempts();
+        }
       }
+      
+      return false;
+    } catch (e) {
+      debugPrint('❌ AuthRateLimitingService: Error checking rate limit: $e');
+      return false; // Fail open - don't block legitimate users
     }
-    
-    return false;
   }
 
   /// Record an authentication attempt
   Future<void> recordAttempt() async {
-    final prefs = await SharedPreferences.getInstance();
-    final now = DateTime.now();
-    final attempts = prefs.getInt(_attemptsKey) ?? 0;
-    final lastAttemptTime = prefs.getInt(_lastAttemptKey) ?? 0;
-    
-    // Reset attempts if outside the time window
-    if (lastAttemptTime > 0) {
-      final lastAttempt = DateTime.fromMillisecondsSinceEpoch(lastAttemptTime);
-      if (now.difference(lastAttempt) > _attemptWindow) {
-        await prefs.setInt(_attemptsKey, 1);
+    try {
+      final now = DateTime.now();
+      final attemptsStr = await _storage.read(key: _attemptsKey);
+      final lastAttemptTimeStr = await _storage.read(key: _lastAttemptKey);
+      
+      final attempts = int.tryParse(attemptsStr ?? '0') ?? 0;
+      final lastAttemptTime = int.tryParse(lastAttemptTimeStr ?? '0') ?? 0;
+      
+      // Reset attempts if outside the time window
+      int newAttempts;
+      if (lastAttemptTime > 0) {
+        final lastAttempt = DateTime.fromMillisecondsSinceEpoch(lastAttemptTime);
+        if (now.difference(lastAttempt) > _attemptWindow) {
+          newAttempts = 1;
+        } else {
+          newAttempts = attempts + 1;
+        }
       } else {
-        await prefs.setInt(_attemptsKey, attempts + 1);
+        newAttempts = 1;
       }
-    } else {
-      await prefs.setInt(_attemptsKey, 1);
-    }
-    
-    await prefs.setInt(_lastAttemptKey, now.millisecondsSinceEpoch);
-    
-    // Check if we should lockout
-    final currentAttempts = prefs.getInt(_attemptsKey) ?? 0;
-    if (currentAttempts >= _maxAttempts) {
-      final lockoutUntil = now.add(_lockoutDuration);
-      await prefs.setInt(_lockoutKey, lockoutUntil.millisecondsSinceEpoch);
+      
+      await _storage.write(key: _attemptsKey, value: newAttempts.toString());
+      await _storage.write(key: _lastAttemptKey, value: now.millisecondsSinceEpoch.toString());
+      
+      // Check if we should lockout
+      if (newAttempts >= _maxAttempts) {
+        final lockoutUntil = now.add(_lockoutDuration);
+        await _storage.write(key: _lockoutKey, value: lockoutUntil.millisecondsSinceEpoch.toString());
+      }
+    } catch (e) {
+      debugPrint('❌ AuthRateLimitingService: Error recording attempt: $e');
+      // Don't throw - rate limiting should be resilient
     }
   }
 
@@ -68,35 +94,48 @@ class AuthRateLimitingService {
 
   /// Get remaining lockout time
   Future<Duration?> getRemainingLockout() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lockoutUntil = prefs.getInt(_lockoutKey) ?? 0;
-    
-    if (lockoutUntil > 0) {
-      final lockoutTime = DateTime.fromMillisecondsSinceEpoch(lockoutUntil);
-      if (DateTime.now().isBefore(lockoutTime)) {
-        return lockoutTime.difference(DateTime.now());
+    try {
+      final lockoutUntilStr = await _storage.read(key: _lockoutKey);
+      if (lockoutUntilStr == null) return null;
+      
+      final lockoutUntil = int.tryParse(lockoutUntilStr) ?? 0;
+      if (lockoutUntil > 0) {
+        final lockoutTime = DateTime.fromMillisecondsSinceEpoch(lockoutUntil);
+        if (DateTime.now().isBefore(lockoutTime)) {
+          return lockoutTime.difference(DateTime.now());
+        }
       }
+      
+      return null;
+    } catch (e) {
+      debugPrint('❌ AuthRateLimitingService: Error getting lockout: $e');
+      return null;
     }
-    
-    return null;
   }
 
   /// Get current attempt count
   Future<int> getAttemptCount() async {
-    final prefs = await SharedPreferences.getInstance();
-    final attempts = prefs.getInt(_attemptsKey) ?? 0;
-    final lastAttemptTime = prefs.getInt(_lastAttemptKey) ?? 0;
-    
-    // Reset if outside time window
-    if (lastAttemptTime > 0) {
-      final lastAttempt = DateTime.fromMillisecondsSinceEpoch(lastAttemptTime);
-      if (DateTime.now().difference(lastAttempt) > _attemptWindow) {
-        await _resetAttempts();
-        return 0;
+    try {
+      final attemptsStr = await _storage.read(key: _attemptsKey);
+      final lastAttemptTimeStr = await _storage.read(key: _lastAttemptKey);
+      
+      final attempts = int.tryParse(attemptsStr ?? '0') ?? 0;
+      final lastAttemptTime = int.tryParse(lastAttemptTimeStr ?? '0') ?? 0;
+      
+      // Reset if outside time window
+      if (lastAttemptTime > 0) {
+        final lastAttempt = DateTime.fromMillisecondsSinceEpoch(lastAttemptTime);
+        if (DateTime.now().difference(lastAttempt) > _attemptWindow) {
+          await _resetAttempts();
+          return 0;
+        }
       }
+      
+      return attempts;
+    } catch (e) {
+      debugPrint('❌ AuthRateLimitingService: Error getting attempt count: $e');
+      return 0;
     }
-    
-    return attempts;
   }
 
   /// Check if user is approaching rate limit
@@ -130,10 +169,13 @@ class AuthRateLimitingService {
 
   /// Reset all attempts and lockout
   Future<void> _resetAttempts() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_attemptsKey);
-    await prefs.remove(_lastAttemptKey);
-    await prefs.remove(_lockoutKey);
+    try {
+      await _storage.delete(key: _attemptsKey);
+      await _storage.delete(key: _lastAttemptKey);
+      await _storage.delete(key: _lockoutKey);
+    } catch (e) {
+      debugPrint('❌ AuthRateLimitingService: Error resetting attempts: $e');
+    }
   }
 
   /// Force reset (for admin purposes)

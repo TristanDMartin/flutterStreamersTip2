@@ -64,6 +64,21 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   void initState() {
     super.initState();
 
+    // 🔊 AUDIO FIX: Block playback IMMEDIATELY (synchronously) when NetworkView opens
+    // This prevents audio bleeding from HomeView - must happen before any widgets build
+    // CRITICAL: This must be synchronous, not in postFrameCallback, to prevent any audio
+    final manager = GlobalPlaybackManager.instance;
+    
+    // Step 1: Block first to prevent any new videos from starting
+    manager.block(reason: 'networkViewOpened');
+    
+    // Step 2: Aggressively mute and pause ALL videos synchronously
+    manager.pauseAll();
+    
+    if (kDebugMode) {
+      debugPrint('🔇 NetworkView: Blocked playback and paused all videos IMMEDIATELY');
+    }
+
     // Set initial tab if provided
     if (widget.initialTab != null) {
       _selectedTab = _getTabFromString(widget.initialTab!);
@@ -495,7 +510,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       onWillPop: () async {
         debugPrint(
             '🔄 NetworkView: WillPop triggered - resuming HomeView video');
-        // Resume video playback when returning to HomeView
+        // 🔊 AUDIO FIX: Unblock playback when returning to HomeView
+        // This allows HomeView videos to resume playing
         try {
           final playbackManager = GlobalPlaybackManager.instance;
           playbackManager.unblock();

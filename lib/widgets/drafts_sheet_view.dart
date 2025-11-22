@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/local_draft_service.dart';
-import '../services/draft_sharing_service.dart';
-import '../services/connection_service.dart';
+import '../services/draft_thumbnail_service.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -263,10 +264,23 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
   }
 
   Widget _buildDraftCard(Map<String, dynamic> draft) {
+    final videoPath = draft['videoPath'] as String?;
+    final thumbnailPath = draft['thumbnailPath'] as String?;
+    final draftId = draft['id'] ?? 'draft';
+
+    debugPrint('🎬 DraftCard: Building draft $draftId');
+    debugPrint('  - videoPath: $videoPath');
+    debugPrint('  - thumbnailPath: $thumbnailPath');
+
+    // Check if thumbnail exists, if not generate it
+    final hasThumbnail = thumbnailPath != null && 
+        thumbnailPath.isNotEmpty && 
+        File(thumbnailPath).existsSync();
+
     final draftVideo = HomeVideo(
-      id: draft['id'] ?? 'draft',
-      videoURL: draft['videoPath'] ?? '',
-      thumbnailURL: draft['thumbnailPath'] ?? '',
+      id: draftId,
+      videoURL: videoPath ?? '',
+      thumbnailURL: hasThumbnail ? thumbnailPath : null,
       creator: User(
         id: 'current_user',
         displayName: 'You',
@@ -288,15 +302,59 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
 
     return Stack(
       children: [
-        GestureDetector(
-          onTap: () => _handleEditDraft(draft),
-          child: GridThumbnail(
-            video: draftVideo,
+        // Generate thumbnail if missing
+        if (!hasThumbnail && videoPath != null)
+          FutureBuilder<String?>(
+            future: _generateThumbnailIfMissing(draftId, videoPath),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return _buildLoadingThumbnail();
+              }
+              if (snapshot.hasData && snapshot.data != null) {
+                final updatedVideo = HomeVideo(
+                  id: draftVideo.id,
+                  videoURL: draftVideo.videoURL,
+                  thumbnailURL: snapshot.data,
+                  creator: draftVideo.creator,
+                  caption: draftVideo.caption,
+                  categoryId: draftVideo.categoryId,
+                  views: draftVideo.views,
+                  likes: draftVideo.likes,
+                  comments: draftVideo.comments,
+                  isDraft: draftVideo.isDraft,
+                  createdAt: draftVideo.createdAt,
+                );
+                return GestureDetector(
+                  onTap: () => _handleEditDraft(draft),
+                  child: GridThumbnail(
+                    video: updatedVideo,
+                    onTap: () => _handleEditDraft(draft),
+                    showDraftBadge: true,
+                    showDurationBadge: false,
+                  ),
+                );
+              }
+              return GestureDetector(
+                onTap: () => _handleEditDraft(draft),
+                child: GridThumbnail(
+                  video: draftVideo,
+                  onTap: () => _handleEditDraft(draft),
+                  showDraftBadge: true,
+                  showDurationBadge: false,
+                ),
+              );
+            },
+          )
+        else
+          GestureDetector(
             onTap: () => _handleEditDraft(draft),
-            showDraftBadge: true,
-            showDurationBadge: false,
+            child: GridThumbnail(
+              video: draftVideo,
+              onTap: () => _handleEditDraft(draft),
+              showDraftBadge: true,
+              showDurationBadge: false,
+            ),
           ),
-        ),
         // Share button
         Positioned(
           top: 8,
@@ -338,6 +396,67 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<String?> _generateThumbnailIfMissing(String draftId, String videoPath) async {
+    try {
+      debugPrint('🖼️ Generating missing thumbnail for draft: $draftId');
+      final draftThumbnailService = DraftThumbnailService();
+      final thumbnailPath = await draftThumbnailService.generateLocalThumbnail(
+        videoPath: videoPath,
+        videoId: draftId,
+      );
+      
+      if (thumbnailPath != null) {
+        // Update the draft with the new thumbnail path
+        final localDraftService = LocalDraftService();
+        final allDrafts = await localDraftService.getAllDrafts();
+        final draft = allDrafts.firstWhere(
+          (d) => d['id'] == draftId,
+          orElse: () => <String, dynamic>{},
+        );
+        
+        if (draft.isNotEmpty) {
+          draft['thumbnailPath'] = thumbnailPath;
+          // Save updated draft using LocalDraftService
+          final localDraftService = LocalDraftService();
+          // Reload and update all drafts
+          final allDrafts = await localDraftService.getAllDrafts();
+          final updatedDrafts = allDrafts.map((d) {
+            if (d['id'] == draftId) {
+              return draft;
+            }
+            return d;
+          }).toList();
+          // Save back using the service's internal method
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('draftVideos', json.encode(updatedDrafts));
+        }
+        
+        debugPrint('✅ Generated thumbnail: $thumbnailPath');
+        return thumbnailPath;
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error generating thumbnail: $e');
+      return null;
+    }
+  }
+
+  Widget _buildLoadingThumbnail() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(
+          color: Colors.white54,
+          strokeWidth: 2,
+        ),
+      ),
     );
   }
 }

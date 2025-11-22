@@ -119,6 +119,16 @@ export function watchAllVideos(callback, onError) {
         for (const docSnap of snapshot.docs) {
           const data = docSnap.data();
           
+          // ✅ REAL-TIME DELETION HANDLING: 
+          // onSnapshot automatically removes videos when status changes to 'deleted'
+          // because the query filters by status == 'published'
+          // This ensures deleted videos disappear from the website feed instantly
+          const status = data.status || 'published';
+          if (status === 'deleted' || status !== 'published') {
+            console.log(`🗑️ Video ${docSnap.id} was deleted, skipping`);
+            continue;
+          }
+          
           // Get creator ID (supports mobile app field names)
           const creatorId = getCreatorId(data);
           

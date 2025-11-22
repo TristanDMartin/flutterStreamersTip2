@@ -132,7 +132,7 @@ class _GalleryPickerState extends State<GalleryPicker> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Error loading gallery: ${snapshot.error}',
+                          'Unable to load photos. Please check your permissions and try again.',
                           style: const TextStyle(color: Colors.white),
                           textAlign: TextAlign.center,
                         ),
