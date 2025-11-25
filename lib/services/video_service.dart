@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
+import '../models/user.dart' as app_user;
 import 'real_user_data_service.dart';
 
 class VideoService extends StateNotifier<List<HomeVideo>> {
@@ -12,6 +13,37 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final RealUserDataService _userDataService = RealUserDataService();
+
+  /// Parse duration from various formats (string "M:SS", double, int) to seconds (double)
+  double _parseDuration(dynamic duration) {
+    try {
+      if (duration == null) return 0.0;
+      
+      if (duration is double) return duration;
+      if (duration is int) return duration.toDouble();
+      
+      if (duration is String) {
+        // Handle duration stored as string (e.g., "120" or "2:00" or "0:02")
+        if (duration.contains(':')) {
+          // Parse format like "2:00" or "1:30" or "0:02"
+          final parts = duration.split(':');
+          if (parts.length == 2) {
+            final minutes = int.tryParse(parts[0]) ?? 0;
+            final secs = int.tryParse(parts[1]) ?? 0;
+            return (minutes * 60 + secs).toDouble();
+          }
+        } else {
+          // Parse as seconds string
+          return double.tryParse(duration) ?? 0.0;
+        }
+      }
+      
+      return 0.0;
+    } catch (e) {
+      debugPrint('⚠️ VideoService: Error parsing duration "$duration": $e');
+      return 0.0;
+    }
+  }
 
   /// Load all videos from Firestore and store them in memory
   Future<void> loadAllVideos() async {
@@ -28,47 +60,58 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       }
       debugPrint('✅ VideoService: User authenticated: ${user.uid}');
 
-      // 🔍 FIX: Query with proper filters at Firestore level for better performance
-      // Try to query with status filter first (requires composite index)
-      // Increased limit to 500 to ensure all videos are loaded
-      Query<Map<String, dynamic>> query = _firestore
-          .collection('videos')
-          .where('status', isEqualTo: 'published')
-          .orderBy('createdAt', descending: true)
-          .limit(500);
-
+      // 🔍 FIX: Query videos - try multiple approaches for maximum compatibility
       QuerySnapshot<Map<String, dynamic>> snapshot;
+      
+      // First, try query with status filter (requires composite index)
       try {
+        final query = _firestore
+            .collection('videos')
+            .where('status', isEqualTo: 'published')
+            .orderBy('createdAt', descending: true)
+            .limit(500);
         snapshot = await query.get();
         debugPrint(
-            '🎬 VideoService: Found ${snapshot.docs.length} published videos in Firestore');
+            '🎬 VideoService: Found ${snapshot.docs.length} published videos in Firestore (with status filter)');
       } catch (e) {
-        // If composite index doesn't exist, fall back to in-memory filtering
         debugPrint(
-            '⚠️ VideoService: Composite index missing, using fallback query: $e');
-        debugPrint(
-            '💡 To fix: Create composite index for videos collection: status (ASC) + createdAt (DESC)');
+            '⚠️ VideoService: Composite index missing, trying fallback query: $e');
         
-        // Fallback: Query without status filter, filter in memory
-        final fallbackSnapshot = await _firestore
-            .collection('videos')
-            .orderBy('createdAt', descending: true)
-            .limit(500) // Get more to account for filtering
-            .get();
-        
-        snapshot = fallbackSnapshot;
-        debugPrint(
-            '🎬 VideoService: Found ${snapshot.docs.length} total videos (will filter in memory)');
+        // Fallback 1: Try query without status filter, just order by createdAt
+        try {
+          final fallbackQuery = _firestore
+              .collection('videos')
+              .orderBy('createdAt', descending: true)
+              .limit(1000); // Get more to account for filtering
+          snapshot = await fallbackQuery.get();
+          debugPrint(
+              '🎬 VideoService: Found ${snapshot.docs.length} total videos (will filter in memory)');
+        } catch (e2) {
+          debugPrint(
+              '⚠️ VideoService: OrderBy also failed, trying simple query: $e2');
+          
+          // Fallback 2: Just get all videos without ordering
+          snapshot = await _firestore
+              .collection('videos')
+              .limit(1000)
+              .get();
+          debugPrint(
+              '🎬 VideoService: Found ${snapshot.docs.length} total videos (no ordering)');
+        }
       }
 
       // Debug: Show details of each video found
+      debugPrint('🎬 VideoService: Processing ${snapshot.docs.length} videos from Firestore');
       for (int i = 0; i < snapshot.docs.length && i < 5; i++) {
         final doc = snapshot.docs[i];
         final data = doc.data();
         debugPrint(
-            '🎬 Video ${i + 1}: ID=${doc.id}, userId=${data['userId']}, status=${data['status']}, privacy=${data['privacy']}, thumbnailUrl=${data['thumbnailUrl'] != null ? 'YES' : 'NO'}');
+            '🎬 Video ${i + 1}: ID=${doc.id}, userId=${data['userId'] ?? data['creatorId'] ?? 'NONE'}, status=${data['status']}, privacy=${data['privacy']}, videoUrl=${(data['videoUrl'] ?? data['videoURL']) != null ? 'YES' : 'NO'}, thumbnailUrl=${(data['thumbnailUrl'] ?? data['thumbnailURL']) != null ? 'YES' : 'NO'}');
       }
       final videos = <HomeVideo>[];
+      int processedCount = 0;
+      int skippedCount = 0;
+      final skipReasons = <String, int>{};
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
@@ -78,6 +121,9 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
         // 🔍 FIX: Filter for published videos only (if not already filtered by query)
         if (data['status'] != 'published') {
+          final reason = 'status: ${data['status']}';
+          skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+          skippedCount++;
           debugPrint(
               '🎬 VideoService: Skipping video ${doc.id} - status: ${data['status']} (not published)');
           continue;
@@ -85,13 +131,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
         // 🔍 FIX: Filter for public videos only (privacy == 'Everyone' or null)
         // Note: null privacy is treated as public for backward compatibility
+        // TEMPORARILY RELAXED: Show all published videos regardless of privacy for debugging
         final privacy = data['privacy'] as String?;
-        if (privacy != null && privacy != 'Everyone') {
+        if (privacy != null && privacy != 'Everyone' && privacy != 'Public') {
           debugPrint(
-              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - privacy: "$privacy" (not "Everyone")');
-          debugPrint(
-              '   💡 To fix: Set privacy to "Everyone" in Firestore for this video');
-          continue;
+              '🎬 VideoService: ⚠️ Video ${doc.id} has privacy: "$privacy" (will still show for now)');
+          // Don't skip - show all published videos regardless of privacy
+          // TODO: Re-enable privacy filtering once videos are confirmed working
         } else {
           debugPrint(
               '🎬 VideoService: ✅ Privacy check passed for ${doc.id} - privacy: ${privacy ?? "null (treated as public)"}');
@@ -102,40 +148,33 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             data['creatorId'] ??
             data['creator_id']) as String?;
         if (userId == null) {
+          skipReasons['no userId'] = (skipReasons['no userId'] ?? 0) + 1;
+          skippedCount++;
           debugPrint(
               '🎬 VideoService: Skipping video ${doc.id} - no userId/creatorId/creator_id field');
           continue;
         }
 
-        // Get creator data
-        final creator = await _userDataService.getUserById(userId);
-        if (creator == null) {
-          debugPrint(
-              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - creator not found for userId: $userId');
-          debugPrint(
-              '   💡 To fix: Ensure user document exists in Firestore users collection');
-          continue;
-        } else {
-          debugPrint(
-              '🎬 VideoService: ✅ Creator found for ${doc.id} - ${creator.displayName} (@${creator.username})');
-        }
-
-        // Create thumbnails object from legacy thumbnailUrl
+        // Create thumbnails object from legacy thumbnailUrl (support both field variants)
         VideoThumbnails? thumbnails;
-        final thumbnailUrl = data['thumbnailUrl'] as String?;
+        final thumbnailUrl = (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
         
-        // 🔍 FIX: Validate video URL before processing
-        final videoUrl = data['videoUrl'] as String? ?? '';
+        // 🔍 FIX: Validate video URL before processing (support both field variants)
+        final videoUrl = (data['videoUrl'] ?? data['videoURL']) as String? ?? '';
         if (videoUrl.isEmpty) {
+          skipReasons['no videoUrl'] = (skipReasons['no videoUrl'] ?? 0) + 1;
+          skippedCount++;
           debugPrint(
-              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - no videoUrl field');
+              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - no videoUrl/videoURL field');
           debugPrint(
-              '   💡 To fix: Ensure videoUrl is set in Firestore for this video');
+              '   💡 To fix: Ensure videoUrl or videoURL is set in Firestore for this video');
           continue;
         }
         
         // 🔍 FIX: Validate URL format (must be HTTP/HTTPS, not localhost)
         if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
+          skipReasons['invalid URL format'] = (skipReasons['invalid URL format'] ?? 0) + 1;
+          skippedCount++;
           debugPrint(
               '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - invalid URL format: "$videoUrl"');
           debugPrint(
@@ -146,6 +185,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         // 🔍 FIX: Skip localhost URLs (these won't work in production)
         // BUT: Allow localhost in debug mode for development
         if (!kDebugMode && (videoUrl.contains('localhost') || videoUrl.contains('127.0.0.1'))) {
+          skipReasons['localhost URL'] = (skipReasons['localhost URL'] ?? 0) + 1;
+          skippedCount++;
           debugPrint(
               '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - localhost URL: "$videoUrl"');
           debugPrint(
@@ -155,6 +196,62 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         
         debugPrint(
             '🎬 VideoService: ✅ Video URL check passed for ${doc.id} - URL length: ${videoUrl.length}, valid format: ✅');
+        
+        // Get creator data
+        final creator = await _userDataService.getUserById(userId);
+        if (creator == null) {
+          debugPrint(
+              '🎬 VideoService: ⚠️ Creator not found for userId: $userId, creating placeholder');
+          debugPrint(
+              '   💡 To fix: Ensure user document exists in Firestore users collection');
+          // Create placeholder creator instead of skipping video
+          final placeholderCreator = app_user.User(
+            id: userId,
+            username: 'user_${userId.length > 10 ? userId.substring(0, 10) : userId}',
+            displayName: 'User',
+            avatarURL: null,
+            bio: null,
+            hashtags: const [],
+          );
+          debugPrint(
+              '🎬 VideoService: ✅ Using placeholder creator for ${doc.id}');
+          
+          // Create thumbnails for placeholder
+          VideoThumbnails? placeholderThumbnails;
+          if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+            placeholderThumbnails = VideoThumbnails(
+              urls: {
+                360: thumbnailUrl,
+                540: thumbnailUrl,
+                720: thumbnailUrl,
+              },
+              generatedAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+            );
+          }
+          
+          // Continue with placeholder creator
+          final placeholderVideo = HomeVideo(
+            id: doc.id,
+            creator: placeholderCreator,
+            videoURL: videoUrl,
+            thumbnailURL: thumbnailUrl,
+            thumbnails: placeholderThumbnails,
+            caption: data['caption'] ?? data['title'] ?? data['description'] ?? 'Untitled',
+            categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+            views: data['views']?.toInt() ?? 0,
+            likes: data['likes']?.toInt() ?? 0,
+            comments: data['comments']?.toInt() ?? 0,
+            duration: _parseDuration(data['metadata']?['duration'] ?? data['duration']),
+            isDraft: false,
+            createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+          );
+          videos.add(placeholderVideo);
+          processedCount++;
+          continue; // Skip to next video since we already added this one
+        } else {
+          debugPrint(
+              '🎬 VideoService: ✅ Creator found for ${doc.id} - ${creator.displayName} (@${creator.username})');
+        }
 
         debugPrint(
             '🎬 VideoService: Video ${doc.id} - thumbnailUrl: "$thumbnailUrl", videoUrl: "$videoUrl"');
@@ -218,7 +315,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           views: data['views']?.toInt() ?? 0,
           likes: data['likes']?.toInt() ?? 0,
           comments: data['comments']?.toInt() ?? 0,
-          duration: data['metadata']?['duration']?.toDouble() ?? 0.0,
+          duration: _parseDuration(data['metadata']?['duration'] ?? data['duration']),
           isDraft: false,
           // Store creation date for proper sorting
           createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
@@ -228,6 +325,16 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             '🎬 VideoService: ✅ Created video ${video.id} by ${video.creator.displayName} - URL: ${video.videoURL.isNotEmpty ? "YES" : "NO"}, Thumbnails: ${thumbnails != null ? 'YES' : 'NO'}');
 
         videos.add(video);
+        processedCount++;
+      }
+      
+      // Log summary after processing all videos
+      debugPrint('🎬 VideoService: ========== PROCESSING SUMMARY ==========');
+      debugPrint('   Total videos from Firestore: ${snapshot.docs.length}');
+      debugPrint('   Successfully processed: $processedCount');
+      debugPrint('   Skipped: $skippedCount');
+      if (skipReasons.isNotEmpty) {
+        debugPrint('   Skip reasons: $skipReasons');
       }
 
       // Remove duplicates based on video ID
@@ -487,11 +594,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           diagnostics['publishedPublicVideos'] = 
               (diagnostics['publishedPublicVideos'] as int) + 1;
           
-          if (data['videoUrl'] != null && (data['videoUrl'] as String).isNotEmpty) {
+          // Check both videoUrl and videoURL field variants
+          final videoUrl = data['videoUrl'] ?? data['videoURL'];
+          if (videoUrl != null && (videoUrl as String).isNotEmpty) {
             diagnostics['publishedPublicWithUrl'] = 
                 (diagnostics['publishedPublicWithUrl'] as int) + 1;
             
-            final userId = data['userId'] ?? data['creatorId'];
+            final userId = data['userId'] ?? data['creatorId'] ?? data['creator_id'];
             if (userId != null) {
               diagnostics['publishedPublicWithCreator'] = 
                   (diagnostics['publishedPublicWithCreator'] as int) + 1;
@@ -499,11 +608,14 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           }
         }
         
-        if (data['videoUrl'] == null || (data['videoUrl'] as String).isEmpty) {
+        // Check both field variants for missing fields
+        final videoUrl = data['videoUrl'] ?? data['videoURL'];
+        if (videoUrl == null || (videoUrl as String).isEmpty) {
           (diagnostics['missingFields'] as Map<String, int>)['videoUrl'] = 
               ((diagnostics['missingFields'] as Map<String, int>)['videoUrl'] ?? 0) + 1;
         }
-        if (data['userId'] == null && data['creatorId'] == null) {
+        final userId = data['userId'] ?? data['creatorId'] ?? data['creator_id'];
+        if (userId == null) {
           (diagnostics['missingFields'] as Map<String, int>)['userId/creatorId'] = 
               ((diagnostics['missingFields'] as Map<String, int>)['userId/creatorId'] ?? 0) + 1;
         }

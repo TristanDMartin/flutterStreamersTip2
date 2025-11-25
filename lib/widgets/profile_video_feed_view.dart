@@ -11,6 +11,8 @@ import '../models/home_video.dart';
 import '../models/user.dart';
 import '../services/video_service.dart';
 import '../services/local_draft_service.dart';
+import '../services/real_user_data_service.dart';
+import '../providers/video_service_provider.dart' as providers;
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
 import 'video_publishing_screen.dart';
@@ -154,6 +156,29 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     }
   }
 
+  /// Load user videos directly from Firestore (bypasses VideoService)
+  Future<List<HomeVideo>> _loadUserVideosDirectly(String userId) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('🎬 ProfileView: Loading videos directly for userId: $userId');
+      }
+      
+      final userDataService = RealUserDataService();
+      final videos = await userDataService.getUserVideos(userId, limit: 100);
+      
+      if (kDebugMode) {
+        debugPrint('🎬 ProfileView: Loaded ${videos.length} videos directly from Firestore');
+      }
+      
+      return videos;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ ProfileView: Error loading videos directly: $e');
+      }
+      return [];
+    }
+  }
+
   /// Fetch another user's favorites from Firebase
   Future<List<String>> _fetchUserFavorites(String userId) async {
     try {
@@ -202,66 +227,165 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   Widget _buildUserVideosGrid() {
     return Consumer(
       builder: (context, ref, child) {
-        // Ensure VideoService is loaded when ProfileView is accessed
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final videoServiceState = ref.read(videoServiceProvider);
-          final videoService = ref.read(videoServiceProvider.notifier);
-          if (videoServiceState.isEmpty) {
-            if (kDebugMode) {
-              debugPrint(
-                  '🎬 ProfileView: VideoService is empty, loading videos...');
-            }
-            videoService.loadAllVideos();
-          }
-        });
-
-        // Watch user videos from centralized VideoService
-        final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
-
-        if (kDebugMode) {
-          debugPrint(
-              '🎬 ProfileView: Found ${userVideos.length} user videos for userId: ${widget.userId}');
-        }
-
-        // Check if viewing own profile - only show drafts for current user
-        final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-        final isViewingOwnProfile = currentUser != null && 
-            widget.userId != null && 
-            widget.userId == currentUser.uid;
-
-        // Only load drafts if viewing own profile
-        if (isViewingOwnProfile) {
-          return FutureBuilder<List<Map<String, dynamic>>>(
-            future: LocalDraftService().getAllDrafts(),
-            builder: (context, snapshot) {
-              final drafts = snapshot.data ?? [];
-
-              if (kDebugMode) {
-                debugPrint('🎬 ProfileView: Found ${drafts.length} drafts (own profile)');
+        try {
+          // Only try to load VideoService once per build cycle
+          final videoServiceState = ref.watch(videoServiceProvider);
+          final isLoadingVideos = ref.read(providers.videoServiceLoadingProvider);
+          
+          // Only trigger load if VideoService is empty and not already loading
+          if (videoServiceState.isEmpty && !isLoadingVideos) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              try {
+                final videoService = ref.read(videoServiceProvider.notifier);
+                if (kDebugMode) {
+                  debugPrint(
+                      '🎬 ProfileView: VideoService is empty, loading videos...');
+                }
+                // Mark as loading to prevent multiple simultaneous loads
+                ref.read(providers.videoServiceLoadingProvider.notifier).state = true;
+                // Load videos in background
+                videoService.loadAllVideos().then((_) {
+                  if (mounted) {
+                    ref.read(providers.videoServiceLoadingProvider.notifier).state = false;
+                  }
+                }).catchError((e, stackTrace) {
+                  if (mounted) {
+                    ref.read(providers.videoServiceLoadingProvider.notifier).state = false;
+                  }
+                  if (kDebugMode) {
+                    debugPrint('❌ ProfileView: Error loading videos: $e');
+                    debugPrint('❌ ProfileView: Stack trace: $stackTrace');
+                  }
+                });
+              } catch (e, stackTrace) {
+                if (kDebugMode) {
+                  debugPrint('❌ ProfileView: Error in postFrameCallback: $e');
+                  debugPrint('❌ ProfileView: Stack trace: $stackTrace');
+                }
+                // Reset loading state on error
+                try {
+                  ref.read(providers.videoServiceLoadingProvider.notifier).state = false;
+                } catch (_) {
+                  // Ignore errors when resetting state
+                }
               }
+            });
+          }
 
-              if (userVideos.isEmpty && drafts.isEmpty) {
+          // Watch user videos from centralized VideoService
+          final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
+
+          if (kDebugMode) {
+            debugPrint(
+                '🎬 ProfileView: Found ${userVideos.length} user videos for userId: ${widget.userId}');
+            debugPrint(
+                '🎬 ProfileView: Total videos in VideoService: ${videoServiceState.length}');
+          }
+          
+          // If no videos found and VideoService is empty, try loading directly
+          if (userVideos.isEmpty && videoServiceState.isEmpty) {
+            return FutureBuilder<List<HomeVideo>>(
+            future: _loadUserVideosDirectly(widget.userId ?? ''),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF9248d2),
+                  ),
+                );
+              }
+              
+              if (snapshot.hasError) {
+                if (kDebugMode) {
+                  debugPrint('❌ ProfileView: Error loading videos directly: ${snapshot.error}');
+                }
                 return _buildEmptyState(
                   icon: Icons.videocam_outlined,
                   title: 'No Videos Yet',
                   subtitle: 'Start creating content to see your videos here',
                 );
               }
-
-              return _buildVideoGridWithDrafts(userVideos, drafts);
+              
+              final directVideos = snapshot.data ?? [];
+              if (directVideos.isEmpty) {
+                return _buildEmptyState(
+                  icon: Icons.videocam_outlined,
+                  title: 'No Videos Yet',
+                  subtitle: 'Start creating content to see your videos here',
+                );
+              }
+              
+              // Show videos loaded directly
+              final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+              final isViewingOwnProfile = currentUser != null && 
+                  widget.userId != null && 
+                  widget.userId == currentUser.uid;
+              
+              if (isViewingOwnProfile) {
+                return FutureBuilder<List<Map<String, dynamic>>>(
+                  future: LocalDraftService().getAllDrafts(),
+                  builder: (context, draftSnapshot) {
+                    final drafts = draftSnapshot.data ?? [];
+                    return _buildVideoGridWithDrafts(directVideos, drafts);
+                  },
+                );
+              } else {
+                return _buildVideoGridWithoutDrafts(directVideos);
+              }
             },
           );
-        } else {
-          // Viewing someone else's profile - don't show drafts
-          if (userVideos.isEmpty) {
-            return _buildEmptyState(
-              icon: Icons.videocam_outlined,
-              title: 'No Videos Yet',
-              subtitle: 'This user hasn\'t posted any videos yet',
-            );
           }
 
-          return _buildVideoGridWithoutDrafts(userVideos);
+          // Check if viewing own profile - only show drafts for current user
+          final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+          final isViewingOwnProfile = currentUser != null && 
+              widget.userId != null && 
+              widget.userId == currentUser.uid;
+
+          // Only load drafts if viewing own profile
+          if (isViewingOwnProfile) {
+            return FutureBuilder<List<Map<String, dynamic>>>(
+              future: LocalDraftService().getAllDrafts(),
+              builder: (context, snapshot) {
+                final drafts = snapshot.data ?? [];
+
+                if (kDebugMode) {
+                  debugPrint('🎬 ProfileView: Found ${drafts.length} drafts (own profile)');
+                }
+
+                if (userVideos.isEmpty && drafts.isEmpty) {
+                  return _buildEmptyState(
+                    icon: Icons.videocam_outlined,
+                    title: 'No Videos Yet',
+                    subtitle: 'Start creating content to see your videos here',
+                  );
+                }
+
+                return _buildVideoGridWithDrafts(userVideos, drafts);
+              },
+            );
+          } else {
+            // Viewing someone else's profile - don't show drafts
+            if (userVideos.isEmpty) {
+              return _buildEmptyState(
+                icon: Icons.videocam_outlined,
+                title: 'No Videos Yet',
+                subtitle: 'This user hasn\'t posted any videos yet',
+              );
+            }
+
+            return _buildVideoGridWithoutDrafts(userVideos);
+          }
+        } catch (e, stackTrace) {
+          if (kDebugMode) {
+            debugPrint('❌ ProfileView: Error in _buildUserVideosGrid: $e');
+            debugPrint('❌ ProfileView: Stack trace: $stackTrace');
+          }
+          return _buildEmptyState(
+            icon: Icons.error_outline,
+            title: 'Error Loading Videos',
+            subtitle: 'Please try again later',
+          );
         }
       },
     );

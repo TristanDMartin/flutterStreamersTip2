@@ -204,12 +204,34 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
             physics: const ClampingScrollPhysics(), // Better physics for mobile
             allowImplicitScrolling: false, // Prevent interference with gestures
             onPageChanged: (index) {
-              log('🎬 VideoPageView: Page changed to index $index');
-              widget.onPageChanged(index);
+              try {
+                log('🎬 VideoPageView: Page changed to index $index');
+                // 🔒 SAFETY: Validate index before calling callback
+                if (index >= 0 && index < widget.videos.length) {
+                  widget.onPageChanged(index);
+                } else {
+                  log('⚠️ VideoPageView: Invalid index $index (videos.length: ${widget.videos.length})');
+                }
+              } catch (e) {
+                log('❌ VideoPageView: Error in onPageChanged: $e');
+              }
             },
             itemCount: widget.videos.length,
             itemBuilder: (context, index) {
+              // 🔒 SAFETY: Validate index before accessing videos
+              if (index < 0 || index >= widget.videos.length) {
+                log('⚠️ VideoPageView: Invalid index $index in itemBuilder (videos.length: ${widget.videos.length})');
+                return const SizedBox.shrink(); // Return empty widget instead of crashing
+              }
+              
               final video = widget.videos[index];
+              
+              // 🔒 SAFETY: Validate video object
+              if (video.id.isEmpty || video.videoURL.isEmpty) {
+                log('⚠️ VideoPageView: Invalid video at index $index');
+                return const SizedBox.shrink();
+              }
+              
               final isCurrentVideo = index == widget.currentIndex;
 
               return VideoPlayerViewOptimized(

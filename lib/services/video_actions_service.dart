@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'video_download_service.dart';
@@ -158,38 +159,73 @@ class VideoActionsService {
   Future<void> deleteVideo(String videoId) async {
     try {
       final userId = await getCurrentUserId();
-      if (userId == null) throw Exception('User not authenticated');
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+      
       final videoRef = _firestore.collection('videos').doc(videoId);
       final videoDoc = await videoRef.get();
+      
       if (!videoDoc.exists) {
         throw Exception('Video not found');
       }
-      final ownerUid = videoDoc.data()?['userId'] as String?;
-      if (ownerUid != userId) {
+      
+      final videoData = videoDoc.data();
+      final ownerUid = (videoData?['userId'] ?? 
+                       videoData?['creatorId'] ?? 
+                       videoData?['creator_id']) as String?;
+      
+      if (ownerUid == null || ownerUid != userId) {
         throw Exception('Only video owner can delete videos');
       }
+      
+      // 🔥 CROSS-PLATFORM FIX: Update status to 'deleted' (both app and website will see this)
       await videoRef.update({
         'status': 'deleted',
         'deletedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(), // Ensure website sees the update
       });
+      
+      // Update user post count
       final userRef = _firestore.collection('users').doc(userId);
       await userRef.update({
         'postCount': FieldValue.increment(-1),
       });
-      final userVideosRef = _firestore
-          .collection('user_videos')
-          .doc(userId)
-          .collection('posts')
-          .doc(videoId);
-      await userVideosRef.delete();
-      final pinnedVideoIds = List<String>.from(
-        (await userRef.get()).data()?['pinnedVideoIds'] ?? [],
-      );
-      if (pinnedVideoIds.contains(videoId)) {
-        pinnedVideoIds.remove(videoId);
-        await userRef.update({'pinnedVideoIds': pinnedVideoIds});
+      
+      // Delete from user_videos subcollection if it exists
+      try {
+        final userVideosRef = _firestore
+            .collection('user_videos')
+            .doc(userId)
+            .collection('posts')
+            .doc(videoId);
+        final userVideoDoc = await userVideosRef.get();
+        if (userVideoDoc.exists) {
+          await userVideosRef.delete();
+        }
+      } catch (e) {
+        // Ignore if subcollection doesn't exist
+        debugPrint('⚠️ VideoActionsService: user_videos subcollection not found (this is OK): $e');
       }
+      
+      // Remove from pinned videos if pinned
+      try {
+        final userDoc = await userRef.get();
+        final pinnedVideoIds = List<String>.from(
+          userDoc.data()?['pinnedVideoIds'] ?? [],
+        );
+        if (pinnedVideoIds.contains(videoId)) {
+          pinnedVideoIds.remove(videoId);
+          await userRef.update({'pinnedVideoIds': pinnedVideoIds});
+        }
+      } catch (e) {
+        debugPrint('⚠️ VideoActionsService: Error updating pinned videos: $e');
+        // Don't fail deletion if pinned video update fails
+      }
+      
+      debugPrint('✅ VideoActionsService: Video $videoId deleted successfully');
     } catch (e) {
+      debugPrint('❌ VideoActionsService: Error deleting video $videoId: $e');
       rethrow;
     }
   }

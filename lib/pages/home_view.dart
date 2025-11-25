@@ -653,7 +653,9 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _onPageChanged(int index) {
-    if (mounted) {
+    if (!mounted) return; // 🔒 SAFETY: Exit early if widget is disposed
+    
+    try {
       setState(() {
         _currentIndex = index;
       });
@@ -666,20 +668,33 @@ class _HomeViewState extends ConsumerState<HomeView>
             ? homeState.forYouVideos
             : homeState.followingVideos;
 
+        // 🔒 SAFETY: Validate videos list and index before accessing
+        if (videos.isEmpty) {
+          log('⚠️ HomeView: Videos list is empty, skipping index change');
+          return;
+        }
+
         if (index >= 0 && index < videos.length) {
           final currentVideo = videos[index];
+          
+          // 🔒 SAFETY: Validate video object before using
+          if (currentVideo.id.isEmpty || currentVideo.videoURL.isEmpty) {
+            log('⚠️ HomeView: Invalid video at index $index, skipping');
+            return;
+          }
           
           // TIKTOK-STYLE: Notify GlobalPlaybackManager of index change
           GlobalPlaybackManager.instance.onVisibleIndexChanged(index, currentVideo);
           
           // TIKTOK-STYLE: Preload adjacent videos for smooth transitions
           GlobalPlaybackManager.instance.preloadAround(index, videos);
+        } else {
+          log('⚠️ HomeView: Index $index out of bounds (videos.length: ${videos.length})');
         }
-      } catch (e) {
-        // Safety: If provider access fails, continue with existing logic
-        if (kDebugMode) {
-          log('⚠️ HomeView: Error in TikTok-style feed management: $e');
-        }
+      } catch (e, stackTrace) {
+        // Safety: If provider access fails, log and continue
+        log('❌ HomeView: Error in TikTok-style feed management: $e');
+        log('Stack trace: $stackTrace');
       }
 
       // 🚀 INSTANT SWITCHING: Preload adjacent videos for seamless swiping
@@ -687,11 +702,17 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       // ✅ FIX: Removed _pauseAllOtherVideos call - onVisibleIndexChanged already calls pauseAll()
       // This prevents duplicate pause calls that could interfere with playback coordination
+    } catch (e, stackTrace) {
+      log('❌ HomeView: Critical error in _onPageChanged: $e');
+      log('Stack trace: $stackTrace');
+      // Don't crash - just log the error
     }
   }
 
   /// 🚀 INSTANT SWITCHING: Preload adjacent videos for seamless swiping experience
   void _preloadAdjacentVideos(int currentIndex) {
+    if (!mounted) return; // 🔒 SAFETY: Exit if widget is disposed
+    
     try {
       final homeState = ref.read(hp.homeProvider);
       final activeFeed = ref.read(activeFeedProvider);
@@ -699,28 +720,52 @@ class _HomeViewState extends ConsumerState<HomeView>
           ? homeState.forYouVideos
           : homeState.followingVideos;
 
-      if (videos.length <= 1) return; // No adjacent videos to preload
+      if (videos.isEmpty || videos.length <= 1) return; // No adjacent videos to preload
+
+      // 🔒 SAFETY: Validate index before accessing videos
+      if (currentIndex < 0 || currentIndex >= videos.length) {
+        log('⚠️ HomeView: Invalid index $currentIndex for preloading (videos.length: ${videos.length})');
+        return;
+      }
 
       // Preload next video (index + 1)
       if (currentIndex + 1 < videos.length) {
         final nextVideo = videos[currentIndex + 1];
-        log('🚀 INSTANT SWITCHING: Preloading next video: ${nextVideo.id}');
-        // Trigger preloading in background without blocking UI
-        Future.microtask(() {
-          GlobalPlaybackManager.instance
-              .requestFocus(nextVideo.id, activeFeed.tabId);
-        });
+        // 🔒 SAFETY: Validate video before preloading
+        if (nextVideo.id.isNotEmpty && nextVideo.videoURL.isNotEmpty) {
+          log('🚀 INSTANT SWITCHING: Preloading next video: ${nextVideo.id}');
+          // Trigger preloading in background without blocking UI
+          Future.microtask(() {
+            if (mounted) {
+              try {
+                GlobalPlaybackManager.instance
+                    .requestFocus(nextVideo.id, activeFeed.tabId);
+              } catch (e) {
+                log('⚠️ HomeView: Error preloading next video: $e');
+              }
+            }
+          });
+        }
       }
 
       // Preload previous video (index - 1) if exists
       if (currentIndex > 0) {
         final prevVideo = videos[currentIndex - 1];
-        log('🚀 INSTANT SWITCHING: Preloading previous video: ${prevVideo.id}');
-        // Trigger preloading in background without blocking UI
-        Future.microtask(() {
-          GlobalPlaybackManager.instance
-              .requestFocus(prevVideo.id, activeFeed.tabId);
-        });
+        // 🔒 SAFETY: Validate video before preloading
+        if (prevVideo.id.isNotEmpty && prevVideo.videoURL.isNotEmpty) {
+          log('🚀 INSTANT SWITCHING: Preloading previous video: ${prevVideo.id}');
+          // Trigger preloading in background without blocking UI
+          Future.microtask(() {
+            if (mounted) {
+              try {
+                GlobalPlaybackManager.instance
+                    .requestFocus(prevVideo.id, activeFeed.tabId);
+              } catch (e) {
+                log('⚠️ HomeView: Error preloading previous video: $e');
+              }
+            }
+          });
+        }
       }
 
       log('✅ INSTANT SWITCHING: Adjacent videos preloaded for seamless swiping');

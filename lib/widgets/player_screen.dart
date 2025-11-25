@@ -604,8 +604,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       // Import VideoActionsService
       final videoActionsService = ref.read(videoActionsServiceProvider);
 
-      // Delete video from Firestore
-      await videoActionsService.deleteVideo(video.id);
+      // Delete video from Firestore with error handling
+      try {
+        await videoActionsService.deleteVideo(video.id);
+      } catch (e) {
+        // Close loading dialog on error
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        // Show error message
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to delete video: ${e.toString()}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        debugPrint('❌ PlayerScreen: Error deleting video ${video.id}: $e');
+        return; // Exit early on error
+      }
 
       // 🔥 GLOBAL UPDATE: Remove video from all providers and refresh feeds
       // 1. Remove from VideoService state immediately

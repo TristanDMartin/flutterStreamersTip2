@@ -69,7 +69,7 @@ class GlobalPlaybackManager {
   /// Configuration
   static const int poolRadius = 1; // previous, current, next
   static const int recoveryTimeoutMs = 5000;
-  static const int maxControllerPoolSize = 5; // 🔥 CRITICAL: Prevent MediaCodec NO_MEMORY errors
+  static const int maxControllerPoolSize = 3; // 🔥 CRITICAL: Reduced from 5 to 3 to prevent OutOfMemoryErrors
 
   // ============================================
   // BLOCKING SYSTEM (from Coordinator)
@@ -798,17 +798,33 @@ class GlobalPlaybackManager {
 
   /// Called when visible index changes in vertical feed
   void onVisibleIndexChanged(int newIndex, HomeVideo video) {
+    // 🔒 SAFETY: Validate inputs before processing
+    if (newIndex < 0) {
+      log('⚠️ PlaybackManager: Invalid index $newIndex, ignoring');
+      return;
+    }
+    
+    if (video.id.isEmpty || video.videoURL.isEmpty) {
+      log('⚠️ PlaybackManager: Invalid video object, ignoring index change');
+      return;
+    }
+    
     log('📺 PlaybackManager: Visible index changed to $newIndex (video: ${video.id})');
 
-    // Save previous position
-    if (_currentFeedIndex != null) {
-      _savePositionForIndex(_currentFeedIndex!);
-    }
+    try {
+      // Save previous position
+      if (_currentFeedIndex != null) {
+        _savePositionForIndex(_currentFeedIndex!);
+      }
 
-    // Update current index and mappings
-    _currentFeedIndex = newIndex;
-    _indexToVideoId[newIndex] = video.id;
-    _videoIdToIndex[video.id] = newIndex;
+      // Update current index and mappings
+      _currentFeedIndex = newIndex;
+      _indexToVideoId[newIndex] = video.id;
+      _videoIdToIndex[video.id] = newIndex;
+    } catch (e) {
+      log('❌ PlaybackManager: Error updating index mappings: $e');
+      return; // Exit early on error
+    }
 
     // 🔥 CRITICAL AUDIO FIX: Pause and mute ALL videos FIRST (including manually paused ones)
     // This ensures no audio bleeding when switching videos
@@ -831,27 +847,32 @@ class GlobalPlaybackManager {
     // Ensure controller is ready, then request focus (not direct play)
     // This lets VideoPlayerViewOptimized handle the actual playback to avoid duplicate play calls
     ensureControllerReady(newIndex, video).then((_) {
-      // Seek to last position if available (before requesting focus)
-      final controller = getControllerForIndex(newIndex);
-      if (controller != null && _isControllerSafe(video.id, controller)) {
-        try {
-          final lastPos = _lastKnownPositions[newIndex];
-          if (lastPos != null && lastPos > Duration.zero) {
-            controller.seekTo(lastPos).catchError((e) {
-              log('⚠️ PlaybackManager: Error seeking to last position: $e');
-            });
+      try {
+        // Seek to last position if available (before requesting focus)
+        final controller = getControllerForIndex(newIndex);
+        if (controller != null && _isControllerSafe(video.id, controller)) {
+          try {
+            final lastPos = _lastKnownPositions[newIndex];
+            if (lastPos != null && lastPos > Duration.zero) {
+              controller.seekTo(lastPos).catchError((e) {
+                log('⚠️ PlaybackManager: Error seeking to last position: $e');
+              });
+            }
+          } catch (e) {
+            log('⚠️ PlaybackManager: Error seeking in onVisibleIndexChanged: $e');
           }
-        } catch (e) {
-          log('⚠️ PlaybackManager: Error seeking in onVisibleIndexChanged: $e');
         }
+        
+        // Request focus instead of direct play - VideoPlayerViewOptimized will handle playback
+        // This prevents duplicate play calls that cause video restart
+        requestFocus(video.id, 'home/feed');
+        log('🎯 PlaybackManager: Requested focus for video at index $newIndex');
+      } catch (e) {
+        log('❌ PlaybackManager: Error in controller ready callback: $e');
       }
-      
-      // Request focus instead of direct play - VideoPlayerViewOptimized will handle playback
-      // This prevents duplicate play calls that cause video restart
-      requestFocus(video.id, 'home/feed');
-      log('🎯 PlaybackManager: Requested focus for video at index $newIndex');
-    }).catchError((e) {
+    }).catchError((e, stackTrace) {
       log('❌ PlaybackManager: Error ensuring controller ready: $e');
+      log('Stack trace: $stackTrace');
     });
   }
 
@@ -872,6 +893,15 @@ class GlobalPlaybackManager {
 
   /// Ensure controller is ready for given index
   Future<void> ensureControllerReady(int index, HomeVideo video) async {
+    // 🔒 SAFETY: Validate inputs
+    if (index < 0) {
+      throw ArgumentError('Index must be non-negative: $index');
+    }
+    
+    if (video.id.isEmpty || video.videoURL.isEmpty) {
+      throw ArgumentError('Invalid video object: id=${video.id}, url=${video.videoURL}');
+    }
+    
     final videoId = video.id;
     var controller = _controllerPool[videoId];
 
@@ -919,20 +949,33 @@ class GlobalPlaybackManager {
   /// Preload controllers around given index
   /// 🔒 SAFETY: Defers disposal to avoid disposing controllers during widget build
   void preloadAround(int index, List<HomeVideo> videos) {
+    // 🔒 SAFETY: Validate inputs
     if (videos.isEmpty) return;
+    if (index < 0) {
+      log('⚠️ PlaybackManager: Invalid index $index for preloadAround');
+      return;
+    }
 
     final neighbors = [index - 1, index, index + 1];
 
     for (final n in neighbors) {
       if (n >= 0 && n < videos.length) {
         final video = videos[n];
+        
+        // 🔒 SAFETY: Validate video object before preloading
+        if (video.id.isEmpty || video.videoURL.isEmpty) {
+          log('⚠️ PlaybackManager: Invalid video at index $n, skipping preload');
+          continue;
+        }
+        
         final videoId = video.id;
 
         // Preload if not already loaded
         if (!_controllerPool.containsKey(videoId)) {
           log('🔄 PlaybackManager: Preloading controller for index $n');
-          ensureControllerReady(n, video).catchError((e) {
+          ensureControllerReady(n, video).catchError((e, stackTrace) {
             log('⚠️ PlaybackManager: Error preloading index $n: $e');
+            log('Stack trace: $stackTrace');
           });
         }
       }
@@ -941,7 +984,11 @@ class GlobalPlaybackManager {
     // 🔒 SAFETY: Defer disposal to next frame to avoid disposing controllers
     // that are currently being built or used by widgets
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      disposeFarControllers(index);
+      try {
+        disposeFarControllers(index);
+      } catch (e) {
+        log('❌ PlaybackManager: Error disposing far controllers: $e');
+      }
     });
   }
 
