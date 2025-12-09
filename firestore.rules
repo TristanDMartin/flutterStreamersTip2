@@ -68,6 +68,36 @@ service cloud.firestore {
       }
     }
     
+    // Activity notifications (new structure for web/mobile parity)
+    match /activity/{userId} {
+      // Allow read/get access to parent document (even if it doesn't exist)
+      // This is required for subcollection queries to work
+      allow read, get: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow listing the parent document itself
+      allow list: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow creating the parent document if needed
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      match /notifications/{notificationId} {
+        // Users can only read their own notifications
+        allow read, get: if request.auth != null && request.auth.uid == userId;
+        
+        // Users can update their own notifications (mark as read)
+        allow update: if request.auth != null && request.auth.uid == userId;
+        
+        // Server/cloud functions can create notifications
+        allow create: if request.auth != null;
+        
+        // Allow listing/querying the subcollection
+        allow list: if request.auth != null && request.auth.uid == userId;
+        
+        // Allow deleting notifications (for cleanup)
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
     // Users can read and write their own relationships
     match /relationships/{relationshipId} {
       // Allow creating new relationships where user is the follower
