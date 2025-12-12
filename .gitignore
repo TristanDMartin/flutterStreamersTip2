@@ -46,3 +46,6 @@ app.*.map.json
 
 # Ignore duplicate nested project folder
 /flutterST/
+
+# PDF files
+*.pdf

@@ -31,12 +31,17 @@ import '../services/unified_algorithm_service.dart';
 import '../services/enhanced_algorithm_service.dart';
 import '../services/unified_bookmark_service.dart';
 import '../services/video_resume_service.dart';
+import '../utils/video_url_resolver.dart';
+import '../constants/playback_owners.dart';
 
 class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final HomeVideo video;
   final bool isCurrentVideo;
   final bool isFirstVideo;
-  final String tabId; // Track which tab this video belongs to
+  final String
+      tabId; // Track which tab this video belongs to (deprecated, use ownerKey)
+  final String?
+      ownerKey; // Owner key for single active owner model (e.g., 'home', 'discover', 'player', 'profile')
   final HomeViewModel homeViewModel;
   final bool showSheet;
   final String sheetType;
@@ -55,6 +60,7 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
     required this.isCurrentVideo,
     required this.isFirstVideo,
     required this.tabId,
+    this.ownerKey, // Optional - will fall back to tabId if not provided
     required this.homeViewModel,
     required this.showSheet,
     required this.sheetType,
@@ -86,10 +92,21 @@ class _VideoPlayerViewOptimizedState
   bool _audioUnmuted =
       false; // Track if audio has been unmuted by user interaction
   bool _isDisposed = false; // Track if this widget's controller is disposed
+  bool _isDisposingController = false;
   bool _wasRegistered =
       false; // Track if controller was registered with registry
   bool _isBookmarked =
       false; // Local bookmark state that syncs with FavoritesService
+
+  /// Standardized owner key for controller registration/disposal
+  String get _ownerKey {
+    // Prefer explicit ownerKey if provided, otherwise fall back to tabId
+    if (widget.ownerKey != null && widget.ownerKey!.isNotEmpty) {
+      return widget.ownerKey!;
+    }
+    // Fallback to tabId for backward compatibility
+    return widget.tabId.isNotEmpty ? widget.tabId : 'home/forYou';
+  }
 
   // Production-ready controller management
   final VideoControllerRegistry _registry = VideoControllerRegistry();
@@ -103,6 +120,9 @@ class _VideoPlayerViewOptimizedState
   // Stream subscription for real-time comment count updates
   StreamSubscription<DocumentSnapshot>? _commentCountSubscription;
   int _commentCount = 0; // Real-time comment count
+
+  // Stream subscription for active owner changes (to resume playback when returning to view)
+  StreamSubscription<String?>? _activeOwnerSubscription;
 
   // Network error recovery: Retry logic
   int _videoRetryCount = 0;
@@ -120,17 +140,97 @@ class _VideoPlayerViewOptimizedState
       false; // Track if we've updated preferences (>75%)
   double _lastWatchPercentage =
       0.0; // Track last watch percentage for skip detection
+  String? _playbackError;
+  bool _isInitializing = false;
+  String? _overrideVideoUrl;
+  bool _hasRefreshedUrl = false;
+
+  Future<void> _disposeVideoController() async {
+    if (_isDisposingController || _isDisposed) {
+      debugPrint('[VideoPlayer] dispose skipped (already disposing/disposed)');
+      return;
+    }
+    _isDisposingController = true;
+    final controller = _videoPlayerController;
+    _videoPlayerController = null;
+    _isInitialized = false;
+    if (controller == null) {
+      _isDisposingController = false;
+      return;
+    }
+    try {
+      final owner = _ownerKey;
+      debugPrint(
+          '[VideoPlayer] unregister owner=$owner controller=${controller.hashCode}');
+      GlobalPlaybackManager.instance.unregisterController(widget.video.id);
+      try {
+        controller.removeListener(_videoErrorListener);
+        controller.removeListener(_videoStateListener);
+      } catch (_) {}
+      try {
+        await controller.pause();
+        await controller.setVolume(0.0);
+      } catch (_) {}
+      try {
+        await controller.dispose();
+      } catch (e, st) {
+        debugPrint('[VideoPlayer] dispose error: $e\n$st');
+      }
+      _isDisposed = true;
+    } finally {
+      _isDisposingController = false;
+    }
+  }
+
+  Future<void> _pauseAndMuteController() async {
+    final controller = _videoPlayerController;
+    if (controller == null) return;
+    try {
+      await controller.pause();
+      await controller.setVolume(0.0);
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _isPlaying = false;
+      });
+    }
+  }
+
+  Future<void> _releaseInactiveController() async {
+    await _pauseAndMuteController();
+    try {
+      GlobalPlaybackManager.instance.unregisterController(widget.video.id);
+    } catch (_) {}
+    try {
+      _registry.markHidden(widget.video.id);
+      _registry.dispose(widget.video.id);
+    } catch (_) {}
+    await _disposeVideoController();
+  }
+
+  bool _canUseController(VideoPlayerController? controller) {
+    if (_isDisposed || controller == null) return false;
+    try {
+      final value = controller.value;
+      return value.isInitialized && !value.hasError;
+    } catch (_) {
+      return false;
+    }
+  }
 
   VideoPlayerController? _obtainActiveController() {
-    if (_isDisposed) return null;
+    if (_isDisposed || _isDisposingController) return null;
 
     if (_registry.isControllerDisposed(widget.video.id)) {
-      _markControllerDisposed(reason: 'Registry reported disposal');
-      return null;
+      _registry.resetDisposed(widget.video.id);
     }
 
     final registryController = _registry.getController(widget.video.id);
     if (registryController != null) {
+      if (!_canUseController(registryController)) {
+        _registry.dispose(widget.video.id);
+        return null;
+      }
       if (!identical(registryController, _videoPlayerController)) {
         _videoPlayerController = registryController;
       }
@@ -140,6 +240,10 @@ class _VideoPlayerViewOptimizedState
     final playbackController =
         GlobalPlaybackManager.instance.getController(widget.video.id);
     if (playbackController != null) {
+      if (!_canUseController(playbackController)) {
+        GlobalPlaybackManager.instance.unregisterController(widget.video.id);
+        return null;
+      }
       if (!identical(playbackController, _videoPlayerController)) {
         _videoPlayerController = playbackController;
       }
@@ -159,9 +263,16 @@ class _VideoPlayerViewOptimizedState
   void _markControllerDisposed({Object? error, String? reason}) {
     if (_isDisposed) return;
     _isDisposed = true;
+    _isDisposingController = false;
     _isInitialized = false;
     _videoPlayerController = null;
     _stopWatchTimeTracking();
+    try {
+      GlobalPlaybackManager.instance.unregisterController(widget.video.id);
+    } catch (_) {}
+    try {
+      _registry.dispose(widget.video.id);
+    } catch (_) {}
 
     final message =
         'Controller disposed for ${widget.video.id}${reason != null ? ' ($reason)' : ''}';
@@ -469,18 +580,60 @@ class _VideoPlayerViewOptimizedState
   }
 
   Future<bool> _safePlay() async {
+    // 🔥 CRITICAL: Guard against disposed/disposing controllers
+    if (!mounted || _isDisposed || _isDisposingController) {
+      debugPrint(
+          '[VideoPlayer] _safePlay aborted (disposed/dispose in progress)');
+      return false;
+    }
+
     if (_registry.isControllerDisposed(widget.video.id)) {
       _markControllerDisposed(reason: 'Registry reported disposal before play');
       return false;
     }
 
+    final playbackManager = GlobalPlaybackManager.instance;
+    final owner = _ownerKey;
+
+    // 🔥 SINGLE ACTIVE OWNER: Check if this owner can play
+    if (!playbackManager.canPlay(owner)) {
+      debugPrint(
+          '[VideoPlayer] owner=$owner cannot play (activeOwner: ${playbackManager.activeOwner}, blockLevel: ${playbackManager.blockLevel})');
+      // Mute and pause if not the active owner
+      final controller = _obtainActiveController();
+      if (controller != null && controller.value.isInitialized) {
+        try {
+          await controller.setVolume(0.0);
+          if (controller.value.isPlaying) {
+            await controller.pause();
+          }
+        } catch (e) {
+          debugPrint('[VideoPlayer] Error muting non-active owner: $e');
+        }
+      }
+      return false;
+    }
+
+    if (kDebugMode) {
+      debugPrint('[VideoPlayer] _safePlay owner=$owner '
+          'isBlocked=${playbackManager.isPlaybackBlocked} '
+          'audioUnmuted=$_audioUnmuted');
+    }
+
     final controller = _obtainActiveController();
     if (controller == null) {
+      debugPrint(
+          '[VideoPlayer] _safePlay aborted (no controller/!initialized)');
       _logger.warn('Cannot play: controller unavailable', tag: 'VideoPlayer');
       return false;
     }
 
-    // 🔒 SAFETY: Check if controller is disposed before accessing value
+    if (!controller.value.isInitialized) {
+      debugPrint(
+          '[VideoPlayer] _safePlay aborted (controller not initialized)');
+      return false;
+    }
+
     if (_isDisposed || _registry.isControllerDisposed(widget.video.id)) {
       return false;
     }
@@ -491,20 +644,15 @@ class _VideoPlayerViewOptimizedState
             '▶️ VideoPlayer: Starting playback for videoId: ${widget.video.id}');
       }
 
-      if (_audioUnmuted) {
+      // Check if owner is profile or player for audio unmuting
+      final isProfileOrPlayerOwner =
+          owner == PlaybackOwners.profile || owner == PlaybackOwners.player;
+      if (_audioUnmuted || isProfileOrPlayerOwner) {
         try {
-          // 🔒 SAFETY: Check if controller is safe before accessing value
           if (_isDisposed || _registry.isControllerDisposed(widget.video.id)) {
             return false;
           }
-          
-          // 🔥 CRITICAL: Check if playback is blocked BEFORE restoring volume
-          final playbackManager = GlobalPlaybackManager.instance;
-          if (playbackManager.isPlaybackBlocked) {
-            log('🚫 VideoPlayer: Playback is BLOCKED, keeping volume at 0.0: ${widget.video.id}');
-            return false; // Don't play if blocked
-          }
-          
+
           final value = controller.value;
           if (!value.isInitialized || value.hasError) {
             return false;
@@ -514,6 +662,9 @@ class _VideoPlayerViewOptimizedState
               debugPrint('🔊 VideoPlayer: Restoring volume to 1.0 before play');
             }
             await controller.setVolume(1.0);
+            if (!_audioUnmuted && mounted) {
+              setState(() => _audioUnmuted = true);
+            }
           }
         } catch (e) {
           log('⚠️ VideoPlayer: Error checking/setting volume: $e');
@@ -536,6 +687,13 @@ class _VideoPlayerViewOptimizedState
   }
 
   Future<bool> _safePause() async {
+    // 🔥 CRITICAL: Guard against disposed/disposing controllers
+    if (!mounted || _isDisposed || _isDisposingController) {
+      debugPrint(
+          '[VideoPlayer] _safePause aborted (disposed/dispose in progress)');
+      return false;
+    }
+
     if (_registry.isControllerDisposed(widget.video.id)) {
       _markControllerDisposed(
           reason: 'Registry reported disposal before pause');
@@ -544,12 +702,22 @@ class _VideoPlayerViewOptimizedState
 
     final controller = _obtainActiveController();
     if (controller == null) {
+      debugPrint(
+          '[VideoPlayer] _safePause aborted (no controller/!initialized)');
       _logger.warn('Cannot pause: controller unavailable', tag: 'VideoPlayer');
       return false;
     }
 
+    if (!controller.value.isInitialized) {
+      debugPrint(
+          '[VideoPlayer] _safePause aborted (controller not initialized)');
+      return false;
+    }
+
     try {
-      await controller.pause();
+      if (controller.value.isPlaying) {
+        await controller.pause();
+      }
       _stopWatchTimeTracking();
       _logger.debug('Video paused: ${widget.video.id}', tag: 'VideoPlayer');
       return true;
@@ -560,93 +728,10 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
-  /// Handle video entering view with resume/restart logic
-  Future<void> _handleVideoEnter() async {
-    // 🔥 CRITICAL: Check if playback is blocked BEFORE handling video enter
-    final playbackManager = GlobalPlaybackManager.instance;
-    if (playbackManager.isPlaybackBlocked) {
-      log('🚫 VideoPlayer: Playback is BLOCKED, not handling video enter: ${widget.video.id}');
-      // Ensure video is muted if blocked
-      _safeSetVolume(0.0);
-      return; // Don't handle enter if blocked
-    }
-    
-    // Check if controller is initialized
-    if (_videoPlayerController == null || !_isInitialized) {
-      // Controller not ready yet - initialize and then handle enter
-      await _initializeVideo();
-      // After initialization, check resume again
-      if (_videoPlayerController == null || !_isInitialized) {
-        // Still not ready, just play from start
-        _applyAudioEnhancement().then((_) async {
-          await _safeSetVolume(1.0);
-          if (mounted) {
-            setState(() => _audioUnmuted = true);
-          }
-          await _safePlay();
-          if (mounted) {
-            setState(() => _isPlaying = true);
-          }
-        });
-        return;
-      }
-    }
-
-    // Get target position from resume service
-    final targetPosition = await _resumeService.onPageEnter(widget.video.id);
-    Duration seekTarget = Duration.zero;
-
-    if (targetPosition != null) {
-      // Resume from saved position
-      seekTarget = targetPosition;
-      log('▶️ VideoResume: Resuming ${widget.video.id} from ${seekTarget.inSeconds}s');
-    } else {
-      // Restart from beginning
-      seekTarget = Duration.zero;
-      log('▶️ VideoResume: Restarting ${widget.video.id} from beginning');
-    }
-
-    // Ensure controller is initialized before seeking
-    if (_videoPlayerController == null || _isDisposed) {
-      return;
-    }
-    try {
-      final controllerValue = _videoPlayerController!.value;
-      if (!controllerValue.isInitialized) {
-        await _videoPlayerController!.initialize();
-      }
-    } catch (e) {
-      log('⚠️ VideoPlayer: Error checking controller initialization: $e');
-      return;
-    }
-
-    // Seek to target position
-    try {
-      await _videoPlayerController!.seekTo(seekTarget);
-      log('▶️ VideoResume: Seeked to ${seekTarget.inSeconds}s for ${widget.video.id}');
-    } catch (e) {
-      log('⚠️ VideoResume: Error seeking to ${seekTarget.inSeconds}s: $e');
-      // Fallback to beginning on error
-      seekTarget = Duration.zero;
-    }
-
-    // Apply audio enhancement and play
-    _applyAudioEnhancement().then((_) async {
-      await _safeSetVolume(1.0);
-      if (mounted) {
-        setState(() => _audioUnmuted = true);
-      }
-
-      await _safePlay();
-      if (mounted) {
-        setState(() => _isPlaying = true);
-      }
-
-      log('🔊 Video became current and is now playing with enhanced audio: ${widget.video.id}');
-      debugPrint(
-          '🔊 Video became current and is now playing with enhanced audio: ${widget.video.id} (position: ${seekTarget.inSeconds}s)');
-    });
-  }
+  // ✅ REMOVED: _handleVideoEnter() method - no longer needed
+  // All playback now goes through requestFocus() → activate() → play() single path
+  // This eliminates duplicate play calls and double audio issues
+  // Resume/seek logic is handled elsewhere in the codebase
 
   // Key for like button (for floating hearts animation)
   final GlobalKey _likeButtonKey = GlobalKey();
@@ -668,17 +753,40 @@ class _VideoPlayerViewOptimizedState
     // Initialize real-time comment count listener
     _initializeCommentCountListener();
 
+    // 🔄 RESUME ON OWNER CHANGE: Listen for active owner changes to resume playback
+    _activeOwnerSubscription =
+        GlobalPlaybackManager.instance.activeOwnerStream.listen((activeOwner) {
+      if (!mounted || _isDisposed) return;
+
+      final owner = _ownerKey;
+      // 🔥 SINGLE ACTIVE OWNER: Use hierarchical matching (e.g., 'home/forYou' matches 'home')
+      final ownerMatches = activeOwner != null &&
+          (owner == activeOwner || owner.startsWith('$activeOwner/'));
+
+      // ✅ FIX: Only request focus if video is paused - don't call _handleVideoEnter() to avoid duplicate play
+      // requestFocus() → activate() already handles playback, _handleVideoEnter() would cause double audio
+      if (ownerMatches && widget.isCurrentVideo && _isInitialized) {
+        final controller = _obtainActiveController();
+        if (controller != null && controller.value.isInitialized) {
+          // 🚀 TIKTOK-STYLE: Instantly resume if paused (no delay)
+          if (!controller.value.isPlaying) {
+            log('🔄 VideoPlayer: Owner $owner became active, requesting focus for current video: ${widget.video.id}');
+            // Use requestFocus() instead of _handleVideoEnter() to avoid duplicate play calls
+            if (mounted && !_isDisposed && widget.isCurrentVideo) {
+              GlobalPlaybackManager.instance
+                  .requestFocus(widget.video.id, _ownerKey);
+            }
+          }
+        }
+      }
+    });
+
     // 🚀 INSTANT PLAYBACK: Initialize video immediately for instant playback
     // Start initialization immediately, don't wait
     _initializeVideo().then((_) {
-      // Once initialized, if this is the current video, play immediately
-      if (widget.isCurrentVideo && mounted && _isInitialized) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_isDisposed) {
-            _handleVideoEnter();
-          }
-        });
-      }
+      // ✅ FIX: _initializeVideo() already calls requestFocus() if video is current (line 1275)
+      // Don't call _handleVideoEnter() here to avoid duplicate play calls
+      // requestFocus() → activate() already handles playback, _handleVideoEnter() would cause double audio
     }).catchError((e) {
       log('⚠️ VideoPlayer: Error initializing video ${widget.video.id}: $e');
     });
@@ -689,22 +797,20 @@ class _VideoPlayerViewOptimizedState
     // Removed WidgetsBinding observer - GlobalPlaybackManager handles lifecycle
     // WidgetsBinding.instance.removeObserver(this);
 
-    // 🔖 MEMORY LEAK FIX: Clean up bookmark subscription
     _bookmarkSubscription?.cancel();
     _bookmarkSubscription = null;
 
-    // 💬 MEMORY LEAK FIX: Clean up comment count subscription
     _commentCountSubscription?.cancel();
     _commentCountSubscription = null;
 
-    // 🚀 VIRAL ALGORITHM: Stop watch time tracking
+    _activeOwnerSubscription?.cancel();
+    _activeOwnerSubscription = null;
+
     _stopWatchTimeTracking();
 
-    // Track performance
     PerformanceService()
         .trackVideoPlayback(widget.video.id, PlaybackEvent.pause);
 
-    // Unregister from global playback manager (safe to call even if widget is disposed)
     try {
       final playbackManager = GlobalPlaybackManager.instance;
       playbackManager.unregisterController(widget.video.id);
@@ -713,7 +819,6 @@ class _VideoPlayerViewOptimizedState
       log('⚠️ VideoPlayer: Could not unregister from PlaybackManager (widget already disposed): $e');
     }
 
-    // 🔒 SAFETY: Unregister from VideoControllerRegistry
     try {
       _registry.markHidden(widget.video.id);
       _registry.dispose(widget.video.id);
@@ -722,42 +827,8 @@ class _VideoPlayerViewOptimizedState
       log('⚠️ VideoPlayer: Could not unregister from Registry (widget already disposed): $e');
     }
 
-    // Controllers now unregistered from GlobalPlaybackManager only
-
-    // 🔒 SAFETY: Mark as disposed first to prevent listener callbacks
     _isDisposed = true;
-
-    // 🔒 CRITICAL: Remove listeners FIRST before any other operations
-    // This prevents listeners from firing after disposal
-    if (_videoPlayerController != null) {
-      try {
-        _videoPlayerController!.removeListener(_videoErrorListener);
-        _videoPlayerController!.removeListener(_videoStateListener);
-        log('🔒 VideoPlayer: Removed listeners for ${widget.video.id}');
-      } catch (e) {
-        log('⚠️ VideoPlayer: Error removing listeners (controller may be disposed): $e');
-      }
-    }
-
-    // With AutomaticKeepAliveClientMixin and preloader, we don't dispose controllers here
-    // The VideoPreloaderService manages controller lifecycle
-    if (_videoPlayerController != null) {
-      try {
-        // Check if controller is still valid before pausing
-        final controllerValue = _videoPlayerController!.value;
-        if (controllerValue.isInitialized && !controllerValue.hasError) {
-          _videoPlayerController!.pause(); // Pause but don't dispose
-          _videoPlayerController!.setVolume(0.0); // Mute but don't dispose
-          log('🔄 Widget dispose: Paused controller for ${widget.video.id} (managed by preloader)');
-        }
-      } catch (e) {
-        // Controller was disposed - this is expected in some cases
-        log('⚠️ Widget dispose: Controller already disposed for ${widget.video.id}: $e');
-      } finally {
-        // Don't set _videoPlayerController = null - keep reference for preloader
-        // _isDisposed is already set to true above
-      }
-    }
+    _releaseInactiveController();
 
     super.dispose();
   }
@@ -765,6 +836,14 @@ class _VideoPlayerViewOptimizedState
   @override
   void didUpdateWidget(covariant VideoPlayerViewOptimized oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.video.videoURL != widget.video.videoURL) {
+      _overrideVideoUrl = null;
+      _hasRefreshedUrl = false;
+      _isDisposed = false;
+      _initializeVideo();
+      return;
+    }
 
     if (_registry.isControllerDisposed(widget.video.id)) {
       _markControllerDisposed(
@@ -794,9 +873,9 @@ class _VideoPlayerViewOptimizedState
             _isInitialized = true;
             log('✅ VideoPlayer: Controller is already initialized, resuming playback: ${widget.video.id}');
 
-            // Immediately request focus and play
+            // ✅ FIX: Only request focus - activate() already plays, don't call _handleVideoEnter() to avoid duplicate play
             playbackManager.requestFocus(widget.video.id, widget.tabId);
-            _handleVideoEnter();
+            // Note: _handleVideoEnter() not needed here - requestFocus() → activate() already handles playback
             return;
           } else {
             log('⚠️ VideoPlayer: Controller exists but not initialized, will reinitialize: ${widget.video.id}');
@@ -822,13 +901,30 @@ class _VideoPlayerViewOptimizedState
       }
     }
 
+    // If active state changed, enforce play/pause and avoid audio bleed
+    if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
+      if (!widget.isCurrentVideo) {
+        _releaseInactiveController();
+        return;
+      } else {
+        // ✅ FIX: Use requestFocus() instead of _safePlay() to avoid duplicate play calls
+        // requestFocus() calls activate() which handles playback correctly
+        if (_videoPlayerController != null && _isInitialized && !_isDisposed) {
+          GlobalPlaybackManager.instance
+              .requestFocus(widget.video.id, widget.tabId);
+        } else if (!_isDisposed) {
+          _initializeVideo();
+        }
+        return;
+      }
+    }
+
     // Normal update logic - only proceed if controller is ready
     if (_videoPlayerController == null || !_isInitialized || _isDisposed)
       return;
 
     // 🔥 FIX: Prevent excessive rebuilds by checking if anything actually changed
-    if (oldWidget.isCurrentVideo == widget.isCurrentVideo &&
-        oldWidget.video.id == widget.video.id) {
+    if (oldWidget.video.id == widget.video.id) {
       return; // Nothing important changed, skip processing
     }
 
@@ -863,8 +959,9 @@ class _VideoPlayerViewOptimizedState
         _hasUpdatedPreferences = false;
         _lastWatchPercentage = 0.0;
 
-        // This video is now current - check if we should resume or restart
-        _handleVideoEnter();
+        // ✅ FIX: Don't call _handleVideoEnter() here - requestFocus() → activate() already plays the video
+        // _handleVideoEnter() would cause duplicate play() calls leading to double audio
+        // Only handle resume/seek logic if needed, but don't call play again
       } else {
         // 🔊 AUDIO FIX: Video is no longer current - mute FIRST, then pause
         // This prevents audio bleeding during fast swipes
@@ -928,7 +1025,7 @@ class _VideoPlayerViewOptimizedState
     // 🔊 AUDIO FIX: Ensure focus if this video is current (but only if not blocked)
     if (widget.isCurrentVideo) {
       final playbackManager = GlobalPlaybackManager.instance;
-      
+
       // 🔥 CRITICAL: Check if playback is blocked BEFORE requesting focus
       if (playbackManager.isPlaybackBlocked) {
         log('🚫 VideoPlayer: Playback is BLOCKED, not requesting focus: ${widget.video.id}');
@@ -936,7 +1033,7 @@ class _VideoPlayerViewOptimizedState
         _safeSetVolume(0.0);
         return; // Don't request focus if blocked
       }
-      
+
       if (playbackManager.activeVideoId != widget.video.id) {
         log('🎵 VideoPlayer: Current video doesn\'t have focus, requesting it: ${widget.video.id}');
         playbackManager.requestFocus(widget.video.id, widget.tabId);
@@ -952,28 +1049,39 @@ class _VideoPlayerViewOptimizedState
   // This prevents video from pausing when opening modals (CommentsView, ShareSheet, etc.)
 
   Future<void> _initializeVideo({bool isRetry = false}) async {
+    if (_isInitializing) return;
+    _isInitializing = true;
     // Start performance tracking
     PerformanceService().startVideoLoad(widget.video.id);
 
     try {
-      // Create controller directly - registry will handle safety
+      _registry.resetDisposed(widget.video.id);
+      final url = (_overrideVideoUrl ?? widget.video.videoURL).trim();
+      _playbackError = null;
+      if (url.isEmpty) {
+        _playbackError = 'No playable video source.';
+        _handleVideoError(_playbackError!);
+        return;
+      }
+
+      await _disposeVideoController();
+      _isDisposed = false;
+
       _logger.debug('Creating video controller for: ${widget.video.id}',
           tag: 'VideoPlayer');
+      debugPrint('🎥 Initializing controller for ${widget.video.id} url=$url');
 
       _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.video.videoURL),
+        Uri.parse(url),
         videoPlayerOptions: VideoPlayerOptions(
           mixWithOthers: true,
           allowBackgroundPlayback: false,
         ),
       );
 
-      // 🚀 INSTANT SWITCHING: Aggressive initialization for seamless playback
-      await _videoPlayerController!.initialize().timeout(
-            const Duration(
-                seconds: 12), // Increased timeout for better success rate
-            onTimeout: () => throw Exception('Video initialization timeout'),
-          );
+      await _videoPlayerController!
+          .initialize()
+          .timeout(const Duration(seconds: 15));
 
       // Reset retry count on success
       _videoRetryCount = 0;
@@ -1004,24 +1112,25 @@ class _VideoPlayerViewOptimizedState
       }
 
       // 🔊 AUDIO FIX: Register with GlobalPlaybackManager (single registration)
+      final owner = _ownerKey;
+      debugPrint(
+          '[VideoPlayer] register owner=$owner controller=${_videoPlayerController.hashCode}');
       GlobalPlaybackManager.instance.registerController(
         widget.video.id,
         _videoPlayerController!,
-        owner: widget.tabId,
+        owner: owner,
       );
-      log('🎵 VideoPlayer: Registered controller with PlaybackManager for video ${widget.video.id}');
+      log('🎵 VideoPlayer: Registered controller with PlaybackManager for video ${widget.video.id} (owner: $owner)');
 
       // 🔒 SAFETY: Register with VideoControllerRegistry for safety checks
       final registrationSuccess =
           _registry.register(widget.video.id, _videoPlayerController!);
+      _wasRegistered = true;
+      _registry.markVisible(widget.video.id);
       if (registrationSuccess) {
-        _wasRegistered = true;
-        _registry
-            .markVisible(widget.video.id); // Mark as visible for current video
         log('🔒 VideoPlayer: Registered controller with Registry for safety checks: ${widget.video.id}');
       } else {
-        log('⚠️ VideoPlayer: Controller registration failed for video ${widget.video.id}');
-        _wasRegistered = true; // Already registered elsewhere
+        log('⚠️ VideoPlayer: Controller already registered in Registry: ${widget.video.id}');
       }
 
       _isInitialized = true;
@@ -1029,6 +1138,8 @@ class _VideoPlayerViewOptimizedState
           tag: 'VideoPlayer');
 
       // 🚀 INSTANT PLAYBACK: Auto-play immediately if this is the current video
+      // ✅ FIX: Removed duplicate _safePlay() call - activate() handles playback
+      // This prevents the video from starting then restarting
       if (widget.isCurrentVideo && mounted && !_isDisposed) {
         debugPrint(
             '🎯 VideoPlayer: Auto-playing current video INSTANTLY - videoId: ${widget.video.id}');
@@ -1036,26 +1147,27 @@ class _VideoPlayerViewOptimizedState
         // 🔊 AUDIO FIX: Check if playback is blocked BEFORE activating
         final playbackManager = ref.read(globalPlaybackManagerProvider);
         if (playbackManager.isPlaybackBlocked) {
-          debugPrint('🚫 VideoPlayer: Playback is BLOCKED, not activating video: ${widget.video.id}');
+          debugPrint(
+              '🚫 VideoPlayer: Playback is BLOCKED, not activating video: ${widget.video.id}');
           // Ensure video is muted if blocked
           _safeSetVolume(0.0);
           return; // Don't activate if blocked
         }
 
-        // 🔊 AUDIO FIX: Use GlobalPlaybackManager exclusively - activate() already plays the video
-        // Don't call _safePlay() separately to avoid duplicate play calls that cause restart
-        playbackManager.activate(widget.video.id, owner: widget.tabId);
+        // 🔊 AUDIO FIX: Use requestFocus() instead of activate() directly
+        // requestFocus() checks canPlay() and handles owner validation
+        playbackManager.requestFocus(widget.video.id, _ownerKey);
 
-        // Apply audio enhancement and set volume (activate() handles the actual play)
+        // Apply audio enhancement and set volume (requestFocus() → activate() handles the actual play)
         _applyAudioEnhancement();
         _safeSetVolume(1.0).then((_) {
           if (mounted && !_isDisposed) {
             setState(() => _audioUnmuted = true);
           }
         });
-        
-        // ✅ FIX: Removed duplicate _safePlay() call - activate() already plays the video
-        // This prevents the video from starting then restarting
+
+        // ✅ FIX: Don't call _handleVideoEnter() here - requestFocus() → activate() already plays
+        // This prevents duplicate play calls that cause double audio
         if (mounted && !_isDisposed) {
           setState(() => _isPlaying = true);
         }
@@ -1081,11 +1193,19 @@ class _VideoPlayerViewOptimizedState
           log('⚠️ VideoResume: Error getting resume position: $e');
         });
       }
+    } on TimeoutException catch (_) {
+      _logger.error('Error initializing video: ${widget.video.id}',
+          tag: 'VideoPlayer', error: 'Initialization timeout');
+      _playbackError =
+          'Video took too long to load. Check connection and retry.';
+      if (mounted && !_isDisposed) {
+        _handleVideoError(_playbackError!);
+      }
+      await _disposeVideoController();
     } catch (e) {
       _logger.error('Error initializing video: ${widget.video.id}',
           tag: 'VideoPlayer', error: e);
 
-      // Network error recovery: Automatic retry with exponential backoff
       final errorString = e.toString().toLowerCase();
       final isNetworkError = errorString.contains('network') ||
           errorString.contains('connection') ||
@@ -1093,7 +1213,19 @@ class _VideoPlayerViewOptimizedState
           errorString.contains('socket') ||
           errorString.contains('failed host lookup');
 
-      if (isNetworkError && _videoRetryCount < _maxVideoRetries && mounted && !_isDisposed) {
+      if (!_hasRefreshedUrl && mounted && !_isDisposed) {
+        _hasRefreshedUrl = true;
+        final refreshed = await _tryRefreshPlaybackUrl();
+        if (refreshed) {
+          await _disposeVideoController();
+          return;
+        }
+      }
+
+      if (isNetworkError &&
+          _videoRetryCount < _maxVideoRetries &&
+          mounted &&
+          !_isDisposed) {
         _videoRetryCount++;
         final retryDelay = Duration(
           seconds: _videoRetryDelay.inSeconds * _videoRetryCount,
@@ -1105,27 +1237,23 @@ class _VideoPlayerViewOptimizedState
           );
         }
 
-        // Dispose current controller before retry
-        try {
-          _videoPlayerController?.dispose();
-          _videoPlayerController = null;
-        } catch (_) {
-          // Ignore disposal errors
-        }
+        await _disposeVideoController();
 
-        // Retry after delay
         Future.delayed(retryDelay, () {
           if (mounted && !_isDisposed) {
             _initializeVideo(isRetry: true);
           }
         });
       } else {
-        // Max retries reached or non-network error - show error message
+        _playbackError = 'Video format not supported or source unavailable. $e';
         if (mounted && !_isDisposed) {
-          _handleVideoError(e);
+          _handleVideoError(_playbackError!);
         }
-        _videoRetryCount = 0; // Reset for next attempt
+        _videoRetryCount = 0;
+        await _disposeVideoController();
       }
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -1149,13 +1277,9 @@ class _VideoPlayerViewOptimizedState
   }
 
   void _videoErrorListener() {
-    // 🔒 SAFETY: Check if widget is still mounted and controller is valid
-    if (!mounted || _videoPlayerController == null || _isDisposed) {
-      return;
-    }
+    if (!mounted || !_canUseController(_videoPlayerController)) return;
 
     try {
-      // 🔒 CRITICAL: Try to access controller value - if it throws, controller is disposed
       final controllerValue = _videoPlayerController!.value;
       if (controllerValue.hasError) {
         final error = controllerValue.errorDescription ?? 'Unknown video error';
@@ -1163,25 +1287,16 @@ class _VideoPlayerViewOptimizedState
         _handleVideoError(Exception(error));
       }
     } catch (e) {
-      // Controller was disposed, remove listener to prevent further calls
       log('⚠️ VideoPlayer: Controller disposed during error listener: $e');
       _markControllerDisposed(error: e, reason: 'error listener');
-      try {
-        _videoPlayerController?.removeListener(_videoErrorListener);
-      } catch (_) {
-        // Ignore - controller is already disposed
-      }
+      _videoPlayerController?.removeListener(_videoErrorListener);
     }
   }
 
   void _videoStateListener() {
-    // 🔒 SAFETY: Check if widget is still mounted and controller is valid
-    if (!mounted || _videoPlayerController == null || _isDisposed) {
-      return;
-    }
+    if (!mounted || !_canUseController(_videoPlayerController)) return;
 
     try {
-      // 🔒 CRITICAL: Try to access controller value - if it throws, controller is disposed
       final controllerValue = _videoPlayerController!.value;
       final isPlaying = controllerValue.isPlaying;
       if (isPlaying != _isPlaying && mounted) {
@@ -1195,14 +1310,9 @@ class _VideoPlayerViewOptimizedState
         }
       }
     } catch (e) {
-      // Controller was disposed, remove listener to prevent further calls
       log('⚠️ VideoPlayer: Controller disposed during state listener: $e');
       _markControllerDisposed(error: e, reason: 'state listener');
-      try {
-        _videoPlayerController?.removeListener(_videoStateListener);
-      } catch (_) {
-        // Ignore - controller is already disposed
-      }
+      _videoPlayerController?.removeListener(_videoStateListener);
     }
   }
 
@@ -1212,25 +1322,10 @@ class _VideoPlayerViewOptimizedState
       debugPrint('🎥 Video Error (Handled): $error');
     }
 
-    // Show user-friendly error message
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Video playback error: ${_getUserFriendlyErrorMessage(error)}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'Retry',
-            textColor: Colors.white,
-            onPressed: () {
-              // Retry video initialization
-              _initializeVideo();
-            },
-          ),
-        ),
-      );
-    }
+    if (!mounted) return;
+    setState(() {
+      _playbackError = _getUserFriendlyErrorMessage(error);
+    });
   }
 
   String _getUserFriendlyErrorMessage(dynamic error) {
@@ -1280,13 +1375,23 @@ class _VideoPlayerViewOptimizedState
       return;
     }
 
-    // 🔥 CRITICAL: Check if playback is blocked BEFORE unmuting/playing
+    // 🔥 CRITICAL: Check if playback is blocked or owner cannot play BEFORE unmuting/playing
     final playbackManager = GlobalPlaybackManager.instance;
+    final owner = _ownerKey;
+
     if (playbackManager.isPlaybackBlocked) {
       log('🚫 VideoPlayer: Playback is BLOCKED, not toggling play/pause: ${widget.video.id}');
       // Ensure video stays muted if blocked
       _safeSetVolume(0.0);
       return; // Don't toggle if blocked
+    }
+
+    // 🔥 SINGLE ACTIVE OWNER: Check if owner can play before allowing toggle
+    if (!playbackManager.canPlay(owner)) {
+      log('🚫 VideoPlayer: Owner $owner cannot play, not toggling play/pause: ${widget.video.id}');
+      // Ensure video stays muted if not active owner
+      _safeSetVolume(0.0);
+      return; // Don't toggle if not active owner
     }
 
     // Unmute audio on first user interaction with TikTok-style enhancement
@@ -1406,6 +1511,37 @@ class _VideoPlayerViewOptimizedState
         _hasIncrementedView = true;
         _incrementViewCount();
       }
+    }
+  }
+
+  Future<bool> _tryRefreshPlaybackUrl() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('videos')
+          .doc(widget.video.id)
+          .get();
+      if (!snapshot.exists) return false;
+      final data = snapshot.data();
+      if (data == null) return false;
+      final status = data['status'] as String?;
+      if (status != null && status.isNotEmpty && status != 'ready') {
+        final message = status == 'processing'
+            ? 'Video is still processing. Please try again shortly.'
+            : 'Video is not ready yet.';
+        if (mounted) _handleVideoError(message);
+        return true;
+      }
+      final resolved = resolveVideoUrl(data);
+      final current = _overrideVideoUrl ?? widget.video.videoURL;
+      if (resolved.isEmpty || resolved == current) return false;
+      _overrideVideoUrl = resolved;
+      if (mounted && !_isDisposed) {
+        _initializeVideo(isRetry: true);
+      }
+      return true;
+    } catch (e) {
+      log('⚠️ VideoPlayer: Failed to refresh playback URL: $e');
+      return false;
     }
   }
 
@@ -2012,11 +2148,36 @@ class _VideoPlayerViewOptimizedState
     if ((_videoPlayerController == null || !_isInitialized || _isDisposed) &&
         widget.isCurrentVideo &&
         mounted) {
+      if (_registry.isControllerDisposed(widget.video.id)) {
+        _registry.resetDisposed(widget.video.id);
+      }
       final playbackManager = GlobalPlaybackManager.instance;
       final existingController = playbackManager.getController(widget.video.id);
 
       if (existingController != null &&
           playbackManager.hasController(widget.video.id)) {
+        if (!_canUseController(existingController)) {
+          log('⚠️ VideoPlayer: Existing controller is stale/disposed, recreating: ${widget.video.id}');
+          playbackManager.unregisterController(widget.video.id);
+          _registry.dispose(widget.video.id);
+          _videoPlayerController = null;
+          _isDisposed = false;
+          _isInitialized = false;
+          _initializeVideo();
+          return Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: double.infinity,
+            child: widget.isCurrentVideo
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : null,
+          );
+        }
         log('✅ VideoPlayer: Found existing controller in pool during build, reusing: ${widget.video.id}');
         _videoPlayerController = existingController;
         _isDisposed = false;
@@ -2027,14 +2188,9 @@ class _VideoPlayerViewOptimizedState
               !existingController.value.hasError) {
             _isInitialized = true;
             log('✅ VideoPlayer: Existing controller is initialized, resuming: ${widget.video.id}');
-            // Request focus immediately to resume playback
+            // ✅ FIX: Only request focus - activate() already plays, don't call _handleVideoEnter() to avoid duplicate play
             playbackManager.requestFocus(widget.video.id, widget.tabId);
-            // Handle video enter to resume/restart
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && widget.isCurrentVideo) {
-                _handleVideoEnter();
-              }
-            });
+            // Note: _handleVideoEnter() not needed - requestFocus() → activate() already handles playback
             // Continue below to show video instead of loading screen - don't return here
           } else {
             log('⚠️ VideoPlayer: Existing controller not initialized, initializing: ${widget.video.id}');
@@ -2054,6 +2210,60 @@ class _VideoPlayerViewOptimizedState
         _isDisposed = false;
         _initializeVideo();
       }
+    }
+
+    // Show inline error with retry instead of silent failures
+    if (_playbackError != null) {
+      final message = _getUserFriendlyErrorMessage(_playbackError!);
+      return Container(
+        color: Colors.black,
+        width: double.infinity,
+        height: double.infinity,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SelectableText.rich(
+                  TextSpan(
+                    text: 'Playback error: ',
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: message,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _playbackError = null;
+                  });
+                  _initializeVideo();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     // 🚀 INSTANT SWITCHING: Only show video when fully ready - no thumbnails during swipes
@@ -2096,7 +2306,9 @@ class _VideoPlayerViewOptimizedState
       }
 
       // 🔒 SAFETY: Verify controller is still valid before accessing controllerValue properties
-      if (_videoPlayerController == null || _isDisposed || _registry.isControllerDisposed(widget.video.id)) {
+      if (_videoPlayerController == null ||
+          _isDisposed ||
+          _registry.isControllerDisposed(widget.video.id)) {
         return Container(
           color: Colors.black,
           width: double.infinity,

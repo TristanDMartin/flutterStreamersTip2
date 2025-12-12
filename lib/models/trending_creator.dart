@@ -16,10 +16,48 @@ class TrendingCreator with _$TrendingCreator {
   }) = _TrendingCreator;
 
   static const List<TrendingCreator> samples = [
-    TrendingCreator(id: "1", username: "GamingPro", displayName: "Gaming Pro", avatarURL: null, followerCount: 150000, isActive: true),
-    TrendingCreator(id: "2", username: "ArtStreamer", displayName: "Art Streamer", avatarURL: null, followerCount: 75000, isActive: false),
-    TrendingCreator(id: "3", username: "MusicLive", displayName: "Music Live", avatarURL: null, followerCount: 200000, isActive: true),
-    TrendingCreator(id: "4", username: "TechReview", displayName: "Tech Review", avatarURL: null, followerCount: 120000, isActive: true),
+    TrendingCreator(
+        id: "1",
+        username: "GamingPro",
+        displayName: "Gaming Pro",
+        avatarURL: null,
+        followerCount: 150000,
+        isActive: true),
+    TrendingCreator(
+        id: "2",
+        username: "ArtStreamer",
+        displayName: "Art Streamer",
+        avatarURL: null,
+        followerCount: 75000,
+        isActive: true),
+    TrendingCreator(
+        id: "3",
+        username: "MusicLive",
+        displayName: "Music Live",
+        avatarURL: null,
+        followerCount: 200000,
+        isActive: true),
+    TrendingCreator(
+        id: "4",
+        username: "TechReview",
+        displayName: "Tech Review",
+        avatarURL: null,
+        followerCount: 120000,
+        isActive: true),
+    TrendingCreator(
+        id: "5",
+        username: "SportsFan",
+        displayName: "Sports Fan",
+        avatarURL: null,
+        followerCount: 180000,
+        isActive: true),
+    TrendingCreator(
+        id: "6",
+        username: "Foodie",
+        displayName: "Foodie",
+        avatarURL: null,
+        followerCount: 95000,
+        isActive: true),
   ];
 }
 
@@ -30,7 +68,8 @@ extension TrendingCreatorExtension on TrendingCreator {
       id: id,
       username: username,
       displayName: displayName ?? username,
-      bio: "Trending creator with ${_formatFollowerCount(followerCount)} followers",
+      bio:
+          "Trending creator with ${_formatFollowerCount(followerCount)} followers",
       avatarURL: avatarURL,
       coverImageURL: null,
       platforms: [],
@@ -47,7 +86,8 @@ extension TrendingCreatorExtension on TrendingCreator {
       id: id,
       username: username,
       displayName: displayName ?? username,
-      bio: "Trending creator with ${_formatFollowerCount(followerCount)} followers",
+      bio:
+          "Trending creator with ${_formatFollowerCount(followerCount)} followers",
       avatarURL: avatarURL,
       onlineStatus: isActive ? 'online' : 'invisible',
       hashtags: [],

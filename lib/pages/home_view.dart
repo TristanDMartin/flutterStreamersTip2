@@ -19,6 +19,7 @@ import '../services/engagement_analytics_service.dart';
 import '../services/unified_algorithm_service.dart';
 import '../services/global_playback_manager.dart';
 import '../services/streamers_tip_like_service.dart';
+import '../constants/playback_owners.dart';
 import '../services/favorites_service_optimized.dart';
 import '../widgets/network_status_widget.dart';
 import '../widgets/discover_view.dart';
@@ -33,6 +34,13 @@ class HomeView extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<HomeView> createState() => _HomeViewState();
+}
+
+/// Lifecycle state for HomeView playback management
+enum HomeViewLifecycleState {
+  idle, // Not visible or active
+  activeOwner, // HomeView owns playback
+  background, // Not visible but will likely return soon
 }
 
 class _HomeViewState extends ConsumerState<HomeView>
@@ -55,9 +63,16 @@ class _HomeViewState extends ConsumerState<HomeView>
   // 🚀 VIRAL ALGORITHM: Ranking cache to prevent excessive re-ranking
   DateTime? _lastRankingTime;
 
-  // ⏱️ MEMORY FIX: Timers for proper cancellation
-  Timer? _resumeTimer;
+  // ⏱️ MEMORY FIX: Timer for proper cancellation
   Timer? _focusTimer;
+
+  // ✅ IMPROVEMENT: Enum-based lifecycle state management
+  HomeViewLifecycleState _lifecycleState = HomeViewLifecycleState.idle;
+  DateTime? _lastReactivateAt;
+  static const Duration _reactivationCooldown = Duration(milliseconds: 500);
+
+  // ✅ IMPROVEMENT: Track navigation to prevent race conditions
+  bool _isNavigatingToDiscover = false;
 
   // _returnCounter removed - now using stable ValueKey(video.id) instead
   // _videoEngagementScores removed - tracked in EngagementAnalyticsService instead
@@ -78,8 +93,9 @@ class _HomeViewState extends ConsumerState<HomeView>
     OfflineDataService();
     EngagementAnalyticsService().initialize();
 
-    // 🔊 AUDIO FIX: Ensure playback manager is unblocked on app startup
-    GlobalPlaybackManager.instance.unblock();
+    // 🎯 SINGLE ACTIVE OWNER: Set HomeView as active owner
+    // setActiveOwner handles pausing/muting non-active owners and allows this owner to play
+    GlobalPlaybackManager.instance.setActiveOwner(PlaybackOwners.home);
 
     // 🚀 VIRAL ALGORITHM: Start tracking session for engagement analytics
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
@@ -95,105 +111,186 @@ class _HomeViewState extends ConsumerState<HomeView>
       _loadUserFavorites(); // Load user's bookmarked videos
       _loadVideos();
       _initializeVideoService();
+
+      // Mark as active on initial load
+      _markAsActiveOwner();
     });
   }
-
-  bool _hasReactivated = false; // Flag to prevent multiple reactivations
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
-    // 🔥 CRITICAL FIX: Detect when HomeView becomes visible again after navigation
-    // This handles returns from NetworkView, ProfileView, etc.
+
+    // ✅ IMPROVEMENT: Simplified lifecycle management with extracted helpers
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      
-      // Check if this route is currently active (visible)
-      final route = ModalRoute.of(context);
-      if (route != null && route.isCurrent) {
-        // Check if playback is blocked (meaning we just returned from another view)
-        final playbackManager = GlobalPlaybackManager.instance;
-        if (playbackManager.isPlaybackBlocked && !_hasReactivated) {
-          log('🔄 HomeView: Detected return from another view - reactivating feed');
-          _hasReactivated = true; // Prevent multiple calls
-          // Unblock and reactivate
-          playbackManager.onEnterHomeView();
-          _reactivateFeed();
-          
-          // Reset flag after a delay to allow future reactivations
-          Future.delayed(const Duration(seconds: 1), () {
-            _hasReactivated = false;
-          });
-        }
-      }
+
+      if (_handleNavigatingAway()) return;
+      _handleReturnedToHome();
     });
+  }
+
+  /// ✅ IMPROVEMENT: Check if we're navigating away and handle accordingly
+  /// Returns true if we're navigating away, false otherwise
+  bool _handleNavigatingAway() {
+    final route = ModalRoute.of(context);
+    final isActiveRoute = route != null && route.isCurrent;
+
+    if (isActiveRoute) return false;
+
+    // We are leaving HomeView
+    if (_lifecycleState == HomeViewLifecycleState.activeOwner) {
+      log('🔇 HomeView: Navigating away - resetting state and pausing videos');
+      _markAsBackground();
+      GlobalPlaybackManager.instance.pauseAll();
+    }
+
+    return true;
+  }
+
+  /// ✅ IMPROVEMENT: Handle return to HomeView with simplified logic
+  void _handleReturnedToHome() {
+    // Don't double-handle if navigation callback is already handling it
+    if (_isNavigatingToDiscover) return;
+
+    final route = ModalRoute.of(context);
+    final playbackManager = GlobalPlaybackManager.instance;
+    final isActiveRoute = route != null && route.isCurrent;
+    final isHomeActiveOwner =
+        playbackManager.activeOwner == PlaybackOwners.home;
+
+    if (!isActiveRoute) return;
+
+    // If we're already the active owner, just mark as active (normal state)
+    if (isHomeActiveOwner) {
+      _markAsActiveOwner();
+      return;
+    }
+
+    // Check if we can reactivate now
+    if (!_canReactivateNow()) return;
+
+    log('🔄 HomeView: Detected return from another view - reactivating feed');
+
+    // Set home as active owner
+    playbackManager.setActiveOwner(PlaybackOwners.home);
+    _markAsActiveOwner();
+
+    // ✅ IMPROVEMENT: Flattened nested postFrameCallback
+    // Resume current video immediately (no nested callback)
+    if (mounted) {
+      _resumeCurrentVideoInstantly();
+    }
+  }
+
+  /// ✅ IMPROVEMENT: Check if reactivation is allowed based on state and cooldown
+  bool _canReactivateNow() {
+    if (_lifecycleState != HomeViewLifecycleState.background) return false;
+    if (_lastReactivateAt == null) return true;
+    return DateTime.now().difference(_lastReactivateAt!) >
+        _reactivationCooldown;
+  }
+
+  /// ✅ IMPROVEMENT: Mark HomeView as the active owner
+  void _markAsActiveOwner() {
+    _lifecycleState = HomeViewLifecycleState.activeOwner;
+    _lastReactivateAt = DateTime.now();
+  }
+
+  /// ✅ IMPROVEMENT: Mark HomeView as background (will return soon)
+  void _markAsBackground() {
+    _lifecycleState = HomeViewLifecycleState.background;
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    
+
     // TIKTOK-STYLE: Notify GlobalPlaybackManager of lifecycle change
     GlobalPlaybackManager.instance.onAppLifecycleChanged(state);
 
     if (state == AppLifecycleState.resumed) {
       log('🔄 HomeView: App resumed - reactivating feed');
 
-      // _returnCounter removed - now using stable ValueKey(video.id) for widget identification
-
-      // SEAMLESS RETURN: Reactivate feed when returning from other views
+      // 🚀 TIKTOK-STYLE: Use instant resume instead of deprecated _reactivateFeed()
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _reactivateFeed();
+          final playbackManager = GlobalPlaybackManager.instance;
+          playbackManager.setActiveOwner(PlaybackOwners.home);
+          _resumeCurrentVideoInstantly();
         }
       });
     }
   }
 
-  /// Reactivate the feed when returning from other views (CameraView, etc.)
-  void _reactivateFeed() {
-    try {
-      log('🚀 HomeView: Reactivating feed after return from other view');
-
-      // 🔥 CRITICAL: Ensure playback is unblocked first
-      final playbackManager = GlobalPlaybackManager.instance;
-      playbackManager.onEnterHomeView();
-
-      // SEAMLESS RETURN: Reload videos to ensure fresh controllers
-      _loadVideos();
-
-      // Resume current video playback after a brief delay
-      _resumeTimer = Timer(const Duration(milliseconds: 300), () {
-        if (mounted) {
-          final homeVM = ref.read(hp.homeProvider.notifier);
-          homeVM.resumeCurrentVideo();
-
-          // Ensure the current video is playing
-          final homeState = ref.read(hp.homeProvider);
-          final activeFeed = ref.read(activeFeedProvider);
-          final currentVideos = activeFeed == FeedTab.forYou
-              ? homeState.forYouVideos
-              : homeState.followingVideos;
-
-          if (_currentIndex < currentVideos.length) {
-            _pauseAllOtherVideos(_currentIndex);
-
-            // Ensure current video gets focus for TikTok-style autoplay
-            final currentVideo = currentVideos[_currentIndex];
-            final ownerId = activeFeed.tabId;
-
-            // 🔊 AUDIO FIX: Use GlobalPlaybackManager for focus
-            log('🎵 HomeView: Reactivating focus for current video: ${currentVideo.id}');
-            playbackManager.requestFocus(currentVideo.id, ownerId);
-          }
-
-          log('✅ HomeView: Feed reactivated successfully');
-        }
-      });
-    } catch (e) {
-      log('❌ HomeView: Error reactivating feed: $e');
+  /// 🚀 TIKTOK-STYLE: Instantly resume current video when returning (no reload, no delay)
+  void _resumeCurrentVideoInstantly() {
+    if (!mounted) {
+      log('⚠️ HomeView: Cannot resume video - widget not mounted');
+      return;
     }
+
+    try {
+      log('🚀 HomeView: Instantly resuming current video (TikTok-style)');
+
+      final playbackManager = GlobalPlaybackManager.instance;
+      final homeState = ref.read(hp.homeProvider);
+      final activeFeed = ref.read(activeFeedProvider);
+      final currentVideos = activeFeed == FeedTab.forYou
+          ? homeState.forYouVideos
+          : homeState.followingVideos;
+
+      if (currentVideos.isEmpty) {
+        log('⚠️ HomeView: No videos available to resume');
+        return;
+      }
+
+      // Ensure index is within bounds
+      final safeIndex = _currentIndex.clamp(0, currentVideos.length - 1);
+      if (safeIndex != _currentIndex) {
+        log('⚠️ HomeView: Index $_currentIndex out of bounds, using $safeIndex');
+        if (mounted) {
+          setState(() {
+            _currentIndex = safeIndex;
+          });
+        }
+      }
+
+      final currentVideo = currentVideos[safeIndex];
+
+      // Validate video before resuming
+      if (currentVideo.id.isEmpty || currentVideo.videoURL.isEmpty) {
+        log('⚠️ HomeView: Invalid video at index $safeIndex, cannot resume');
+        return;
+      }
+
+      final ownerId = activeFeed.tabId;
+
+      // 🚀 TIKTOK-STYLE: Instantly request focus (no delay, no reload)
+      log('🎵 HomeView: Instantly requesting focus for current video: ${currentVideo.id}');
+      playbackManager.requestFocus(currentVideo.id, ownerId);
+
+      log('✅ HomeView: Current video resumed instantly');
+    } catch (e, stackTrace) {
+      log('❌ HomeView: Error resuming current video: $e');
+      log('Stack trace: $stackTrace');
+      _showSnackBar('Unable to resume video playback');
+    }
+  }
+
+  /// ✅ IMPROVEMENT: Show user-friendly error messages
+  void _showSnackBar(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null || !mounted) return;
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   /// Setup favorites manager - equivalent to Swift's .onAppear
@@ -284,19 +381,24 @@ class _HomeViewState extends ConsumerState<HomeView>
       // 🚀 VIRAL ALGORITHM: Apply personalized ranking to loaded videos
       await _applyAlgorithmRanking();
 
-      // Prewarm the first video for instant play (TikTok style)
-      await _prewarmFirstVideo();
-
-      // Ensure first video gets focus for TikTok-style autoplay
-      // Add a delay to ensure video controllers are fully initialized
-      _focusTimer = Timer(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          _ensureFirstVideoFocus();
-        }
-      });
+      // ✅ IMPROVEMENT: Schedule focus with proper timer cancellation
+      // Note: Removed _prewarmFirstVideo() - it was duplicate and used wrong owner ID
+      // _ensureFirstVideoFocus() handles this correctly with proper owner ID
+      _scheduleFocusFirstVideo();
     } catch (e) {
+      log('❌ HomeView: Error loading videos: $e');
+      _showSnackBar('Couldn\'t load your feed. Pull down to retry.');
       ErrorHandlingService().handleError(e, context: 'load_videos');
     }
+  }
+
+  /// ✅ IMPROVEMENT: Schedule focus timer with proper cancellation
+  void _scheduleFocusFirstVideo() {
+    _focusTimer?.cancel(); // Cancel previous timer if exists
+    _focusTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      _ensureFirstVideoFocus();
+    });
   }
 
   /// Apply unified algorithm ranking to videos (VIRAL BOOST)
@@ -365,26 +467,9 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  /// Prewarm the first video for instant play (TikTok style)
-  Future<void> _prewarmFirstVideo() async {
-    try {
-      final homeState = ref.read(hp.homeProvider);
-      final activeFeed = ref.read(activeFeedProvider);
-      final videos = activeFeed == FeedTab.forYou
-          ? homeState.forYouVideos
-          : homeState.followingVideos;
-
-      if (videos.isNotEmpty) {
-        final firstVideo = videos.first;
-        // 🔊 AUDIO FIX: Use GlobalPlaybackManager for prewarming
-        GlobalPlaybackManager.instance.requestFocus(firstVideo.id, 'home');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        log('❌ Error prewarming first video: $e');
-      }
-    }
-  }
+  /// ✅ REMOVED: _prewarmFirstVideo() - duplicate of _ensureFirstVideoFocus()
+  /// It also used wrong owner ID ('home' instead of activeFeed.tabId)
+  /// _ensureFirstVideoFocus() handles this correctly
 
   /// Ensure first video gets focus for TikTok-style autoplay on app startup
   void _ensureFirstVideoFocus() {
@@ -421,8 +506,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     // VideoPreloaderService removed - controllers now managed by GlobalPlaybackManager
     // _videoEngagementScores removed - tracked in EngagementAnalyticsService
 
-    // ⏱️ MEMORY FIX: Cancel timers to prevent memory leaks
-    _resumeTimer?.cancel();
+    // ⏱️ MEMORY FIX: Cancel timer to prevent memory leaks
     _focusTimer?.cancel();
 
     // 🚀 VIRAL ALGORITHM: End session and save retention data
@@ -437,22 +521,6 @@ class _HomeViewState extends ConsumerState<HomeView>
   // Note: _scrollToTopCallback infrastructure kept for potential future use
 
   // Dead code removed - _disposeInactiveTabVideos now handled by GlobalPlaybackManager.disposeAll()
-
-  /// SIMPLE: Pause all other videos when scrolling within same tab
-  void _pauseAllOtherVideos(int currentIndex) {
-    if (!mounted) return;
-
-    log('⏸️ HomeView: Pausing all other videos, current index: $currentIndex');
-
-    try {
-      // 🔊 AUDIO FIX: Use GlobalPlaybackManager to pause all videos
-      GlobalPlaybackManager.instance.pauseAll();
-
-      log('✅ HomeView: All other videos paused, only current video should play');
-    } catch (e) {
-      log('❌ HomeView: Error pausing other videos: $e');
-    }
-  }
 
   /// Handle left swipe gesture to open StreamerCardView
   void _handleLeftSwipe(DragEndDetails details) {
@@ -542,13 +610,17 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
 
     try {
+      // ✅ IMPROVEMENT: Mark as background instead of resetting boolean flag
+      _markAsBackground();
+
       // TIKTOK-STYLE: Notify GlobalPlaybackManager that we're leaving HomeView
-      // This already calls pauseAll() and block(), so no need for duplicate pauseAllForTabSwitch()
+      // This calls pauseAll() and block() to prevent audio bleeding
       GlobalPlaybackManager.instance.onLeaveHomeView();
 
       log('✅ HomeView: All videos paused and muted successfully');
     } catch (e) {
       log('❌ HomeView: Error pausing videos: $e');
+      _showSnackBar('Error pausing videos');
     }
   }
 
@@ -557,7 +629,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     // This prevents any race condition where videos might resume during navigation
     GlobalPlaybackManager.instance.block(reason: 'navigatingToNetworkView');
     GlobalPlaybackManager.instance.pauseAll();
-    
+
     // Navigate to NetworkView with the specified tab
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -615,46 +687,68 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  void _navigateToDiscover() {
-    if (!mounted) return;
+  /// ✅ IMPROVEMENT: Navigate to DiscoverView with proper state tracking
+  Future<void> _navigateToDiscover() async {
+    if (!mounted || _isNavigatingToDiscover) return;
 
     HapticFeedback.lightImpact();
-    
-    // 🔥 CRITICAL: Cancel any pending timers that might resume playback
-    _resumeTimer?.cancel();
-    _focusTimer?.cancel();
-    
-    _pauseAllHomeViewVideos();
-    
-    // 🔊 AUDIO FIX: Ensure blocking happens BEFORE navigation
-    // This prevents any race condition where videos might resume during navigation
-    GlobalPlaybackManager.instance.block(reason: 'navigatingToDiscoverView');
-    GlobalPlaybackManager.instance.pauseAll();
 
-    if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const DiscoverView()),
-      );
+    // ✅ IMPROVEMENT: Track navigation to prevent race conditions
+    _isNavigatingToDiscover = true;
+
+    // Cancel any pending timer that might resume playback
+    _focusTimer?.cancel();
+
+    _pauseAllHomeViewVideos();
+    _markAsBackground();
+
+    // Navigate to DiscoverView
+    if (!mounted) {
+      _isNavigatingToDiscover = false;
+      return;
     }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const DiscoverView(),
+        settings: const RouteSettings(name: 'DiscoverView'),
+      ),
+    );
+
+    // We're back from DiscoverView
+    _isNavigatingToDiscover = false;
+    if (!mounted) return;
+
+    log('🔄 HomeView: Returned from DiscoverView - resuming videos');
+    final playbackManager = GlobalPlaybackManager.instance;
+
+    // Unblock first (DiscoverView may have blocked playback)
+    playbackManager.unblock();
+
+    // Set home as active owner
+    playbackManager.setActiveOwner(PlaybackOwners.home);
+    _markAsActiveOwner();
+
+    // Resume current video
+    _resumeCurrentVideoInstantly();
   }
 
   void _navigateToNetwork() {
     if (!mounted) return;
 
     HapticFeedback.lightImpact();
-    
-    // 🔥 CRITICAL: Cancel any pending timers that might resume playback
-    _resumeTimer?.cancel();
+
+    // 🔥 CRITICAL: Cancel any pending timer that might resume playback
     _focusTimer?.cancel();
-    
+
     _pauseAllHomeViewVideos();
     _navigateToNetworkViewWithTab('discover');
   }
 
   void _onPageChanged(int index) {
     if (!mounted) return; // 🔒 SAFETY: Exit early if widget is disposed
-    
+
     try {
       setState(() {
         _currentIndex = index;
@@ -676,18 +770,21 @@ class _HomeViewState extends ConsumerState<HomeView>
 
         if (index >= 0 && index < videos.length) {
           final currentVideo = videos[index];
-          
+
           // 🔒 SAFETY: Validate video object before using
           if (currentVideo.id.isEmpty || currentVideo.videoURL.isEmpty) {
             log('⚠️ HomeView: Invalid video at index $index, skipping');
             return;
           }
-          
+
           // TIKTOK-STYLE: Notify GlobalPlaybackManager of index change
-          GlobalPlaybackManager.instance.onVisibleIndexChanged(index, currentVideo);
-          
+          GlobalPlaybackManager.instance
+              .onVisibleIndexChanged(index, currentVideo);
+
           // TIKTOK-STYLE: Preload adjacent videos for smooth transitions
           GlobalPlaybackManager.instance.preloadAround(index, videos);
+          // ✅ IMPROVEMENT: Removed redundant _preloadAdjacentVideos() call
+          // preloadAround() already handles all preloading efficiently
         } else {
           log('⚠️ HomeView: Index $index out of bounds (videos.length: ${videos.length})');
         }
@@ -696,9 +793,6 @@ class _HomeViewState extends ConsumerState<HomeView>
         log('❌ HomeView: Error in TikTok-style feed management: $e');
         log('Stack trace: $stackTrace');
       }
-
-      // 🚀 INSTANT SWITCHING: Preload adjacent videos for seamless swiping
-      _preloadAdjacentVideos(index);
 
       // ✅ FIX: Removed _pauseAllOtherVideos call - onVisibleIndexChanged already calls pauseAll()
       // This prevents duplicate pause calls that could interfere with playback coordination
@@ -709,70 +803,9 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  /// 🚀 INSTANT SWITCHING: Preload adjacent videos for seamless swiping experience
-  void _preloadAdjacentVideos(int currentIndex) {
-    if (!mounted) return; // 🔒 SAFETY: Exit if widget is disposed
-    
-    try {
-      final homeState = ref.read(hp.homeProvider);
-      final activeFeed = ref.read(activeFeedProvider);
-      final videos = activeFeed == FeedTab.forYou
-          ? homeState.forYouVideos
-          : homeState.followingVideos;
-
-      if (videos.isEmpty || videos.length <= 1) return; // No adjacent videos to preload
-
-      // 🔒 SAFETY: Validate index before accessing videos
-      if (currentIndex < 0 || currentIndex >= videos.length) {
-        log('⚠️ HomeView: Invalid index $currentIndex for preloading (videos.length: ${videos.length})');
-        return;
-      }
-
-      // Preload next video (index + 1)
-      if (currentIndex + 1 < videos.length) {
-        final nextVideo = videos[currentIndex + 1];
-        // 🔒 SAFETY: Validate video before preloading
-        if (nextVideo.id.isNotEmpty && nextVideo.videoURL.isNotEmpty) {
-          log('🚀 INSTANT SWITCHING: Preloading next video: ${nextVideo.id}');
-          // Trigger preloading in background without blocking UI
-          Future.microtask(() {
-            if (mounted) {
-              try {
-                GlobalPlaybackManager.instance
-                    .requestFocus(nextVideo.id, activeFeed.tabId);
-              } catch (e) {
-                log('⚠️ HomeView: Error preloading next video: $e');
-              }
-            }
-          });
-        }
-      }
-
-      // Preload previous video (index - 1) if exists
-      if (currentIndex > 0) {
-        final prevVideo = videos[currentIndex - 1];
-        // 🔒 SAFETY: Validate video before preloading
-        if (prevVideo.id.isNotEmpty && prevVideo.videoURL.isNotEmpty) {
-          log('🚀 INSTANT SWITCHING: Preloading previous video: ${prevVideo.id}');
-          // Trigger preloading in background without blocking UI
-          Future.microtask(() {
-            if (mounted) {
-              try {
-                GlobalPlaybackManager.instance
-                    .requestFocus(prevVideo.id, activeFeed.tabId);
-              } catch (e) {
-                log('⚠️ HomeView: Error preloading previous video: $e');
-              }
-            }
-          });
-        }
-      }
-
-      log('✅ INSTANT SWITCHING: Adjacent videos preloaded for seamless swiping');
-    } catch (e) {
-      log('⚠️ INSTANT SWITCHING: Error preloading adjacent videos: $e (non-critical)');
-    }
-  }
+  // ✅ IMPROVEMENT: Removed _preloadAdjacentVideos() method
+  // GlobalPlaybackManager.preloadAround() already handles all preloading efficiently
+  // This eliminates redundant preloading that was wasting resources
 
   // Dead code removed - _buildVideoContent is now handled by HomeContentWidget
 
@@ -819,55 +852,8 @@ class _HomeViewState extends ConsumerState<HomeView>
 
             // Feed dropdown is now handled by HomeContentWidget
 
-            // 🎨 LOADING INDICATOR: Hidden per user request
-            // if (_isRanking)
-            //   Positioned(
-            //     top: 60,
-            //     left: 0,
-            //     right: 0,
-            //     child: Center(
-            //       child: Container(
-            //         padding: const EdgeInsets.symmetric(
-            //           horizontal: 16,
-            //           vertical: 8,
-            //         ),
-            //         decoration: BoxDecoration(
-            //           color: const Color(0xFF9248D2).withValues(alpha: 0.95),
-            //           borderRadius: BorderRadius.circular(20),
-            //           boxShadow: [
-            //             BoxShadow(
-            //               color: Colors.black.withValues(alpha: 0.3),
-            //               blurRadius: 8,
-            //               offset: const Offset(0, 2),
-            //             ),
-            //           ],
-            //         ),
-            //         child: Row(
-            //           mainAxisSize: MainAxisSize.min,
-            //           children: [
-            //             const SizedBox(
-            //               width: 16,
-            //               height: 16,
-            //               child: CircularProgressIndicator(
-            //                 strokeWidth: 2,
-            //                 valueColor:
-            //                     AlwaysStoppedAnimation<Color>(Colors.white),
-            //               ),
-            //             ),
-            //             const SizedBox(width: 12),
-            //             const Text(
-            //               'Personalizing your feed...',
-            //               style: TextStyle(
-            //                 color: Colors.white,
-            //                 fontSize: 14,
-            //                 fontWeight: FontWeight.w600,
-            //               ),
-            //             ),
-            //           ],
-            //         ),
-            //       ),
-            //     ),
-            //   ),
+            // ✅ REMOVED: Commented-out loading indicator code (48 lines)
+            // Hidden per user request - removed to reduce code bloat
 
             // StreamerCard full-screen modal
             if (_showStreamerCard && _currentStreamerCard != null)

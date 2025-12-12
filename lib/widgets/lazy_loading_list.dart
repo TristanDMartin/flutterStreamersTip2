@@ -62,7 +62,7 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= 
+    if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       _loadMoreData();
     }
@@ -79,9 +79,9 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
 
     try {
       await Future.delayed(widget.loadingDelay);
-      
+
       final newItems = await widget.loadData(0, widget.itemsPerPage);
-      
+
       setState(() {
         _items.clear();
         _items.addAll(newItems);
@@ -101,7 +101,7 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
         error: e,
         stackTrace: stackTrace,
       );
-      
+
       setState(() {
         _isLoading = false;
         _hasError = true;
@@ -120,7 +120,7 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
     try {
       final nextPage = _currentPage + 1;
       final newItems = await widget.loadData(nextPage, widget.itemsPerPage);
-      
+
       setState(() {
         _items.addAll(newItems);
         _currentPage = nextPage;
@@ -139,7 +139,7 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
         error: e,
         stackTrace: stackTrace,
       );
-      
+
       setState(() {
         _isLoading = false;
         _hasError = true;
@@ -155,18 +155,17 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
   @override
   Widget build(BuildContext context) {
     if (_hasError) {
-      return widget.errorBuilder?.call(context, _errorMessage!) ?? 
-        _buildDefaultErrorWidget();
+      return widget.errorBuilder?.call(context, _errorMessage!) ??
+          _buildDefaultErrorWidget();
     }
 
     if (_items.isEmpty && _isLoading) {
-      return widget.loadingBuilder?.call(context) ?? 
-        _buildDefaultLoadingWidget();
+      return widget.loadingBuilder?.call(context) ??
+          _buildDefaultLoadingWidget();
     }
 
     if (_items.isEmpty && !_isLoading) {
-      return widget.emptyBuilder?.call(context) ?? 
-        _buildDefaultEmptyWidget();
+      return widget.emptyBuilder?.call(context) ?? _buildDefaultEmptyWidget();
     }
 
     return RefreshIndicator(
@@ -251,7 +250,7 @@ class _LazyLoadingListState<T> extends ConsumerState<LazyLoadingList<T>> {
 
   Widget _buildLoadingIndicator() {
     if (!_isLoading) return const SizedBox.shrink();
-    
+
     return const Padding(
       padding: EdgeInsets.all(16.0),
       child: Center(
@@ -328,7 +327,7 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= 
+    if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       _loadMoreData();
     }
@@ -345,9 +344,9 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
 
     try {
       await Future.delayed(widget.loadingDelay);
-      
+
       final newItems = await widget.loadData(0, widget.itemsPerPage);
-      
+
       setState(() {
         _items.clear();
         _items.addAll(newItems);
@@ -367,7 +366,7 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
         error: e,
         stackTrace: stackTrace,
       );
-      
+
       setState(() {
         _isLoading = false;
         _hasError = true;
@@ -386,7 +385,7 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
     try {
       final nextPage = _currentPage + 1;
       final newItems = await widget.loadData(nextPage, widget.itemsPerPage);
-      
+
       setState(() {
         _items.addAll(newItems);
         _currentPage = nextPage;
@@ -405,7 +404,7 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
         error: e,
         stackTrace: stackTrace,
       );
-      
+
       setState(() {
         _isLoading = false;
         _hasError = true;
@@ -421,18 +420,17 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
   @override
   Widget build(BuildContext context) {
     if (_hasError) {
-      return widget.errorBuilder?.call(context, _errorMessage!) ?? 
-        _buildDefaultErrorWidget();
+      return widget.errorBuilder?.call(context, _errorMessage!) ??
+          _buildDefaultErrorWidget();
     }
 
     if (_items.isEmpty && _isLoading) {
-      return widget.loadingBuilder?.call(context) ?? 
-        _buildDefaultLoadingWidget();
+      return widget.loadingBuilder?.call(context) ??
+          _buildDefaultLoadingWidget();
     }
 
     if (_items.isEmpty && !_isLoading) {
-      return widget.emptyBuilder?.call(context) ?? 
-        _buildDefaultEmptyWidget();
+      return widget.emptyBuilder?.call(context) ?? _buildDefaultEmptyWidget();
     }
 
     return RefreshIndicator(
@@ -522,7 +520,7 @@ class _LazyLoadingGridState<T> extends ConsumerState<LazyLoadingGrid<T>> {
 
   Widget _buildLoadingIndicator() {
     if (!_isLoading) return const SizedBox.shrink();
-    
+
     return const Padding(
       padding: EdgeInsets.all(16.0),
       child: Center(

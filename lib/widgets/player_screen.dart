@@ -8,6 +8,7 @@ import '../providers/video_service_provider.dart';
 import '../providers/discover_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../services/global_playback_manager.dart';
+import '../constants/playback_owners.dart';
 import '../services/video_actions_service.dart';
 import '../services/video_download_service.dart';
 import '../services/streamers_tip_like_service.dart';
@@ -49,6 +50,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    // 🎯 SINGLE ACTIVE OWNER: Set PlayerScreen as active owner
+    GlobalPlaybackManager.instance.setActiveOwner(PlaybackOwners.player);
     _currentIndex = widget.initialIndex;
     // Don't create PageController until videos are loaded
     _loadVideos();
@@ -92,19 +95,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       }
       // Create or recreate PageController with safe index
       _pageController?.dispose();
-      _pageController = PageController(initialPage: _currentIndex.clamp(0, _videos.length - 1));
-      debugPrint('✅ PlayerScreen: PageController created with index $_currentIndex');
+      _pageController = PageController(
+          initialPage: _currentIndex.clamp(0, _videos.length - 1));
+      debugPrint(
+          '✅ PlayerScreen: PageController created with index $_currentIndex');
     } else {
       // No videos - dispose controller if it exists
       _pageController?.dispose();
       _pageController = null;
-      debugPrint('⚠️ PlayerScreen: No videos available, PageController not created');
+      debugPrint(
+          '⚠️ PlayerScreen: No videos available, PageController not created');
     }
 
     // ✅ FIX: Load like and bookmark states for all videos
     await _loadVideoStates();
 
     setState(() {}); // Trigger rebuild to show videos
+
+    if (_videos.isNotEmpty) {
+      GlobalPlaybackManager.instance
+          .preloadAround(_currentIndex, _videos); // preload neighbors
+    }
   }
 
   /// Load like and bookmark states for all videos
@@ -115,7 +126,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       return;
     }
 
-    debugPrint('🔄 PlayerScreen: Loading like/bookmark states for ${_videos.length} videos');
+    debugPrint(
+        '🔄 PlayerScreen: Loading like/bookmark states for ${_videos.length} videos');
 
     final likeService = StreamersTipLikeService();
     final bookmarkService = UnifiedBookmarkService.instance;
@@ -124,7 +136,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     try {
       await bookmarkService.initialize(currentUser.uid);
     } catch (e) {
-      debugPrint('⚠️ PlayerScreen: Bookmark service already initialized or error: $e');
+      debugPrint(
+          '⚠️ PlayerScreen: Bookmark service already initialized or error: $e');
     }
 
     // Load states for all videos in parallel
@@ -160,6 +173,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     setState(() {
       _currentIndex = index;
     });
+    // 🎯 SINGLE ACTIVE OWNER: setActiveOwner already handles pausing non-active owners
+    // Preload next videos for smooth playback
+    if (_videos.isNotEmpty) {
+      GlobalPlaybackManager.instance.preloadAround(index, _videos);
+    }
   }
 
   /// Build ProfileView-specific overlays (back button, insights button for owner videos)
@@ -647,7 +665,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
       // Close loading dialog FIRST - use rootNavigator to ensure proper closing
       if (context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop(); // Close loading dialog
+        Navigator.of(context, rootNavigator: true)
+            .pop(); // Close loading dialog
       }
 
       // Small delay to ensure dialog is fully closed before navigation
@@ -706,7 +725,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       await Future.delayed(const Duration(milliseconds: 100));
 
       // Navigate to next/previous video in PageView
-      if (context.mounted && _pageController != null && _pageController!.hasClients && _videos.isNotEmpty) {
+      if (context.mounted &&
+          _pageController != null &&
+          _pageController!.hasClients &&
+          _videos.isNotEmpty) {
         if (wasLastVideo) {
           // Go to previous video (sliding up)
           await _pageController!.animateToPage(
@@ -841,33 +863,38 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           if (_pageController != null && _videos.isNotEmpty)
             PageView.builder(
               controller: _pageController!,
-              scrollDirection: Axis.vertical, // ✅ Enable vertical swiping like HomeView
-              physics: const ClampingScrollPhysics(), // Better physics for mobile
+              scrollDirection:
+                  Axis.vertical, // ✅ Enable vertical swiping like HomeView
+              physics:
+                  const ClampingScrollPhysics(), // Better physics for mobile
               onPageChanged: _onVideoChanged,
               itemCount: _videos.length,
               itemBuilder: (context, index) {
-              final video = _videos[index];
-              // ✅ FIX: Get real like and bookmark states from cache
-              final isLiked = _likeStates[video.id] ?? false;
-              final isBookmarked = _bookmarkStates[video.id] ?? false;
-              
-              return VideoPlayerViewOptimized(
-                key: ValueKey(video.id), // Stable key to prevent audio bleeding
-                video: video,
-                isCurrentVideo: _currentIndex == index,
-                isFirstVideo: index == 0,
-                tabId: 'playerScreen', // Generic tab ID for standalone player
-                homeViewModel: ref.read(hp.homeProvider.notifier),
-                showSheet: false,
-                sheetType: '',
-                // Callbacks are null - will use internal methods (comments, share, etc.)
-                isLiked: isLiked, // ✅ Real like state from service
-                isBookmarked: isBookmarked, // ✅ Real bookmark state from service
-                showHUD:
-                    true, // Enable HUD - Use VideoPlayerViewOptimized's full functionality like HomeView
-              );
-            },
-          ),
+                final video = _videos[index];
+                // ✅ FIX: Get real like and bookmark states from cache
+                final isLiked = _likeStates[video.id] ?? false;
+                final isBookmarked = _bookmarkStates[video.id] ?? false;
+
+                return VideoPlayerViewOptimized(
+                  key: ValueKey(
+                      video.id), // Stable key to prevent audio bleeding
+                  video: video,
+                  isCurrentVideo: _currentIndex == index,
+                  isFirstVideo: index == 0,
+                  tabId: 'playerScreen', // Generic tab ID for standalone player
+                  ownerKey: PlaybackOwners.player,
+                  homeViewModel: ref.read(hp.homeProvider.notifier),
+                  showSheet: false,
+                  sheetType: '',
+                  // Callbacks are null - will use internal methods (comments, share, etc.)
+                  isLiked: isLiked, // ✅ Real like state from service
+                  isBookmarked:
+                      isBookmarked, // ✅ Real bookmark state from service
+                  showHUD:
+                      true, // Enable HUD - Use VideoPlayerViewOptimized's full functionality like HomeView
+                );
+              },
+            ),
           // Custom overlays for ProfileView-specific features
           ..._buildProfileViewOverlays(context),
         ],
@@ -1261,7 +1288,8 @@ class _PrivacySettingsDialog extends StatelessWidget {
                     title,
                     style: TextStyle(
                       color: Colors.white,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
                       fontSize: 16,
                     ),
                   ),
@@ -1299,7 +1327,8 @@ class _DownloadProgressDialog extends StatefulWidget {
   });
 
   @override
-  State<_DownloadProgressDialog> createState() => _DownloadProgressDialogState();
+  State<_DownloadProgressDialog> createState() =>
+      _DownloadProgressDialogState();
 }
 
 class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
@@ -1338,7 +1367,8 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
           if (mounted) {
             setState(() {
               _progress = received / total;
-              _statusMessage = 'Downloading... ${(_progress * 100).toStringAsFixed(0)}%';
+              _statusMessage =
+                  'Downloading... ${(_progress * 100).toStringAsFixed(0)}%';
             });
           }
         },
@@ -1363,11 +1393,14 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
 
         String errorMessage = 'Failed to download video';
         if (e.toString().contains('permission')) {
-          errorMessage = 'Storage permission denied. Please grant permission in settings.';
+          errorMessage =
+              'Storage permission denied. Please grant permission in settings.';
         } else if (e.toString().contains('disabled')) {
           errorMessage = 'Video owner has disabled downloads';
-        } else if (e.toString().contains('network') || e.toString().contains('connection')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (e.toString().contains('network') ||
+            e.toString().contains('connection')) {
+          errorMessage =
+              'Network error. Please check your connection and try again.';
         }
 
         widget.onComplete(false, errorMessage);

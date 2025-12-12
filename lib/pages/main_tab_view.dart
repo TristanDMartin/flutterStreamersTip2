@@ -17,6 +17,7 @@ import '../services/clean_relationship_service.dart';
 import '../providers/home_provider.dart';
 import '../providers/feed_state_provider.dart';
 import '../services/global_playback_manager.dart';
+import '../constants/playback_owners.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
   const MainTabView({super.key});
@@ -137,9 +138,8 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       return;
     }
 
-    // 🔊 AUDIO FIX: Block playback during tab switch using GlobalPlaybackManager
+    // 🎯 SINGLE ACTIVE OWNER: Use setActiveOwner for home tab, block for others
     final playbackManager = GlobalPlaybackManager.instance;
-    playbackManager.block(reason: 'tabSwitch');
 
     setState(() {
       _currentIndex = index;
@@ -152,29 +152,26 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       curve: Curves.easeInOut,
     )
         .then((_) {
-      // 🚀 TIKTOK FIX: Instantly unblock and resume when returning to home tab
       if (index == 0) {
-        playbackManager.unblock();
+        // 🎯 SINGLE ACTIVE OWNER: Set home as active owner (handles pausing non-active owners)
+        playbackManager.setActiveOwner(PlaybackOwners.home);
         // Resume immediately - no delay for TikTok-like experience
         _requestFocusForCurrentVideo();
       } else {
-        // For other tabs, unblock immediately but don't resume
-        playbackManager.unblock();
+        // For non-video tabs (NetworkView, etc.), block playback
+        playbackManager.block(reason: 'tabSwitch_nonVideoTab');
       }
     });
   }
 
   void _requestFocusForCurrentVideo() {
-    // Request focus for the current video when returning to home tab
-    log('🎵 MainTabView: Requesting focus for current video');
+    // 🚀 TIKTOK-STYLE: The activeOwnerSubscription listener in VideoPlayerViewOptimized
+    // will automatically resume the current video when home becomes active owner.
+    // This method is kept as a safety net but the listener handles instant resume.
+    log('🎵 MainTabView: setActiveOwner called - listener will handle instant resume');
 
-    try {
-      final playbackManager = GlobalPlaybackManager.instance;
-      playbackManager.resumeAfterTabSwitch();
-      log('✅ MainTabView: Called resumeAfterTabSwitch() for current video');
-    } catch (e) {
-      log('❌ MainTabView: Error resuming current video: $e');
-    }
+    // Note: No need to call resumeAfterTabSwitch() - the listener in VideoPlayerViewOptimized
+    // will detect the owner change and resume instantly for TikTok-like experience
   }
 
   void _onUploadTapped() {
@@ -265,6 +262,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             builder: (context) =>
                 ProfileViewOptimized(user: user, isCurrentUser: true),
             fullscreenDialog: true,
+            settings: const RouteSettings(name: 'ProfileView'),
           ),
         )
             .then((_) {
@@ -316,10 +314,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     try {
       log('🔄 MainTabView: Reactivating HomeView after return from other view');
 
-      // 🚀 TIKTOK FIX: Instantly unblock and resume - no delays!
+      // 🎯 SINGLE ACTIVE OWNER: Set home as active owner
       final playbackManager = ref.read(globalPlaybackManagerProvider);
-      playbackManager.unblock();
-      playbackManager.resumeAfterTabSwitch();
+      playbackManager.setActiveOwner(PlaybackOwners.home);
       // Also request focus for current video immediately
       _requestFocusForCurrentVideo();
 
@@ -341,16 +338,16 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             _currentIndex = index;
           });
 
-          // 🔊 AUDIO FIX: Block/unblock using GlobalPlaybackManager
+          // 🎯 SINGLE ACTIVE OWNER: Use setActiveOwner for home tab, block for others
           final playbackManager = GlobalPlaybackManager.instance;
-          if (index != 0) {
-            // Leaving home tab - block playback
-            playbackManager.block(reason: 'tabSwitch');
-          } else {
-            // 🚀 TIKTOK FIX: Instantly resume when returning to home tab
-            playbackManager.unblock();
+          if (index == 0) {
+            // 🎯 SINGLE ACTIVE OWNER: Set home as active owner
+            playbackManager.setActiveOwner(PlaybackOwners.home);
             // Resume immediately - no delay for TikTok-like experience
             _requestFocusForCurrentVideo();
+          } else {
+            // For non-video tabs, block playback
+            playbackManager.block(reason: 'tabSwitch_nonVideoTab');
           }
         },
         // Disable horizontal swipe gestures when on HomeView (index 0) to allow left/right swipes for StreamerCardView

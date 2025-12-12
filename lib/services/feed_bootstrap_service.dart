@@ -1,6 +1,7 @@
 import 'dart:developer';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
 import '../models/user.dart' as app_user;
 import 'video_cache_service.dart';
@@ -9,7 +10,8 @@ import 'network_policy_service.dart';
 
 /// Service responsible for warm/cold start handling and feed initialization
 class FeedBootstrapService {
-  static final FeedBootstrapService _instance = FeedBootstrapService._internal();
+  static final FeedBootstrapService _instance =
+      FeedBootstrapService._internal();
   factory FeedBootstrapService() => _instance;
   FeedBootstrapService._internal();
 
@@ -28,7 +30,7 @@ class FeedBootstrapService {
     try {
       // Initialize only critical services
       await _cacheService.initialize();
-      
+
       // Initialize network policy in background (non-blocking)
       _networkPolicy.initialize().catchError((e) {
         log('⚠️ Network policy init failed (non-critical): $e');
@@ -36,15 +38,15 @@ class FeedBootstrapService {
 
       // Try to load cached feed first (warm start)
       final cachedFeed = await _loadCachedFeed();
-      
+
       if (cachedFeed != null && cachedFeed.items.isNotEmpty) {
         log('✅ Warm start: Found ${cachedFeed.items.length} cached items');
-        
+
         // Prime the first video in background (non-blocking)
         _primeWarmStartCandidate(cachedFeed.items.first).catchError((e) {
           log('⚠️ Failed to prime warm start candidate: $e');
         });
-        
+
         // Return cached data immediately
         final result = BootstrapResult(
           items: cachedFeed.items,
@@ -56,7 +58,7 @@ class FeedBootstrapService {
 
         // Fetch fresh data in background
         _fetchFreshFeedInBackground(cachedFeed.etag);
-        
+
         return result;
       } else {
         log('❄️ Cold start: No cached feed found');
@@ -89,7 +91,7 @@ class FeedBootstrapService {
         posterUrl: video.thumbnailURL ?? '',
         videoUrl: video.videoURL,
       );
-      
+
       log('✅ Primed warm start candidate: ${video.id}');
     } catch (e) {
       log('❌ Error priming warm start candidate: $e');
@@ -101,7 +103,7 @@ class FeedBootstrapService {
     try {
       // Fetch fresh feed data
       final freshFeed = await _fetchFreshFeed();
-      
+
       if (freshFeed.items.isNotEmpty) {
         // Prime the first video
         await _primeWarmStartCandidate(freshFeed.items.first);
@@ -112,7 +114,8 @@ class FeedBootstrapService {
         cursor: freshFeed.cursor,
         etag: freshFeed.etag,
         isWarmStart: false,
-        bootstrapTimeMs: DateTime.now().difference(DateTime.now()).inMilliseconds,
+        bootstrapTimeMs:
+            DateTime.now().difference(DateTime.now()).inMilliseconds,
       );
     } catch (e) {
       log('❌ Cold start error: $e');
@@ -142,7 +145,7 @@ class FeedBootstrapService {
           .limit(20);
 
       final snapshot = await query.get();
-      
+
       final videos = snapshot.docs.map((doc) {
         final data = doc.data();
         return HomeVideo(
@@ -153,7 +156,7 @@ class FeedBootstrapService {
             displayName: data['creatorDisplayName'] ?? '',
             avatarURL: data['creatorAvatarURL'],
           ),
-          videoURL: data['videoURL'] ?? '',
+          videoURL: resolveVideoUrl(data),
           thumbnailURL: data['thumbnailURL'],
           likes: data['likes'] ?? 0,
           comments: data['comments'] ?? 0,
@@ -169,7 +172,7 @@ class FeedBootstrapService {
 
       // Generate ETag for caching
       final etag = _generateETag(videos);
-      
+
       return FeedData(
         items: videos,
         cursor: snapshot.docs.isNotEmpty ? snapshot.docs.last.id : null,
@@ -185,7 +188,7 @@ class FeedBootstrapService {
   Future<void> _fetchFreshFeedInBackground(String? currentETag) async {
     try {
       final freshFeed = await _fetchFreshFeed();
-      
+
       // Only update if ETag changed
       if (freshFeed.etag != currentETag) {
         log('🔄 Fresh feed available, ETag changed');
@@ -203,7 +206,6 @@ class FeedBootstrapService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     return '${videoIds.hashCode}_$timestamp';
   }
-
 }
 
 /// Result of bootstrap operation

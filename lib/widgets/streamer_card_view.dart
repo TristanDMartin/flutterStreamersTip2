@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/calendar_event.dart';
 import '../providers/status_provider.dart';
 import '../models/user_status.dart';
@@ -18,8 +19,8 @@ import '../services/unified_avatar_service.dart';
 import '../services/chat_service.dart';
 import '../services/follows_service.dart';
 import '../providers/follows_provider.dart';
-import '../services/follow_button_service.dart';
 import '../services/user_blocking_service.dart';
+import '../services/global_playback_manager.dart';
 import 'chat_view.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
@@ -51,6 +52,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     with TickerProviderStateMixin {
   late AnimationController _flipController;
   late final FollowsService _followsService;
+  late final GlobalPlaybackManager _playbackManager;
   late Animation<double> _flipAnimation;
   bool _isFront = true;
 
@@ -85,6 +87,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _isFollowing = false;
   bool _isFollowedByStreamer = false;
   bool _isConnected = false;
+  bool _isFollowingPrimary = false;
+  bool _isFollowingLegacy = false;
+  bool _isFollowedByPrimary = false;
+  bool _isFollowedByLegacy = false;
+  bool _isFollowedByPrimaryReady = false;
+  bool _isFollowedByLegacyReady = false;
+  bool _isFollowedByLegacyAltReady = false;
 
   // Stats
   int _postsCount = 0;
@@ -105,6 +114,12 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   StreamSubscription<QuerySnapshot>? _followingSubscription;
   StreamSubscription<QuerySnapshot>? _followingRelationshipSubscription;
   StreamSubscription<QuerySnapshot>? _followedByRelationshipSubscription;
+  StreamSubscription<QuerySnapshot>? _followingRelationshipPrimarySubscription;
+  StreamSubscription<QuerySnapshot>? _followedByRelationshipPrimarySubscription;
+  StreamSubscription<QuerySnapshot>?
+      _followingRelationshipLegacyAltSubscription;
+  StreamSubscription<QuerySnapshot>?
+      _followedByRelationshipLegacyAltSubscription;
 
   // Loading states for async operations
   bool _isFollowingOperation = false;
@@ -119,6 +134,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
     // Initialize FollowsService with EventTriggerService for notifications
     _followsService = ref.read(followsServiceProvider);
+    _playbackManager = GlobalPlaybackManager.instance;
+    _playbackManager.pauseAll();
 
     // Debug Firestore data
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -342,7 +359,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     setState(() {
       _userData = null;
       _isLoading = false;
-      _error = 'User not found. This account may not have completed profile setup yet.';
+      _error =
+          'User not found. This account may not have completed profile setup yet.';
     });
   }
 
@@ -455,108 +473,218 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   void _setupRelationshipListeners() {
-    // Cancel existing subscriptions
     _followingRelationshipSubscription?.cancel();
     _followedByRelationshipSubscription?.cancel();
+    _followingRelationshipPrimarySubscription?.cancel();
+    _followedByRelationshipPrimarySubscription?.cancel();
+    _followingRelationshipLegacyAltSubscription?.cancel();
+    _followedByRelationshipLegacyAltSubscription?.cancel();
+    _isFollowedByPrimaryReady = false;
+    _isFollowedByLegacyReady = false;
+    _isFollowedByLegacyAltReady = false;
 
     if (kDebugMode) {
       debugPrint("🔘 StreamerCardView: Setting up relationship listeners");
     }
 
-    // Listen for changes in current user's following list
+    bool isActive(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+      final val = doc.data()['isActive'];
+      if (val is bool) return val;
+      return true;
+    }
+
+    bool allFollowedByReady() =>
+        _isFollowedByPrimaryReady &&
+        _isFollowedByLegacyReady &&
+        _isFollowedByLegacyAltReady;
+
+    void updateAggregatedState() {
+      final following = _isFollowingPrimary || _isFollowingLegacy;
+      final followed = _isFollowedByPrimary || _isFollowedByLegacy;
+
+      final previousFollowed = _isFollowedByStreamer;
+      final nextFollowed =
+          followed || (!allFollowedByReady() && previousFollowed);
+
+      if (mounted) {
+        setState(() {
+          _isFollowing = following;
+          _isFollowedByStreamer = nextFollowed;
+          _updateConnectionStatus();
+        });
+      }
+    }
+
+    _followingRelationshipPrimarySubscription = FirebaseFirestore.instance
+        .collection('follows')
+        .where('followerUserId', isEqualTo: widget.currentUserId)
+        .where('targetUserId', isEqualTo: widget.userId)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        _isFollowingPrimary = snapshot.docs.isNotEmpty;
+        updateAggregatedState();
+        if (kDebugMode) {
+          debugPrint(
+              "🔄 StreamerCardView: Primary following listener - isFollowingPrimary: $_isFollowingPrimary, docs: ${snapshot.docs.length}");
+        }
+      },
+      onError: (error) {
+        if (kDebugMode) {
+          debugPrint(
+              "❌ StreamerCardView: Error in primary following listener: $error");
+        }
+        _followingRelationshipPrimarySubscription?.cancel();
+        _followingRelationshipPrimarySubscription = null;
+        _isFollowingPrimary = false;
+        updateAggregatedState();
+      },
+      cancelOnError: true,
+    );
+
     _followingRelationshipSubscription = FirebaseFirestore.instance
+        .collection('follows')
+        .where('followerId', isEqualTo: widget.currentUserId)
+        .where('followingId', isEqualTo: widget.userId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        final hasLegacy = snapshot.docs.any(isActive);
+        _isFollowingLegacy = hasLegacy;
+        updateAggregatedState();
+        if (kDebugMode) {
+          debugPrint(
+              "🔄 StreamerCardView: Legacy following listener - isFollowingLegacy: $_isFollowingLegacy, docs: ${snapshot.docs.length}");
+        }
+      },
+      onError: (error) {
+        if (kDebugMode) {
+          debugPrint(
+              "❌ StreamerCardView: Error in legacy following listener: $error");
+        }
+        _followingRelationshipSubscription?.cancel();
+        _followingRelationshipSubscription = null;
+        _isFollowingLegacy = false;
+        updateAggregatedState();
+      },
+      cancelOnError: true,
+    );
+
+    _followingRelationshipLegacyAltSubscription = FirebaseFirestore.instance
         .collection('follows')
         .where('followerId', isEqualTo: widget.currentUserId)
         .where('followedId', isEqualTo: widget.userId)
         .snapshots()
         .listen(
       (snapshot) {
-        if (mounted) {
-          final wasFollowing = _isFollowing;
-          setState(() {
-            _isFollowing = snapshot.docs.isNotEmpty;
-            _updateConnectionStatus();
-          });
-
-          if (kDebugMode) {
-            debugPrint(
-                "🔄 StreamerCardView: Following listener updated - wasFollowing: $wasFollowing, isFollowing: $_isFollowing, docs count: ${snapshot.docs.length}");
-            debugPrint(
-                "🔄 StreamerCardView: Connection state after following update - isConnected: $_isConnected");
-            debugPrint(
-                "🔄 StreamerCardView: Query details - followerId: ${widget.currentUserId}, followedId: ${widget.userId}");
-            if (snapshot.docs.isNotEmpty) {
-              debugPrint(
-                  "🔄 StreamerCardView: Found follow document: ${snapshot.docs.first.id}");
-            }
-          }
+        final hasLegacyAlt = snapshot.docs.any(isActive);
+        _isFollowingLegacy = _isFollowingLegacy || hasLegacyAlt;
+        updateAggregatedState();
+        if (kDebugMode) {
+          debugPrint(
+              "🔄 StreamerCardView: Legacy alt following listener - hasLegacyAlt: $hasLegacyAlt, docs: ${snapshot.docs.length}");
         }
       },
       onError: (error) {
-        // ✅ FIX #3: Proper error handling with cleanup
         if (kDebugMode) {
           debugPrint(
-              "❌ StreamerCardView: Error in following relationship listener: $error");
+              "❌ StreamerCardView: Error in legacy alt following listener: $error");
         }
-        // Cancel subscription and set safe fallback state
-        _followingRelationshipSubscription?.cancel();
-        _followingRelationshipSubscription = null;
-        if (mounted) {
-          setState(() {
-            _isFollowing = false;
-          });
-        }
+        _followingRelationshipLegacyAltSubscription?.cancel();
+        _followingRelationshipLegacyAltSubscription = null;
+        updateAggregatedState();
       },
-      cancelOnError:
-          true, // ✅ FIX #3: Auto-cancel on error to prevent memory leaks
+      cancelOnError: true,
     );
 
-    // Listen for changes in this user's following list (to check if they follow current user)
+    _followedByRelationshipPrimarySubscription = FirebaseFirestore.instance
+        .collection('follows')
+        .where('followerUserId', isEqualTo: widget.userId)
+        .where('targetUserId', isEqualTo: widget.currentUserId)
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        _isFollowedByPrimary = snapshot.docs.isNotEmpty;
+        _isFollowedByPrimaryReady = true;
+        updateAggregatedState();
+        if (kDebugMode) {
+          debugPrint(
+              "🔄 StreamerCardView: Primary followed-by listener - isFollowedByPrimary: $_isFollowedByPrimary, docs: ${snapshot.docs.length}");
+        }
+      },
+      onError: (error) {
+        if (kDebugMode) {
+          debugPrint(
+              "❌ StreamerCardView: Error in primary followed-by listener: $error");
+        }
+        _followedByRelationshipPrimarySubscription?.cancel();
+        _followedByRelationshipPrimarySubscription = null;
+        _isFollowedByPrimary = false;
+        _isFollowedByPrimaryReady = true;
+        updateAggregatedState();
+      },
+      cancelOnError: true,
+    );
+
     _followedByRelationshipSubscription = FirebaseFirestore.instance
+        .collection('follows')
+        .where('followerId', isEqualTo: widget.userId)
+        .where('followingId', isEqualTo: widget.currentUserId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        final hasLegacy = snapshot.docs.any(isActive);
+        _isFollowedByLegacy = hasLegacy;
+        _isFollowedByLegacyReady = true;
+        updateAggregatedState();
+        if (kDebugMode) {
+          debugPrint(
+              "🔄 StreamerCardView: Legacy followed-by listener - isFollowedByLegacy: $_isFollowedByLegacy, docs: ${snapshot.docs.length}");
+        }
+      },
+      onError: (error) {
+        if (kDebugMode) {
+          debugPrint(
+              "❌ StreamerCardView: Error in legacy followed-by listener: $error");
+        }
+        _followedByRelationshipSubscription?.cancel();
+        _followedByRelationshipSubscription = null;
+        _isFollowedByLegacy = false;
+        _isFollowedByLegacyReady = true;
+        updateAggregatedState();
+      },
+      cancelOnError: true,
+    );
+
+    _followedByRelationshipLegacyAltSubscription = FirebaseFirestore.instance
         .collection('follows')
         .where('followerId', isEqualTo: widget.userId)
         .where('followedId', isEqualTo: widget.currentUserId)
         .snapshots()
         .listen(
       (snapshot) {
-        if (mounted) {
-          final wasFollowedByStreamer = _isFollowedByStreamer;
-          setState(() {
-            _isFollowedByStreamer = snapshot.docs.isNotEmpty;
-            _updateConnectionStatus();
-          });
-
-          if (kDebugMode) {
-            debugPrint(
-                "🔄 StreamerCardView: Followed by streamer listener updated - wasFollowedByStreamer: $wasFollowedByStreamer, isFollowedByStreamer: $_isFollowedByStreamer, docs count: ${snapshot.docs.length}");
-            debugPrint(
-                "🔄 StreamerCardView: Connection state after followed by update - isConnected: $_isConnected");
-            debugPrint(
-                "🔄 StreamerCardView: Reverse query details - followerId: ${widget.userId}, followedId: ${widget.currentUserId}");
-            if (snapshot.docs.isNotEmpty) {
-              debugPrint(
-                  "🔄 StreamerCardView: Found reverse follow document: ${snapshot.docs.first.id}");
-            }
-          }
+        final hasLegacyAlt = snapshot.docs.any(isActive);
+        _isFollowedByLegacy = _isFollowedByLegacy || hasLegacyAlt;
+        _isFollowedByLegacyAltReady = true;
+        updateAggregatedState();
+        if (kDebugMode) {
+          debugPrint(
+              "🔄 StreamerCardView: Legacy alt followed-by listener - hasLegacyAlt: $hasLegacyAlt, docs: ${snapshot.docs.length}");
         }
       },
       onError: (error) {
-        // ✅ FIX #3: Proper error handling with cleanup
         if (kDebugMode) {
           debugPrint(
-              "❌ StreamerCardView: Error in followed by relationship listener: $error");
+              "❌ StreamerCardView: Error in legacy alt followed-by listener: $error");
         }
-        // Cancel subscription and set safe fallback state
-        _followedByRelationshipSubscription?.cancel();
-        _followedByRelationshipSubscription = null;
-        if (mounted) {
-          setState(() {
-            _isFollowedByStreamer = false;
-          });
-        }
+        _followedByRelationshipLegacyAltSubscription?.cancel();
+        _followedByRelationshipLegacyAltSubscription = null;
+        _isFollowedByLegacyAltReady = true;
+        updateAggregatedState();
       },
-      cancelOnError:
-          true, // ✅ FIX #3: Auto-cancel on error to prevent memory leaks
+      cancelOnError: true,
     );
   }
 
@@ -726,6 +854,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     _followingSubscription?.cancel();
     _followingRelationshipSubscription?.cancel();
     _followedByRelationshipSubscription?.cancel();
+    _followingRelationshipPrimarySubscription?.cancel();
+    _followedByRelationshipPrimarySubscription?.cancel();
+    _followingRelationshipLegacyAltSubscription?.cancel();
+    _followedByRelationshipLegacyAltSubscription?.cancel();
+
+    // Unblock playback now that this card is closing
+    _playbackManager.unblock();
 
     super.dispose();
   }
@@ -1412,13 +1547,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // MARK: - Button State Helpers (NetworkView Logic)
   /// 🎯 FOLLOW LOGIC: Update follow button state using centralized service
   Future<void> _updateFollowButtonState() async {
-    if (widget.currentUserId == null) return;
-
+    if (widget.currentUserId == null || !mounted) return;
     try {
-      await FollowButtonService.instance.getButtonState(
-        viewerId: widget.currentUserId!,
-        creatorId: widget.userId,
-      );
+      await _checkConnectionStatus();
     } catch (e) {
       debugPrint('❌ StreamerCard: Error updating follow button state: $e');
     }
@@ -2097,13 +2228,21 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       try {
         await widget.onFollow!(widget.userId);
 
-        // If parent callback succeeds, keep the optimistic state
+        // Verify persistence; if still not following, perform follow write
+        final persisted = await _followsService.isFollowing(widget.userId);
+        if (!persisted) {
+          final persistedOk = await _followsService.followUser(widget.userId);
+          if (!persistedOk) {
+            throw Exception('Follow write failed after callback');
+          }
+        }
+
         if (mounted) {
           setState(() {
             _isFollowingOperation = false;
+            _isFollowing = true;
+            _updateConnectionStatus();
           });
-
-          // Update follow button state to reflect the new relationship
           await _updateFollowButtonState();
         }
 
@@ -2111,7 +2250,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           debugPrint(
               "🔘 StreamerCardView: Parent follow callback completed successfully");
         }
-        return; // Exit early if parent handles it successfully
+        return; // Persistence ensured
       } catch (e) {
         if (kDebugMode) {
           debugPrint("🔘 StreamerCardView: Parent follow callback failed: $e");
@@ -2502,7 +2641,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   // ✅ FIX: Removed placeholder _navigateToPlayerScreen method
   // ProfileVideoFeedView now handles video taps directly and opens the real PlayerScreen
 
-
   // MARK: - Helper Methods for Follow/Unfollow Operations
 
   Future<void> _removeFollowNotification() async {
@@ -2656,22 +2794,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                 color: Colors.black.withValues(alpha: 0.2),
               ),
               child: ClipOval(
-                child: avatarURL != null && avatarURL!.isNotEmpty
-                    ? Image.network(
-                        avatarURL!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 48,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.person,
-                        color: Colors.white,
-                        size: 48,
-                      ),
+                child: buildCachedAvatarCircle(
+                  url: avatarURL,
+                  size: 104,
+                  iconSize: 48,
+                ),
               ),
             ),
           ),
@@ -2813,18 +2940,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // Back button (same as front view)
-          InstantResponseButton(
-            onPressed: widget.onDismiss,
-            hapticType: HapticFeedbackType.lightImpact,
-            child: const Icon(
-              Icons.arrow_back,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
           // Right side: Flip button
           InstantResponseButton(
             onPressed: _flipCard,
@@ -3471,6 +3588,49 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 }
 
+Widget buildCachedAvatarCircle({
+  required String? url,
+  required double size,
+  required double iconSize,
+}) {
+  final placeholder = Container(
+    width: size,
+    height: size,
+    color: Colors.grey.shade800,
+    child: Icon(
+      Icons.person,
+      color: Colors.white,
+      size: iconSize,
+    ),
+  );
+
+  if (url == null || url.isEmpty) {
+    return placeholder;
+  }
+
+  final cacheSize = (size * 2).round();
+
+  return CachedNetworkImage(
+    imageUrl: url,
+    memCacheWidth: cacheSize,
+    memCacheHeight: cacheSize,
+    fadeInDuration: const Duration(milliseconds: 120),
+    imageBuilder: (context, imageProvider) => Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        image: DecorationImage(
+          image: imageProvider,
+          fit: BoxFit.cover,
+        ),
+      ),
+    ),
+    placeholder: (context, _) => placeholder,
+    errorWidget: (context, _, __) => placeholder,
+  );
+}
+
 // MARK: - Calendar Event Sheet
 class CalendarEventSheet extends StatefulWidget {
   final Function(CalendarEvent) onSave;
@@ -3780,9 +3940,11 @@ class _SmallAvatar extends StatelessWidget {
             color: Colors.black.withValues(alpha: 0.2),
           ),
           child: ClipOval(
-            child: imageUrl != null && imageUrl!.isNotEmpty
-                ? Image.network(imageUrl!, fit: BoxFit.cover)
-                : const Icon(Icons.person, color: Colors.white, size: 28),
+            child: buildCachedAvatarCircle(
+              url: imageUrl,
+              size: 56,
+              iconSize: 28,
+            ),
           ),
         ),
       ),

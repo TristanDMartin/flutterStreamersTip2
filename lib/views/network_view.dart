@@ -31,6 +31,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   network_models.NetworkTab _selectedTab =
       network_models.NetworkTab.connections;
   final ScrollController _listController = ScrollController();
+  final GlobalPlaybackManager _playbackManager = GlobalPlaybackManager.instance;
+  static const int _pageSize = 20;
+  int _connectionsPage = 1;
+  int _followersPage = 1;
+  int _followingPage = 1;
 
   // Search functionality
   bool _isSearchVisible = false;
@@ -50,12 +55,44 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   List<user_model.User> _followingUsers = [];
   bool _isLoadingUsers = false;
 
+  void _resetPagination() {
+    _connectionsPage = 1;
+    _followersPage = 1;
+    _followingPage = 1;
+  }
+
+  void _maybeLoadMore() {
+    if (!_listController.hasClients) return;
+    final position = _listController.position;
+    if (!position.hasPixels || !position.hasContentDimensions) return;
+    final threshold = position.maxScrollExtent * 0.85;
+    if (position.pixels >= threshold) {
+      setState(() {
+        switch (_selectedTab) {
+          case network_models.NetworkTab.connections:
+            _connectionsPage++;
+            break;
+          case network_models.NetworkTab.followers:
+            _followersPage++;
+            break;
+          case network_models.NetworkTab.following:
+            _followingPage++;
+            break;
+        }
+      });
+    }
+  }
+
   // Network connectivity (kept for network error handling)
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // Real-time relationship listeners
   StreamSubscription<QuerySnapshot>? _followersSubscription;
   StreamSubscription<QuerySnapshot>? _followingSubscription;
+  StreamSubscription<QuerySnapshot>? _scopedFollowsSubscription;
+
+  // Error state
+  bool _hasShownPermissionError = false;
 
   @override
   bool get wantKeepAlive => false; // Don't keep alive when not visible
@@ -67,16 +104,16 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     // 🔊 AUDIO FIX: Block playback IMMEDIATELY (synchronously) when NetworkView opens
     // This prevents audio bleeding from HomeView - must happen before any widgets build
     // CRITICAL: This must be synchronous, not in postFrameCallback, to prevent any audio
-    final manager = GlobalPlaybackManager.instance;
-    
-    // Step 1: Block first to prevent any new videos from starting
-    manager.block(reason: 'networkViewOpened');
-    
+    _playbackManager.block(reason: 'networkViewOpened');
+
     // Step 2: Aggressively mute and pause ALL videos synchronously
-    manager.pauseAll();
-    
+    _playbackManager.pauseAll();
+
+    _listController.addListener(_maybeLoadMore);
+
     if (kDebugMode) {
-      debugPrint('🔇 NetworkView: Blocked playback and paused all videos IMMEDIATELY');
+      debugPrint(
+          '🔇 NetworkView: Blocked playback and paused all videos IMMEDIATELY');
     }
 
     // Set initial tab if provided
@@ -101,6 +138,44 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
     // Initialize real-time relationship listeners
     _initializeRelationshipListeners();
+  }
+
+  void _logDriftIfAny({
+    int? followersCountDoc,
+    int? followingCountDoc,
+  }) {
+    if (followersCountDoc != null &&
+        followersCountDoc != _followersUsers.length) {
+      debugPrint(
+          '⚠️ NetworkView: Drift detected - followers doc $followersCountDoc vs list ${_followersUsers.length}');
+    }
+    if (followingCountDoc != null &&
+        followingCountDoc != _followingUsers.length) {
+      debugPrint(
+          '⚠️ NetworkView: Drift detected - following doc $followingCountDoc vs list ${_followingUsers.length}');
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    _followersSubscription?.cancel();
+    _followingSubscription?.cancel();
+    _scopedFollowsSubscription?.cancel();
+
+    // Stop performance monitoring
+    PerformanceMonitoringService().stopMonitoring();
+
+    // Dispose controllers
+    _listController.removeListener(_maybeLoadMore);
+    _listController.dispose();
+    _searchController.dispose();
+    // Dispose timers
+    _searchTimer?.cancel();
+
+    _playbackManager.unblock();
+
+    super.dispose();
   }
 
   /// Initialize network connectivity monitoring
@@ -132,41 +207,64 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     debugPrint(
         '🔄 NetworkView: Initializing real-time listeners for user: $currentUserId');
 
-    // Listen to the new follows collection for real-time updates
     Timer? debounceTimer;
 
-    // Listen to the follows collection for any changes
-    final followsStream =
-        FirebaseFirestore.instance.collection('follows').snapshots();
+    bool _isRelevantFollow(Map<String, dynamic> data) {
+      final followerId = data['followerUserId'] ??
+          data['followerId'] ??
+          data['follower'] ??
+          data['follower_id'];
+      final targetId = data['targetUserId'] ??
+          data['followingId'] ??
+          data['followedId'] ??
+          data['target_user_id'];
+      return followerId == currentUserId || targetId == currentUserId;
+    }
 
-    // Listen to follows collection changes
-    _followersSubscription = followsStream.listen((snapshot) {
-      debugPrint(
-          '🔄 NetworkView: Follows collection changed - ${snapshot.docChanges.length} changes detected');
+    _scopedFollowsSubscription = FirebaseFirestore.instance
+        .collection('follows')
+        .snapshots()
+        .listen((snapshot) {
+      final relevantChanges = snapshot.docChanges.where((change) {
+        final data = change.doc.data() ?? <String, dynamic>{};
+        return _isRelevantFollow(data);
+      }).toList();
 
-      // Log each change for debugging
-      for (var change in snapshot.docChanges) {
-        debugPrint('  📝 Change: ${change.type} - ${change.doc.id}');
-      }
-
-      if (snapshot.docChanges.isNotEmpty) {
+      if (kDebugMode && relevantChanges.isNotEmpty) {
         debugPrint(
-            '🔄 NetworkView: Follows change detected, refreshing data...');
-        // Debounce to prevent excessive calls
-        debounceTimer?.cancel();
-        debounceTimer = Timer(const Duration(milliseconds: 500), () {
-          debugPrint('🔄 NetworkView: Debounced refresh triggered');
-          _refreshDataInstantly();
-        });
+            '🔄 NetworkView: Relevant follows changes: ${relevantChanges.length}');
       }
+
+      if (relevantChanges.isEmpty) return;
+
+      debounceTimer?.cancel();
+      debounceTimer = Timer(const Duration(milliseconds: 500), () {
+        _refreshDataInstantly();
+      });
     }, onError: (error) {
-      debugPrint('❌ NetworkView: Error in follows listener: $error');
+      if (kDebugMode) {
+        debugPrint('❌ NetworkView: Error in scoped follows listener: $error');
+      }
+      final isPermissionDenied =
+          error.toString().toLowerCase().contains('permission');
+      if (mounted && (!_hasShownPermissionError || !isPermissionDenied)) {
+        _hasShownPermissionError =
+            _hasShownPermissionError || isPermissionDenied;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isPermissionDenied
+                  ? 'Cannot load network: missing permissions.'
+                  : 'Network updates failed. Check connection.',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     });
 
-    // Set following subscription to null since we're using a single stream now
-    _followingSubscription = null;
-
-    debugPrint('✅ NetworkView: Real-time listeners initialized');
+    debugPrint('✅ NetworkView: Real-time listeners initialized (scoped)');
   }
 
   /// Check network connectivity before API calls
@@ -225,6 +323,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       debugPrint(
           '🔄 NetworkView: Starting to load users from FollowsService...');
 
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
       // Check if migration is needed and run it
       await _runMigrationIfNeeded();
 
@@ -242,6 +342,26 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       debugPrint(
           '📊 NetworkView: Raw results - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}');
 
+      int? followersCountDoc;
+      int? followingCountDoc;
+      if (currentUserId != null) {
+        try {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUserId)
+              .get();
+          final data = userDoc.data();
+          followersCountDoc =
+              data != null ? data['followersCount'] as int? : null;
+          followingCountDoc =
+              data != null ? data['followingCount'] as int? : null;
+        } catch (e) {
+          debugPrint('⚠️ NetworkView: Unable to read doc counters: $e');
+        }
+      }
+
+      _resetPagination();
+
       setState(() {
         _connectionsUsers = results[0];
         _followersUsers = results[1];
@@ -249,8 +369,18 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         _isLoadingUsers = false;
       });
 
+      _logDriftIfAny(
+        followersCountDoc: followersCountDoc,
+        followingCountDoc: followingCountDoc,
+      );
+
       debugPrint(
           '🎯 NetworkView: Final state - Connections: ${_connectionsUsers.length}, Followers: ${_followersUsers.length}, Following: ${_followingUsers.length}');
+
+      _logDriftIfAny(
+        followersCountDoc: followersCountDoc,
+        followingCountDoc: followingCountDoc,
+      );
 
       // Debug: Print user details with clear section headers
       debugPrint('🔗 CONNECTIONS (Mutual Follows):');
@@ -319,24 +449,6 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     } catch (e) {
       debugPrint('❌ NetworkView: Error checking migration status: $e');
     }
-  }
-
-  @override
-  void dispose() {
-    // Stop performance monitoring
-    PerformanceMonitoringService().stopMonitoring();
-
-    // Dispose controllers
-    _listController.dispose();
-    _searchController.dispose();
-
-    // Cancel all timers and subscriptions
-    _searchTimer?.cancel();
-    _connectivitySubscription?.cancel();
-    _followersSubscription?.cancel();
-    _followingSubscription?.cancel();
-
-    super.dispose();
   }
 
   void _onSearchChanged() {
@@ -466,19 +578,25 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     }
 
     List<user_model.User> users = [];
+    int page = 1;
     switch (_selectedTab) {
       case network_models.NetworkTab.connections:
         users = _connectionsUsers;
+        page = _connectionsPage;
         break;
       case network_models.NetworkTab.followers:
         users = _followersUsers;
+        page = _followersPage;
         break;
       case network_models.NetworkTab.following:
         users = _followingUsers;
+        page = _followingPage;
         break;
     }
 
-    return _sortUsers(users);
+    final sorted = _sortUsers([...users]);
+    final end = (page * _pageSize).clamp(0, sorted.length);
+    return sorted.take(end).toList();
   }
 
   List<user_model.User> _sortUsers(List<user_model.User> users) {
@@ -969,9 +1087,13 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   Widget _buildMainContent() {
     if (_isLoadingUsers) {
-      return const Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      return RefreshIndicator(
+        onRefresh: _handlePullToRefresh,
+        color: Colors.white,
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          itemCount: 6,
+          itemBuilder: (_, __) => _buildSkeletonCard(),
         ),
       );
     }
@@ -1022,9 +1144,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     Future.microtask(() async {
       if (mounted) {
         final userId = await _resolveUserDocumentId(user);
-        debugPrint('🔵 NetworkView: Resolved userId for StreamerCardView: $userId');
+        debugPrint(
+            '🔵 NetworkView: Resolved userId for StreamerCardView: $userId');
         if (userId == null) {
-          debugPrint('❌ NetworkView: Unable to resolve user document for ${user.displayName} (${user.username})');
+          debugPrint(
+              '❌ NetworkView: Unable to resolve user document for ${user.displayName} (${user.username})');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -1135,70 +1259,70 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: () {
-          debugPrint(
-              '🔵 NetworkView: User card tapped for user: ${user.displayName}');
-          HapticFeedback.lightImpact();
-
-          // Use the custom navigation method
-          _navigateToStreamerCard(user);
-        },
-        child: Container(
-          width:
-              double.infinity, // Match the full width of the search input box
-          height: 60, // Shorter height for better appearance
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                // Avatar with online status
-                StatusAwareAvatar(
-                  userId: user.id,
-                  avatarURL: user.avatarURL,
-                  radius: 20,
-                  showOnlineIndicator: true,
-                ),
-                const SizedBox(width: 12),
-                // User info
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user.displayName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16, // Slightly smaller font
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '@${user.username}',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 12, // Slightly smaller font
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+      child: Dismissible(
+        key: ValueKey('network_user_${user.id}_${_selectedTab.name}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) => _handleSwipeAction(user),
+        background: _buildSwipeBackground(),
+        child: GestureDetector(
+          onTap: () {
+            debugPrint(
+                '🔵 NetworkView: User card tapped for user: ${user.displayName}');
+            HapticFeedback.lightImpact();
+            _navigateToStreamerCard(user);
+          },
+          child: Container(
+            width: double.infinity,
+            height: 60,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  StatusAwareAvatar(
+                    userId: user.id,
+                    avatarURL: user.avatarURL,
+                    radius: 20,
+                    showOnlineIndicator: true,
                   ),
-                ),
-                // Arrow icon
-                Icon(
-                  Icons.chevron_right,
-                  color: Colors.white.withValues(alpha: 0.5),
-                  size: 20, // Slightly smaller icon
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user.displayName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '@${user.username}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 12,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.white.withValues(alpha: 0.5),
+                    size: 20,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1218,7 +1342,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           ),
           const SizedBox(height: 20),
           Text(
-            'No users found',
+            _selectedTab == network_models.NetworkTab.followers
+                ? 'No followers yet'
+                : _selectedTab == network_models.NetworkTab.following
+                    ? 'You are not following anyone'
+                    : 'No connections yet',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.7),
               fontSize: 18,
@@ -1227,22 +1355,175 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           ),
           const SizedBox(height: 8),
           Text(
-            'Try adjusting your search or check back later',
+            _selectedTab == network_models.NetworkTab.followers
+                ? 'Share your profile to grow your audience.'
+                : _selectedTab == network_models.NetworkTab.following
+                    ? 'Discover people to follow from Home or Search.'
+                    : 'Follow back people who follow you to connect.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.5),
               fontSize: 14,
             ),
             textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _refreshDataInstantly,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Refresh'),
+          ),
         ],
       ),
     );
   }
 
+  Widget _buildSkeletonCard() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 12),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 12,
+                    width: 140,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 10,
+                    width: 90,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwipeBackground() {
+    return Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.block, color: Colors.white),
+          SizedBox(width: 8),
+          Icon(Icons.delete_forever, color: Colors.white),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _handleSwipeAction(user_model.User user) async {
+    HapticFeedback.mediumImpact();
+    final tab = _selectedTab;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == null) return false;
+
+    try {
+      if (tab == network_models.NetworkTab.following ||
+          tab == network_models.NetworkTab.connections) {
+        final ok = await FollowsService().unfollowUser(user.id);
+        if (ok) {
+          _refreshDataInstantly();
+          return true;
+        }
+        return false;
+      }
+
+      final batch = FirebaseFirestore.instance.batch();
+      final follows = FirebaseFirestore.instance.collection('follows');
+
+      final legacyDocs = await follows
+          .where('followerId', isEqualTo: user.id)
+          .where('followedId', isEqualTo: currentUserId)
+          .get();
+      for (final doc in legacyDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      final primaryDocs = await follows
+          .where('targetUserId', isEqualTo: currentUserId)
+          .where('followerUserId', isEqualTo: user.id)
+          .get();
+      for (final doc in primaryDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      if (legacyDocs.docs.isEmpty && primaryDocs.docs.isEmpty) {
+        debugPrint(
+            '⚠️ No follower docs found to remove for ${user.id}, skipping.');
+        return false;
+      }
+
+      await batch.commit();
+      _refreshDataInstantly();
+      return true;
+    } catch (e) {
+      debugPrint('❌ Swipe action failed: $e');
+      return false;
+    }
+  }
+
   void _selectTab(network_models.NetworkTab tab) {
     setState(() {
       _selectedTab = tab;
+      switch (tab) {
+        case network_models.NetworkTab.connections:
+          _connectionsPage = 1;
+          break;
+        case network_models.NetworkTab.followers:
+          _followersPage = 1;
+          break;
+        case network_models.NetworkTab.following:
+          _followingPage = 1;
+          break;
+      }
     });
+    if (_listController.hasClients) {
+      _listController.jumpTo(0);
+    }
   }
 
   network_models.NetworkTab _getTabFromString(String tabName) {

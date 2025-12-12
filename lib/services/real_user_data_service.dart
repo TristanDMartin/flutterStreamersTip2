@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/video_url_resolver.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user.dart';
 import '../models/home_video.dart';
@@ -305,24 +306,24 @@ class RealUserDataService {
   }
 
   /// Get user's videos
+  /// 🚀 NEWEST FIRST: Returns videos sorted by creation date (newest first)
   Future<List<HomeVideo>> getUserVideos(String userId, {int limit = 20}) async {
     try {
-      // Simple query - just get all videos for this user, filter in memory
-      final snapshot = await _firestore
+      // 🚀 NEWEST FIRST: Query with orderBy to get newest videos first
+      Query query = _firestore
           .collection('videos')
           .where('userId', isEqualTo: userId)
-          .limit(50) // Get more to filter in memory
-          .get();
+          .where('status', isEqualTo: 'published')
+          .orderBy('createdAt', descending: true)
+          .limit(limit);
+
+      final snapshot = await query.get();
 
       final videos = <HomeVideo>[];
 
       for (final doc in snapshot.docs) {
-        final data = doc.data();
-
-        // Filter for published videos only
-        if (data['status'] != 'published') {
-          continue;
-        }
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data == null) continue;
 
         // Get creator data
         final creator = await getUserById(userId);
@@ -344,22 +345,30 @@ class RealUserDataService {
 
         final video = HomeVideo(
           id: doc.id,
-          videoURL: data['videoUrl'] ?? '',
+          videoURL: resolveVideoUrl(data),
           thumbnailURL: thumbnailUrl,
           thumbnails: thumbnails,
           creator: creator,
-          views: data['views'] ?? 0,
-          likes: data['likes'] ?? 0,
-          comments: data['comments'] ?? 0,
-          caption: data['title'] ?? data['description'] ?? '',
-          categoryId: data['category'] ?? 'general',
+          views: (data['views'] as num?)?.toInt() ?? 0,
+          likes: (data['likes'] as num?)?.toInt() ?? 0,
+          comments: (data['comments'] as num?)?.toInt() ?? 0,
+          caption: (data['title'] as String?) ??
+              (data['description'] as String?) ??
+              '',
+          categoryId: (data['category'] as String?) ?? 'general',
+          createdAt: data['createdAt'] as Timestamp?,
         );
 
         videos.add(video);
       }
 
-      // Sort by creation date (newest first) and limit
-      // Videos are already sorted by Firestore query
+      // 🚀 NEWEST FIRST: Sort by creation date (newest first) as safety net
+      videos.sort((a, b) {
+        final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+        final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime); // Reverse order for newest first
+      });
+
       final limitedVideos = videos.take(limit).toList();
 
       LoggingService.instance.debug(
@@ -421,7 +430,7 @@ class RealUserDataService {
 
         final video = HomeVideo(
           id: doc.id,
-          videoURL: data['videoUrl'] ?? '',
+          videoURL: resolveVideoUrl(data),
           thumbnailURL: thumbnailUrl,
           thumbnails: thumbnails,
           creator: creator,
@@ -492,7 +501,7 @@ class RealUserDataService {
 
         final video = HomeVideo(
           id: doc.id,
-          videoURL: data['videoUrl'] ?? '',
+          videoURL: resolveVideoUrl(data),
           thumbnailURL: thumbnailUrl,
           thumbnails: thumbnails,
           creator: creator,

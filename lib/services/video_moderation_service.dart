@@ -20,46 +20,49 @@ class VideoModerationResult {
 }
 
 class VideoModerationService {
-  static final VideoModerationService _instance = VideoModerationService._internal();
+  static final VideoModerationService _instance =
+      VideoModerationService._internal();
   factory VideoModerationService() => _instance;
   VideoModerationService._internal();
 
   // Content moderation rules
   static const List<String> _hateSpeechTerms = [
     // Racial slurs and derogatory terms
-    'nigger', 'nigga', 'chink', 'gook', 'wetback', 'spic', 'kike', 'fag', 'faggot',
+    'nigger', 'nigga', 'chink', 'gook', 'wetback', 'spic', 'kike', 'fag',
+    'faggot',
     'tranny', 'dyke', 'retard', 'retarded', 'cripple', 'midget', 'retard',
-    
+
     // Hate speech patterns
     'kill all', 'exterminate', 'genocide', 'ethnic cleansing', 'white power',
     'black power', 'jew hater', 'muslim hater', 'christian hater', 'hate jews',
-    'hate muslims', 'hate blacks', 'hate whites', 'hate asians', 'hate mexicans',
-    
+    'hate muslims', 'hate blacks', 'hate whites', 'hate asians',
+    'hate mexicans',
+
     // Violent threats
     'i will kill', 'i will murder', 'i will rape', 'i will beat', 'i will hurt',
     'you should die', 'you should kill yourself', 'go kill yourself', 'kys',
     'i hope you die', 'i wish you were dead', 'you deserve to die',
-    
+
     // Harassment and bullying
     'you are ugly', 'you are stupid', 'you are worthless', 'you are trash',
     'nobody likes you', 'everyone hates you', 'you should disappear',
     'you are a mistake', 'you are garbage', 'you are pathetic',
-    
+
     // Sexual harassment
     'show me your', 'send nudes', 'send pics', 'you are hot', 'you are sexy',
     'i want to fuck', 'i want to rape', 'i want to touch', 'i want to see',
-    
+
     // Discriminatory language
     'all women are', 'all men are', 'all blacks are', 'all whites are',
     'all asians are', 'all muslims are', 'all jews are', 'all gays are',
     'women belong in', 'men are better', 'blacks are', 'whites are superior',
-    
+
     // Workarounds and leetspeak
     'n1gg3r', 'n1gga', 'ch1nk', 'g00k', 'w3tb4ck', 'sp1c', 'k1k3', 'f4g',
     'f4gg0t', 'tr4nny', 'dyk3', 'r3t4rd', 'cr1ppl3', 'm1dg3t',
     'n!gg3r', 'n!gga', 'ch!nk', 'g00k', 'w3tb4ck', 'sp!c', 'k!k3', 'f4g',
     'f4gg0t', 'tr4nny', 'dyk3', 'r3t4rd', 'cr1ppl3', 'm1dg3t',
-    
+
     // Common misspellings and variations
     'niggar', 'niggah', 'nigguh', 'niggur', 'niggir', 'niggur',
     'chinkie', 'chinky', 'gooker', 'gooky', 'wetbacker', 'wetbacky',
@@ -68,43 +71,54 @@ class VideoModerationService {
     'cripply', 'cripplie', 'midgety', 'midgetie',
   ];
 
-  static const List<String> _violenceTerms = [
-    'kill', 'murder', 'death', 'die', 'suicide', 'bomb', 'explode', 'shoot',
-    'stab', 'cut', 'hurt', 'harm', 'violence', 'fight', 'beat', 'punch',
-    'kick', 'hit', 'attack', 'assault', 'rape', 'abuse', 'torture', 'torture',
-    'execute', 'eliminate', 'destroy', 'annihilate', 'exterminate', 'massacre',
-    'genocide', 'ethnic cleansing', 'holocaust', 'pogrom', 'lynching',
-  ];
-
   static const List<String> _sexualContentTerms = [
-    'porn', 'pornography', 'xxx', 'sex', 'sexual', 'nude', 'naked', 'breast',
-    'boob', 'ass', 'butt', 'penis', 'vagina', 'dick', 'pussy', 'cock',
-    'fuck', 'fucking', 'fucked', 'fucker', 'fuck you', 'fuck off',
-    'shit', 'shitty', 'shitting', 'bitch', 'bitches', 'whore', 'slut',
-    'prostitute', 'hooker', 'escort', 'stripper', 'pornstar', 'adult',
-    'masturbate', 'masturbation', 'orgasm', 'cum', 'cumming', 'ejaculate',
-  ];
-
-  static const List<String> _drugTerms = [
-    'cocaine', 'coke', 'heroin', 'meth', 'methamphetamine', 'crack',
-    'marijuana', 'weed', 'pot', 'hash', 'hashish', 'lsd', 'acid',
-    'ecstasy', 'mdma', 'molly', 'ketamine', 'k', 'special k',
-    'pills', 'drugs', 'dope', 'high', 'stoned', 'tripping', 'rolling',
-    'smoking', 'snorting', 'injecting', 'dealing', 'selling drugs',
-  ];
-
-  static const List<String> _copyrightTerms = [
-    'copyright', 'dmca', 'stolen', 'pirated', 'bootleg', 'illegal',
-    'unauthorized', 'infringement', 'plagiarism', 'ripped off',
+    'porn',
+    'pornography',
+    'xxx',
+    'sex',
+    'sexual',
+    'nude',
+    'naked',
+    'breast',
+    'boob',
+    'ass',
+    'butt',
+    'penis',
+    'vagina',
+    'dick',
+    'pussy',
+    'cock',
+    'fuck',
+    'fucking',
+    'fucked',
+    'fucker',
+    'fuck you',
+    'fuck off',
+    'shit',
+    'shitty',
+    'shitting',
+    'bitch',
+    'bitches',
+    'whore',
+    'slut',
+    'prostitute',
+    'hooker',
+    'escort',
+    'stripper',
+    'pornstar',
+    'adult',
+    'masturbate',
+    'masturbation',
+    'orgasm',
+    'cum',
+    'cumming',
+    'ejaculate',
   ];
 
   // Moderation categories
   static const Map<String, List<String>> _moderationCategories = {
     'hate_speech': _hateSpeechTerms,
-    'violence': _violenceTerms,
     'sexual_content': _sexualContentTerms,
-    'drugs': _drugTerms,
-    'copyright': _copyrightTerms,
   };
 
   /// Main moderation method for video content
@@ -118,8 +132,9 @@ class VideoModerationService {
       // 1. Check video file size and duration
       final fileSize = await videoFile.length();
       final duration = await _getVideoDuration(videoFile);
-      
-      if (fileSize > 100 * 1024 * 1024) { // 100MB limit
+
+      if (fileSize > 100 * 1024 * 1024) {
+        // 100MB limit
         return const VideoModerationResult(
           isApproved: false,
           violations: ['file_too_large'],
@@ -128,7 +143,8 @@ class VideoModerationService {
         );
       }
 
-      if (duration > 300) { // 5 minutes limit
+      if (duration > 300) {
+        // 5 minutes limit
         return const VideoModerationResult(
           isApproved: false,
           violations: ['duration_too_long'],
@@ -187,7 +203,6 @@ class VideoModerationService {
           'video_violations': videoViolations,
         },
       );
-
     } catch (e) {
       // If moderation fails, err on the side of caution
       return VideoModerationResult(
@@ -225,10 +240,8 @@ class VideoModerationService {
   /// Moderate metadata for inappropriate content
   VideoModerationResult _moderateMetadata(Map<String, dynamic> metadata) {
     final violations = <String>[];
-    final metadataString = metadata.values
-        .whereType<String>()
-        .join(' ')
-        .toLowerCase();
+    final metadataString =
+        metadata.values.whereType<String>().join(' ').toLowerCase();
 
     if (metadataString.isNotEmpty) {
       final textResult = _moderateText(metadataString);
@@ -249,13 +262,13 @@ class VideoModerationService {
     // - AWS Rekognition
     // - Azure Video Indexer
     // - On-device ML models
-    
+
     // For now, return empty list (no violations detected)
     // In production, this would analyze:
     // - Visual content for violence, nudity, etc.
     // - Audio content for inappropriate language
     // - Scene detection for harmful content
-    
+
     return [];
   }
 
@@ -266,7 +279,7 @@ class VideoModerationService {
       // - video_player package
       // - ffmpeg_kit_flutter
       // - video_thumbnail package
-      
+
       // For now, return a placeholder duration
       return 30.0; // 30 seconds placeholder
     } catch (e) {
@@ -286,34 +299,27 @@ class VideoModerationService {
   /// Calculate confidence score based on violations
   double _calculateConfidence(List<String> violations) {
     if (violations.isEmpty) return 1.0;
-    
+
     // Higher confidence for more serious violations
     final seriousViolations = ['hate_speech', 'violence', 'sexual_content'];
-    final seriousCount = violations.where((v) => seriousViolations.contains(v)).length;
-    
-    return (1.0 - (violations.length * 0.2) - (seriousCount * 0.3)).clamp(0.0, 1.0);
+    final seriousCount =
+        violations.where((v) => seriousViolations.contains(v)).length;
+
+    return (1.0 - (violations.length * 0.2) - (seriousCount * 0.3))
+        .clamp(0.0, 1.0);
   }
 
   /// Generate human-readable rejection reason
   String _generateRejectionReason(List<String> violations) {
     if (violations.isEmpty) return 'Content approved';
-    
+
     final reasons = <String>[];
-    
+
     if (violations.contains('hate_speech')) {
       reasons.add('hate speech or discriminatory language');
     }
-    if (violations.contains('violence')) {
-      reasons.add('violent or threatening content');
-    }
     if (violations.contains('sexual_content')) {
       reasons.add('inappropriate sexual content');
-    }
-    if (violations.contains('drugs')) {
-      reasons.add('drug-related content');
-    }
-    if (violations.contains('copyright')) {
-      reasons.add('copyright infringement');
     }
     if (violations.contains('file_too_large')) {
       reasons.add('file size exceeds limit');
@@ -321,7 +327,7 @@ class VideoModerationService {
     if (violations.contains('duration_too_long')) {
       reasons.add('video duration exceeds limit');
     }
-    
+
     return 'Content rejected due to: ${reasons.join(', ')}';
   }
 
@@ -338,7 +344,7 @@ class VideoModerationService {
       hashtags: hashtags,
       metadata: metadata,
     );
-    
+
     return result.isApproved;
   }
 
@@ -355,7 +361,7 @@ class VideoModerationService {
       hashtags: hashtags,
       metadata: metadata,
     );
-    
+
     return {
       'approved': result.isApproved,
       'violations': result.violations,

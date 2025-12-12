@@ -82,40 +82,33 @@ class _OptimizedThumbnailState extends State<OptimizedThumbnail>
 
     return GestureDetector(
       onTap: widget.onTap,
-      child: Container(
-        width: _containerWidth,
-        height: _containerHeight,
-        decoration: BoxDecoration(
-          color: Colors
-              .black, // Solid background to prevent gradient bleed-through
-          borderRadius: widget.borderRadius,
-        ),
-        child: ClipRRect(
-          borderRadius: widget.borderRadius ?? BorderRadius.zero,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Main thumbnail image
-              _buildThumbnailImage(),
-
-              // Gradient overlay for text legibility
-              _buildGradientOverlay(),
-
-              // Badges and overlays
-              if (widget.showDurationBadge &&
-                  widget.video.duration != null &&
-                  widget.video.duration! > 0)
-                _buildDurationBadge(),
-
-              if (widget.showViewsBadge && widget.video.views > 0)
-                _buildViewsBadge(),
-
-              if (widget.showDraftBadge && widget.video.isDraft)
-                _buildDraftBadge(),
-
-              // Play icon overlay
-              _buildPlayIcon(),
-            ],
+      child: AspectRatio(
+        aspectRatio: 9 / 16,
+        child: Container(
+          width: _containerWidth,
+          height: _containerHeight,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: widget.borderRadius ?? BorderRadius.circular(12),
+          ),
+          child: ClipRRect(
+            borderRadius: widget.borderRadius ?? BorderRadius.circular(12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _buildThumbnailImage(),
+                _buildGradientOverlay(),
+                if (widget.showDurationBadge &&
+                    widget.video.duration != null &&
+                    widget.video.duration! > 0)
+                  _buildDurationBadge(),
+                if (widget.showViewsBadge && widget.video.views > 0)
+                  _buildViewsBadge(),
+                if (widget.showDraftBadge && widget.video.isDraft)
+                  _buildDraftBadge(),
+                _buildPlayIcon(),
+              ],
+            ),
           ),
         ),
       ),
@@ -134,6 +127,9 @@ class _OptimizedThumbnailState extends State<OptimizedThumbnail>
       errorWidget: widget.errorWidget,
       fit: widget.fit,
       borderRadius: widget.borderRadius,
+      semanticsLabel: widget.video.caption.isNotEmpty
+          ? widget.video.caption
+          : 'Video thumbnail',
     );
   }
 

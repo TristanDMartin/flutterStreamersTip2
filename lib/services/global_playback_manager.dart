@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/material.dart';
 import '../models/home_video.dart';
+import '../constants/playback_owners.dart';
 
 /// Enhanced Global Playback Manager - Single source of truth for video playback
 ///
@@ -69,7 +70,8 @@ class GlobalPlaybackManager {
   /// Configuration
   static const int poolRadius = 1; // previous, current, next
   static const int recoveryTimeoutMs = 5000;
-  static const int maxControllerPoolSize = 3; // 🔥 CRITICAL: Reduced from 5 to 3 to prevent OutOfMemoryErrors
+  static const int maxControllerPoolSize =
+      3; // 🔥 CRITICAL: Reduced from 5 to 3 to prevent OutOfMemoryErrors
 
   // ============================================
   // BLOCKING SYSTEM (from Coordinator)
@@ -181,6 +183,100 @@ class GlobalPlaybackManager {
   Stream<bool> get playbackBlockedStream => _playbackBlockedController.stream;
 
   // ============================================
+  // SINGLE ACTIVE OWNER MODEL
+  // ============================================
+
+  /// Set the active owner and pause/mute all non-active owners
+  ///
+  /// **Purpose:**
+  /// Implements the "single active owner" model where only one view can play
+  /// audio at a time. When switching views, this pauses and mutes all videos
+  /// from other owners, then allows the new owner's videos to play.
+  ///
+  /// **Behavior:**
+  /// 1. Pauses and mutes all videos from non-active owners
+  /// 2. Sets the new active owner
+  /// 3. Notifies listeners via activeOwnerStream
+  ///
+  /// **Parameters:**
+  /// - [owner]: The owner key (e.g., 'home', 'discover', 'player', 'profile')
+  void setActiveOwner(String owner) {
+    log('🎯 PlaybackManager: Setting active owner to: $owner');
+
+    // Pause and mute all videos from non-active owners
+    final entries = List<MapEntry<String, VideoPlayerController>>.from(
+        _controllerPool.entries);
+    for (final entry in entries) {
+      final videoId = entry.key;
+      final controllerOwner = _controllerOwners[videoId];
+
+      // 🔥 SINGLE ACTIVE OWNER: Check if this video belongs to a different owner
+      // Use hierarchical matching: 'home/forYou' matches 'home', but 'discover' doesn't match 'home'
+      final belongsToActiveOwner = controllerOwner != null &&
+          (controllerOwner == owner || controllerOwner.startsWith('$owner/'));
+
+      if (!belongsToActiveOwner) {
+        try {
+          if (_isControllerSafe(videoId, entry.value)) {
+            entry.value.setVolume(0.0);
+            _muteStates[videoId] = true;
+            if (entry.value.value.isInitialized) {
+              entry.value.pause();
+            }
+            log('⏸️ PlaybackManager: Paused and muted video $videoId (owner: $controllerOwner, activeOwner: $owner)');
+          }
+        } catch (e) {
+          log('⚠️ PlaybackManager: Error pausing non-active owner video: $e');
+        }
+      }
+    }
+
+    // Set new active owner
+    _activeOwner = owner;
+    _activeOwnerController.add(_activeOwner);
+
+    log('✅ PlaybackManager: Active owner set to: $owner');
+  }
+
+  /// Check if a specific owner can play audio
+  ///
+  /// **Purpose:**
+  /// Returns true only if the given owner matches the active owner and playback
+  /// is not blocked. This prevents non-active owners from playing audio.
+  ///
+  /// **Hierarchical Owners:**
+  /// Supports hierarchical owners (e.g., 'home/forYou' matches 'home').
+  /// If activeOwner is 'home', then 'home/forYou' and 'home/following' can play.
+  ///
+  /// **Parameters:**
+  /// - [owner]: The owner key to check (e.g., 'home', 'home/forYou', 'discover')
+  ///
+  /// **Returns:**
+  /// - `true` if owner matches active owner (or is a sub-owner) and playback is not blocked
+  /// - `false` if owner doesn't match or playback is blocked
+  bool canPlay(String owner) {
+    if (_blockLevel > 0) {
+      log('🚫 PlaybackManager: Owner $owner cannot play (blocked, level: $_blockLevel)');
+      return false;
+    }
+
+    if (_activeOwner == null) {
+      log('🚫 PlaybackManager: Owner $owner cannot play (no active owner set)');
+      return false;
+    }
+
+    // Check exact match or hierarchical match (e.g., 'home/forYou' matches 'home')
+    final ownerMatches =
+        owner == _activeOwner || owner.startsWith('$_activeOwner/');
+    if (!ownerMatches) {
+      log('🚫 PlaybackManager: Owner $owner cannot play (activeOwner: $_activeOwner)');
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================
   // CORE METHODS
   // ============================================
 
@@ -211,6 +307,26 @@ class GlobalPlaybackManager {
   /// **Throws:** Nothing (all errors are caught and logged)
   void activate(String videoId, {String? owner}) {
     log('🎵 PlaybackManager: Activating video $videoId (owner: $owner)');
+
+    // 🔥 SINGLE ACTIVE OWNER: Check if owner can play before activating
+    if (owner != null && !canPlay(owner)) {
+      log('🚫 PlaybackManager: Owner $owner cannot play (activeOwner: $_activeOwner, blockLevel: $_blockLevel)');
+      // Mute and pause if owner is not active
+      final controller = _controllerPool[videoId];
+      if (controller != null && _isControllerSafe(videoId, controller)) {
+        try {
+          controller.setVolume(0.0);
+          _muteStates[videoId] = true;
+          if (controller.value.isInitialized) {
+            controller.pause();
+          }
+          log('🔇 PlaybackManager: Muted and paused non-active owner video $videoId');
+        } catch (e) {
+          log('⚠️ PlaybackManager: Error muting non-active owner video: $e');
+        }
+      }
+      return;
+    }
 
     // Don't activate if blocked
     if (_blockLevel > 0) {
@@ -259,11 +375,12 @@ class GlobalPlaybackManager {
     // 🔥 CRITICAL: This must complete before playing new video to prevent audio bleeding
     pauseAll();
 
-    // Set new active video and owner
+    // Set new active video (but NOT active owner - that's only set by setActiveOwner())
     _activeVideoId = videoId;
+    // 🔥 SINGLE ACTIVE OWNER: Don't set _activeOwner here - only setActiveOwner() should do that
+    // The owner parameter is just for tracking which owner this video belongs to
     if (owner != null) {
-      _activeOwner = owner;
-      _activeOwnerController.add(_activeOwner);
+      _controllerOwners[videoId] = owner; // Track owner for this video
     }
     _activeVideoController.add(_activeVideoId);
 
@@ -277,11 +394,17 @@ class GlobalPlaybackManager {
             // 🔥 AUDIO FIX: Ensure all other videos are muted before unmuting this one
             // Double-check that pauseAll() completed (all videos should be muted)
             // This prevents race conditions where old video might resume
-            
+
             controller.setVolume(1.0); // Unmute
             _muteStates[videoId] = false;
-            controller.play();
-            log('🎵 PlaybackManager: Playing video $videoId');
+
+            // ✅ FIX: Only play if not already playing to prevent restart
+            if (!controller.value.isPlaying) {
+              controller.play();
+              log('🎵 PlaybackManager: Playing video $videoId');
+            } else {
+              log('🎵 PlaybackManager: Video $videoId already playing, skipping play() call');
+            }
           } catch (e) {
             log('❌ PlaybackManager: Error playing video $videoId (controller disposed): $e');
             _disposedControllers[videoId] = true;
@@ -303,9 +426,18 @@ class GlobalPlaybackManager {
 
   /// Request focus for a specific video (pause all others)
   /// Alias for activate() with owner tracking
+  /// 🔥 SINGLE ACTIVE OWNER: Checks canPlay() before activating
   Future<void> requestFocus(String videoId, String owner) async {
     log('🎯 PlaybackManager: Requesting focus for $videoId from $owner');
-    
+
+    // 🔥 SINGLE ACTIVE OWNER: Check if owner can play before requesting focus
+    if (!canPlay(owner)) {
+      log('🚫 PlaybackManager: Owner $owner cannot play, not requesting focus (activeOwner: $_activeOwner, blockLevel: $_blockLevel)');
+      // Still pause all videos to prevent audio bleeding
+      pauseAll();
+      return;
+    }
+
     // 🔥 AUDIO FIX: Validate controller exists before activating
     final controller = _controllerPool[videoId];
     if (controller == null || !_isControllerSafe(videoId, controller)) {
@@ -317,7 +449,7 @@ class GlobalPlaybackManager {
       pauseAll();
       return;
     }
-    
+
     activate(videoId, owner: owner);
   }
 
@@ -348,12 +480,14 @@ class GlobalPlaybackManager {
   /// Called before activating a new video, during tab switches, or when blocking playback.
   void pauseAll() {
     log('⏸️ PlaybackManager: Pausing and muting ALL videos');
+    logTelemetry('pause_all', reason: 'pauseAll');
 
     int pausedCount = 0;
     int mutedCount = 0;
 
     // 🔥 AUDIO FIX: Create a copy of entries to avoid modification during iteration
-    final entries = List<MapEntry<String, VideoPlayerController>>.from(_controllerPool.entries);
+    final entries = List<MapEntry<String, VideoPlayerController>>.from(
+        _controllerPool.entries);
 
     for (final entry in entries) {
       final controller = entry.value;
@@ -365,13 +499,13 @@ class GlobalPlaybackManager {
             controller.setVolume(0.0);
             _muteStates[entry.key] = true;
             mutedCount++;
-            
+
             // Then pause
             if (controller.value.isInitialized) {
               controller.pause();
               pausedCount++;
             }
-            
+
             log('⏸️ PlaybackManager: Paused and muted video ${entry.key}');
           } catch (e) {
             log('❌ PlaybackManager: Error pausing video ${entry.key} (controller disposed): $e');
@@ -385,7 +519,7 @@ class GlobalPlaybackManager {
         log('❌ PlaybackManager: Error pausing video ${entry.key}: $e');
       }
     }
-    
+
     log('✅ PlaybackManager: Paused $pausedCount videos, muted $mutedCount videos');
   }
 
@@ -429,6 +563,7 @@ class GlobalPlaybackManager {
     _blockReason = reason ?? 'manual_block';
 
     log('🚫 PlaybackManager: BLOCKED (level: $_blockLevel) - reason: $_blockReason');
+    logTelemetry('block', reason: _blockReason);
 
     // Pause all videos when blocking
     pauseAll();
@@ -468,6 +603,7 @@ class GlobalPlaybackManager {
       _blockLevel--;
 
       log('✅ PlaybackManager: UNBLOCKED (level: $_blockLevel)');
+      logTelemetry('unblock');
 
       if (_blockLevel == 0) {
         _blockReason = null;
@@ -528,16 +664,22 @@ class GlobalPlaybackManager {
   void registerController(String videoId, VideoPlayerController controller,
       {String? owner}) {
     log('📝 PlaybackManager: Registering controller for video $videoId (owner: $owner)');
-    
+
     // 🔥 CRITICAL MEMORY FIX: Enforce maximum pool size to prevent MediaCodec NO_MEMORY errors
-    // If pool is full, dispose the oldest non-active controller
-    if (_controllerPool.length >= maxControllerPoolSize && !_controllerPool.containsKey(videoId)) {
-      log('⚠️ PlaybackManager: Pool size limit reached (${_controllerPool.length}), disposing oldest controller');
+    // If pool is full, dispose the oldest non-active controller BEFORE adding new one
+    if (_controllerPool.length >= maxControllerPoolSize &&
+        !_controllerPool.containsKey(videoId)) {
+      log('⚠️ PlaybackManager: Pool size limit reached (${_controllerPool.length}), disposing oldest controllers before adding new one');
       _disposeOldestController();
+      // Double-check after disposal
+      if (_controllerPool.length >= maxControllerPoolSize) {
+        log('⚠️ PlaybackManager: Pool still full after disposal, disposing more aggressively');
+        _disposeOldestController();
+      }
     }
-    
+
     _controllerPool[videoId] = controller;
-    
+
     // 🔥 AUDIO FIX: Always start muted and ensure muted if blocked
     try {
       if (_isControllerSafe(videoId, controller)) {
@@ -570,12 +712,10 @@ class GlobalPlaybackManager {
       _activeVideoId = null;
       _activeVideoController.add(null);
 
-      // Clear owner if it was this video's owner
-      final owner = _controllerOwners[videoId];
-      if (owner == _activeOwner) {
-        _activeOwner = null;
-        _activeOwnerController.add(null);
-      }
+      // 🔥 SINGLE ACTIVE OWNER: Don't clear _activeOwner here - it should only be cleared
+      // when the view itself is disposed, not when individual videos are unregistered.
+      // The active owner persists across video changes within the same view.
+      // Only clear if ALL videos for this owner are gone (handled by disposeControllersForOwner)
     }
 
     final controller = _controllerPool.remove(videoId);
@@ -637,38 +777,76 @@ class GlobalPlaybackManager {
   /// 🔥 CRITICAL MEMORY FIX: Prevents MediaCodec NO_MEMORY errors
   void disposeControllersForOwner(String owner) {
     log('🗑️ PlaybackManager: Disposing controllers for owner: $owner');
-    
+
     final toDispose = <String>[];
     for (final entry in _controllerOwners.entries) {
       if (entry.value == owner) {
         toDispose.add(entry.key);
       }
     }
-    
+
+    // 🔥 SINGLE ACTIVE OWNER: If disposing all controllers for the active owner, clear active owner
+    final isDisposingActiveOwner = _activeOwner != null &&
+        (_activeOwner == owner || owner.startsWith('$_activeOwner/'));
+
     for (final videoId in toDispose) {
       log('🗑️ PlaybackManager: Disposing controller for video $videoId (owner: $owner)');
       unregisterController(videoId);
     }
-    
+
+    // Clear active owner if we disposed all controllers for it
+    if (isDisposingActiveOwner) {
+      // Check if there are any remaining controllers for this owner
+      final hasRemainingControllers = _controllerOwners.values
+          .any((o) => o == owner || o.startsWith('$owner/'));
+
+      if (!hasRemainingControllers) {
+        log('🗑️ PlaybackManager: All controllers for active owner $owner disposed, clearing active owner');
+        _activeOwner = null;
+        _activeOwnerController.add(null);
+      }
+    }
+
     log('✅ PlaybackManager: Disposed ${toDispose.length} controllers for owner: $owner');
   }
 
   /// Dispose the oldest non-active controller to make room
   /// 🔥 CRITICAL MEMORY FIX: Prevents MediaCodec NO_MEMORY errors
   void _disposeOldestController() {
-    // Find the oldest controller that's not the active video
-    String? oldestVideoId;
+    // 🔥 AGGRESSIVE CLEANUP: Dispose multiple controllers if pool is too large
+    final targetSize = maxControllerPoolSize - 1; // Keep one slot free
+    if (_controllerPool.length <= targetSize) {
+      return; // Pool is already small enough
+    }
+
+    final toDispose = <String>[];
+    final disposeCount = _controllerPool.length - targetSize;
+
+    // Collect oldest non-active controllers
     for (final entry in _controllerPool.entries) {
+      if (toDispose.length >= disposeCount) break;
       if (entry.key != _activeVideoId) {
-        oldestVideoId = entry.key;
-        break; // Dispose the first non-active one
+        final controller = entry.value;
+        if (_isControllerSafe(entry.key, controller)) {
+          toDispose.add(entry.key);
+        }
       }
     }
-    
-    if (oldestVideoId != null) {
-      log('🗑️ PlaybackManager: Disposing oldest controller: $oldestVideoId (pool size: ${_controllerPool.length})');
-      unregisterController(oldestVideoId);
+
+    // Dispose collected controllers
+    for (final videoId in toDispose) {
+      log('🗑️ PlaybackManager: Disposing oldest controller: $videoId (pool size: ${_controllerPool.length})');
+      unregisterController(videoId);
+      // Clean up index mappings
+      final index = _videoIdToIndex[videoId];
+      if (index != null) {
+        _videoIdToIndex.remove(videoId);
+        _indexToVideoId.remove(index);
+        _lastKnownPositions.remove(index);
+      }
     }
+
+    log('✅ PlaybackManager: Disposed ${toDispose.length} controllers, pool size now: ${_controllerPool.length}');
   }
 
   // ============================================
@@ -683,14 +861,22 @@ class GlobalPlaybackManager {
   }
 
   /// Resume playback after tab switch
+  /// ⚠️ DEPRECATED: Use setActiveOwner() instead for proper single active owner model
   void resumeAfterTabSwitch() {
     log('▶️ PlaybackManager: Resuming after tab switch');
     _isPaused = false;
 
-    // 🚀 INSTANT RESUME: If there's an active video, resume it immediately
+    // 🔥 SINGLE ACTIVE OWNER: Check if active video's owner can play before resuming
     if (_activeVideoId != null && _blockLevel == 0) {
+      final videoOwner = _controllerOwners[_activeVideoId];
+      if (videoOwner != null && !canPlay(videoOwner)) {
+        log('🚫 PlaybackManager: Cannot resume - owner $videoOwner is not active (activeOwner: $_activeOwner)');
+        return;
+      }
+
       final controller = _controllerPool[_activeVideoId];
-      if (controller != null && _isControllerSafe(_activeVideoId!, controller)) {
+      if (controller != null &&
+          _isControllerSafe(_activeVideoId!, controller)) {
         try {
           controller.setVolume(1.0);
           _muteStates[_activeVideoId!] = false;
@@ -717,7 +903,7 @@ class GlobalPlaybackManager {
   VideoPlayerController? getController(String videoId) {
     final controller = _controllerPool[videoId];
     if (controller == null) return null;
-    
+
     // Check if controller is safe before returning
     if (!_isControllerSafe(videoId, controller)) {
       log('⚠️ PlaybackManager: Controller for $videoId is unsafe, removing from pool');
@@ -725,7 +911,7 @@ class GlobalPlaybackManager {
       _disposedControllers[videoId] = true;
       return null;
     }
-    
+
     return controller;
   }
 
@@ -769,21 +955,35 @@ class GlobalPlaybackManager {
   }
 
   // ============================================
+  // TELEMETRY (lightweight)
+  // ============================================
+
+  void logTelemetry(String event,
+      {String? videoId, String? owner, String? reason, double? volume}) {
+    log('🎧 PlaybackTelemetry: event=$event '
+        'video=$videoId owner=$owner '
+        'blocked=$_blockLevel reason=${reason ?? _blockReason} '
+        'volume=$volume');
+  }
+
+  // ============================================
   // TIKTOK-STYLE FEED MANAGEMENT
   // ============================================
 
   /// Called when user enters HomeView
+  /// 🎯 SINGLE ACTIVE OWNER: Uses setActiveOwner instead of unblock
   void onEnterHomeView() {
     log('🏠 PlaybackManager: Entering HomeView');
-    unblock();
+    // 🎯 SINGLE ACTIVE OWNER: Set home as active owner (handles unblocking and pausing non-active owners)
+    setActiveOwner(PlaybackOwners.home);
+
+    // 🚀 TIKTOK-STYLE: Instantly request focus for current video (no delay)
     if (_currentFeedIndex != null) {
       log('📺 PlaybackManager: Current index is $_currentFeedIndex');
-      // 🔥 CRITICAL FIX: Request focus for the current video to ensure it plays
-      // This prevents audio bleeding from other videos when returning from DiscoverView
       final videoId = _indexToVideoId[_currentFeedIndex];
       if (videoId != null) {
         log('🎵 PlaybackManager: Requesting focus for video $videoId at index $_currentFeedIndex on HomeView entry');
-        requestFocus(videoId, 'home/feed'); // Request focus to ensure playback
+        requestFocus(videoId, 'home/feed');
       }
     }
   }
@@ -803,12 +1003,12 @@ class GlobalPlaybackManager {
       log('⚠️ PlaybackManager: Invalid index $newIndex, ignoring');
       return;
     }
-    
+
     if (video.id.isEmpty || video.videoURL.isEmpty) {
       log('⚠️ PlaybackManager: Invalid video object, ignoring index change');
       return;
     }
-    
+
     log('📺 PlaybackManager: Visible index changed to $newIndex (video: ${video.id})');
 
     try {
@@ -826,13 +1026,17 @@ class GlobalPlaybackManager {
       return; // Exit early on error
     }
 
+    // ✅ FIX: Removed immediate cleanup - causes freezes by disposing controllers during index change
+    // Cleanup happens in preloadAround() after frame completes, which is safer
+
     // 🔥 CRITICAL AUDIO FIX: Pause and mute ALL videos FIRST (including manually paused ones)
     // This ensures no audio bleeding when switching videos
     pauseAll();
-    
+
     // 🔥 ADDITIONAL SAFETY: Force mute all controllers again to catch any that might have been missed
     // This is a double-check to prevent audio bleeding
-    final entries = List<MapEntry<String, VideoPlayerController>>.from(_controllerPool.entries);
+    final entries = List<MapEntry<String, VideoPlayerController>>.from(
+        _controllerPool.entries);
     for (final entry in entries) {
       try {
         if (_isControllerSafe(entry.key, entry.value)) {
@@ -862,7 +1066,7 @@ class GlobalPlaybackManager {
             log('⚠️ PlaybackManager: Error seeking in onVisibleIndexChanged: $e');
           }
         }
-        
+
         // Request focus instead of direct play - VideoPlayerViewOptimized will handle playback
         // This prevents duplicate play calls that cause video restart
         requestFocus(video.id, 'home/feed');
@@ -897,11 +1101,12 @@ class GlobalPlaybackManager {
     if (index < 0) {
       throw ArgumentError('Index must be non-negative: $index');
     }
-    
+
     if (video.id.isEmpty || video.videoURL.isEmpty) {
-      throw ArgumentError('Invalid video object: id=${video.id}, url=${video.videoURL}');
+      throw ArgumentError(
+          'Invalid video object: id=${video.id}, url=${video.videoURL}');
     }
-    
+
     final videoId = video.id;
     var controller = _controllerPool[videoId];
 
@@ -961,13 +1166,13 @@ class GlobalPlaybackManager {
     for (final n in neighbors) {
       if (n >= 0 && n < videos.length) {
         final video = videos[n];
-        
+
         // 🔒 SAFETY: Validate video object before preloading
         if (video.id.isEmpty || video.videoURL.isEmpty) {
           log('⚠️ PlaybackManager: Invalid video at index $n, skipping preload');
           continue;
         }
-        
+
         final videoId = video.id;
 
         // Preload if not already loaded
@@ -981,13 +1186,25 @@ class GlobalPlaybackManager {
       }
     }
 
-    // 🔒 SAFETY: Defer disposal to next frame to avoid disposing controllers
+    // 🔥 CRITICAL MEMORY FIX: Clean up controllers immediately AND defer additional cleanup
+    // Immediate cleanup prevents accumulation during rapid scrolling
+    try {
+      disposeFarControllers(index);
+    } catch (e) {
+      log('❌ PlaybackManager: Error disposing far controllers (immediate): $e');
+    }
+
+    // 🔒 SAFETY: Defer additional cleanup to next frame to avoid disposing controllers
     // that are currently being built or used by widgets
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
-        disposeFarControllers(index);
+        // Double-check cleanup after frame completes
+        if (_controllerPool.length > maxControllerPoolSize) {
+          log('⚠️ PlaybackManager: Pool still large after cleanup (${_controllerPool.length}), forcing cleanup');
+          disposeFarControllers(index);
+        }
       } catch (e) {
-        log('❌ PlaybackManager: Error disposing far controllers: $e');
+        log('❌ PlaybackManager: Error disposing far controllers (deferred): $e');
       }
     });
   }
@@ -998,6 +1215,30 @@ class GlobalPlaybackManager {
   void disposeFarControllers(int index) {
     final toDispose = <String>[];
 
+    // 🔥 STEP 1: Clean up stale/disposed controllers first
+    final staleControllers = <String>[];
+    for (final entry in _controllerPool.entries) {
+      final videoId = entry.key;
+      final controller = entry.value;
+      if (!_isControllerSafe(videoId, controller)) {
+        staleControllers.add(videoId);
+      }
+    }
+    for (final videoId in staleControllers) {
+      log('🧹 PlaybackManager: Cleaning up stale controller: $videoId');
+      _controllerPool.remove(videoId);
+      _controllerOwners.remove(videoId);
+      _muteStates.remove(videoId);
+      _disposedControllers.remove(videoId);
+      final videoIndex = _videoIdToIndex[videoId];
+      if (videoIndex != null) {
+        _videoIdToIndex.remove(videoId);
+        _indexToVideoId.remove(videoIndex);
+        _lastKnownPositions.remove(videoIndex);
+      }
+    }
+
+    // 🔥 STEP 2: Dispose controllers far from current index
     for (final entry in _controllerPool.entries) {
       final videoId = entry.key;
       final videoIndex = _videoIdToIndex[videoId];
@@ -1006,53 +1247,62 @@ class GlobalPlaybackManager {
       // 1. Video is far from current index (beyond poolRadius)
       // 2. Video is NOT the active video (currently playing)
       // 3. Controller is safe to dispose
-      if (videoIndex != null && 
+      if (videoIndex != null &&
           (videoIndex - index).abs() > poolRadius &&
           videoId != _activeVideoId) {
         final controller = entry.value;
-        // Double-check controller is safe before marking for disposal
         if (_isControllerSafe(videoId, controller)) {
           toDispose.add(videoId);
-        } else {
-          // Controller already disposed or invalid - clean up tracking
-          log('🧹 PlaybackManager: Cleaning up tracking for disposed controller: $videoId');
-          _videoIdToIndex.remove(videoId);
-          final indexToRemove = _indexToVideoId.entries
-              .firstWhere((e) => e.value == videoId, orElse: () => const MapEntry(-1, ''));
-          if (indexToRemove.key != -1) {
-            _indexToVideoId.remove(indexToRemove.key);
-            _lastKnownPositions.remove(indexToRemove.key);
+        }
+      } else if (videoIndex == null) {
+        // 🔥 FIX: Controller without index mapping should be disposed
+        // This handles controllers that lost their index mapping
+        if (videoId != _activeVideoId) {
+          final controller = entry.value;
+          if (_isControllerSafe(videoId, controller)) {
+            toDispose.add(videoId);
+            log('🗑️ PlaybackManager: Disposing controller without index mapping: $videoId');
           }
-          _controllerPool.remove(videoId);
         }
       }
     }
 
-    // 🔥 CRITICAL MEMORY FIX: If pool is still too large, dispose more aggressively
+    // 🔥 CRITICAL MEMORY FIX: Always enforce pool size limit aggressively
     if (_controllerPool.length > maxControllerPoolSize) {
       log('⚠️ PlaybackManager: Pool size (${_controllerPool.length}) exceeds limit ($maxControllerPoolSize), aggressive cleanup');
-      final excessCount = _controllerPool.length - maxControllerPoolSize;
-      int disposedCount = 0;
+      final targetSize = maxControllerPoolSize;
+      final excessCount = _controllerPool.length - targetSize;
+      int disposedCount = toDispose.length;
+
+      // Dispose excess controllers, prioritizing non-active ones
       for (final entry in _controllerPool.entries) {
         if (disposedCount >= excessCount) break;
         final videoId = entry.key;
         if (videoId != _activeVideoId && !toDispose.contains(videoId)) {
-          toDispose.add(videoId);
-          disposedCount++;
+          final controller = entry.value;
+          if (_isControllerSafe(videoId, controller)) {
+            toDispose.add(videoId);
+            disposedCount++;
+          }
         }
       }
     }
 
+    // 🔥 STEP 3: Dispose collected controllers
     for (final videoId in toDispose) {
-      log('🗑️ PlaybackManager: Disposing far controller for video $videoId (index: ${_videoIdToIndex[videoId]}, current: $index)');
+      log('🗑️ PlaybackManager: Disposing controller for video $videoId (index: ${_videoIdToIndex[videoId]}, current: $index, pool size: ${_controllerPool.length})');
       unregisterController(videoId);
-      _videoIdToIndex.remove(videoId);
-      final indexToRemove = _indexToVideoId.entries
-          .firstWhere((e) => e.value == videoId, orElse: () => const MapEntry(-1, ''));
-      if (indexToRemove.key != -1) {
-        _indexToVideoId.remove(indexToRemove.key);
-        _lastKnownPositions.remove(indexToRemove.key);
+      // Clean up index mappings
+      final videoIndex = _videoIdToIndex[videoId];
+      if (videoIndex != null) {
+        _videoIdToIndex.remove(videoId);
+        _indexToVideoId.remove(videoIndex);
+        _lastKnownPositions.remove(videoIndex);
       }
+    }
+
+    if (toDispose.isNotEmpty || staleControllers.isNotEmpty) {
+      log('✅ PlaybackManager: Cleaned up ${toDispose.length} far controllers and ${staleControllers.length} stale controllers, pool size now: ${_controllerPool.length}');
     }
   }
 
@@ -1073,8 +1323,7 @@ class GlobalPlaybackManager {
     final controller = getControllerForIndex(_currentFeedIndex!);
     if (controller != null) {
       final videoId = _indexToVideoId[_currentFeedIndex!];
-      if (videoId != null &&
-          _isControllerSafe(videoId, controller)) {
+      if (videoId != null && _isControllerSafe(videoId, controller)) {
         try {
           if (controller.value.isInitialized) {
             _lastKnownPositions[_currentFeedIndex!] = controller.value.position;
@@ -1092,8 +1341,7 @@ class GlobalPlaybackManager {
     final controller = getControllerForIndex(index);
     if (controller != null) {
       final videoId = _indexToVideoId[index];
-      if (videoId != null &&
-          _isControllerSafe(videoId, controller)) {
+      if (videoId != null && _isControllerSafe(videoId, controller)) {
         try {
           if (controller.value.isInitialized) {
             _lastKnownPositions[index] = controller.value.position;

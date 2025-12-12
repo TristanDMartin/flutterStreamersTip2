@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../widgets/player_screen.dart';
@@ -38,6 +39,7 @@ class NotificationNavigationService {
           if (context.mounted) {
             Navigator.of(context).push(
               MaterialPageRoute(
+                settings: const RouteSettings(name: 'playerScreen'),
                 fullscreenDialog: true,
                 builder: (context) => PlayerScreen(
                   mode: PlayerMode.homeFeed,
@@ -78,6 +80,7 @@ class NotificationNavigationService {
       if (context.mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
+            settings: const RouteSettings(name: 'playerScreen'),
             fullscreenDialog: true,
             builder: (context) => PlayerScreen(
               mode: PlayerMode.homeFeed,
@@ -116,7 +119,7 @@ class NotificationNavigationService {
     return HomeVideo(
       id: videoId,
       creator: creator,
-      videoURL: data['videoUrl'] ?? '',
+      videoURL: resolveVideoUrl(data),
       thumbnailURL: data['thumbnailUrl'],
       likes: data['likeCount'] ?? 0,
       comments: data['commentCount'] ?? 0,

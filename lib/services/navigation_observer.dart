@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'global_playback_manager.dart';
+import '../constants/playback_owners.dart';
 
 /// Navigation observer that handles route changes and coordinates with playback
 class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
@@ -23,11 +24,32 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
           '   - Previous route: ${previousRoute?.settings.name} (${previousRoute?.runtimeType})');
     }
 
-    // ✅ FIX: Don't auto-resume video here
-    // Let _handleRouteChange determine if we should resume based on route type
-    // This prevents audio bleeding when returning to DiscoverView or other non-HomeView routes
-    // Only resume when actually returning to HomeView (handled in _handleRouteChange)
+    // 🔥 CRITICAL FIX: Detect return from DiscoverView to HomeView
+    final poppedRouteName = route.settings.name ?? route.runtimeType.toString();
+    final isPoppingDiscoverView =
+        poppedRouteName.toLowerCase().contains('discover');
 
+    if (isPoppingDiscoverView && previousRoute != null) {
+      final previousRouteName =
+          previousRoute.settings.name ?? previousRoute.runtimeType.toString();
+      final isReturningToHome =
+          previousRouteName.toLowerCase().contains('home') ||
+              previousRouteName == '/' ||
+              previousRouteName.isEmpty;
+
+      if (isReturningToHome) {
+        debugPrint(
+            '🔄 NavigationObserver: Returning to HomeView from DiscoverView - resuming videos');
+        // 🔥 CRITICAL: Unblock first (DiscoverView may have blocked playback)
+        _manager.unblock();
+        // 🎯 SINGLE ACTIVE OWNER: Set home as active owner
+        // VideoPlayerViewOptimized's activeOwnerSubscription listener will automatically resume
+        _manager.setActiveOwner(PlaybackOwners.home);
+        return;
+      }
+    }
+
+    // ✅ FIX: Let _handleRouteChange determine if we should resume based on route type
     _handleRouteChange(previousRoute, isForeground: true);
   }
 
@@ -70,11 +92,9 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       }
     }
 
-    // DEBUG: Log all route information
-    debugPrint('🔍 NavigationObserver: Route change detected:');
-    debugPrint('   - Route type: ${route.runtimeType}');
-    debugPrint('   - Route name: ${route.settings.name}');
-    debugPrint('   - Determined owner: $owner');
+    // 🔥 CRITICAL: Enhanced route detection with detailed logging
+    final routeName = route.settings.name ?? route.runtimeType.toString();
+    debugPrint('[MediaRouteObserver] new route: $routeName');
 
     // TIKTOK FIX: Don't pause video for CommentsView2 or ShareSheet modals - keep video playing behind
     final shouldKeepVideoPlaying =
@@ -90,35 +110,88 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       return;
     }
 
-    // 🔊 AUDIO FIX: Block playback when leaving home
-    // HomeView is not a route itself, it's inside MainTabView
-    // Check if we're returning to a route that contains HomeView
-    final routeName = route.runtimeType.toString().toLowerCase();
-    final isHomeRoute = owner == 'home' || 
-                       owner == '/' || 
-                       routeName.contains('hometab') ||
-                       routeName.contains('maintab');
-    
-    // 🔥 CRITICAL: Explicitly detect NetworkView to ensure blocking
-    final isNetworkView = routeName.contains('networkview') || 
-                         owner?.toLowerCase().contains('network') == true;
+    // 🔊 Enhanced route detection
+    final routeNameLower = routeName.toLowerCase();
+    final isHomeRoute = routeName == '/home' ||
+        routeName == 'home' ||
+        routeNameLower.contains('homeview') ||
+        routeNameLower.contains('hometab') ||
+        routeNameLower.contains('maintab') ||
+        owner == 'home' ||
+        owner == '/';
 
-    if (!isHomeRoute && isForeground) {
+    final isProfileRoute = routeName == '/profile' ||
+        routeName == 'profile' ||
+        routeName == 'ProfileView' ||
+        routeNameLower.contains('profileview') ||
+        owner?.toLowerCase() == 'profile';
+
+    final isPlayerRoute = routeName == '/player' ||
+        routeName == 'player' ||
+        routeName == 'playerScreen' ||
+        routeNameLower.contains('playerview') ||
+        routeNameLower.contains('playerscreen') ||
+        owner?.toLowerCase().contains('player') == true;
+
+    final isDiscoverRoute = routeNameLower.contains('discoverview') ||
+        routeNameLower.contains('discover') ||
+        owner?.toLowerCase().contains('discover') == true;
+
+    // 🔥 CRITICAL: Explicitly detect NetworkView to ensure blocking
+    final isNetworkView = routeNameLower.contains('networkview') ||
+        owner?.toLowerCase().contains('network') == true;
+
+    // 🎯 SINGLE ACTIVE OWNER: Use setActiveOwner for video-playing routes
+    if (isPlayerRoute) {
+      debugPrint('[MediaRouteObserver] Entering PLAYER – setting active owner');
+      _manager.setActiveOwner(PlaybackOwners.player);
+      return;
+    }
+
+    if (isProfileRoute) {
+      debugPrint(
+          '[MediaRouteObserver] Entering PROFILE – setting active owner');
+      _manager.setActiveOwner(PlaybackOwners.profile);
+      return;
+    }
+
+    if (isDiscoverRoute) {
+      debugPrint(
+          '[MediaRouteObserver] Entering DISCOVER – setting active owner');
+      _manager.setActiveOwner(PlaybackOwners.discover);
+      return;
+    }
+
+    if (isHomeRoute) {
+      debugPrint('[MediaRouteObserver] Entering HOME – setting active owner');
+      _manager.setActiveOwner(PlaybackOwners.home);
+      return;
+    }
+
+    final shouldBlock = !isHomeRoute && !isDiscoverRoute;
+
+    if (shouldBlock && isForeground) {
       _manager.block(reason: 'route_change_$owner');
       debugPrint(
           '🚫 NavigationObserver: Blocking playback for non-home route: $owner');
       // 🔥 CRITICAL: Explicitly handle NetworkView
       if (isNetworkView) {
-        debugPrint('🚫 NavigationObserver: NetworkView detected - ensuring playback is blocked');
+        debugPrint(
+            '🚫 NavigationObserver: NetworkView detected - ensuring playback is blocked');
         _manager.pauseAll(); // Extra safety: pause all videos
       }
-    } else if (isHomeRoute && isForeground) {
-      _manager.unblock();
-      // 🚀 TIKTOK FIX: Instantly resume video playback when returning to home
-      // No delay - resume immediately for TikTok-like experience
-      _manager.resumeAfterTabSwitch();
-      debugPrint(
-          '✅ NavigationObserver: Unblocking and instantly resuming playback for home route: $owner');
+    } else if (!shouldBlock && isForeground) {
+      // 🎯 SINGLE ACTIVE OWNER: For video-playing routes, setActiveOwner handles everything
+      // For non-video routes, just unblock
+      if (isHomeRoute || isDiscoverRoute || isProfileRoute || isPlayerRoute) {
+        // setActiveOwner already called above for these routes
+        _manager.unblock();
+      } else {
+        _manager.unblock();
+        // Only call resumeAfterTabSwitch for non-video routes that were blocked
+        _manager.resumeAfterTabSwitch();
+      }
+      debugPrint('✅ NavigationObserver: Unblocking playback for route: $owner');
     }
 
     if (route.settings.name != null) {
@@ -145,7 +218,10 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       debugPrint('🎵 NavigationObserver: Modal presented - $modalType');
     } else {
       // 🔊 AUDIO FIX: Resume playback when modal is dismissed
-      _manager.resumeAfterTabSwitch();
+      // 🎯 SINGLE ACTIVE OWNER: Check if there's an active owner before resuming
+      if (_manager.activeOwner != null) {
+        _manager.resumeAfterTabSwitch();
+      }
       debugPrint('🎵 NavigationObserver: Modal dismissed - $modalType');
     }
   }

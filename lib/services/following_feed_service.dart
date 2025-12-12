@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 
@@ -29,7 +30,8 @@ class FollowingFeedService {
         return [];
       }
       log('👥 FollowingFeedService: Fetching videos for ${authorIds.length} authors');
-      final videos = await _fetchVideosFromAuthors(authorIds, limit, startAfter);
+      final videos =
+          await _fetchVideosFromAuthors(authorIds, limit, startAfter);
       log('👥 FollowingFeedService: Fetched ${videos.length} videos');
       return videos;
     } catch (e) {
@@ -265,7 +267,10 @@ class FollowingFeedService {
   Connection _connectionFromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final Timestamp? updatedAt = data['updatedAt'] as Timestamp?;
-    final String peerId = (data['peerId'] ?? data['userId'] ?? data['connectionId'] ?? doc.id) as String;
+    final String peerId = (data['peerId'] ??
+        data['userId'] ??
+        data['connectionId'] ??
+        doc.id) as String;
     return Connection(
       connectionId: doc.id,
       peerId: peerId,
@@ -298,7 +303,7 @@ class FollowingFeedService {
     return HomeVideo(
       id: doc.id,
       creator: creator,
-      videoURL: data['videoUrl'] ?? data['videoURL'] ?? '',
+      videoURL: resolveVideoUrl(data),
       thumbnailURL: data['thumbnailUrl'] ?? data['thumbnailURL'],
       likes: data['likes'] ?? data['likesCount'] ?? 0,
       comments: data['comments'] ?? data['commentsCount'] ?? 0,

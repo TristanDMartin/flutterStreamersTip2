@@ -53,8 +53,46 @@ class VideoProcessingService {
     }
   }
 
+  Future<File> _resizeAndCropThumbnail(
+    File source,
+    int targetWidth,
+    int targetHeight,
+  ) async {
+    try {
+      final bytes = await source.readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return source;
+
+      final targetAspect = targetWidth / targetHeight;
+      final currentAspect = decoded.width / decoded.height;
+
+      img.Image cropped;
+      if (currentAspect > targetAspect) {
+        // Too wide: crop width
+        final newWidth = (decoded.height * targetAspect).round();
+        final x = ((decoded.width - newWidth) / 2).round();
+        cropped = img.copyCrop(decoded,
+            x: x, y: 0, width: newWidth, height: decoded.height);
+      } else {
+        // Too tall: crop height
+        final newHeight = (decoded.width / targetAspect).round();
+        final y = ((decoded.height - newHeight) / 2).round();
+        cropped = img.copyCrop(decoded,
+            x: 0, y: y, width: decoded.width, height: newHeight);
+      }
+
+      final resized =
+          img.copyResize(cropped, width: targetWidth, height: targetHeight);
+      final outputBytes = img.encodeJpg(resized, quality: 90);
+      await source.writeAsBytes(outputBytes, flush: true);
+      return source;
+    } catch (_) {
+      return source;
+    }
+  }
+
   /// Trim video to specified start and end times
-  /// 
+  ///
   /// **NOTE:** Video trimming is not yet implemented. FFmpeg integration required.
   /// This method currently throws an UnimplementedError with instructions.
   Future<File> trimVideo({
@@ -67,14 +105,14 @@ class VideoProcessingService {
     LoggingService.instance.warning(
         'Video trimming attempted but not implemented. FFmpeg required.',
         tag: 'VideoProcessingService');
-    
+
     // Clear error message for user
     throw UnimplementedError(
         'Video trimming is not yet available. This feature requires FFmpeg integration and will be available in a future update. For now, please use the full video length.');
   }
 
   /// Apply audio effects (volume, mute, etc.)
-  /// 
+  ///
   /// **NOTE:** Audio effects are not yet implemented. FFmpeg integration required.
   Future<File> applyAudioEffects({
     required File inputFile,
@@ -85,13 +123,13 @@ class VideoProcessingService {
     LoggingService.instance.warning(
         'Audio effects attempted but not implemented. FFmpeg required.',
         tag: 'VideoProcessingService');
-    
+
     throw UnimplementedError(
         'Audio effects are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
   }
 
   /// Apply visual effects and filters
-  /// 
+  ///
   /// **NOTE:** Visual effects are not yet implemented. FFmpeg integration required.
   Future<File> applyVisualEffects({
     required File inputFile,
@@ -102,13 +140,13 @@ class VideoProcessingService {
     LoggingService.instance.warning(
         'Visual effects attempted but not implemented. FFmpeg required.',
         tag: 'VideoProcessingService');
-    
+
     throw UnimplementedError(
         'Visual effects and filters are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
   }
 
   /// Add text overlay to video
-  /// 
+  ///
   /// **NOTE:** Text overlays are not yet implemented. FFmpeg integration required.
   Future<File> addTextOverlay({
     required File inputFile,
@@ -119,7 +157,7 @@ class VideoProcessingService {
     LoggingService.instance.warning(
         'Text overlay attempted but not implemented. FFmpeg required.',
         tag: 'VideoProcessingService');
-    
+
     throw UnimplementedError(
         'Text overlays are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
   }
@@ -165,14 +203,16 @@ class VideoProcessingService {
           tag: 'VideoProcessingService');
 
       try {
+        const targetWidth = 720;
+        const targetHeight = 1280;
         final thumbnailPath = await VideoThumbnail.thumbnailFile(
           video: videoFile.path,
           thumbnailPath: thumbnailFile.path,
           imageFormat: ImageFormat.JPEG,
-          maxWidth: 320,
-          maxHeight: 240,
+          maxWidth: targetWidth,
+          maxHeight: targetHeight,
           timeMs: timestamp.inMilliseconds,
-          quality: 85,
+          quality: 90,
         );
 
         LoggingService.instance.info(
@@ -182,13 +222,18 @@ class VideoProcessingService {
         if (thumbnailPath != null) {
           final generatedFile = File(thumbnailPath);
           if (await generatedFile.exists()) {
-            final fileSize = await generatedFile.length();
+            final resized = await _resizeAndCropThumbnail(
+              generatedFile,
+              targetWidth,
+              targetHeight,
+            );
+            final fileSize = await resized.length();
             LoggingService.instance.info(
-                '🎬 VideoProcessingService: Thumbnail generated successfully: ${generatedFile.path} (${fileSize} bytes)',
+                '🎬 VideoProcessingService: Thumbnail generated successfully: ${resized.path} (${fileSize} bytes)',
                 tag: 'VideoProcessingService');
 
             if (fileSize > 0) {
-              return generatedFile;
+              return resized;
             } else {
               LoggingService.instance.warning(
                   '🎬 VideoProcessingService: Generated thumbnail is empty, creating fallback',
@@ -234,7 +279,7 @@ class VideoProcessingService {
           tag: 'VideoProcessingService');
 
       // Create a proper video-style thumbnail
-      final image = img.Image(width: 320, height: 240);
+      final image = img.Image(width: 720, height: 1280);
 
       // Create a solid dark background (no gradients)
       final solidColor = img.ColorRgb8(45, 45, 45); // Dark grey
@@ -247,9 +292,8 @@ class VideoProcessingService {
       // Add a subtle play icon overlay
       final centerX = image.width ~/ 2;
       final centerY = image.height ~/ 2;
-      final iconSize = 30;
+      const iconSize = 72;
 
-      // Draw a play triangle
       for (int y = centerY - iconSize ~/ 2; y < centerY + iconSize ~/ 2; y++) {
         for (int x = centerX - iconSize ~/ 2;
             x < centerX + iconSize ~/ 2;
@@ -257,7 +301,6 @@ class VideoProcessingService {
           if (x >= 0 && x < image.width && y >= 0 && y < image.height) {
             final dx = x - centerX;
             final dy = y - centerY;
-            // Create a more defined triangle
             if (dx > -dy && dx < dy && dy > 0 && dx.abs() < iconSize ~/ 2) {
               image.setPixel(x, y, img.ColorRgb8(255, 255, 255));
             }
@@ -385,7 +428,6 @@ class VideoProcessingService {
       rethrow;
     }
   }
-
 }
 
 // Data models

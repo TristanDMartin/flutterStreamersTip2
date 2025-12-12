@@ -1,11 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/video_url_resolver.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user.dart' as app_user;
 import '../models/calendar_event.dart';
 import '../models/home_video.dart';
 
 class ProfileServiceOptimized {
-  static final ProfileServiceOptimized _instance = ProfileServiceOptimized._internal();
+  static final ProfileServiceOptimized _instance =
+      ProfileServiceOptimized._internal();
   factory ProfileServiceOptimized() => _instance;
   ProfileServiceOptimized._internal();
 
@@ -32,7 +34,7 @@ class ProfileServiceOptimized {
       }
       return null;
     } catch (e) {
-    // print('Error getting user profile: $e');
+      // print('Error getting user profile: $e');
       return null;
     }
   }
@@ -60,7 +62,7 @@ class ProfileServiceOptimized {
       _videosCache[userId] = videos;
       return videos;
     } catch (e) {
-    // print('Error getting user videos: $e');
+      // print('Error getting user videos: $e');
       return [];
     }
   }
@@ -76,7 +78,7 @@ class ProfileServiceOptimized {
       if (doc.exists) {
         final data = doc.data()!;
         final events = <CalendarEvent>[];
-        
+
         if (data['calendarEvents'] != null) {
           final eventsData = data['calendarEvents'] as List<dynamic>;
           for (final eventData in eventsData) {
@@ -95,7 +97,7 @@ class ProfileServiceOptimized {
       }
       return [];
     } catch (e) {
-    // print('Error getting user events: $e');
+      // print('Error getting user events: $e');
       return [];
     }
   }
@@ -107,7 +109,7 @@ class ProfileServiceOptimized {
       if (doc.exists) {
         final data = doc.data()!;
         final platforms = <Map<String, dynamic>>[];
-        
+
         if (data['platforms'] != null) {
           final platformsData = data['platforms'] as List<dynamic>;
           for (final platformData in platformsData) {
@@ -126,22 +128,23 @@ class ProfileServiceOptimized {
       }
       return [];
     } catch (e) {
-    // print('Error getting user platforms: $e');
+      // print('Error getting user platforms: $e');
       return [];
     }
   }
 
   /// Update user profile
-  Future<bool> updateUserProfile(String userId, Map<String, dynamic> updates) async {
+  Future<bool> updateUserProfile(
+      String userId, Map<String, dynamic> updates) async {
     try {
       await _firestore.collection('users').doc(userId).update(updates);
-      
+
       // Clear cache
       _userCache.remove(userId);
-      
+
       return true;
     } catch (e) {
-    // print('Error updating user profile: $e');
+      // print('Error updating user profile: $e');
       return false;
     }
   }
@@ -153,7 +156,7 @@ class ProfileServiceOptimized {
 
     try {
       final batch = _firestore.batch();
-      
+
       // Create relationship document
       final relationshipRef = _firestore.collection('relationships').doc();
       batch.set(relationshipRef, {
@@ -169,20 +172,21 @@ class ProfileServiceOptimized {
       });
 
       // Update following count
-      final currentUserRef = _firestore.collection('users').doc(currentUser.uid);
+      final currentUserRef =
+          _firestore.collection('users').doc(currentUser.uid);
       batch.update(currentUserRef, {
         'followingCount': FieldValue.increment(1),
       });
 
       await batch.commit();
-      
+
       // Clear cache
       _userCache.remove(userId);
       _userCache.remove(currentUser.uid);
-      
+
       return true;
     } catch (e) {
-    // print('Error following user: $e');
+      // print('Error following user: $e');
       return false;
     }
   }
@@ -194,7 +198,7 @@ class ProfileServiceOptimized {
 
     try {
       final batch = _firestore.batch();
-      
+
       // Find and delete relationship
       final relationshipQuery = await _firestore
           .collection('relationships')
@@ -213,20 +217,21 @@ class ProfileServiceOptimized {
       });
 
       // Update following count
-      final currentUserRef = _firestore.collection('users').doc(currentUser.uid);
+      final currentUserRef =
+          _firestore.collection('users').doc(currentUser.uid);
       batch.update(currentUserRef, {
         'followingCount': FieldValue.increment(-1),
       });
 
       await batch.commit();
-      
+
       // Clear cache
       _userCache.remove(userId);
       _userCache.remove(currentUser.uid);
-      
+
       return true;
     } catch (e) {
-    // print('Error unfollowing user: $e');
+      // print('Error unfollowing user: $e');
       return false;
     }
   }
@@ -245,7 +250,7 @@ class ProfileServiceOptimized {
 
       return query.docs.isNotEmpty;
     } catch (e) {
-    // print('Error checking follow status: $e');
+      // print('Error checking follow status: $e');
       return false;
     }
   }
@@ -287,7 +292,7 @@ class ProfileServiceOptimized {
   HomeVideo _mapVideo(String id, Map<String, dynamic> data) {
     return HomeVideo(
       id: id,
-      videoURL: data['videoURL'] ?? '',
+      videoURL: resolveVideoUrl(data),
       thumbnailURL: data['thumbnailURL'] ?? '',
       caption: data['caption'] ?? '',
       creator: app_user.User(

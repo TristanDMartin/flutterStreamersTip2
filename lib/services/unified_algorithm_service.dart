@@ -159,8 +159,37 @@ class UnifiedAlgorithmService {
       }
     }
 
-    // Sort by score (highest first)
-    scoredVideos.sort((a, b) => b.score.compareTo(a.score));
+    // 🚀 NEWEST FIRST: Sort by creation date first (newest first), then by score
+    // This ensures newest videos always appear first, with scoring as secondary factor
+    scoredVideos.sort((a, b) {
+      final aTime = a.video.createdAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.video.createdAt?.millisecondsSinceEpoch ?? 0;
+
+      // First, prioritize newest videos (within last 24 hours get priority)
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final dayInMs = 24 * 60 * 60 * 1000;
+      final aIsRecent = (now - aTime) < dayInMs;
+      final bIsRecent = (now - bTime) < dayInMs;
+
+      // If one is recent and other isn't, recent wins
+      if (aIsRecent && !bIsRecent) return -1;
+      if (!aIsRecent && bIsRecent) return 1;
+
+      // If both are recent or both are old, sort by score within that group
+      // But still prioritize newest within same score range
+      final scoreDiff = b.score.compareTo(a.score);
+      if (scoreDiff != 0) {
+        // If score difference is significant (>10%), use score
+        final scoreRatio =
+            (a.score > 0 && b.score > 0) ? (a.score / b.score).abs() : 1.0;
+        if (scoreRatio < 0.9 || scoreRatio > 1.1) {
+          return scoreDiff;
+        }
+      }
+
+      // Otherwise, newest first
+      return bTime.compareTo(aTime);
+    });
 
     // Apply content diversity rules
     final rankedVideos = scoredVideos.map((sv) => sv.video).toList();

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Install cloud_functions deps
+        run: npm ci
+        working-directory: cloud_functions
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Firestore rules + follows emulator tests
+        run: bash scripts/ci_tests.sh
+
+      - name: Counter reconciliation (emulator, blocking)
+        run: npm --prefix cloud_functions run reconcile:counters:emulator
+
+      - name: Flutter tests
+        run: flutter test

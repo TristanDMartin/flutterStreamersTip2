@@ -164,11 +164,14 @@ class VideoUploadService {
       }
 
       // Create VideoThumbnails object for new format
+      final canonicalThumbnailUrl =
+          _withSizingParams(thumbnailUrl, width: 720, height: 1280);
+
       final thumbnails = {
         'urls': {
-          '360': thumbnailUrl,
-          '540': thumbnailUrl,
-          '720': thumbnailUrl,
+          '360': canonicalThumbnailUrl,
+          '540': canonicalThumbnailUrl,
+          '720': canonicalThumbnailUrl,
         },
         'generatedAt': FieldValue.serverTimestamp(),
       };
@@ -192,8 +195,7 @@ class VideoUploadService {
         'creatorId': userId, // Add for web/cross-platform compatibility
         'creator_id': userId, // Snake case variant for website compatibility
         'videoUrl': videoUrl,
-        'thumbnailUrl':
-            thumbnailUrl, // Keep legacy field for backward compatibility
+        'thumbnailUrl': canonicalThumbnailUrl,
         'thumbnails': thumbnails, // New format for multiple sizes
         'caption': caption,
         'hashtags': hashtags,
@@ -346,6 +348,20 @@ class VideoUploadService {
         success: false,
         error: errorMessage,
       );
+    }
+  }
+
+  String _withSizingParams(String url, {int width = 720, int height = 1280}) {
+    try {
+      final uri = Uri.parse(url);
+      final params = Map<String, String>.from(uri.queryParameters);
+      params['w'] = '$width';
+      params['h'] = '$height';
+      params['fit'] = 'crop';
+      params['crop'] = 'faces,center';
+      return uri.replace(queryParameters: params).toString();
+    } catch (_) {
+      return url;
     }
   }
 

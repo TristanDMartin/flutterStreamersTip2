@@ -19,6 +19,7 @@ import '../services/enhanced_like_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
 import '../services/global_playback_manager.dart';
+import '../constants/playback_owners.dart';
 
 class HomeViewModel extends StateNotifier<HomeState> {
   final video_service.VideoService _videoService;
@@ -80,11 +81,19 @@ class HomeViewModel extends StateNotifier<HomeState> {
       await _videoService.refresh();
       var updatedVideos = _videoService.getAllVideos();
 
-      // 🚀 NEWEST FIRST: If newVideoId is provided, ensure it's at the top
+      // 🚀 NEWEST FIRST: Sort videos by creation date (newest first)
+      updatedVideos.sort((a, b) {
+        final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+        final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime); // Reverse order for newest first
+      });
+
+      // 🚀 NEWEST FIRST: If newVideoId is provided, ensure it's at the top (should already be after sort, but double-check)
       if (newVideoId != null && updatedVideos.isNotEmpty) {
-        final newVideoIndex = updatedVideos.indexWhere((v) => v.id == newVideoId);
+        final newVideoIndex =
+            updatedVideos.indexWhere((v) => v.id == newVideoId);
         if (newVideoIndex > 0) {
-          // Move new video to the top
+          // Move new video to the top (shouldn't happen if sort worked, but safety check)
           final newVideo = updatedVideos.removeAt(newVideoIndex);
           updatedVideos.insert(0, newVideo);
           log('✅ Moved new video to top of feed: $newVideoId');
@@ -111,8 +120,15 @@ class HomeViewModel extends StateNotifier<HomeState> {
         // Refresh For You feed
         await _videoService.refresh();
         final updatedVideos = _videoService.getAllVideos();
-        state = state.copyWith(forYouVideos: updatedVideos);
-        log('✅ For You feed refreshed: ${updatedVideos.length} videos');
+        // 🚀 NEWEST FIRST: Ensure videos are sorted newest first
+        final sortedVideos = List<HomeVideo>.from(updatedVideos);
+        sortedVideos.sort((a, b) {
+          final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+          final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+          return bTime.compareTo(aTime); // Reverse order for newest first
+        });
+        state = state.copyWith(forYouVideos: sortedVideos);
+        log('✅ For You feed refreshed: ${sortedVideos.length} videos (newest first)');
       } else {
         // Refresh Following feed
         final followingIds = await _userService.getFollowingIds();
@@ -138,15 +154,33 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   /// Update For You videos with ranked/personalized feed
+  /// 🚀 NEWEST FIRST: Ensures newest videos remain at top even after algorithm ranking
   void updateForYouVideos(List<HomeVideo> videos) {
-    state = state.copyWith(forYouVideos: videos);
-    log('🎯 UnifiedAlgorithm: For You feed updated with ${videos.length} ranked videos');
+    // 🚀 NEWEST FIRST: Re-sort to ensure newest videos are at top
+    final sortedVideos = List<HomeVideo>.from(videos);
+    sortedVideos.sort((a, b) {
+      final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+      return bTime.compareTo(aTime); // Reverse order for newest first
+    });
+
+    state = state.copyWith(forYouVideos: sortedVideos);
+    log('🎯 UnifiedAlgorithm: For You feed updated with ${sortedVideos.length} ranked videos (newest first)');
   }
 
   /// Update Following videos with ranked/personalized feed
+  /// 🚀 NEWEST FIRST: Ensures newest videos remain at top even after algorithm ranking
   void updateFollowingVideos(List<HomeVideo> videos) {
-    state = state.copyWith(followingVideos: videos);
-    log('🎯 UnifiedAlgorithm: Following feed updated with ${videos.length} ranked videos');
+    // 🚀 NEWEST FIRST: Re-sort to ensure newest videos are at top
+    final sortedVideos = List<HomeVideo>.from(videos);
+    sortedVideos.sort((a, b) {
+      final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+      return bTime.compareTo(aTime); // Reverse order for newest first
+    });
+
+    state = state.copyWith(followingVideos: sortedVideos);
+    log('🎯 UnifiedAlgorithm: Following feed updated with ${sortedVideos.length} ranked videos (newest first)');
   }
 
   /// Pause all videos when leaving HomeView
@@ -207,6 +241,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
   }
 
   /// Resume current video when returning to HomeView
+  /// 🎯 SINGLE ACTIVE OWNER: Uses setActiveOwner instead of unblock
   void resumeCurrentVideo() {
     log('▶️ Resuming HomeView current video');
 
@@ -214,12 +249,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
     // The VideoPlayerViewOptimized widgets will check this flag
     state = state.copyWith(shouldResumeCurrentVideo: true);
 
-    // ALSO call global controller for immediate response
+    // 🎯 SINGLE ACTIVE OWNER: Set home as active owner (handles unblocking)
     try {
-      log('🔊 HomeProvider: Calling GlobalPlaybackManager.unblock()');
-      GlobalPlaybackManager.instance.unblock();
+      log('🔊 HomeProvider: Setting home as active owner');
+      GlobalPlaybackManager.instance.setActiveOwner(PlaybackOwners.home);
     } catch (e) {
-      log('❌ HomeProvider: Error calling GlobalPlaybackManager resume: $e');
+      log('❌ HomeProvider: Error calling GlobalPlaybackManager setActiveOwner: $e');
     }
 
     // Reset the flag after a short delay
@@ -242,7 +277,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('⏭️ Videos already loaded (${state.forYouVideos.length} videos), skipping...');
       return;
     }
-    
+
     // If hasLoaded but videos are empty, force reload
     if (state.hasLoaded && state.forYouVideos.isEmpty) {
       log('⚠️ Videos marked as loaded but list is empty - forcing reload');
@@ -326,9 +361,17 @@ class HomeViewModel extends StateNotifier<HomeState> {
           isLoading: false,
         );
       } else {
+        // 🚀 NEWEST FIRST: Ensure videos are sorted newest first
+        final sortedVideos = List<HomeVideo>.from(realVideos);
+        sortedVideos.sort((a, b) {
+          final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+          final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+          return bTime.compareTo(aTime); // Reverse order for newest first
+        });
+
         // Use real videos from VideoService for For You feed
         state = state.copyWith(
-          forYouVideos: realVideos,
+          forYouVideos: sortedVideos,
           followingVideos: [], // Will be loaded separately for Following feed
           isLoading: false,
         );

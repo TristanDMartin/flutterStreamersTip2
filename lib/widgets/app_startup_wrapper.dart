@@ -84,7 +84,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
   Widget build(BuildContext context) {
     // Watch auth service to rebuild when state changes
     final authService = ref.watch(robustAuthServiceProvider);
-    
+
     // CRITICAL: Check if Firebase is ready before accessing auth service
     if (Firebase.apps.isEmpty) {
       debugPrint(
@@ -95,14 +95,17 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     // Listen to auth state changes and force rebuild
     ref.listen(robustAuthServiceProvider, (previous, next) {
       if (previous != null) {
-        final loadingChanged = previous.shouldShowLoading != next.shouldShowLoading;
+        final loadingChanged =
+            previous.shouldShowLoading != next.shouldShowLoading;
         final loginChanged = previous.isLoggedIn != next.isLoggedIn;
-        
+
         if (loadingChanged || loginChanged) {
           debugPrint('🔄 AppStartupWrapper: Auth state changed');
-          debugPrint('   Loading: ${previous.shouldShowLoading} -> ${next.shouldShowLoading}');
-          debugPrint('   Logged in: ${previous.isLoggedIn} -> ${next.isLoggedIn}');
-          
+          debugPrint(
+              '   Loading: ${previous.shouldShowLoading} -> ${next.shouldShowLoading}');
+          debugPrint(
+              '   Logged in: ${previous.isLoggedIn} -> ${next.isLoggedIn}');
+
           if (mounted) {
             setState(() {});
           }
@@ -156,20 +159,24 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
                     width: 140,
                     height: 140,
                     child: Image.asset(
-                      'assets/091225_ST_logo_white.PNG',
+                      'assets/app_logo.PNG',
                       fit: BoxFit.contain,
                       errorBuilder: (context, error, stackTrace) {
-                        // Fallback to regular logo with white color filter
                         return Image.asset(
-                          'assets/logo.png',
+                          'assets/091225_ST_logo_white.PNG',
                           fit: BoxFit.contain,
-                          color: Colors.white,
                           errorBuilder: (context, error, stackTrace) {
-                            // Final fallback to icon
-                            return const Icon(
-                              Icons.gamepad,
+                            return Image.asset(
+                              'assets/logo.png',
+                              fit: BoxFit.contain,
                               color: Colors.white,
-                              size: 140,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Icon(
+                                  Icons.gamepad,
+                                  color: Colors.white,
+                                  size: 140,
+                                );
+                              },
                             );
                           },
                         );

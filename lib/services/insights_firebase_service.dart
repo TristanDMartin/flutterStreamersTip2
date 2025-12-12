@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/video_url_resolver.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -224,7 +225,7 @@ class InsightsFirebaseService extends ChangeNotifier {
       return ProfileVideo(
         id: videoId,
         creator: creator,
-        videoURL: data['videoURL'] ?? '',
+        videoURL: resolveVideoUrl(data),
         thumbnailURL: data['thumbnailUrl'] ??
             data[
                 'thumbnailURL'], // Try lowercase first, then uppercase for backwards compatibility

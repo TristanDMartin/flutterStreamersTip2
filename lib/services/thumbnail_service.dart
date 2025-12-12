@@ -106,6 +106,7 @@ class ThumbnailService {
     BoxFit fit = BoxFit.cover,
     BorderRadius? borderRadius,
     VoidCallback? onTap,
+    String? semanticsLabel,
   }) {
     final optimalUrl = getOptimalThumbnailUrlWithFallback(
       thumbnails: thumbnails,
@@ -132,72 +133,46 @@ class ThumbnailService {
     debugPrint(
         '🖼️ ThumbnailService: Creating CachedNetworkImage for URL: $optimalUrl');
 
+    final resolvedBorderRadius = borderRadius ?? BorderRadius.circular(12);
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: containerWidth,
         height: containerHeight,
-        decoration: borderRadius != null
-            ? BoxDecoration(borderRadius: borderRadius)
-            : null,
+        decoration: BoxDecoration(
+          borderRadius: resolvedBorderRadius,
+          color: Colors.black,
+        ),
         child: ClipRRect(
-          borderRadius: borderRadius ?? BorderRadius.zero,
-          child: CachedNetworkImage(
-            imageUrl: optimalUrl,
-            fit: fit,
-            // Optimize memory usage by setting cache dimensions
-            memCacheWidth: (containerWidth * devicePixelRatio).round(),
-            memCacheHeight: (containerHeight * devicePixelRatio).round(),
-            placeholder: (context, url) {
-              debugPrint('🖼️ ThumbnailService: Loading placeholder for $url');
-              return placeholder ?? _buildShimmerPlaceholder();
-            },
-            errorWidget: (context, url, error) {
-              debugPrint('🖼️ ThumbnailService: Error loading $url: $error');
-              debugPrint(
-                  '🖼️ ThumbnailService: Error type: ${error.runtimeType}');
-              return errorWidget ?? _buildErrorWidget();
-            },
-            imageBuilder: (context, imageProvider) {
-              debugPrint('🖼️ ThumbnailService: Image loaded successfully!');
-              return Image(
-                image: imageProvider,
-                fit: fit,
-              );
-            },
-            // Enable fade-in animation
-            fadeInDuration: const Duration(milliseconds: 200),
-            // Use high-quality scaling
-            filterQuality: FilterQuality.high,
+          borderRadius: resolvedBorderRadius,
+          child: Semantics(
+            label: semanticsLabel,
+            child: CachedNetworkImage(
+              imageUrl: optimalUrl,
+              fit: fit,
+              memCacheWidth: (containerWidth * devicePixelRatio).round(),
+              memCacheHeight: (containerHeight * devicePixelRatio).round(),
+              placeholder: (context, url) {
+                debugPrint(
+                    '🖼️ ThumbnailService: Loading placeholder for $url');
+                return placeholder ?? _buildAssetPlaceholder();
+              },
+              errorWidget: (context, url, error) {
+                debugPrint('🖼️ ThumbnailService: Error loading $url: $error');
+                return errorWidget ?? _buildAssetPlaceholder();
+              },
+              imageBuilder: (context, imageProvider) {
+                debugPrint('🖼️ ThumbnailService: Image loaded successfully!');
+                return Image(
+                  image: imageProvider,
+                  fit: fit,
+                );
+              },
+              fadeInDuration: const Duration(milliseconds: 150),
+              filterQuality: FilterQuality.high,
+            ),
           ),
-        ),
-      ),
-    );
-  }
-
-  /// Build a simple placeholder for loading states (no gradients)
-  Widget _buildShimmerPlaceholder() {
-    return Container(
-      color: Colors.grey[900], // Simple solid color - no gradients
-      child: const Center(
-        child: Icon(
-          Icons.video_library_outlined,
-          color: Colors.white54,
-          size: 32,
-        ),
-      ),
-    );
-  }
-
-  /// Build error widget for failed thumbnail loads
-  Widget _buildErrorWidget() {
-    return Container(
-      color: Colors.grey[800],
-      child: const Center(
-        child: Icon(
-          Icons.broken_image_outlined,
-          color: Colors.white54,
-          size: 32,
         ),
       ),
     );
@@ -218,15 +193,27 @@ class ThumbnailService {
         height: containerHeight,
         decoration: BoxDecoration(
           color: Colors.grey[900],
-          borderRadius: borderRadius,
+          borderRadius: borderRadius ?? BorderRadius.circular(12),
         ),
         child: Center(
-          child: placeholder ??
-              const Icon(
-                Icons.video_library_outlined,
-                color: Colors.white54,
-                size: 32,
-              ),
+          child: placeholder ?? _buildAssetPlaceholder(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssetPlaceholder() {
+    return Image.asset(
+      'assets/background.png',
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(
+        color: Colors.grey[900],
+        child: const Center(
+          child: Icon(
+            Icons.image_outlined,
+            color: Colors.white54,
+            size: 28,
+          ),
         ),
       ),
     );

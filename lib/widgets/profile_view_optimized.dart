@@ -17,6 +17,7 @@ import 'profile_video_feed_view.dart';
 import 'streamer_card_view.dart';
 import '../services/unified_avatar_service.dart';
 import '../services/global_playback_manager.dart';
+import '../constants/playback_owners.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -73,13 +74,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   @override
   void initState() {
     super.initState();
-    
-    // 🔊 AUDIO FIX: Block playback immediately when ProfileView opens
-    GlobalPlaybackManager.instance.block(reason: 'profileViewOpened');
-    if (kDebugMode) {
-      debugPrint('🚫 ProfileView: Blocking playback on init');
-    }
-    
+
     _segmentedController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
@@ -99,6 +94,12 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
     // Listen for profile updates
     _profileUpdateService?.addProfileViewListener(_onProfileUpdated);
+
+    // 🎯 SINGLE ACTIVE OWNER: Set ProfileViewOptimized as active owner
+    // Note: ProfileViewOptimized only shows thumbnails via ProfileVideoFeedView
+    // Actual video playback happens in PlayerScreen when user taps thumbnails
+    // setActiveOwner already handles pausing/muting non-active owners
+    GlobalPlaybackManager.instance.setActiveOwner(PlaybackOwners.profile);
 
     // Load stats - this sets up real-time listeners including post count
     _loadStats();

@@ -1,0 +1,17 @@
+targets:
+  $default:
+    sources:
+      include:
+        - lib/**
+        - assets/**
+      exclude:
+        - test/**
+        - web/**
+        - android/**
+        - ios/**
+        - macos/**
+        - linux/**
+        - windows/**
+    builders:
+      riverpod_generator:
+        options: {}

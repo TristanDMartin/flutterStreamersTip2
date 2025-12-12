@@ -121,6 +121,15 @@ class VideoControllerRegistry {
     return _disposedControllers[videoId] == true;
   }
 
+  /// Clear disposed flag so a controller can be recreated
+  void resetDisposed(String videoId) {
+    _disposedControllers[videoId] = false;
+    _isRegistered.remove(videoId);
+    _controllers.remove(videoId);
+    _isVisible.remove(videoId);
+    log('🔄 VideoControllerRegistry: Reset disposed state for $videoId');
+  }
+
   /// Get debug info
   Map<String, dynamic> getDebugInfo() {
     return {

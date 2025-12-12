@@ -1,10 +1,57 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const {emitTelemetry} = require('./telemetry_emitter');
 
 admin.initializeApp();
 const firestore = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
+const storage = admin.storage();
 
+function safeEmitTelemetry(eventType, payload) {
+  try {
+    emitTelemetry(eventType, payload);
+  } catch (err) {
+    console.error('telemetry emit failed', err);
+  }
+}
+
+// Storage trigger stub: normalize uploads under raw_uploads/{videoId}/source.*
+// In production, run FFmpeg (or Cloud Run) to create a canonical MP4/HLS and
+// write canonicalPlaybackUrl + status=ready on the video doc.
+exports.onRawUpload = functions.storage.object().onFinalize(async (object) => {
+  const rawPath = object.name;
+  if (!rawPath || !rawPath.startsWith('raw_uploads/')) return null;
+
+  const parts = rawPath.split('/');
+  if (parts.length < 3) return null;
+  const videoId = parts[1];
+
+  const videoRef = firestore.collection('videos').doc(videoId);
+
+  // Mark processing
+  await videoRef.set(
+    {
+      status: 'processing',
+      rawPath,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    {merge: true},
+  );
+
+  // TODO: download raw to /tmp, transcode to MP4/H.264/AAC,
+  // upload to videos/{videoId}/processed_1080.mp4, then set canonicalPlaybackUrl.
+  // For now, just mark failed to avoid dangling "processing".
+  await videoRef.set(
+    {
+      status: 'failed',
+      error: 'Transcode step not implemented in this stub.',
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    {merge: true},
+  );
+
+  return null;
+});
 // ============================================================================
 // USER PROFILE HELPERS
 // ============================================================================
@@ -616,9 +663,18 @@ exports.onFollowCreate = functions.firestore
         });
 
       console.log(`✅ Follow notification created for user ${followedId}`);
+      safeEmitTelemetry('follow_create', {
+        followerId,
+        followedId,
+      });
       return null;
     } catch (error) {
       console.error(`❌ Error creating follow notification:`, error);
+      safeEmitTelemetry('follow_error', {
+        followerId,
+        followedId,
+        error: error.message,
+      });
       return null;
     }
   });
@@ -1109,6 +1165,11 @@ exports.onVideoPublish = functions.firestore
       // Only notify for published videos, not drafts
       if (videoData.status === 'draft' || videoData.isDraft === true) {
         console.log(`📹 Video is a draft, skipping follower notifications`);
+      safeEmitTelemetry('video_publish_skipped', {
+        videoId,
+        creatorId,
+        reason: 'draft',
+      });
         return null;
       }
       
@@ -1133,6 +1194,7 @@ exports.onVideoPublish = functions.firestore
       
       if (followersSnapshot.empty) {
         console.log(`📹 No followers to notify for ${creatorId}`);
+      safeEmitTelemetry('video_publish_no_followers', {videoId, creatorId});
         return null;
       }
       
@@ -1181,10 +1243,21 @@ exports.onVideoPublish = functions.firestore
       }
       
       console.log(`✅ Created ${notificationCount} new video notifications`);
+    safeEmitTelemetry('video_publish', {
+      videoId,
+      creatorId,
+      followerCount: followersSnapshot.size,
+      notified: notificationCount,
+    });
       
       return null;
     } catch (error) {
       console.error('❌ Error in onVideoPublish:', error);
+    safeEmitTelemetry('video_publish_error', {
+      videoId,
+      creatorId,
+      error: error.message,
+    });
       return null;
     }
   });
@@ -1249,6 +1322,13 @@ exports.onVideoMilestone = functions.firestore
             
             await sendToTokens(tokens, message, ownerId);
           }
+
+          safeEmitTelemetry('video_milestone', {
+            videoId,
+            ownerId,
+            milestoneType: 'views',
+            milestone,
+          });
         }
       }
       
@@ -1300,6 +1380,13 @@ exports.onVideoMilestone = functions.firestore
             
             await sendToTokens(tokens, message, ownerId);
           }
+
+        safeEmitTelemetry('video_milestone', {
+          videoId,
+          ownerId,
+          milestoneType: 'likes',
+          milestone,
+        });
         }
       }
       

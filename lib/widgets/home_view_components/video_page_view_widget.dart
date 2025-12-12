@@ -4,6 +4,7 @@ import 'dart:developer';
 import '../../models/home_video.dart';
 import '../video_player_view_optimized.dart';
 import '../../providers/home_provider.dart';
+import '../../constants/playback_owners.dart';
 
 /// Video page view widget for HomeView (handles video scrolling)
 class VideoPageViewWidget extends ConsumerStatefulWidget {
@@ -47,7 +48,8 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     super.initState();
     // Only create PageController if videos exist
     if (widget.videos.isNotEmpty) {
-      _pageController = PageController(initialPage: widget.currentIndex.clamp(0, widget.videos.length - 1));
+      _pageController = PageController(
+          initialPage: widget.currentIndex.clamp(0, widget.videos.length - 1));
     }
 
     // Expose scroll-to-top functionality to parent
@@ -60,7 +62,10 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
 
   /// Scroll to top of the video feed
   void _scrollToTop() {
-    if (_pageController != null && _pageController!.hasClients && mounted && widget.videos.isNotEmpty) {
+    if (_pageController != null &&
+        _pageController!.hasClients &&
+        mounted &&
+        widget.videos.isNotEmpty) {
       try {
         if (_isScrollPositionReady()) {
           _pageController!.animateToPage(
@@ -84,7 +89,8 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     if (oldWidget.videos.isEmpty && widget.videos.isNotEmpty) {
       // Videos were just loaded - create PageController
       _pageController?.dispose();
-      _pageController = PageController(initialPage: widget.currentIndex.clamp(0, widget.videos.length - 1));
+      _pageController = PageController(
+          initialPage: widget.currentIndex.clamp(0, widget.videos.length - 1));
       log('🔄 VideoPageView: Videos loaded, created PageController');
       return; // Don't try to use controller until next frame
     } else if (oldWidget.videos.isNotEmpty && widget.videos.isEmpty) {
@@ -101,19 +107,21 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
 
       try {
         // Handle currentIndex changes from parent
-        if (oldWidget.currentIndex != widget.currentIndex && _pageController!.hasClients) {
+        if (oldWidget.currentIndex != widget.currentIndex &&
+            _pageController!.hasClients) {
           log('🔄 VideoPageView: currentIndex changed from ${oldWidget.currentIndex} to ${widget.currentIndex}');
 
           // Verify scroll position is ready before using controller
           if (_isScrollPositionReady()) {
-            final safeIndex = widget.currentIndex.clamp(0, widget.videos.length - 1);
+            final safeIndex =
+                widget.currentIndex.clamp(0, widget.videos.length - 1);
             _pageController!.jumpToPage(safeIndex);
           }
         }
 
         // Handle video list changes (e.g., feed switch)
         if ((oldWidget.videos.length != widget.videos.length ||
-            oldWidget.tabId != widget.tabId) &&
+                oldWidget.tabId != widget.tabId) &&
             _pageController!.hasClients) {
           log('🔄 VideoPageView: Videos or tabId changed, resetting to index 0');
 
@@ -160,7 +168,9 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.videos.isNotEmpty) {
           setState(() {
-            _pageController = PageController(initialPage: widget.currentIndex.clamp(0, widget.videos.length - 1));
+            _pageController = PageController(
+                initialPage:
+                    widget.currentIndex.clamp(0, widget.videos.length - 1));
           });
         }
       });
@@ -221,17 +231,18 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
               // 🔒 SAFETY: Validate index before accessing videos
               if (index < 0 || index >= widget.videos.length) {
                 log('⚠️ VideoPageView: Invalid index $index in itemBuilder (videos.length: ${widget.videos.length})');
-                return const SizedBox.shrink(); // Return empty widget instead of crashing
+                return const SizedBox
+                    .shrink(); // Return empty widget instead of crashing
               }
-              
+
               final video = widget.videos[index];
-              
+
               // 🔒 SAFETY: Validate video object
               if (video.id.isEmpty || video.videoURL.isEmpty) {
                 log('⚠️ VideoPageView: Invalid video at index $index');
                 return const SizedBox.shrink();
               }
-              
+
               final isCurrentVideo = index == widget.currentIndex;
 
               return VideoPlayerViewOptimized(
@@ -240,6 +251,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
                 isCurrentVideo: isCurrentVideo,
                 isFirstVideo: index == 0,
                 tabId: widget.tabId,
+                ownerKey: PlaybackOwners.home,
                 homeViewModel: ref.read(homeProvider.notifier),
                 showSheet: false,
                 sheetType: 'none',
@@ -290,7 +302,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     if (_isRefreshing || widget.onRefresh == null) return;
 
     log('🔄 VideoPageView: Pull-to-refresh triggered at index 0');
-    
+
     if (mounted) {
       setState(() {
         _isRefreshing = true;
@@ -398,7 +410,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
       // Up swipe (negative Y velocity) - go to next video
       if (velocity.dy < -300) {
         log('⬆️ VideoPageView: Up swipe detected - next video');
-        if (_pageController != null && 
+        if (_pageController != null &&
             _pageController!.hasClients &&
             widget.currentIndex < widget.videos.length - 1) {
           try {
@@ -416,7 +428,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
       // Down swipe (positive Y velocity) - go to previous video
       else if (velocity.dy > 300) {
         log('⬇️ VideoPageView: Down swipe detected - previous video');
-        if (_pageController != null && 
+        if (_pageController != null &&
             _pageController!.hasClients &&
             widget.currentIndex > 0) {
           try {

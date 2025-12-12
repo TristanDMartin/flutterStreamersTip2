@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
@@ -20,6 +21,7 @@ import '../services/caching_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/accessibility_service.dart';
 import '../services/global_playback_manager.dart';
+import '../constants/playback_owners.dart';
 import 'instant_response_button.dart';
 import 'lazy_loading_list.dart';
 import 'video_player_view_optimized.dart';
@@ -87,6 +89,24 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   final Map<String, List<Map<String, dynamic>>> _cachedVideos = {};
   // Note: Cache timestamps and TTL are reserved for future implementation
 
+  /// 🔥 GLOBAL DELETION FIX: Remove deleted video from cache
+  void _removeVideoFromCache(String videoId) {
+    for (final categoryId in _cachedVideos.keys) {
+      final videos = _cachedVideos[categoryId];
+      if (videos != null) {
+        videos.removeWhere(
+            (video) => video['docId'] == videoId || video['id'] == videoId);
+        if (videos.isEmpty) {
+          _cachedVideos.remove(categoryId);
+        }
+      }
+    }
+    LoggingService.instance.debug(
+      'Removed video $videoId from cache',
+      tag: 'DiscoverView',
+    );
+  }
+
   // Services
   final CachingService _cachingService = CachingService();
   final OfflineStorageService _offlineStorage = OfflineStorageService();
@@ -112,22 +132,15 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   @override
   void initState() {
     super.initState();
-    
-    // 🔊 AUDIO FIX: Block playback IMMEDIATELY (synchronously) when DiscoverView opens
-    // This prevents audio bleeding from HomeView - must happen before any widgets build
-    // CRITICAL: This must be synchronous, not in postFrameCallback, to prevent any audio
+
+    // 🎯 SINGLE ACTIVE OWNER: Set DiscoverView as active owner
     final manager = GlobalPlaybackManager.instance;
-    
-    // Step 1: Block first to prevent any new videos from starting
-    manager.block(reason: 'discoverViewOpened');
-    
-    // Step 2: Aggressively mute and pause ALL videos synchronously
-    manager.pauseAll();
-    
+    manager.setActiveOwner(PlaybackOwners.discover);
+
     if (kDebugMode) {
-      debugPrint('🔇 DiscoverView: Blocked playback and paused all videos IMMEDIATELY');
+      debugPrint('🎯 DiscoverView: Set as active owner');
     }
-    
+
     // Initialize accessibility service
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _accessibilityService.initialize(context);
@@ -145,9 +158,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     // Clear cached videos to free memory
     _cachedVideos.clear();
 
-    // 🔊 AUDIO FIX: Don't block here - let HomeView detect return and handle reactivation
-    // Blocking here would interfere with HomeView's reactivation logic
-    GlobalPlaybackManager.instance.pauseAll();
+    // 🔊 AUDIO FIX: Don't pause here - NavigationObserver will call setActiveOwner
+    // when navigating away, which handles pausing/muting non-active owners
+    // Pausing here would be redundant and could interfere with reactivation
 
     super.dispose();
   }
@@ -344,22 +357,54 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     TrendingCreator creator,
     int index,
   ) {
-    return _accessibilityService.createAccessibleListItem(
-      semanticLabel:
-          'Trending creator ${creator.displayName ?? creator.username}',
-      semanticHint: 'Tap to view profile',
-      onTap: () => _onCreatorTapped(creator),
-      hapticFeedbackType: AccessibilityHapticFeedbackType.light,
-      child: _buildTrendingCreatorItem(creator),
+    return KeyedSubtree(
+      key: ValueKey('trending_creator_${creator.id}_$index'),
+      child: _accessibilityService.createAccessibleListItem(
+        semanticLabel:
+            'Trending creator ${creator.displayName ?? creator.username}',
+        semanticHint: 'Tap to view profile',
+        onTap: () => _onCreatorTapped(creator),
+        hapticFeedbackType: AccessibilityHapticFeedbackType.light,
+        child: _buildTrendingCreatorItem(creator),
+      ),
     );
+  }
+
+  bool _isSampleCreatorId(String id) {
+    return ['1', '2', '3', '4', '5', '6'].contains(id);
   }
 
   void _onCreatorTapped(TrendingCreator creator) {
     HapticFeedback.lightImpact();
     LoggingService.instance.debug(
-      'Creator tapped: ${creator.username}',
+      'Creator tapped: ${creator.username} (ID: ${creator.id})',
       tag: 'DiscoverView',
     );
+
+    // Prevent navigation for sample data with fake IDs
+    if (_isSampleCreatorId(creator.id)) {
+      LoggingService.instance.warning(
+        'Cannot navigate to sample creator with fake ID: ${creator.id}',
+        tag: 'DiscoverView',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'This is sample data. Real profiles will be available when creators are trending.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // Validate that the creator ID is a valid Firebase user ID format
+    if (creator.id.isEmpty || creator.id.length < 20) {
+      LoggingService.instance.warning(
+        'Invalid creator ID format: ${creator.id}',
+        tag: 'DiscoverView',
+      );
+      return;
+    }
 
     // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
     Navigator.of(context).push(
@@ -414,15 +459,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundImage: creator.avatarURL != null
-                ? NetworkImage(creator.avatarURL!)
-                : null,
-            child: creator.avatarURL == null
-                ? Text(creator.username[0].toUpperCase())
-                : null,
-          ),
+          _buildLiveAvatar(creator.id, creator.avatarURL, creator.username),
           const SizedBox(height: 8),
           Flexible(
             child: Text(
@@ -437,15 +474,113 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            '${(creator.followerCount / 1000).toStringAsFixed(0)}K followers',
-            style: const TextStyle(color: Colors.white70, fontSize: 10),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          _buildLiveFollowerCount(creator.id, creator.followerCount),
         ],
       ),
     );
+  }
+
+  Widget _buildLiveAvatar(
+      String userId, String? initialAvatarURL, String username) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        String? avatarURL = initialAvatarURL;
+        if (snapshot.hasData &&
+            snapshot.data != null &&
+            snapshot.data!.exists) {
+          final userData = snapshot.data!.data() as Map<String, dynamic>?;
+          avatarURL = userData?['avatarURL'] ?? initialAvatarURL;
+        }
+        if (avatarURL == null || avatarURL.isEmpty) {
+          return CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.grey.withValues(alpha: 0.3),
+            child: Text(
+              username[0].toUpperCase(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
+        }
+        return ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: avatarURL,
+            width: 60,
+            height: 60,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => CircleAvatar(
+              radius: 30,
+              backgroundColor: Colors.grey.withValues(alpha: 0.3),
+              child: Text(
+                username[0].toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            errorWidget: (context, url, error) {
+              debugPrint('❌ Avatar load error for $username: $error');
+              return CircleAvatar(
+                radius: 30,
+                backgroundColor: Colors.grey.withValues(alpha: 0.3),
+                child: Text(
+                  username[0].toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              );
+            },
+            memCacheWidth: 120,
+            memCacheHeight: 120,
+            maxWidthDiskCache: 200,
+            maxHeightDiskCache: 200,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLiveFollowerCount(String userId, int initialCount) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('follows')
+          .where('followedId', isEqualTo: userId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        int followerCount = initialCount;
+        if (snapshot.hasData && snapshot.data != null) {
+          followerCount = snapshot.data!.docs.length;
+        }
+        return Text(
+          _formatFollowerCount(followerCount),
+          style: const TextStyle(color: Colors.white70, fontSize: 10),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+      },
+    );
+  }
+
+  String _formatFollowerCount(int count) {
+    if (count >= 1000000) {
+      return '${(count / 1000000).toStringAsFixed(1)}M followers';
+    } else if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(0)}K followers';
+    } else {
+      return '$count followers';
+    }
   }
 
   Widget _buildErrorState(BuildContext context, String error) {
@@ -852,8 +987,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 padding: const EdgeInsets.only(
                   left: 20,
                   right: 20,
-                  top: 20, // Increased top padding to move section down
-                  bottom: 8,
+                  top: 20,
+                  bottom: 0,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -866,6 +1001,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    const SizedBox(height: 16),
                     SizedBox(
                       height: 200,
                       child: LazyLoadingList<TrendingCreator>(
@@ -897,7 +1033,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 ),
                 child: Transform.translate(
                   offset:
-                      const Offset(0, -12), // Move Categories up by 12 pixels
+                      const Offset(0, -40), // Move Categories up to reduce gap
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1459,6 +1595,21 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           continue;
         }
 
+        // 🔥 GLOBAL DELETION FIX: Filter out deleted videos
+        final status = data['status'] as String?;
+        if (status == 'deleted' || (status != null && status != 'published')) {
+          final videoId =
+              videoData['docId'] as String? ?? data['id'] as String?;
+          if (videoId != null) {
+            _removeVideoFromCache(videoId);
+            LoggingService.instance.debug(
+              'Skipping deleted video: $videoId',
+              tag: 'DiscoverView',
+            );
+          }
+          continue;
+        }
+
         final userId = (data['userId'] ??
             data['creatorId'] ??
             data['creator_id']) as String?;
@@ -1831,15 +1982,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           );
         }
       } catch (e) {
-        // If query fails due to index or other issues, try without status filter
+        // If query fails due to index or other issues, try with categoryId field
         LoggingService.instance.debug(
-          'Query with status filter failed, trying without status filter: $e',
+          'Query with category field failed, trying categoryId field: $e',
           tag: 'DiscoverView',
         );
         try {
           query = FirebaseFirestore.instance
               .collection('videos')
-              .where('category', isEqualTo: categoryId)
+              .where('categoryId', isEqualTo: categoryId)
+              .where('status', isEqualTo: 'published')
               .orderBy('createdAt', descending: true)
               .limit(_videosPerPage);
 
@@ -1850,19 +2002,19 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           snapshot = await query.get();
 
           LoggingService.instance.debug(
-            'Query without status filter returned ${snapshot.docs.length} documents',
+            'Query with categoryId field returned ${snapshot.docs.length} documents',
             tag: 'DiscoverView',
           );
         } catch (e2) {
-          // If still fails, try with categoryId without status filter
+          // Last resort: try without orderBy (but still filter by status)
           LoggingService.instance.debug(
-            'Query failed, trying categoryId without status filter: $e2',
+            'Query with orderBy failed, trying without orderBy: $e2',
             tag: 'DiscoverView',
           );
           query = FirebaseFirestore.instance
               .collection('videos')
               .where('categoryId', isEqualTo: categoryId)
-              .orderBy('createdAt', descending: true)
+              .where('status', isEqualTo: 'published')
               .limit(_videosPerPage);
 
           if (startAfter != null) {
@@ -1872,7 +2024,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           snapshot = await query.get();
 
           LoggingService.instance.debug(
-            'Query with categoryId (no status filter) returned ${snapshot.docs.length} documents',
+            'Query with categoryId (no orderBy) returned ${snapshot.docs.length} documents',
             tag: 'DiscoverView',
           );
         }
@@ -1885,10 +2037,23 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
+      // 🔥 GLOBAL DELETION FIX: Filter out deleted videos in memory as safety net
       for (final doc in snapshot.docs) {
         final data = doc.data() as Map<String, dynamic>?;
+        if (data == null) continue;
+
+        // Skip deleted videos
+        final status = data['status'] as String?;
+        if (status == 'deleted' || (status != null && status != 'published')) {
+          LoggingService.instance.debug(
+            'Skipping deleted video: ${doc.id}',
+            tag: 'DiscoverView',
+          );
+          continue;
+        }
+
         LoggingService.instance.debug(
-          'Video ${doc.id}: category=${data?['category']}, createdAt=${data?['createdAt']}',
+          'Video ${doc.id}: category=${data['category']}, createdAt=${data['createdAt']}',
           tag: 'DiscoverView',
         );
 
@@ -1983,6 +2148,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           query = FirebaseFirestore.instance
               .collection('videos')
               .where('categoryId', isEqualTo: categoryId)
+              .where('status', isEqualTo: 'published')
               .where('createdAt', isGreaterThan: sevenDaysAgo)
               .orderBy('createdAt', descending: true)
               .limit(_videosPerPage);
@@ -2001,6 +2167,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           query = FirebaseFirestore.instance
               .collection('videos')
               .where('categoryId', isEqualTo: categoryId)
+              .where('status', isEqualTo: 'published')
               .orderBy('createdAt', descending: true)
               .limit(_videosPerPage);
 
@@ -2018,12 +2185,26 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
+      // 🔥 GLOBAL DELETION FIX: Filter out deleted videos in memory as safety net
       for (final doc in snapshot.docs) {
-        videos.add({'docId': doc.id, 'data': doc.data()});
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data == null) continue;
+
+        // Skip deleted videos
+        final status = data['status'] as String?;
+        if (status == 'deleted' || (status != null && status != 'published')) {
+          LoggingService.instance.debug(
+            'Skipping deleted video from recent: ${doc.id}',
+            tag: 'DiscoverView',
+          );
+          continue;
+        }
+
+        videos.add({'docId': doc.id, 'data': data});
       }
 
       LoggingService.instance.debug(
-        'Processed ${videos.length} recent videos for $categoryId',
+        'Processed ${videos.length} recent videos for $categoryId (after filtering deleted)',
         tag: 'DiscoverView',
       );
 
@@ -2111,6 +2292,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         query = FirebaseFirestore.instance
             .collection('videos')
             .where('categoryId', isEqualTo: categoryId)
+            .where('status', isEqualTo: 'published')
             .where('trendingScore', isGreaterThan: 50.0)
             .orderBy('trendingScore', descending: true)
             .limit(_videosPerPage);
@@ -2133,12 +2315,26 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
+      // 🔥 GLOBAL DELETION FIX: Filter out deleted videos in memory as safety net
       for (final doc in snapshot.docs) {
-        videos.add({'docId': doc.id, 'data': doc.data()});
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data == null) continue;
+
+        // Skip deleted videos
+        final status = data['status'] as String?;
+        if (status == 'deleted' || (status != null && status != 'published')) {
+          LoggingService.instance.debug(
+            'Skipping deleted video from trending: ${doc.id}',
+            tag: 'DiscoverView',
+          );
+          continue;
+        }
+
+        videos.add({'docId': doc.id, 'data': data});
       }
 
       LoggingService.instance.debug(
-        'Processed ${videos.length} trending videos for $categoryId',
+        'Processed ${videos.length} trending videos for $categoryId (after filtering deleted)',
         tag: 'DiscoverView',
       );
 
@@ -2196,14 +2392,15 @@ class _CategoryVideoFeedStatefulState
     _pageController = PageController(initialPage: widget.startIndex);
     _videos = List.from(widget.videos);
     _setupRealtimeDeletionListeners();
-    
+
     // 🔊 CRITICAL FIX: Unblock playback when category feed opens
     // DiscoverView blocks playback, but category feed needs videos to play
     // This allows VideoPlayerViewOptimized to initialize and play videos
     final manager = GlobalPlaybackManager.instance;
     manager.unblock(); // Unblock to allow video initialization
     if (kDebugMode) {
-      debugPrint('🔊 CategoryVideoFeed: Unblocked playback to allow video loading');
+      debugPrint(
+          '🔊 CategoryVideoFeed: Unblocked playback to allow video loading');
     }
   }
 
@@ -2215,15 +2412,15 @@ class _CategoryVideoFeedStatefulState
     }
     _videoListeners.clear();
     _pageController.dispose();
-    
+
     // 🔥 CRITICAL MEMORY FIX: Dispose all controllers for this category feed
     // This prevents MediaCodec NO_MEMORY errors by freeing resources immediately
     final tabId = 'discoverView_${widget.categoryId}';
     GlobalPlaybackManager.instance.disposeControllersForOwner(tabId);
-    
+
     // 🔊 AUDIO FIX: Pause all videos when category feed closes
     GlobalPlaybackManager.instance.pauseAll();
-    
+
     super.dispose();
   }
 
@@ -2305,7 +2502,8 @@ class _CategoryVideoFeedStatefulState
           );
           // 🔊 AUDIO FIX: Block playback when returning to DiscoverView
           // This prevents audio bleeding from category feed videos
-          GlobalPlaybackManager.instance.block(reason: 'returnedToDiscoverView');
+          GlobalPlaybackManager.instance
+              .block(reason: 'returnedToDiscoverView');
           GlobalPlaybackManager.instance.pauseAll();
         }
       },
@@ -2345,6 +2543,7 @@ class _CategoryVideoFeedStatefulState
                     isCurrentVideo: isCurrentVideo, // HomeView pattern
                     isFirstVideo: index == 0,
                     tabId: 'discoverView_${widget.categoryId}',
+                    ownerKey: PlaybackOwners.discover,
                     homeViewModel: ref.read(hp.homeProvider.notifier),
                     showSheet: false,
                     sheetType: '',
