@@ -1,8 +1,11 @@
 String resolveVideoUrl(Map<String, dynamic> data) {
-  // If status exists, only allow ready videos to surface a URL.
+  // If status exists, only allow ready/published videos to surface a URL.
   final status = data['status'];
-  if (status is String && status.isNotEmpty && status != 'ready') {
-    return '';
+  if (status is String && status.isNotEmpty) {
+    // Allow both 'ready' and 'published' statuses
+    if (status != 'ready' && status != 'published') {
+      return '';
+    }
   }
 
   final canonical = data['canonicalPlaybackUrl'];

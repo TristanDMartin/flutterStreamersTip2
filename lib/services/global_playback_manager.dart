@@ -277,6 +277,18 @@ class GlobalPlaybackManager {
     log('✅ PlaybackManager: Active owner set to: $owner (blockLevel: $_blockLevel)');
   }
 
+  /// Force unblock completely (sets block level to 0)
+  /// Use this when you need to ensure playback is unblocked (e.g., PlayerScreen opening)
+  void forceUnblock() {
+    if (_blockLevel > 0) {
+      log('🔓 PlaybackManager: FORCE UNBLOCKING (was level: $_blockLevel, reason: $_blockReason)');
+      _blockLevel = 0;
+      _blockReason = null;
+      _playbackBlockedController.add(false);
+      log('✅ PlaybackManager: FORCE UNBLOCKED - ready for playback');
+    }
+  }
+
   /// Check if a specific owner can play audio
   ///
   /// **Purpose:**

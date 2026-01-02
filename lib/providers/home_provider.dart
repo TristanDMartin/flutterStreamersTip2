@@ -664,9 +664,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
   // MARK: - Feed Switching (Hard refresh per feed)
 
   Future<void> switchFeed(FeedTab type) async {
+    print('🔄 switchFeed: Called with type: ${type.displayName}');
+    log('🔄 switchFeed: Called with type: ${type.displayName}');
     state = state.copyWith(activeFeed: type);
     final String rid = DateTime.now().microsecondsSinceEpoch.toString();
     if (type == FeedTab.forYou) {
+      print('🔄 switchFeed: Switching to For You feed');
+      log('🔄 switchFeed: Switching to For You feed');
       final FeedSlice slice = FeedSlice(
         items: <HomeVideo>[],
         nextCursor: null,
@@ -676,6 +680,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
       state = state.copyWith(forYouSlice: slice);
       await _refreshForYou(rid: rid);
     } else {
+      print('🔄 switchFeed: Switching to Following feed');
+      log('🔄 switchFeed: Switching to Following feed');
       final FeedSlice slice = FeedSlice(
         items: <HomeVideo>[],
         nextCursor: null,
@@ -683,7 +689,11 @@ class HomeViewModel extends StateNotifier<HomeState> {
         requestId: rid,
       );
       state = state.copyWith(followingSlice: slice);
+      print('🔄 switchFeed: About to call _refreshFollowing');
+      log('🔄 switchFeed: About to call _refreshFollowing');
       await _refreshFollowing(rid: rid);
+      print('🔄 switchFeed: _refreshFollowing completed');
+      log('🔄 switchFeed: _refreshFollowing completed');
     }
   }
 
@@ -718,9 +728,11 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> _refreshFollowing({required String rid}) async {
     try {
+      print('🔄 _refreshFollowing: Starting Following feed refresh - rid: $rid');
       log('🔄 _refreshFollowing: Starting Following feed refresh - rid: $rid');
       final String? viewerId = FirebaseAuth.instance.currentUser?.uid;
       if (viewerId == null) {
+        print('⚠️ _refreshFollowing: No authenticated user, returning empty feed');
         log('⚠️ _refreshFollowing: No authenticated user, returning empty feed');
         // Fallback to empty when unauthenticated
         if (state.followingSlice?.requestId != rid) return;
@@ -734,16 +746,39 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
         return;
       }
+      print('🔄 _refreshFollowing: Fetching Following videos for user: $viewerId');
       log('🔄 _refreshFollowing: Fetching Following videos for user: $viewerId');
       // Fetch videos using connections-based service
+      print('🔄 _refreshFollowing: About to call _followingFeedService.fetchFollowingVideos');
+      log('🔄 _refreshFollowing: About to call _followingFeedService.fetchFollowingVideos');
       final videos = await _followingFeedService.fetchFollowingVideos(
         viewerId: viewerId,
         limit: 20,
       );
+      print('🔄 _refreshFollowing: Fetched ${videos.length} Following videos');
       log('🔄 _refreshFollowing: Fetched ${videos.length} Following videos');
-      if (state.followingSlice?.requestId != rid) return;
+      if (state.followingSlice?.requestId != rid) {
+        print('⚠️ _refreshFollowing: Request ID mismatch, ignoring stale response');
+        log('⚠️ _refreshFollowing: Request ID mismatch, ignoring stale response');
+        return;
+      }
+      
+      // 🔥 DEDUPLICATE: Remove duplicate videos by videoId
+      final uniqueVideos = <String, HomeVideo>{};
+      for (final video in videos) {
+        if (video.id.isNotEmpty && !uniqueVideos.containsKey(video.id)) {
+          uniqueVideos[video.id] = video;
+        }
+      }
+      final deduplicatedVideos = uniqueVideos.values.toList();
+      
+      if (deduplicatedVideos.length != videos.length) {
+        print('🔄 _refreshFollowing: Deduplicated ${videos.length} videos to ${deduplicatedVideos.length} unique videos');
+        log('🔄 _refreshFollowing: Deduplicated ${videos.length} videos to ${deduplicatedVideos.length} unique videos');
+      }
+      
       final updatedSlice = state.followingSlice?.copyWith(
-        items: videos,
+        items: deduplicatedVideos,
         nextCursor: null, // We'll implement pagination later
         isLoading: false,
         error: null,
@@ -751,11 +786,15 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
       state = state.copyWith(
         followingSlice: updatedSlice,
-        followingVideos: videos,
+        followingVideos: deduplicatedVideos,
       );
+      print('✅ _refreshFollowing: Following feed updated with ${videos.length} videos');
       log('✅ _refreshFollowing: Following feed updated with ${videos.length} videos');
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ _refreshFollowing: Error fetching Following videos: $e');
+      print('📍 Stack trace: $stackTrace');
       log('❌ _refreshFollowing: Error fetching Following videos: $e');
+      log('📍 Stack trace: $stackTrace');
       if (state.followingSlice?.requestId != rid) return;
 
       // Fallback: Use For You videos when Following fails
@@ -843,8 +882,23 @@ class HomeViewModel extends StateNotifier<HomeState> {
           limit: 20,
         );
         if (state.followingSlice?.requestId != rid) return;
+        
+        // 🔥 DEDUPLICATE: Merge and deduplicate videos by videoId
+        final uniqueVideos = <String, HomeVideo>{};
+        for (final video in s.items) {
+          if (video.id.isNotEmpty) {
+            uniqueVideos[video.id] = video;
+          }
+        }
+        for (final video in videos) {
+          if (video.id.isNotEmpty && !uniqueVideos.containsKey(video.id)) {
+            uniqueVideos[video.id] = video;
+          }
+        }
+        final deduplicatedVideos = uniqueVideos.values.toList();
+        
         final pagedSlice = state.followingSlice?.copyWith(
-          items: [...s.items, ...videos],
+          items: deduplicatedVideos,
           nextCursor: null, // We'll implement pagination later
           isLoading: false,
           error: null,
@@ -852,7 +906,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
         state = state.copyWith(
           followingSlice: pagedSlice,
-          followingVideos: pagedSlice?.items ?? state.followingVideos,
+          followingVideos: deduplicatedVideos,
         );
       } catch (e) {
         if (state.followingSlice?.requestId != rid) return;

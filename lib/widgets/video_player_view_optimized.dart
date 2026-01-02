@@ -1167,6 +1167,36 @@ class _VideoPlayerViewOptimizedState
               '🚫 VideoPlayer: Playback is BLOCKED, not activating video: ${widget.video.id}');
           // Ensure video is muted if blocked
           _safeSetVolume(0.0);
+          // 🔥 FIX: Listen for block being cleared and retry activation
+          // This handles cases where PlayerScreen opens but block hasn't cleared yet
+          StreamSubscription<bool>? blockSubscription;
+          blockSubscription = playbackManager.playbackBlockedStream.listen((isBlocked) {
+            if (!isBlocked && mounted && !_isDisposed && widget.isCurrentVideo) {
+              debugPrint(
+                  '🔄 VideoPlayer: Block cleared, retrying activation for: ${widget.video.id}');
+              blockSubscription?.cancel(); // Cancel listener after first unblock
+              playbackManager.pauseAll();
+              if (!_hasRequestedFocus) {
+                _hasRequestedFocus = true;
+                playbackManager.requestFocus(widget.video.id, owner);
+              }
+            }
+          });
+          // Also retry after a delay as fallback
+          Future.delayed(const Duration(milliseconds: 200), () {
+            blockSubscription?.cancel(); // Cancel listener after delay
+            if (mounted && !_isDisposed && widget.isCurrentVideo) {
+              if (!playbackManager.isPlaybackBlocked) {
+                debugPrint(
+                    '🔄 VideoPlayer: Block cleared (fallback), retrying activation for: ${widget.video.id}');
+                playbackManager.pauseAll();
+                if (!_hasRequestedFocus) {
+                  _hasRequestedFocus = true;
+                  playbackManager.requestFocus(widget.video.id, owner);
+                }
+              }
+            }
+          });
           return; // Don't activate if blocked
         }
 
@@ -1632,12 +1662,15 @@ class _VideoPlayerViewOptimizedState
       final data = snapshot.data();
       if (data == null) return false;
       final status = data['status'] as String?;
-      if (status != null && status.isNotEmpty && status != 'ready') {
-        final message = status == 'processing'
-            ? 'Video is still processing. Please try again shortly.'
-            : 'Video is not ready yet.';
-        if (mounted) _handleVideoError(message);
-        return true;
+      // Allow both 'ready' and 'published' statuses
+      if (status != null && status.isNotEmpty) {
+        if (status != 'ready' && status != 'published') {
+          final message = status == 'processing'
+              ? 'Video is still processing. Please try again shortly.'
+              : 'Video is not ready yet.';
+          if (mounted) _handleVideoError(message);
+          return true;
+        }
       }
       final resolved = resolveVideoUrl(data);
       final current = _overrideVideoUrl ?? widget.video.videoURL;

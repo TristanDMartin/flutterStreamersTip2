@@ -8,6 +8,7 @@ import '../../models/feed_tab.dart';
 import '../../services/global_playback_manager.dart';
 import 'feed_selector_widget.dart';
 import 'video_page_view_widget.dart';
+import 'following_feed_grid_widget.dart';
 import 'loading_state_widget.dart';
 
 /// Main content widget for HomeView (combines all components)
@@ -87,9 +88,11 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
 
     final isLoading = widget.activeTab == 'For You'
         ? homeState.isLoading
-        : homeState.isLoading;
+        : (homeState.followingSlice?.isLoading ?? false);
 
-    final hasError = homeState.error != null && homeState.error!.isNotEmpty;
+    final hasError = widget.activeTab == 'For You'
+        ? (homeState.error != null && homeState.error!.isNotEmpty)
+        : (homeState.followingSlice?.error != null);
 
     // 🔍 DIAGNOSTIC: Log video count for debugging
     if (kDebugMode) {
@@ -172,6 +175,22 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
 
   Widget _buildVideoContent(
       List<HomeVideo> videos, bool isLoading, bool hasError) {
+    // 🔥 RedNote-style: Following feed uses grid, For You uses vertical feed
+    if (widget.activeTab == 'Following') {
+      return FollowingFeedGridWidget(
+        videos: videos,
+        isLoading: isLoading,
+        hasError: hasError,
+        errorMessage: hasError ? (ref.read(hp.homeProvider).error ?? 'Failed to load videos. Please try again.') : null,
+        onRefresh: () => _handlePullToRefresh(widget.activeTab),
+        onVideoTap: (video, index) {
+          // Open video in PlayerScreen
+          widget.onVideoTap(video);
+        },
+      );
+    }
+
+    // For You feed: Use vertical scrolling feed (TikTok-style)
     if (hasError) {
       final homeState = ref.read(hp.homeProvider);
       return ErrorStateWidget(

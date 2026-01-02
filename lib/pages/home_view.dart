@@ -26,6 +26,7 @@ import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/home_view_components/home_content_widget.dart';
+import '../widgets/player_screen.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
 
@@ -694,8 +695,40 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _handleVideoTap(HomeVideo video) {
-    // Handle video tap - could open full screen or other actions
     log('🎬 HomeView: Video tapped: ${video.id}');
+    
+    // Get current feed videos based on active tab
+    final activeFeed = ref.read(activeFeedProvider);
+    final List<HomeVideo> videos;
+    
+    if (activeFeed == FeedTab.forYou) {
+      videos = ref.read(hp.homeProvider).forYouVideos;
+    } else {
+      videos = ref.read(hp.homeProvider).followingVideos;
+    }
+    
+    if (videos.isEmpty) {
+      log('⚠️ HomeView: No videos available to open');
+      return;
+    }
+    
+    // Find the index of the tapped video
+    final index = videos.indexWhere((v) => v.id == video.id);
+    final videoIndex = index >= 0 ? index : 0;
+    
+    // Navigate to PlayerScreen
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: '/player'),
+        fullscreenDialog: true,
+        builder: (context) => PlayerScreen(
+          mode: PlayerMode.homeFeed,
+          initialIndex: videoIndex,
+          videoIds: videos.map((v) => v.id).toList(),
+          videos: videos,
+        ),
+      ),
+    );
   }
 
   void _handleLeftSwipeVideo(HomeVideo video) {

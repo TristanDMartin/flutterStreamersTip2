@@ -50,8 +50,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   void initState() {
     super.initState();
-    // 🎯 SINGLE ACTIVE OWNER: Set PlayerScreen as active owner
-    GlobalPlaybackManager.instance.setActiveOwner(PlaybackOwners.player);
+    // 🎯 SINGLE ACTIVE OWNER: Set PlayerScreen as active owner and force unblock
+    final manager = GlobalPlaybackManager.instance;
+    manager.forceUnblock(); // Force clear all blocks when opening PlayerScreen
+    manager.setActiveOwner(PlaybackOwners.player);
     _currentIndex = widget.initialIndex;
     // Don't create PageController until videos are loaded
     _loadVideos();
