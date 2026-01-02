@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:http/http.dart' as http;
 import 'network_connectivity_service.dart';
 
 /// Like state for a video
@@ -70,6 +72,9 @@ class StreamersTipLikeService extends ChangeNotifier {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Connectivity _connectivity = Connectivity();
+  // Backend API base URL for like/unlike operations
+  // NOTE: update this to the actual backend host if different.
+  static const String _apiBaseUrl = 'https://streamerstip.com';
 
   // Local state cache
   final Map<String, LikeState> _localCache = {};
@@ -281,31 +286,24 @@ class StreamersTipLikeService extends ChangeNotifier {
       return false;
     }
 
+    // Optimistic update
+    final newState = currentState.copyWith(
+      isLiked: true,
+      likeCount: currentState.likeCount + 1,
+      timestamp: DateTime.now(),
+    );
+    _updateLocalState(videoId, newState);
+
     try {
-      // Optimistic update
-      final newState = currentState.copyWith(
-        isLiked: true,
-        likeCount: currentState.likeCount + 1,
-        timestamp: DateTime.now(),
-      );
-      _updateLocalState(videoId, newState);
-
-      // Firebase operation
       await _performLikeOperation(videoId, userId, true);
-
-      // Update rate limit
       _lastLikeTimes[videoId] = DateTime.now();
-
-      // Track engagement
       _trackLikeEngagement(videoId, source);
-
       debugPrint('💖 StreamersTipLikeService: Video liked successfully');
       return true;
     } catch (e) {
-      debugPrint('❌ StreamersTipLikeService: Like failed: $e');
-      // Revert optimistic update
-      _updateLocalState(videoId, currentState);
-      return false;
+      debugPrint('⚠️ StreamersTipLikeService: Like sync deferred: $e');
+      _enqueueOfflineOperation(videoId, userId, true);
+      return true; // keep optimistic state for persistence
     }
   }
 
@@ -374,30 +372,25 @@ class StreamersTipLikeService extends ChangeNotifier {
       return false;
     }
 
+    // Optimistic update with TikTok-style protection
+    final newLikeCount =
+        (currentState.likeCount - 1).clamp(0, double.infinity).toInt();
+    final newState = currentState.copyWith(
+      isLiked: false,
+      likeCount: newLikeCount,
+      timestamp: DateTime.now(),
+    );
+    _updateLocalState(videoId, newState);
+
     try {
-      // Optimistic update with TikTok-style protection
-      final newLikeCount =
-          (currentState.likeCount - 1).clamp(0, double.infinity).toInt();
-      final newState = currentState.copyWith(
-        isLiked: false,
-        likeCount: newLikeCount,
-        timestamp: DateTime.now(),
-      );
-      _updateLocalState(videoId, newState);
-
-      // Firebase operation
       await _performLikeOperation(videoId, userId, false);
-
-      // Update rate limit
       _lastLikeTimes[videoId] = DateTime.now();
-
       debugPrint('💔 StreamersTipLikeService: Video unliked successfully');
       return true;
     } catch (e) {
-      debugPrint('❌ StreamersTipLikeService: Unlike failed: $e');
-      // Revert optimistic update
-      _updateLocalState(videoId, currentState);
-      return false;
+      debugPrint('⚠️ StreamersTipLikeService: Unlike sync deferred: $e');
+      _enqueueOfflineOperation(videoId, userId, false);
+      return true; // keep optimistic state for persistence
     }
   }
 
@@ -418,68 +411,68 @@ class StreamersTipLikeService extends ChangeNotifier {
   ///    - Survives app closes, device changes, and logouts
   Future<void> _performLikeOperation(
       String videoId, String userId, bool isLike) async {
-    final batch = _firestore.batch();
+    final endpoint = isLike ? '/api/like' : '/api/unlike';
+    final uri = Uri.parse('$_apiBaseUrl$endpoint');
+    final payload = {
+      'videoId': videoId,
+      'userId': userId,
+    };
 
-    if (isLike) {
-      // A. Add like document (relationship tracking)
-      final likeDocRef = _firestore
-          .collection('likes')
-          .doc(videoId)
-          .collection('byUser')
-          .doc(userId);
+    // Primary attempt: JSON body
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
 
-      batch.set(likeDocRef, {
-        'userId': userId,
-        'videoId': videoId,
-        'timestamp': FieldValue.serverTimestamp(),
-        'source': 'double_tap',
-      });
-
-      // B. Increment like count (shared data)
-      final videoDocRef = _firestore.collection('videos').doc(videoId);
-      batch.update(videoDocRef, {
-        'likeCount': FieldValue.increment(1),
-        'lastLikedAt': FieldValue.serverTimestamp(),
-      });
-
-      // C. Add to user's liked_videos array (personal state)
-      // This enables fast "is this liked?" checks when loading the feed
-      final userDocRef = _firestore.collection('users').doc(userId);
-      batch.update(userDocRef, {
-        'liked_videos': FieldValue.arrayUnion([videoId]),
-      });
-
+    if (response.statusCode < 200 || response.statusCode >= 300) {
       debugPrint(
-          '💖 Persisting like: video=$videoId, user=$userId (3 operations)');
-    } else {
-      // A. Remove like document
-      final likeDocRef = _firestore
-          .collection('likes')
-          .doc(videoId)
-          .collection('byUser')
-          .doc(userId);
+          '⚠️ Like API primary failed ${response.statusCode}: ${response.body}');
 
-      batch.delete(likeDocRef);
+      // Fallback 1: trailing slash
+      final altUri = Uri.parse('$_apiBaseUrl$endpoint/');
+      final altResponse = await http.post(
+        altUri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
 
-      // B. Decrement like count (TikTok-style: protected by rules to never go below 0)
-      final videoDocRef = _firestore.collection('videos').doc(videoId);
-      batch.update(videoDocRef, {
-        'likeCount': FieldValue.increment(-1),
-      });
+      if (altResponse.statusCode >= 200 && altResponse.statusCode < 300) {
+        debugPrint(
+            '✅ Like API succeeded via trailing slash for $videoId (isLike=$isLike)');
+        return;
+      }
 
-      // C. Remove from user's liked_videos array (personal state)
-      final userDocRef = _firestore.collection('users').doc(userId);
-      batch.update(userDocRef, {
-        'liked_videos': FieldValue.arrayRemove([videoId]),
-      });
+      // Fallback 2: form-encoded (in case server expects it)
+      final formResponse = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: payload,
+      );
 
-      debugPrint(
-          '💔 Removing like: video=$videoId, user=$userId (3 operations)');
+      if (formResponse.statusCode >= 200 && formResponse.statusCode < 300) {
+        debugPrint(
+            '✅ Like API succeeded via form-encoded for $videoId (isLike=$isLike)');
+        return;
+      }
+
+      throw Exception(
+        'Like API failed: primary ${response.statusCode}, '
+        'alt ${altResponse.statusCode}, form ${formResponse.statusCode}',
+      );
     }
 
-    await batch.commit();
     debugPrint(
-        '✅ Like operation committed successfully (survives app restarts & device changes)');
+        '✅ Like API ${isLike ? 'like' : 'unlike'} succeeded for video=$videoId user=$userId');
+  }
+
+  void _enqueueOfflineOperation(String videoId, String userId, bool isLike) {
+    _offlineQueue.add(LikeOperation(
+      videoId: videoId,
+      userId: userId,
+      isLike: isLike,
+      timestamp: DateTime.now(),
+    ));
   }
 
   /// Check if operation is rate limited
@@ -552,12 +545,12 @@ class StreamersTipLikeService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final key = 'like_state_$videoId';
-      final data = {
+      final data = jsonEncode({
         'isLiked': state.isLiked,
         'likeCount': state.likeCount,
         'timestamp': state.timestamp.millisecondsSinceEpoch,
-      };
-      await prefs.setString(key, data.toString());
+      });
+      await prefs.setString(key, data);
     } catch (e) {
       debugPrint('❌ StreamersTipLikeService: Failed to save cache: $e');
     }
@@ -577,13 +570,14 @@ class StreamersTipLikeService extends ChangeNotifier {
         final value = prefs.getString(key);
 
         if (value != null) {
-          // Parse the cached data
-          final data = value.split(', ');
-          if (data.length >= 3) {
-            final isLiked = data[0].contains('true');
-            final likeCount = int.tryParse(data[1].split(': ')[1]) ?? 0;
-            final timestamp =
-                DateTime.tryParse(data[2].split(': ')[1]) ?? DateTime.now();
+          try {
+            final data = jsonDecode(value) as Map<String, dynamic>;
+            final isLiked = data['isLiked'] as bool? ?? false;
+            final likeCount = data['likeCount'] as int? ?? 0;
+            final tsMs = data['timestamp'] as int? ?? 0;
+            final timestamp = tsMs > 0
+                ? DateTime.fromMillisecondsSinceEpoch(tsMs)
+                : DateTime.now();
 
             _localCache[videoId] = LikeState(
               isLiked: isLiked,
@@ -593,6 +587,9 @@ class StreamersTipLikeService extends ChangeNotifier {
 
             debugPrint(
                 '📱 StreamersTipLikeService: Loaded cached state for $videoId - isLiked: $isLiked, likeCount: $likeCount');
+          } catch (e) {
+            debugPrint(
+                '⚠️ StreamersTipLikeService: Failed to parse cache for $videoId: $e');
           }
         }
       }

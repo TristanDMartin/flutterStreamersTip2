@@ -85,27 +85,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   String? _selectedCategory;
   int _currentCategoryPage = 0;
 
-  // 🔥 FIX: Enhanced caching with user-specific keys and TTL
-  final Map<String, List<Map<String, dynamic>>> _cachedVideos = {};
-  // Note: Cache timestamps and TTL are reserved for future implementation
-
-  /// 🔥 GLOBAL DELETION FIX: Remove deleted video from cache
-  void _removeVideoFromCache(String videoId) {
-    for (final categoryId in _cachedVideos.keys) {
-      final videos = _cachedVideos[categoryId];
-      if (videos != null) {
-        videos.removeWhere(
-            (video) => video['docId'] == videoId || video['id'] == videoId);
-        if (videos.isEmpty) {
-          _cachedVideos.remove(categoryId);
-        }
-      }
-    }
-    LoggingService.instance.debug(
-      'Removed video $videoId from cache',
-      tag: 'DiscoverView',
-    );
-  }
+  // ✅ FIX #5: Removed unused _cachedVideos - cache implementation reserved for future
+  // Cache timestamps and TTL are reserved for future implementation
 
   // Services
   final CachingService _cachingService = CachingService();
@@ -115,6 +96,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   // 🔥 FIX: Real-time subscriptions
   StreamSubscription<QuerySnapshot>? _trendingCreatorsSubscription;
   StreamSubscription<QuerySnapshot>? _notificationsSubscription;
+  Timer? _trendingRefreshTimer; // ✅ FIX #2: Store timer to cancel in dispose
 
   // Common gradient used throughout the view
   static const LinearGradient _backgroundGradient = LinearGradient(
@@ -155,8 +137,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     _trendingCreatorsSubscription?.cancel();
     _notificationsSubscription?.cancel();
 
-    // Clear cached videos to free memory
-    _cachedVideos.clear();
+    // ✅ FIX #2: Cancel timer to prevent leaks
+    _trendingRefreshTimer?.cancel();
+
+    // Cache cleared (removed unused _cachedVideos)
 
     // 🔊 AUDIO FIX: Don't pause here - NavigationObserver will call setActiveOwner
     // when navigating away, which handles pausing/muting non-active owners
@@ -250,9 +234,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   /// 🔥 ENHANCED: Set up periodic refresh of trending creators based on video performance
+  /// ✅ FIX #2: Store timer and cancel previous to prevent duplicates
   void _setupTrendingCreatorsRefresh() {
+    // Cancel previous timer if exists to avoid duplicates
+    _trendingRefreshTimer?.cancel();
+
     // Refresh trending creators every 5 minutes to catch new trending videos
-    Timer.periodic(const Duration(minutes: 5), (timer) {
+    _trendingRefreshTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -409,6 +397,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
     Navigator.of(context).push(
       MaterialPageRoute(
+        settings: const RouteSettings(name: '/streamer_card'),
         builder: (context) => StreamerCardView(
           userId: creator.id,
           currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
@@ -1601,7 +1590,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           final videoId =
               videoData['docId'] as String? ?? data['id'] as String?;
           if (videoId != null) {
-            _removeVideoFromCache(videoId);
             LoggingService.instance.debug(
               'Skipping deleted video: $videoId',
               tag: 'DiscoverView',
@@ -1623,16 +1611,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      // Batch fetch user data
-      final usersSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: userIds.toList())
-          .get();
-
-      final userMap = <String, Map<String, dynamic>>{};
-      for (final doc in usersSnapshot.docs) {
-        userMap[doc.id] = doc.data();
-      }
+      // ✅ FIX #3: Batch fetch user data with chunking (Firestore whereIn limit is 10)
+      final userMap = await _fetchUsersByIds(userIds);
 
       LoggingService.instance.debug(
         'Fetched ${userMap.length} user documents for $categoryId',
@@ -2349,14 +2329,51 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }
   }
 
-  /// Apply pagination to video list
+  /// ✅ FIX #3: Fetch users by IDs with chunking (Firestore whereIn limit is 10)
+  Future<Map<String, Map<String, dynamic>>> _fetchUsersByIds(
+    Set<String> userIds,
+  ) async {
+    if (userIds.isEmpty) return {};
+
+    final result = <String, Map<String, dynamic>>{};
+    final idsList = userIds.toList();
+
+    const batchSize = 10; // Firestore whereIn limit
+    for (var i = 0; i < idsList.length; i += batchSize) {
+      final batch = idsList.sublist(
+        i,
+        (i + batchSize).clamp(0, idsList.length),
+      );
+
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: batch)
+            .get();
+
+        for (final doc in snapshot.docs) {
+          result[doc.id] = doc.data();
+        }
+      } catch (e) {
+        LoggingService.instance.error(
+          'Error fetching user batch: $e',
+          tag: 'DiscoverView',
+          error: e,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  /// ✅ FIX #4: Simplified pagination - Firestore handles pagination via startAfterDocument
+  /// This method is kept for compatibility but doesn't actually paginate
   List<Map<String, dynamic>> _applyPagination(
     List<Map<String, dynamic>> videos,
     DocumentSnapshot? startAfter,
   ) {
-    if (startAfter == null) {
-      return videos.take(_videosPerPage).toList();
-    }
+    // Firestore pagination is handled via startAfterDocument in queries
+    // This method just returns videos as-is (no client-side pagination needed)
     return videos;
   }
 }
@@ -2518,13 +2535,16 @@ class _CategoryVideoFeedStatefulState
                 scrollDirection: Axis.vertical,
                 physics: const ClampingScrollPhysics(), // Same as HomeView
                 onPageChanged: (index) {
-                  LoggingService.instance.debug(
-                    'Category video page changed to index: $index, video ID: ${widget.videos[index].id}',
-                    tag: 'DiscoverView',
-                  );
-                  setState(() {
-                    _currentIndex = index;
-                  });
+                  // ✅ FIX #1: Use _videos instead of widget.videos (mutable list)
+                  if (index >= 0 && index < _videos.length) {
+                    LoggingService.instance.debug(
+                      'Category video page changed to index: $index, video ID: ${_videos[index].id}',
+                      tag: 'DiscoverView',
+                    );
+                    setState(() {
+                      _currentIndex = index;
+                    });
+                  }
                 },
                 itemCount: _videos.length,
                 itemBuilder: (context, index) {
@@ -2552,6 +2572,7 @@ class _CategoryVideoFeedStatefulState
                       // Handle profile view
                       Navigator.of(context).push(
                         MaterialPageRoute(
+                          settings: const RouteSettings(name: '/streamer_card'),
                           builder: (context) => StreamerCardView(
                             userId: video.creator.id,
                             currentUserId:
@@ -2615,6 +2636,7 @@ class _CategoryVideoFeedStatefulState
                       // Handle streamer card
                       Navigator.of(context).push(
                         MaterialPageRoute(
+                          settings: const RouteSettings(name: '/streamer_card'),
                           builder: (context) => StreamerCardView(
                             userId: video.creator.id,
                             currentUserId:

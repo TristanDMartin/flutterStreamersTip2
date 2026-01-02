@@ -39,7 +39,7 @@ class NotificationNavigationService {
           if (context.mounted) {
             Navigator.of(context).push(
               MaterialPageRoute(
-                settings: const RouteSettings(name: 'playerScreen'),
+                settings: const RouteSettings(name: '/player'),
                 fullscreenDialog: true,
                 builder: (context) => PlayerScreen(
                   mode: PlayerMode.homeFeed,
@@ -80,7 +80,7 @@ class NotificationNavigationService {
       if (context.mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            settings: const RouteSettings(name: 'playerScreen'),
+            settings: const RouteSettings(name: '/player'),
             fullscreenDialog: true,
             builder: (context) => PlayerScreen(
               mode: PlayerMode.homeFeed,

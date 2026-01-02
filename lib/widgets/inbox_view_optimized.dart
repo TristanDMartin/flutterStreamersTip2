@@ -49,7 +49,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   final Map<String, app_user.User> _userProfiles = {};
   final Map<String, int> _unreadCounts = {};
   final Map<String, bool> _onlineStatus = {};
-  final Map<String, StreamSubscription<DocumentSnapshot>> _unreadCountSubscriptions = {};
+  final Map<String, StreamSubscription<DocumentSnapshot>>
+      _unreadCountSubscriptions = {};
 
   // State
   bool _isLoading = true;
@@ -139,10 +140,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     if (currentUser == null) return;
 
     // Cancel subscriptions for chats that no longer exist
-    final currentChatIds = chats
-        .map((c) => c.id ?? '')
-        .where((id) => id.isNotEmpty)
-        .toSet();
+    final currentChatIds =
+        chats.map((c) => c.id ?? '').where((id) => id.isNotEmpty).toSet();
     final subscriptionsToCancel = <String>[];
     _unreadCountSubscriptions.forEach((chatId, subscription) {
       if (!currentChatIds.contains(chatId)) {
@@ -173,9 +172,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         final unreadField = 'unreadCount_${currentUser.uid}';
         final dynamic unreadValue = data[unreadField];
         final unreadCount = unreadValue != null
-            ? (unreadValue is int
-                ? unreadValue
-                : (unreadValue as num).toInt())
+            ? (unreadValue is int ? unreadValue : (unreadValue as num).toInt())
             : 0;
 
         if (mounted) {
@@ -1836,6 +1833,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 if (mounted) {
                   Navigator.of(context).push(
                     MaterialPageRoute(
+                      settings: const RouteSettings(name: '/inbox'),
                       builder: (context) => ChatView(
                         chat: updatedChat,
                         otherUserId: foundOtherUserId,
@@ -1972,6 +1970,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         // Use a simpler navigation without complex transitions
         Navigator.of(context).push(
           MaterialPageRoute(
+            settings: const RouteSettings(name: '/inbox'),
             builder: (context) => ChatView(
               chat: validChat,
               otherUserId: validOtherUserId,

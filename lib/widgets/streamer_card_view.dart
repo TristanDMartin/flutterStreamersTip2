@@ -2556,6 +2556,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         // Navigate to chat view
         Navigator.of(context).push(
           MaterialPageRoute(
+            settings: const RouteSettings(name: '/inbox'),
             builder: (context) => ChatView(
               chat: chat,
               otherUserId: widget.userId,

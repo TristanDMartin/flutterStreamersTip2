@@ -187,6 +187,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       Navigator.of(context)
           .push(
         MaterialPageRoute(
+          settings: const RouteSettings(name: '/camera'),
           builder: (context) => const TikTokCameraView(),
         ),
       )
@@ -211,6 +212,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       Navigator.of(context)
           .push(
         MaterialPageRoute(
+          settings: const RouteSettings(name: '/inbox'),
           builder: (context) => const InboxViewOptimized(),
           fullscreenDialog: true,
         ),
@@ -262,7 +264,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             builder: (context) =>
                 ProfileViewOptimized(user: user, isCurrentUser: true),
             fullscreenDialog: true,
-            settings: const RouteSettings(name: 'ProfileView'),
+            settings: const RouteSettings(name: '/profile'),
           ),
         )
             .then((_) {

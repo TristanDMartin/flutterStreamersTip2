@@ -69,134 +69,100 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     if (route == null) return;
 
     // Determine the owner based on route name or settings
-    String? owner;
+    final name = route.settings.name;
+    final typeName = route.runtimeType.toString().toLowerCase();
+    final routeName = (name ?? typeName).toLowerCase();
 
-    if (route.settings.name != null) {
-      owner = route.settings.name;
-    } else {
-      // Fallback to route class name
-      final routeName = route.runtimeType.toString();
-      if (routeName.contains('HomeView')) {
-        owner = 'home';
-      } else if (routeName.contains('Profile')) {
-        owner = 'profile';
-      } else if (routeName.contains('Recording') ||
-          routeName.contains('Camera')) {
-        owner = 'recording';
-      } else if (routeName.contains('Comments')) {
-        owner = 'comments';
-      } else if (routeName.contains('Share')) {
-        owner = 'share';
-      } else {
-        owner = routeName.toLowerCase();
-      }
-    }
+    debugPrint(
+        '[MediaRouteObserver] new route: ${route.settings.name ?? typeName}');
 
-    // 🔥 CRITICAL: Enhanced route detection with detailed logging
-    final routeName = route.settings.name ?? route.runtimeType.toString();
-    debugPrint('[MediaRouteObserver] new route: $routeName');
-
-    // TIKTOK FIX: Don't pause video for CommentsView2 or ShareSheet modals - keep video playing behind
-    final shouldKeepVideoPlaying =
-        owner?.contains('modalbottomsheetroute') == true ||
-            owner?.contains('comments') == true ||
-            owner?.contains('share') == true ||
-            route.runtimeType.toString().contains('ModalBottomSheetRoute');
-
-    if (shouldKeepVideoPlaying) {
-      debugPrint(
-          '🎵 NavigationObserver: Modal opened - keeping video playing (owner: $owner, routeType: ${route.runtimeType})');
-      // Don't call onRouteChange for these modals - let video keep playing
-      return;
-    }
-
-    // 🔊 Enhanced route detection
-    final routeNameLower = routeName.toLowerCase();
-    final isHomeRoute = routeName == '/home' ||
-        routeName == 'home' ||
-        routeNameLower.contains('homeview') ||
-        routeNameLower.contains('hometab') ||
-        routeNameLower.contains('maintab') ||
-        owner == 'home' ||
-        owner == '/';
-
+    final isHomeRoute = routeName == '/' ||
+        routeName.isEmpty ||
+        routeName == '/home' ||
+        routeName.contains('homeview') ||
+        routeName == 'home';
+    final isDiscoverRoute = routeName == '/discover' ||
+        routeName.contains('discoverview') ||
+        routeName.contains('discover');
     final isProfileRoute = routeName == '/profile' ||
-        routeName == 'profile' ||
-        routeName == 'ProfileView' ||
-        routeNameLower.contains('profileview') ||
-        owner?.toLowerCase() == 'profile';
-
+        routeName.contains('profileview') ||
+        routeName.contains('profile');
     final isPlayerRoute = routeName == '/player' ||
-        routeName == 'player' ||
-        routeName == 'playerScreen' ||
-        routeNameLower.contains('playerview') ||
-        routeNameLower.contains('playerscreen') ||
-        owner?.toLowerCase().contains('player') == true;
+        routeName.contains('playerscreen') ||
+        routeName.contains('playerview');
 
-    final isDiscoverRoute = routeNameLower.contains('discoverview') ||
-        routeNameLower.contains('discover') ||
-        owner?.toLowerCase().contains('discover') == true;
+    final isCommentsModal =
+        routeName.contains('commentsview2') || routeName == '/comments';
+    final isShareSheetModal =
+        routeName.contains('enhancedsharesheet') || routeName == '/share_sheet';
+    final isStreamerCardRoute = routeName.contains('streamer_card');
+    final isNetworkRoute =
+        routeName == '/network' || routeName.contains('networkview');
+    final isCameraRoute = routeName.contains('camera') ||
+        routeName.contains('recording') ||
+        routeName.contains('upload');
+    final isInboxRoute = routeName.contains('inbox') ||
+        routeName.contains('chat') ||
+        routeName.contains('message');
+    final isModalRoute = route is PopupRoute ||
+        route is ModalRoute && (isCommentsModal || isShareSheetModal);
 
-    // 🔥 CRITICAL: Explicitly detect NetworkView to ensure blocking
-    final isNetworkView = routeNameLower.contains('networkview') ||
-        owner?.toLowerCase().contains('network') == true;
-
-    // 🎯 SINGLE ACTIVE OWNER: Use setActiveOwner for video-playing routes
-    if (isPlayerRoute) {
-      debugPrint('[MediaRouteObserver] Entering PLAYER – setting active owner');
-      _manager.setActiveOwner(PlaybackOwners.player);
-      return;
-    }
-
-    if (isProfileRoute) {
+    // If this is a known lightweight modal over the current view, keep playing
+    if (isModalRoute) {
       debugPrint(
-          '[MediaRouteObserver] Entering PROFILE – setting active owner');
-      _manager.setActiveOwner(PlaybackOwners.profile);
-      return;
-    }
-
-    if (isDiscoverRoute) {
-      debugPrint(
-          '[MediaRouteObserver] Entering DISCOVER – setting active owner');
-      _manager.setActiveOwner(PlaybackOwners.discover);
+          '🎵 NavigationObserver: Modal presented - keeping video playing (route: $routeName)');
       return;
     }
 
     if (isHomeRoute) {
-      debugPrint('[MediaRouteObserver] Entering HOME – setting active owner');
+      _manager.unblock();
       _manager.setActiveOwner(PlaybackOwners.home);
       return;
     }
 
-    final shouldBlock = !isHomeRoute && !isDiscoverRoute;
-
-    if (shouldBlock && isForeground) {
-      _manager.block(reason: 'route_change_$owner');
-      debugPrint(
-          '🚫 NavigationObserver: Blocking playback for non-home route: $owner');
-      // 🔥 CRITICAL: Explicitly handle NetworkView
-      if (isNetworkView) {
-        debugPrint(
-            '🚫 NavigationObserver: NetworkView detected - ensuring playback is blocked');
-        _manager.pauseAll(); // Extra safety: pause all videos
-      }
-    } else if (!shouldBlock && isForeground) {
-      // 🎯 SINGLE ACTIVE OWNER: For video-playing routes, setActiveOwner handles everything
-      // For non-video routes, just unblock
-      if (isHomeRoute || isDiscoverRoute || isProfileRoute || isPlayerRoute) {
-        // setActiveOwner already called above for these routes
-        _manager.unblock();
-      } else {
-        _manager.unblock();
-        // Only call resumeAfterTabSwitch for non-video routes that were blocked
-        _manager.resumeAfterTabSwitch();
-      }
-      debugPrint('✅ NavigationObserver: Unblocking playback for route: $owner');
+    if (isDiscoverRoute) {
+      _manager.unblock();
+      _manager.setActiveOwner(PlaybackOwners.discover);
+      return;
     }
 
-    if (route.settings.name != null) {
+    if (isProfileRoute) {
+      _manager.unblock();
+      _manager.setActiveOwner(PlaybackOwners.profile);
+      return;
+    }
+
+    if (isPlayerRoute) {
+      _manager.unblock();
+      _manager.setActiveOwner(PlaybackOwners.player);
+      return;
+    }
+
+    // Non-playing routes: block + pause
+    if (isNetworkRoute ||
+        isStreamerCardRoute ||
+        isCameraRoute ||
+        isInboxRoute) {
+      _manager.block(
+          reason: isNetworkRoute
+              ? 'route_change_network'
+              : isStreamerCardRoute
+                  ? 'route_change_streamer'
+                  : isCameraRoute
+                      ? 'route_change_camera'
+                      : 'route_change_inbox');
+      _manager.pauseAll();
       debugPrint(
-          '🎵 NavigationObserver: Route changed to ${route.settings.name} (owner: $owner, foreground: $isForeground)');
+          '🚫 NavigationObserver: Blocking playback for route: $routeName');
+      return;
+    }
+
+    // Fallback: unknown/unnamed route → block + pause
+    if (isForeground) {
+      _manager.block(reason: 'route_change_unknown');
+      _manager.pauseAll();
+      debugPrint(
+          '🚫 NavigationObserver: Unknown route - blocking playback ($routeName)');
     }
   }
 

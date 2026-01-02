@@ -1,39 +1,68 @@
-# HomeView Feed Implementation for Website
-
-This document provides a complete implementation guide for the HomeView feed on the website, mimicking the Flutter app's TikTok-style vertical scrolling video feed.
+# Feed System Documentation - For You & Following Tabs
 
 ## Table of Contents
-
 1. [Overview](#overview)
-2. [Data Structures](#data-structures)
-3. [Feed Architecture](#feed-architecture)
+2. [Architecture](#architecture)
+3. [Data Structures](#data-structures)
 4. [Service Layer](#service-layer)
-5. [React Components](#react-components)
-6. [State Management](#state-management)
-7. [Video Playback](#video-playback)
-8. [Feed Tabs](#feed-tabs)
-9. [Pull to Refresh](#pull-to-refresh)
-10. [Infinite Scroll](#infinite-scroll)
+5. [State Management](#state-management)
+6. [Component Structure](#component-structure)
+7. [Event Logging](#event-logging)
+8. [Firestore Queries & Indexes](#firestore-queries--indexes)
+9. [Performance Optimizations](#performance-optimizations)
+10. [Integration Guide](#integration-guide)
+11. [API Reference](#api-reference)
+
+---
 
 ## Overview
 
-The HomeView feed is a TikTok-style vertical scrolling video feed with:
-- **Two tabs**: "For You" and "Following"
-- **Vertical scrolling**: Swipe up/down to navigate between videos
-- **Autoplay**: Current video plays automatically
-- **Preloading**: Adjacent videos preload for smooth transitions
-- **Pull to refresh**: Refresh feed from top
-- **Infinite scroll**: Load more videos as user scrolls
+The feed system provides two main tabs:
+- **For You**: Shows all published videos sorted by creation date (newest first)
+- **Following**: Shows videos from users the current user follows
 
 ### Key Features
-
-- Vertical PageView-style scrolling
-- Automatic video playback management
-- Feed tab switching (For You / Following)
-- Real-time video state updates (likes, views, comments)
-- Pull-to-refresh functionality
+- TikTok-style vertical scrolling video feed
+- Autoplay with mute/unmute controls
+- Pull-to-refresh
 - Infinite scroll pagination
-- Video preloading for smooth transitions
+- Real-time video stats (likes, comments, views, shares, bookmarks)
+- Event tracking for analytics
+- Optimized batch loading for performance
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      HomeView Component                      │
+│  (Main orchestrator - handles tab switching, navigation)    │
+└───────────────────┬───────────────────────────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+┌───────▼────────┐    ┌─────────▼──────────┐
+│  FeedSelector  │    │ VideoDetailOverlay │
+│  (Tab buttons) │    │  (Video player)    │
+└────────────────┘    └─────────┬──────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    │                       │
+            ┌───────▼──────┐      ┌─────────▼────────┐
+            │ useFeedState │      │  VideoHUD        │
+            │   (Hook)     │      │  (UI controls)  │
+            └───────┬──────┘      └──────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+┌───────▼────────┐    ┌─────────▼──────────┐
+│ homeFeedService│    │followingFeedService│
+│  (For You)     │    │   (Following)      │
+└────────────────┘    └────────────────────┘
+```
+
+---
 
 ## Data Structures
 
@@ -41,153 +70,204 @@ The HomeView feed is a TikTok-style vertical scrolling video feed with:
 
 ```typescript
 interface HomeVideo {
-  id: string;
-  creator: User;
-  videoURL: string;
-  thumbnailURL?: string;
-  thumbnails?: VideoThumbnails; // Multi-size thumbnail support
-  likes: number;
-  comments: number;
-  views: number;
-  caption: string;
-  isLiked: boolean;
-  isFavorited: boolean;
-  isDraft: boolean;
-  mlScore: number;
-  categoryId: string;
-  duration?: number; // Video duration in seconds
-  createdAt?: Timestamp | Date; // For sorting
-  allowSave: boolean;
-  allowRemix: boolean;
-  visibility: 'public' | 'followers' | 'private';
-  status: 'draft' | 'processing' | 'published' | 'blocked' | 'deleted';
-  isPinned: boolean;
-  tags: string[];
-  playlistIds: string[];
+  id: string                    // Video document ID
+  creator: User                 // Creator information
+  videoUrl: string              // Primary playback URL
+  originalVideoUrl?: string     // Original video URL (for instant playback)
+  thumbnailUrl: string          // Thumbnail image URL
+  thumbnails?: VideoThumbnails  // Multiple thumbnail sizes
+  likes: number                 // Like count
+  comments: number              // Comment count
+  views: number                 // View count
+  shares: number                // Share count
+  bookmarks?: number            // Bookmark count
+  caption: string               // Video caption/description
+  isLiked: boolean              // Current user liked this video
+  isFavorited: boolean          // Current user favorited this video
+  isDraft: boolean              // Is draft video
+  mlScore: number               // Machine learning score (for ranking)
+  categoryId: string            // Category ID
+  category?: string              // Category name
+  duration?: number             // Video duration in seconds
+  createdAt?: Timestamp | Date  // Creation timestamp
+  allowSave: boolean            // Can user save this video
+  allowRemix: boolean           // Can user remix this video
+  visibility: 'public' | 'followers' | 'private'
+  status: 'draft' | 'processing' | 'published' | 'blocked' | 'deleted'
+  isPinned: boolean             // Is pinned video
+  tags: string[]                // Video tags
+  playlistIds: string[]          // Playlist IDs
+  trendingScore?: number        // Trending score
+  isTrending?: boolean          // Is trending video
+  isNew?: boolean               // Is new video
 }
+```
 
+### User Interface
+
+```typescript
 interface User {
-  id: string;
-  displayName: string;
-  username: string;
-  avatarURL?: string;
-  bio?: string;
-  hashtags?: string[];
+  id: string                    // User ID
+  displayName: string           // Display name
+  username: string              // Username (for @mentions)
+  avatarURL?: string            // Avatar image URL
+  bio?: string                  // User bio
+  hashtags?: string[]           // User hashtags
 }
+```
 
-interface VideoThumbnails {
-  urls: Record<number, string>; // { 360: url, 540: url, 720: url }
-  generatedAt?: Timestamp | Date;
-  aspectRatio?: number;
-  qualityScore?: number;
-}
+### FeedState Interface
 
+```typescript
 interface FeedState {
-  forYouVideos: HomeVideo[];
-  followingVideos: HomeVideo[];
-  isLoading: boolean;
-  isLoadingMore: boolean;
-  hasMoreContent: boolean;
-  currentIndex: number;
-  activeTab: 'forYou' | 'following';
-  error: string | null;
+  forYouVideos: HomeVideo[]     // For You feed videos
+  followingVideos: HomeVideo[]  // Following feed videos
+  isLoading: boolean            // Initial load state
+  isLoadingMore: boolean        // Pagination load state
+  hasMoreContent: boolean       // More content available
+  currentIndex: number          // Current video index
+  activeTab: 'forYou' | 'following'
+  error: string | null          // Error message
 }
 ```
 
-## Feed Architecture
-
-### Component Hierarchy
-
-```
-HomeView
-├── FeedSelector (For You / Following tabs)
-├── VideoFeedContainer
-│   ├── VideoPageView (vertical scroll container)
-│   │   ├── VideoPlayerCard (for each video)
-│   │   │   ├── VideoPlayer
-│   │   │   ├── VideoOverlay (HUD)
-│   │   │   │   ├── CreatorInfo
-│   │   │   │   ├── VideoActions (like, comment, share, bookmark)
-│   │   │   │   └── VideoStats
-│   │   │   └── Caption
-│   │   └── LoadingIndicator (for loading more)
-│   └── PullToRefreshIndicator
-└── NetworkStatusIndicator
-```
+---
 
 ## Service Layer
 
-### VideoService
+### HomeFeedService (For You Tab)
 
+**Location**: `services/homeFeedService.ts`
+
+**Purpose**: Fetches all published videos sorted by creation date
+
+**Key Methods**:
+
+#### `loadAllVideos(): Promise<HomeVideo[]>`
+- Fetches initial batch of videos (20 videos)
+- Filters by `status === 'published'`
+- Orders by `createdAt` descending
+- Batches creator info fetching for performance
+- Returns array of `HomeVideo` objects
+
+**Query Structure**:
 ```typescript
-import { collection, query, where, orderBy, limit, getDocs, startAfter, DocumentSnapshot } from 'firebase/firestore';
+query(
+  collection(db, 'videos'),
+  where('status', '==', 'published'),
+  orderBy('createdAt', 'desc'),
+  limit(20)
+)
+```
+
+**Fallback Query** (if index missing):
+```typescript
+query(
+  collection(db, 'videos'),
+  orderBy('createdAt', 'desc'),
+  limit(40) // Fetch more to filter in memory
+)
+// Then filter: data.status === 'published'
+```
+
+#### `loadMoreVideos(lastVideo: HomeVideo): Promise<HomeVideo[]>`
+- Pagination: fetches next batch after `lastVideo`
+- Uses `startAfter()` for cursor-based pagination
+- Returns next 20 videos
+
+**Query Structure**:
+```typescript
+const lastDoc = await getDoc(doc(db, 'videos', lastVideo.id))
+query(
+  collection(db, 'videos'),
+  where('status', '==', 'published'),
+  orderBy('createdAt', 'desc'),
+  startAfter(lastDoc),
+  limit(20)
+)
+```
+
+#### `getCreatorInfo(userId: string): Promise<User>`
+- Fetches user profile from `users` collection
+- 2-second timeout to prevent blocking
+- Returns `User` object with fallback values
+
+**Performance Optimization**:
+- Batches all creator lookups using `Promise.all()`
+- Collects unique creator IDs first, then fetches all in parallel
+
+**Implementation**:
+```typescript
+import { collection, query, where, orderBy, limit, getDocs, startAfter, getDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
 
-class VideoService {
+class HomeFeedService {
   private videos: HomeVideo[] = [];
   private lastFetchTime: number = 0;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-  /**
-   * Load all videos from Firestore
-   * Mimics Flutter's VideoService.loadAllVideos()
-   */
   async loadAllVideos(): Promise<HomeVideo[]> {
     try {
-      console.log('🎬 VideoService: Loading all videos...');
-
       // Check cache
       const now = Date.now();
       if (this.videos.length > 0 && (now - this.lastFetchTime) < this.CACHE_DURATION) {
-        console.log('✅ VideoService: Using cached videos');
         return this.videos;
       }
 
-      // Query published videos, ordered by createdAt descending
-      const videosQuery = query(
-        collection(db, 'videos'),
-        where('status', '==', 'published'),
-        orderBy('createdAt', 'desc'),
-        limit(500)
-      );
-
-      const snapshot = await getDocs(videosQuery);
-      console.log(`🎬 VideoService: Found ${snapshot.docs.length} published videos`);
+      // Query published videos
+      let snapshot;
+      try {
+        const videosQuery = query(
+          collection(db, 'videos'),
+          where('status', '==', 'published'),
+          orderBy('createdAt', 'desc'),
+          limit(20)
+        );
+        snapshot = await getDocs(videosQuery);
+      } catch (error: any) {
+        // Fallback if index missing
+        if (error.code === 'failed-precondition' || error.message?.includes('index')) {
+          const fallbackQuery = query(
+            collection(db, 'videos'),
+            orderBy('createdAt', 'desc'),
+            limit(40)
+          );
+          snapshot = await getDocs(fallbackQuery);
+        } else {
+          throw error;
+        }
+      }
 
       const videos: HomeVideo[] = [];
+      const creatorIds = new Set<string>();
 
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
+      // First pass: collect video data and creator IDs
+      for (const docSnapshot of snapshot.docs) {
+        const data = docSnapshot.data();
         
-        // Skip invalid videos
-        if (!data.videoURL && !data.videoUrl) continue;
+        // Filter by status if using fallback query
         if (data.status !== 'published') continue;
 
-        // Resolve video URL
-        const videoURL = this.resolveVideoUrl(data);
-        if (!videoURL) continue;
-
-        // Get creator info
-        const creator = await this.getCreatorInfo(data.userId || data.creatorId);
-
-        // Create thumbnails object
-        const thumbnails = this.createThumbnails(data);
+        const creatorId = data.creatorId || data.userId;
+        if (creatorId) creatorIds.add(creatorId);
 
         const video: HomeVideo = {
-          id: doc.id,
-          creator,
-          videoURL,
-          thumbnailURL: data.thumbnailURL || data.thumbnailUrl,
-          thumbnails,
+          id: docSnapshot.id,
+          videoUrl: data.playbackUrl || data.originalVideoUrl || data.videoUrl,
+          originalVideoUrl: data.originalVideoUrl || data.videoUrl,
+          thumbnailUrl: data.thumb || data.thumbnailUrl,
           likes: data.likes || 0,
           comments: data.comments || 0,
           views: data.views || 0,
-          caption: data.caption || data.title || '',
-          isLiked: false, // Will be loaded separately
-          isFavorited: false, // Will be loaded separately
+          shares: data.shares || 0,
+          bookmarks: data.bookmarks || 0,
+          caption: data.caption || '',
+          isLiked: false,
+          isFavorited: false,
           isDraft: false,
           mlScore: data.mlScore || 0,
-          categoryId: data.categoryId || data.category || 'general',
+          categoryId: data.categoryId || 'general',
+          category: data.category,
           duration: data.metadata?.duration || data.duration,
           createdAt: data.createdAt?.toDate() || new Date(),
           allowSave: data.allowSave !== false,
@@ -197,12 +277,33 @@ class VideoService {
           isPinned: data.isPinned || false,
           tags: data.tags || [],
           playlistIds: data.playlistIds || [],
+          trendingScore: data.trendingScore,
+          isTrending: data.isTrending || false,
+          isNew: data.isNew || false,
+          creator: {
+            id: creatorId,
+            displayName: 'Loading...',
+            username: 'loading',
+          },
         };
 
         videos.push(video);
       }
 
-      // Sort by createdAt (newest first) as safety net
+      // Second pass: batch fetch creator info
+      const creatorPromises = Array.from(creatorIds).map(id => this.getCreatorInfo(id));
+      const creators = await Promise.all(creatorPromises);
+      const creatorMap = new Map(creators.map(c => [c.id, c]));
+
+      // Third pass: attach creator info
+      videos.forEach(video => {
+        const creator = creatorMap.get(video.creator.id);
+        if (creator) {
+          video.creator = creator;
+        }
+      });
+
+      // Sort by createdAt (newest first)
       videos.sort((a, b) => {
         const aTime = a.createdAt?.getTime() || 0;
         const bTime = b.createdAt?.getTime() || 0;
@@ -212,38 +313,17 @@ class VideoService {
       this.videos = videos;
       this.lastFetchTime = now;
 
-      console.log(`✅ VideoService: Loaded ${videos.length} videos`);
       return videos;
     } catch (error) {
-      console.error('❌ VideoService: Error loading videos:', error);
-      
-      // Fallback: Try query without status filter
-      try {
-        const fallbackQuery = query(
-          collection(db, 'videos'),
-          orderBy('createdAt', 'desc'),
-          limit(1000)
-        );
-        const snapshot = await getDocs(fallbackQuery);
-        // Filter in memory
-        const videos = snapshot.docs
-          .map(doc => this.mapVideoDocument(doc))
-          .filter(v => v && v.status === 'published');
-        return videos.filter(Boolean) as HomeVideo[];
-      } catch (fallbackError) {
-        console.error('❌ VideoService: Fallback query also failed:', fallbackError);
-        return [];
-      }
+      console.error('Error loading videos:', error);
+      return [];
     }
   }
 
-  /**
-   * Load more videos (pagination)
-   */
   async loadMoreVideos(lastVideo: HomeVideo): Promise<HomeVideo[]> {
     try {
-      const lastDoc = await this.getDocumentById(lastVideo.id);
-      if (!lastDoc) return [];
+      const lastDoc = await getDoc(doc(db, 'videos', lastVideo.id));
+      if (!lastDoc.exists()) return [];
 
       const videosQuery = query(
         collection(db, 'videos'),
@@ -254,490 +334,366 @@ class VideoService {
       );
 
       const snapshot = await getDocs(videosQuery);
-      return snapshot.docs.map(doc => this.mapVideoDocument(doc)).filter(Boolean) as HomeVideo[];
+      
+      // Same processing as loadAllVideos
+      const videos: HomeVideo[] = [];
+      const creatorIds = new Set<string>();
+
+      for (const docSnapshot of snapshot.docs) {
+        const data = docSnapshot.data();
+        const creatorId = data.creatorId || data.userId;
+        if (creatorId) creatorIds.add(creatorId);
+
+        const video: HomeVideo = {
+          id: docSnapshot.id,
+          videoUrl: data.playbackUrl || data.originalVideoUrl || data.videoUrl,
+          originalVideoUrl: data.originalVideoUrl || data.videoUrl,
+          thumbnailUrl: data.thumb || data.thumbnailUrl,
+          likes: data.likes || 0,
+          comments: data.comments || 0,
+          views: data.views || 0,
+          shares: data.shares || 0,
+          bookmarks: data.bookmarks || 0,
+          caption: data.caption || '',
+          isLiked: false,
+          isFavorited: false,
+          isDraft: false,
+          mlScore: data.mlScore || 0,
+          categoryId: data.categoryId || 'general',
+          category: data.category,
+          duration: data.metadata?.duration || data.duration,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          allowSave: data.allowSave !== false,
+          allowRemix: data.allowRemix !== false,
+          visibility: data.visibility || data.privacy || 'public',
+          status: data.status || 'published',
+          isPinned: data.isPinned || false,
+          tags: data.tags || [],
+          playlistIds: data.playlistIds || [],
+          trendingScore: data.trendingScore,
+          isTrending: data.isTrending || false,
+          isNew: data.isNew || false,
+          creator: {
+            id: creatorId,
+            displayName: 'Loading...',
+            username: 'loading',
+          },
+        };
+
+        videos.push(video);
+      }
+
+      // Batch fetch creator info
+      const creatorPromises = Array.from(creatorIds).map(id => this.getCreatorInfo(id));
+      const creators = await Promise.all(creatorPromises);
+      const creatorMap = new Map(creators.map(c => [c.id, c]));
+
+      videos.forEach(video => {
+        const creator = creatorMap.get(video.creator.id);
+        if (creator) {
+          video.creator = creator;
+        }
+      });
+
+      return videos;
     } catch (error) {
-      console.error('❌ VideoService: Error loading more videos:', error);
+      console.error('Error loading more videos:', error);
       return [];
     }
   }
 
-  /**
-   * Refresh videos (pull to refresh)
-   */
-  async refresh(): Promise<HomeVideo[]> {
-    this.videos = [];
-    this.lastFetchTime = 0;
-    return this.loadAllVideos();
-  }
+  async getCreatorInfo(userId: string): Promise<User> {
+    try {
+      const timeoutPromise = new Promise<User>(resolve => 
+        setTimeout(() => resolve({
+          id: userId,
+          displayName: 'Unknown User',
+          username: 'unknown',
+        }), 2000)
+      );
 
-  /**
-   * Resolve video URL from data
-   */
-  private resolveVideoUrl(data: any): string | null {
-    return data.videoURL || data.videoUrl || null;
-  }
+      const userDoc = await Promise.race([
+        getDoc(doc(db, 'users', userId)),
+        timeoutPromise,
+      ]) as any;
 
-  /**
-   * Get creator user info
-   */
-  private async getCreatorInfo(userId: string): Promise<User> {
-    // Fetch user document from Firestore
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+      if (!userDoc || !userDoc.exists()) {
+        return {
+          id: userId,
+          displayName: 'Unknown User',
+          username: 'unknown',
+        };
+      }
+
+      const userData = userDoc.data();
+      return {
+        id: userId,
+        displayName: userData.displayName || userData.name || 'Unknown User',
+        username: userData.username || 'unknown',
+        avatarURL: userData.avatarURL || userData.avatarUrl,
+        bio: userData.bio,
+        hashtags: userData.hashtags,
+      };
+    } catch (error) {
+      console.error(`Error fetching creator info for ${userId}:`, error);
       return {
         id: userId,
         displayName: 'Unknown User',
         username: 'unknown',
       };
     }
-
-    const userData = userDoc.data();
-    return {
-      id: userId,
-      displayName: userData.displayName || userData.name || 'Unknown User',
-      username: userData.username || 'unknown',
-      avatarURL: userData.avatarURL || userData.avatarUrl,
-      bio: userData.bio,
-      hashtags: userData.hashtags,
-    };
   }
 
-  /**
-   * Create VideoThumbnails object from data
-   */
-  private createThumbnails(data: any): VideoThumbnails | undefined {
-    const thumbnailURL = data.thumbnailURL || data.thumbnailUrl;
-    if (!thumbnailURL) return undefined;
-
-    return {
-      urls: {
-        360: thumbnailURL,
-        540: thumbnailURL,
-        720: thumbnailURL,
-      },
-      generatedAt: data.createdAt?.toDate(),
-      aspectRatio: 9 / 16,
-    };
-  }
-
-  /**
-   * Map Firestore document to HomeVideo
-   */
-  private mapVideoDocument(doc: DocumentSnapshot): HomeVideo | null {
-    const data = doc.data();
-    if (!data) return null;
-
-    // Implementation similar to loadAllVideos
-    // ... (omitted for brevity, same logic)
-    return null; // Placeholder
+  async refresh(): Promise<HomeVideo[]> {
+    this.videos = [];
+    this.lastFetchTime = 0;
+    return this.loadAllVideos();
   }
 }
 
-export const videoService = new VideoService();
+export const homeFeedService = new HomeFeedService();
 ```
 
-### FollowingFeedService
+---
 
+### FollowingFeedService (Following Tab)
+
+**Location**: `services/followingFeedService.ts`
+
+**Purpose**: Fetches videos from users the current user follows
+
+**Key Methods**:
+
+#### `getFollowingIds(userId: string): Promise<string[]>`
+- Queries `follows` collection for users the current user follows
+- Returns array of user IDs
+
+**Query Structure**:
 ```typescript
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+query(
+  collection(db, 'follows'),
+  where('followerUserId', '==', userId),
+  where('isActive', '==', true)
+)
+// Maps to: data.targetUserId || data.followingId || data.followedId
+```
+
+#### `loadFollowingFeed(limitCount: number, lastVideo?: HomeVideo): Promise<HomeVideo[]>`
+- Fetches videos from followed users
+- Batches queries (Firestore `in` query limit is 10)
+- Supports pagination with `lastVideo`
+- Returns array of `HomeVideo` objects
+
+**Query Structure** (batched):
+```typescript
+// For each batch of 10 user IDs:
+query(
+  collection(db, 'videos'),
+  where('creatorId', 'in', batch), // or 'userId' as fallback
+  where('status', '==', 'published'),
+  orderBy('createdAt', 'desc'),
+  startAfter(lastDoc), // if paginating
+  limit(limitCount * 2)
+)
+```
+
+**Performance Optimization**:
+- Batches creator info fetching (same as For You feed)
+- Deduplicates videos across batches
+- Sorts all videos by `createdAt` after fetching
+
+**Implementation**:
+```typescript
+import { collection, query, where, orderBy, limit, getDocs, startAfter, getDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
 import { auth } from './firebase';
+import { homeFeedService } from './homeFeedService';
 
 class FollowingFeedService {
-  /**
-   * Load videos from users the current user follows
-   */
-  async loadFollowingFeed(limitCount: number = 20): Promise<HomeVideo[]> {
+  async getFollowingIds(userId: string): Promise<string[]> {
+    try {
+      const followsQuery = query(
+        collection(db, 'follows'),
+        where('followerUserId', '==', userId),
+        where('isActive', '==', true)
+      );
+
+      const snapshot = await getDocs(followsQuery);
+      const followingIds: string[] = [];
+
+      for (const docSnapshot of snapshot.docs) {
+        const data = docSnapshot.data();
+        const targetUserId = data.targetUserId || data.followingId || data.followedId;
+        if (targetUserId) {
+          followingIds.push(targetUserId);
+        }
+      }
+
+      return followingIds;
+    } catch (error) {
+      console.error('Error getting following IDs:', error);
+      return [];
+    }
+  }
+
+  async loadFollowingFeed(limitCount: number = 20, lastVideo?: HomeVideo): Promise<HomeVideo[]> {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) return [];
 
-      // Get list of followed user IDs
-      const followingQuery = query(
-        collection(db, 'users', currentUser.uid, 'following')
-      );
-      const followingSnapshot = await getDocs(followingQuery);
-      const followingIds = followingSnapshot.docs.map(doc => doc.id);
+      // Get following IDs
+      const followingIds = await this.getFollowingIds(currentUser.uid);
+      if (followingIds.length === 0) return [];
 
-      if (followingIds.length === 0) {
-        return [];
-      }
+      // Batch queries (Firestore 'in' limit is 10)
+      const allVideos: HomeVideo[] = [];
+      const lastDoc = lastVideo ? await getDoc(doc(db, 'videos', lastVideo.id)) : null;
 
-      // Query videos from followed users
-      const videos: HomeVideo[] = [];
-      
-      // Firestore 'in' query limit is 10, so batch if needed
       for (let i = 0; i < followingIds.length; i += 10) {
         const batch = followingIds.slice(i, i + 10);
-        const videosQuery = query(
+        
+        let videosQuery = query(
           collection(db, 'videos'),
-          where('userId', 'in', batch),
+          where('creatorId', 'in', batch),
           where('status', '==', 'published'),
           orderBy('createdAt', 'desc'),
-          limit(limitCount)
+          limit(limitCount * 2)
         );
 
-        const snapshot = await getDocs(videosQuery);
-        const batchVideos = snapshot.docs.map(doc => this.mapVideoDocument(doc));
-        videos.push(...batchVideos.filter(Boolean) as HomeVideo[]);
+        // Add pagination if provided
+        if (lastDoc) {
+          videosQuery = query(videosQuery, startAfter(lastDoc));
+        }
+
+        try {
+          const snapshot = await getDocs(videosQuery);
+          
+          for (const docSnapshot of snapshot.docs) {
+            const data = docSnapshot.data();
+            const creatorId = data.creatorId || data.userId;
+            
+            const video: HomeVideo = {
+              id: docSnapshot.id,
+              videoUrl: data.playbackUrl || data.originalVideoUrl || data.videoUrl,
+              originalVideoUrl: data.originalVideoUrl || data.videoUrl,
+              thumbnailUrl: data.thumb || data.thumbnailUrl,
+              likes: data.likes || 0,
+              comments: data.comments || 0,
+              views: data.views || 0,
+              shares: data.shares || 0,
+              bookmarks: data.bookmarks || 0,
+              caption: data.caption || '',
+              isLiked: false,
+              isFavorited: false,
+              isDraft: false,
+              mlScore: data.mlScore || 0,
+              categoryId: data.categoryId || 'general',
+              category: data.category,
+              duration: data.metadata?.duration || data.duration,
+              createdAt: data.createdAt?.toDate() || new Date(),
+              allowSave: data.allowSave !== false,
+              allowRemix: data.allowRemix !== false,
+              visibility: data.visibility || data.privacy || 'public',
+              status: data.status || 'published',
+              isPinned: data.isPinned || false,
+              tags: data.tags || [],
+              playlistIds: data.playlistIds || [],
+              trendingScore: data.trendingScore,
+              isTrending: data.isTrending || false,
+              isNew: data.isNew || false,
+              creator: {
+                id: creatorId,
+                displayName: 'Loading...',
+                username: 'loading',
+              },
+            };
+
+            allVideos.push(video);
+          }
+        } catch (error: any) {
+          // Try fallback with userId field
+          if (error.code === 'failed-precondition' || error.message?.includes('index')) {
+            const fallbackQuery = query(
+              collection(db, 'videos'),
+              where('userId', 'in', batch),
+              where('status', '==', 'published'),
+              orderBy('createdAt', 'desc'),
+              limit(limitCount * 2)
+            );
+            const snapshot = await getDocs(fallbackQuery);
+            // Process same as above
+          }
+        }
       }
 
-      // Sort all videos by createdAt (newest first)
-      videos.sort((a, b) => {
+      // Deduplicate videos
+      const uniqueVideos = Array.from(
+        new Map(allVideos.map(v => [v.id, v])).values()
+      );
+
+      // Batch fetch creator info
+      const creatorIds = new Set(uniqueVideos.map(v => v.creator.id));
+      const creatorPromises = Array.from(creatorIds).map(id => 
+        homeFeedService.getCreatorInfo(id)
+      );
+      const creators = await Promise.all(creatorPromises);
+      const creatorMap = new Map(creators.map(c => [c.id, c]));
+
+      uniqueVideos.forEach(video => {
+        const creator = creatorMap.get(video.creator.id);
+        if (creator) {
+          video.creator = creator;
+        }
+      });
+
+      // Sort by createdAt (newest first)
+      uniqueVideos.sort((a, b) => {
         const aTime = a.createdAt?.getTime() || 0;
         const bTime = b.createdAt?.getTime() || 0;
         return bTime - aTime;
       });
 
-      return videos.slice(0, limitCount);
+      return uniqueVideos.slice(0, limitCount);
     } catch (error) {
-      console.error('❌ FollowingFeedService: Error loading following feed:', error);
+      console.error('Error loading following feed:', error);
       return [];
     }
-  }
-
-  private mapVideoDocument(doc: DocumentSnapshot): HomeVideo | null {
-    // Same implementation as VideoService
-    return null; // Placeholder
   }
 }
 
 export const followingFeedService = new FollowingFeedService();
 ```
 
-## React Components
-
-### HomeView Component
-
-```typescript
-import React, { useState, useEffect, useCallback } from 'react';
-import { useFeedState } from '../hooks/useFeedState';
-import { FeedSelector } from './FeedSelector';
-import { VideoFeedContainer } from './VideoFeedContainer';
-import { NetworkStatusIndicator } from './NetworkStatusIndicator';
-
-export const HomeView: React.FC = () => {
-  const {
-    forYouVideos,
-    followingVideos,
-    isLoading,
-    activeTab,
-    currentIndex,
-    error,
-    switchTab,
-    loadVideos,
-    loadMoreVideos,
-    refreshFeed,
-    setCurrentIndex,
-  } = useFeedState();
-
-  const videos = activeTab === 'forYou' ? forYouVideos : followingVideos;
-
-  useEffect(() => {
-    loadVideos();
-  }, [loadVideos]);
-
-  const handleTabChange = useCallback((tab: 'forYou' | 'following') => {
-    switchTab(tab);
-    setCurrentIndex(0); // Reset to first video when switching tabs
-  }, [switchTab, setCurrentIndex]);
-
-  const handlePageChange = useCallback((index: number) => {
-    setCurrentIndex(index);
-  }, [setCurrentIndex]);
-
-  const handleRefresh = useCallback(async () => {
-    await refreshFeed();
-  }, [refreshFeed]);
-
-  const handleLoadMore = useCallback(async () => {
-    if (videos.length > 0) {
-      const lastVideo = videos[videos.length - 1];
-      await loadMoreVideos(lastVideo);
-    }
-  }, [videos, loadMoreVideos]);
-
-  return (
-    <div className="home-view">
-      <NetworkStatusIndicator />
-      
-      <FeedSelector
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-      />
-
-      <VideoFeedContainer
-        videos={videos}
-        currentIndex={currentIndex}
-        isLoading={isLoading}
-        error={error}
-        onPageChange={handlePageChange}
-        onRefresh={handleRefresh}
-        onLoadMore={handleLoadMore}
-      />
-    </div>
-  );
-};
-```
-
-### VideoFeedContainer Component
-
-```typescript
-import React, { useRef, useEffect } from 'react';
-import { VideoPageView } from './VideoPageView';
-import { PullToRefresh } from './PullToRefresh';
-
-interface VideoFeedContainerProps {
-  videos: HomeVideo[];
-  currentIndex: number;
-  isLoading: boolean;
-  error: string | null;
-  onPageChange: (index: number) => void;
-  onRefresh: () => Promise<void>;
-  onLoadMore: () => Promise<void>;
-}
-
-export const VideoFeedContainer: React.FC<VideoFeedContainerProps> = ({
-  videos,
-  currentIndex,
-  isLoading,
-  error,
-  onPageChange,
-  onRefresh,
-  onLoadMore,
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  if (isLoading && videos.length === 0) {
-    return (
-      <div className="video-feed-loading">
-        <div className="spinner">Loading videos...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="video-feed-error">
-        <p>{error}</p>
-        <button onClick={onRefresh}>Retry</button>
-      </div>
-    );
-  }
-
-  if (videos.length === 0) {
-    return (
-      <div className="video-feed-empty">
-        <p>No videos available</p>
-      </div>
-    );
-  }
-
-  return (
-    <div ref={containerRef} className="video-feed-container">
-      <PullToRefresh onRefresh={onRefresh} enabled={currentIndex === 0}>
-        <VideoPageView
-          videos={videos}
-          currentIndex={currentIndex}
-          onPageChange={onPageChange}
-          onLoadMore={onLoadMore}
-        />
-      </PullToRefresh>
-    </div>
-  );
-};
-```
-
-### VideoPageView Component
-
-```typescript
-import React, { useRef, useEffect, useState } from 'react';
-import { VideoPlayerCard } from './VideoPlayerCard';
-import { useSwipeable } from 'react-swipeable';
-
-interface VideoPageViewProps {
-  videos: HomeVideo[];
-  currentIndex: number;
-  onPageChange: (index: number) => void;
-  onLoadMore: () => Promise<void>;
-}
-
-export const VideoPageView: React.FC<VideoPageViewProps> = ({
-  videos,
-  currentIndex,
-  onPageChange,
-  onLoadMore,
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isScrolling, setIsScrolling] = useState(false);
-
-  // Handle vertical swipe gestures
-  const handlers = useSwipeable({
-    onSwipedUp: () => {
-      if (currentIndex < videos.length - 1) {
-        onPageChange(currentIndex + 1);
-      } else {
-        // Load more when at end
-        onLoadMore();
-      }
-    },
-    onSwipedDown: () => {
-      if (currentIndex > 0) {
-        onPageChange(currentIndex - 1);
-      }
-    },
-    trackMouse: true,
-  });
-
-  // Scroll to current video
-  useEffect(() => {
-    if (containerRef.current) {
-      const videoElement = containerRef.current.children[currentIndex] as HTMLElement;
-      if (videoElement) {
-        videoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
-  }, [currentIndex]);
-
-  // Handle scroll events for infinite scroll
-  const handleScroll = useCallback(() => {
-    if (isScrolling) return;
-    setIsScrolling(true);
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const scrollTop = container.scrollTop;
-    const scrollHeight = container.scrollHeight;
-    const clientHeight = container.clientHeight;
-
-    // Check if scrolled to bottom (load more)
-    if (scrollTop + clientHeight >= scrollHeight - 100) {
-      onLoadMore();
-    }
-
-    // Determine which video is currently visible
-    const videoElements = Array.from(container.children) as HTMLElement[];
-    let newIndex = currentIndex;
-
-    for (let i = 0; i < videoElements.length; i++) {
-      const rect = videoElements[i].getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      
-      // Video is considered visible if it's in the center 60% of viewport
-      const isVisible = 
-        rect.top <= containerRect.top + containerRect.height * 0.7 &&
-        rect.bottom >= containerRect.top + containerRect.height * 0.3;
-
-      if (isVisible) {
-        newIndex = i;
-        break;
-      }
-    }
-
-    if (newIndex !== currentIndex) {
-      onPageChange(newIndex);
-    }
-
-    setTimeout(() => setIsScrolling(false), 100);
-  }, [currentIndex, onPageChange, onLoadMore, isScrolling]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
-
-  return (
-    <div
-      {...handlers}
-      ref={containerRef}
-      className="video-page-view"
-      style={{
-        height: '100vh',
-        overflowY: 'scroll',
-        scrollSnapType: 'y mandatory',
-        scrollBehavior: 'smooth',
-      }}
-    >
-      {videos.map((video, index) => (
-        <div
-          key={video.id}
-          style={{
-            height: '100vh',
-            scrollSnapAlign: 'start',
-            scrollSnapStop: 'always',
-          }}
-        >
-          <VideoPlayerCard
-            video={video}
-            isActive={index === currentIndex}
-            isFirst={index === 0}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
-```
-
-### VideoPlayerCard Component
-
-```typescript
-import React, { useEffect, useRef } from 'react';
-import { VideoPlayer } from './VideoPlayer';
-import { VideoOverlay } from './VideoOverlay';
-
-interface VideoPlayerCardProps {
-  video: HomeVideo;
-  isActive: boolean;
-  isFirst: boolean;
-}
-
-export const VideoPlayerCard: React.FC<VideoPlayerCardProps> = {
-  video,
-  isActive,
-  isFirst,
-}) => {
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  return (
-    <div
-      ref={cardRef}
-      className="video-player-card"
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#000',
-      }}
-    >
-      <VideoPlayer
-        video={video}
-        isActive={isActive}
-        autoplay={isActive}
-        muted={!isActive}
-      />
-
-      {isActive && (
-        <VideoOverlay
-          video={video}
-        />
-      )}
-    </div>
-  );
-};
-```
+---
 
 ## State Management
 
 ### useFeedState Hook
 
+**Location**: `hooks/useFeedState.ts`
+
+**Purpose**: Manages feed state and loading logic
+
+**State Variables**:
+- `forYouVideos`: Array of For You videos
+- `followingVideos`: Array of Following videos
+- `isLoading`: Initial load state
+- `isLoadingMore`: Pagination load state
+- `hasMoreContent`: More content available flag
+- `currentIndex`: Current video index
+- `activeTab`: Active tab ('forYou' | 'following')
+- `error`: Error message
+
+**Methods**:
+- `loadVideos()`: Loads initial videos for active tab
+- `loadMoreVideos(lastVideo)`: Loads next batch for pagination
+- `refreshFeed()`: Refreshes current feed
+- `switchTab(tab)`: Switches between For You and Following tabs
+
+**Implementation**:
 ```typescript
 import { useState, useCallback, useEffect } from 'react';
-import { videoService } from '../services/videoService';
+import { homeFeedService } from '../services/homeFeedService';
 import { followingFeedService } from '../services/followingFeedService';
 import { HomeVideo } from '../types';
 
@@ -757,7 +713,7 @@ export const useFeedState = () => {
       setError(null);
 
       if (activeTab === 'forYou') {
-        const videos = await videoService.loadAllVideos();
+        const videos = await homeFeedService.loadAllVideos();
         setForYouVideos(videos);
       } else {
         const videos = await followingFeedService.loadFollowingFeed();
@@ -775,7 +731,13 @@ export const useFeedState = () => {
 
     try {
       setIsLoadingMore(true);
-      const moreVideos = await videoService.loadMoreVideos(lastVideo);
+      let moreVideos: HomeVideo[];
+
+      if (activeTab === 'forYou') {
+        moreVideos = await homeFeedService.loadMoreVideos(lastVideo);
+      } else {
+        moreVideos = await followingFeedService.loadFollowingFeed(20, lastVideo);
+      }
 
       if (moreVideos.length === 0) {
         setHasMoreContent(false);
@@ -805,7 +767,11 @@ export const useFeedState = () => {
   }, []);
 
   useEffect(() => {
-    loadVideos();
+    // Defer initial load
+    const timer = setTimeout(() => {
+      loadVideos();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadVideos]);
 
   return {
@@ -826,71 +792,263 @@ export const useFeedState = () => {
 };
 ```
 
-## Video Playback
-
-### VideoPlayer Component
-
+**Usage**:
 ```typescript
-import React, { useRef, useEffect } from 'react';
+const {
+  forYouVideos,
+  followingVideos,
+  isLoading,
+  activeTab,
+  loadVideos,
+  loadMoreVideos,
+  switchTab,
+  setCurrentIndex
+} = useFeedState()
+```
+
+---
+
+## Component Structure
+
+### HomeView Component
+
+**Location**: `components/feed/HomeView.tsx`
+
+**Purpose**: Main feed component orchestrating all feed functionality
+
+**Key Features**:
+- Tab switching (For You / Following)
+- Video navigation (up/down arrows)
+- Event logging integration
+- Action handlers (like, bookmark, follow, share, comment)
+
+**Props**: None (self-contained)
+
+**State**:
+- `currentVideoIndex`: Current video being viewed
+- `hasLikedMap`: Map of video IDs to like state
+- `isBookmarkedMap`: Map of video IDs to bookmark state
+
+**Key Handlers**:
+- `handleTabChange(tab)`: Switches tabs
+- `handleLike(videoId, isLiked)`: Toggles like
+- `handleBookmark(videoId, isBookmarked)`: Toggles bookmark
+- `handleFollow(userId, isFollowing)`: Toggles follow
+- `handleShare(video)`: Opens share sheet
+- `handleComment(videoId)`: Opens comments
+- `handleNavigateUp()`: Navigate to previous video
+- `handleNavigateDown()`: Navigate to next video
+
+**Video Transformation**:
+Transforms `HomeVideo[]` to `VideoDetailVideo[]` format for `VideoDetailOverlay`:
+```typescript
+{
+  id: video.id,
+  src: video.originalVideoUrl || video.videoUrl,
+  cover: video.thumbnailUrl,
+  user: {
+    id: video.creator.id,
+    username: video.creator.username,
+    displayName: video.creator.displayName,
+    avatarUrl: video.creator.avatarURL
+  },
+  stats: {
+    views: video.views,
+    likes: video.likes,
+    comments: video.comments,
+    shares: video.shares,
+    bookmarks: video.bookmarks
+  },
+  caption: video.caption,
+  // ... other fields
+}
+```
+
+**Implementation**:
+```typescript
+import React, { useState, useEffect, useCallback } from 'react';
+import { useFeedState } from '../hooks/useFeedState';
+import { FeedSelector } from './FeedSelector';
+import { VideoDetailOverlay } from '../video_detail_overlay/VideoDetailOverlay';
+import { feedEventLogger } from '../services/feedEventLogger';
 import { HomeVideo } from '../types';
 
-interface VideoPlayerProps {
-  video: HomeVideo;
-  isActive: boolean;
-  autoplay: boolean;
-  muted: boolean;
-}
+export const HomeView: React.FC = () => {
+  const {
+    forYouVideos,
+    followingVideos,
+    isLoading,
+    activeTab,
+    currentIndex,
+    error,
+    switchTab,
+    loadVideos,
+    loadMoreVideos,
+    refreshFeed,
+    setCurrentIndex,
+  } = useFeedState();
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({
-  video,
-  isActive,
-  autoplay,
-  muted,
-}) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [hasLikedMap, setHasLikedMap] = useState<Map<string, boolean>>(new Map());
+  const [isBookmarkedMap, setIsBookmarkedMap] = useState<Map<string, boolean>>(new Map());
+  const [isOverlayOpen, setIsOverlayOpen] = useState(false);
 
-  useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-
-    if (isActive && autoplay) {
-      videoElement.play().catch(err => {
-        console.error('Error playing video:', err);
-      });
-    } else {
-      videoElement.pause();
-    }
-  }, [isActive, autoplay]);
+  const videos = activeTab === 'forYou' ? forYouVideos : followingVideos;
 
   useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
+    loadVideos();
+  }, [loadVideos]);
 
-    videoElement.muted = muted;
-  }, [muted]);
+  const handleTabChange = useCallback((tab: 'forYou' | 'following') => {
+    switchTab(tab);
+    setCurrentIndex(0);
+  }, [switchTab, setCurrentIndex]);
+
+  const handleVideoChange = useCallback((index: number, video: HomeVideo) => {
+    setCurrentIndex(index);
+    
+    // Track impression
+    feedEventLogger.trackImpression(
+      video.id,
+      video.creator.id,
+      activeTab,
+      index
+    );
+
+    // Track view start
+    feedEventLogger.trackViewStart(video.id, video.creator.id, activeTab);
+  }, [activeTab, setCurrentIndex]);
+
+  const handleLike = useCallback(async (videoId: string, isLiked: boolean) => {
+    const video = videos.find(v => v.id === videoId);
+    if (!video) return;
+
+    setHasLikedMap(prev => new Map(prev).set(videoId, isLiked));
+    
+    // Track event
+    feedEventLogger.trackLike(videoId, video.creator.id, isLiked, activeTab);
+    
+    // Update video like count
+    // ... API call to update like
+  }, [videos, activeTab]);
+
+  const handleBookmark = useCallback(async (videoId: string, isBookmarked: boolean) => {
+    const video = videos.find(v => v.id === videoId);
+    if (!video) return;
+
+    setIsBookmarkedMap(prev => new Map(prev).set(videoId, isBookmarked));
+    
+    // Track event
+    feedEventLogger.trackSave(videoId, video.creator.id, isBookmarked, activeTab);
+    
+    // Update video bookmark count
+    // ... API call to update bookmark
+  }, [videos, activeTab]);
+
+  const handleFollow = useCallback(async (userId: string, isFollowing: boolean) => {
+    const video = videos[currentIndex];
+    if (!video) return;
+
+    // Track event
+    feedEventLogger.trackFollowFromVideo(
+      video.id,
+      video.creator.id,
+      isFollowing,
+      activeTab
+    );
+    
+    // Update follow state
+    // ... API call to update follow
+  }, [videos, currentIndex, activeTab]);
+
+  const handleShare = useCallback((video: HomeVideo) => {
+    feedEventLogger.trackShare(video.id, video.creator.id, activeTab);
+    // ... Open share sheet
+  }, [activeTab]);
+
+  const handleComment = useCallback((videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    if (!video) return;
+
+    feedEventLogger.trackComment(videoId, video.creator.id, activeTab);
+    // ... Open comments
+  }, [videos, activeTab]);
+
+  // Transform videos for VideoDetailOverlay
+  const transformedVideos = videos.map(video => ({
+    id: video.id,
+    src: video.originalVideoUrl || video.videoUrl,
+    cover: video.thumbnailUrl,
+    user: {
+      id: video.creator.id,
+      username: video.creator.username,
+      displayName: video.creator.displayName,
+      avatarUrl: video.creator.avatarURL,
+    },
+    stats: {
+      views: video.views,
+      likes: video.likes,
+      comments: video.comments,
+      shares: video.shares,
+      bookmarks: video.bookmarks || 0,
+    },
+    caption: video.caption,
+    isLiked: hasLikedMap.get(video.id) ?? video.isLiked,
+    isBookmarked: isBookmarkedMap.get(video.id) ?? video.isFavorited,
+  }));
 
   return (
-    <video
-      ref={videoRef}
-      src={video.videoURL}
-      className="video-player"
-      style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
-      }}
-      playsInline
-      loop
-      preload="auto"
-    />
+    <div className="home-view">
+      <FeedSelector
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+      />
+
+      {isLoading && videos.length === 0 ? (
+        <div className="loading">Loading videos...</div>
+      ) : error ? (
+        <div className="error">{error}</div>
+      ) : (
+        <VideoDetailOverlay
+          isOpen={!isLoading}
+          videos={transformedVideos}
+          initialIndex={currentIndex}
+          fitToContainer={true}
+          onVideoChange={handleVideoChange}
+          onLike={handleLike}
+          onBookmark={handleBookmark}
+          onFollow={handleFollow}
+          onShare={handleShare}
+          onComment={handleComment}
+        />
+      )}
+    </div>
   );
 };
 ```
 
-## Feed Tabs
+---
 
 ### FeedSelector Component
 
+**Location**: `components/feed/FeedSelector.tsx`
+
+**Purpose**: Tab selector UI (For You / Following buttons)
+
+**Props**:
+```typescript
+interface FeedSelectorProps {
+  activeTab: 'forYou' | 'following'
+  onTabChange: (tab: 'forYou' | 'following') => void
+}
+```
+
+**Styling**:
+- Active tab: Gradient background with shadow
+- Inactive tab: Glass morphism effect
+- Hover states for both tabs
+- Mobile responsive
+
+**Implementation**:
 ```typescript
 import React from 'react';
 
@@ -906,13 +1064,13 @@ export const FeedSelector: React.FC<FeedSelectorProps> = ({
   return (
     <div className="feed-selector">
       <button
-        className={activeTab === 'forYou' ? 'active' : ''}
+        className={`feed-tab ${activeTab === 'forYou' ? 'active' : ''}`}
         onClick={() => onTabChange('forYou')}
       >
         For You
       </button>
       <button
-        className={activeTab === 'following' ? 'active' : ''}
+        className={`feed-tab ${activeTab === 'following' ? 'active' : ''}`}
         onClick={() => onTabChange('following')}
       >
         Following
@@ -922,163 +1080,1008 @@ export const FeedSelector: React.FC<FeedSelectorProps> = ({
 };
 ```
 
-## Pull to Refresh
+---
 
-### PullToRefresh Component
+### VideoDetailOverlay Component
+
+**Location**: `components/video_detail_overlay/VideoDetailOverlay.tsx`
+
+**Purpose**: Full-screen video player overlay
+
+**Key Props**:
+- `isOpen: boolean`: Overlay visibility
+- `videos: Video[]`: Array of videos to display
+- `initialIndex: number`: Starting video index
+- `fitToContainer: boolean`: Use absolute positioning (for feed mode)
+- `onVideoChange(index, video)`: Callback when video changes
+- `onLike(videoId, isLiked)`: Like handler
+- `onBookmark(videoId, isBookmarked)`: Bookmark handler
+- `onFollow(userId, isFollowing)`: Follow handler
+- `onShare(video)`: Share handler
+- `onComment(videoId)`: Comment handler
+
+**Features**:
+- Vertical swipe navigation
+- Autoplay with mute/unmute
+- Volume slider on hover
+- Video stats overlay
+- Creator info display
+- Action buttons (like, comment, share, bookmark)
+
+---
+
+## Event Logging
+
+### FeedEventLogger Service
+
+**Location**: `services/feedEventLogger.ts`
+
+**Purpose**: Tracks user interactions and video playback events
+
+**Events Tracked**:
+
+1. **impression**: Video shown in feed
+   ```typescript
+   trackImpression(videoId, creatorId, feedType, videoIndex)
+   ```
+
+2. **view_start**: Video playback started
+   ```typescript
+   trackViewStart(videoId, creatorId, feedType)
+   ```
+
+3. **view_2s**: User watched at least 2 seconds
+   ```typescript
+   trackView2s(videoId, creatorId, feedType)
+   ```
+
+4. **view_complete**: User watched entire video or significant portion
+   ```typescript
+   trackViewComplete(videoId, creatorId, feedType, progressPercent)
+   ```
+
+5. **like**: Like/unlike action
+   ```typescript
+   trackLike(videoId, creatorId, isLiked, feedType)
+   ```
+
+6. **comment**: Comment action
+   ```typescript
+   trackComment(videoId, creatorId, feedType)
+   ```
+
+7. **share**: Share action
+   ```typescript
+   trackShare(videoId, creatorId, feedType)
+   ```
+
+8. **save**: Bookmark/save action
+   ```typescript
+   trackSave(videoId, creatorId, isSaved, feedType)
+   ```
+
+9. **follow_from_video**: Follow/unfollow from video
+   ```typescript
+   trackFollowFromVideo(videoId, creatorId, isFollowing, feedType)
+   ```
+
+10. **not_interested**: Not interested action
+    ```typescript
+    trackNotInterested(videoId, creatorId, feedType)
+    ```
+
+11. **report**: Report action
+    ```typescript
+    trackReport(videoId, creatorId, reason, feedType)
+    ```
+
+**Event Metadata**:
+```typescript
+{
+  videoId: string
+  creatorId: string
+  feedType: 'forYou' | 'following'
+  videoIndex?: number
+  timestamp: number
+  watchMs?: number        // For view events
+  progressPercent?: number // For view_complete
+  isLiked?: boolean       // For like events
+  isSaved?: boolean       // For save events
+  isFollowing?: boolean   // For follow events
+  reason?: string         // For report events
+}
+```
+
+**Implementation**:
+```typescript
+import { trackEvent } from './analytics';
+import { event } from 'nextjs-google-analytics';
+
+class FeedEventLogger {
+  private viewTimers: Map<string, NodeJS.Timeout> = new Map();
+  private viewStartTimes: Map<string, number> = new Map();
+
+  async trackImpression(
+    videoId: string,
+    creatorId: string,
+    feedType: 'forYou' | 'following',
+    videoIndex?: number
+  ) {
+    const eventData = {
+      eventType: 'impression',
+      videoId,
+      creatorId,
+      feedType,
+      videoIndex,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_impression', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+      video_index: videoIndex?.toString(),
+    });
+  }
+
+  async trackViewStart(
+    videoId: string,
+    creatorId: string,
+    feedType: 'forYou' | 'following'
+  ) {
+    // Clean up previous video timer
+    this.cleanup(videoId);
+
+    const eventData = {
+      eventType: 'view_start',
+      videoId,
+      creatorId,
+      feedType,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_view_start', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+    });
+
+    // Set up 2-second timer
+    this.viewStartTimes.set(videoId, Date.now());
+    const timer2s = setTimeout(() => {
+      this.trackView2s(videoId, creatorId, feedType);
+    }, 2000);
+    this.viewTimers.set(videoId, timer2s);
+  }
+
+  async trackView2s(
+    videoId: string,
+    creatorId: string,
+    feedType: 'forYou' | 'following'
+  ) {
+    const eventData = {
+      eventType: 'view_2s',
+      videoId,
+      creatorId,
+      feedType,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_view_2s', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+    });
+  }
+
+  async trackViewComplete(
+    videoId: string,
+    creatorId: string,
+    feedType: 'forYou' | 'following',
+    progressPercent?: number
+  ) {
+    const startTime = this.viewStartTimes.get(videoId) || Date.now();
+    const watchMs = Date.now() - startTime;
+
+    const eventData = {
+      eventType: 'view_complete',
+      videoId,
+      creatorId,
+      feedType,
+      watchMs,
+      progressPercent,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_view_complete', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+      watch_ms: watchMs.toString(),
+      progress_percent: progressPercent?.toString(),
+    });
+
+    this.cleanup(videoId);
+  }
+
+  async trackLike(
+    videoId: string,
+    creatorId: string,
+    isLiked: boolean,
+    feedType: 'forYou' | 'following'
+  ) {
+    const eventData = {
+      eventType: 'like',
+      videoId,
+      creatorId,
+      feedType,
+      isLiked,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_like', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+      is_liked: isLiked.toString(),
+    });
+  }
+
+  async trackComment(
+    videoId: string,
+    creatorId: string,
+    feedType: 'forYou' | 'following'
+  ) {
+    const eventData = {
+      eventType: 'comment',
+      videoId,
+      creatorId,
+      feedType,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_comment', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+    });
+  }
+
+  async trackShare(
+    videoId: string,
+    creatorId: string,
+    feedType: 'forYou' | 'following'
+  ) {
+    const eventData = {
+      eventType: 'share',
+      videoId,
+      creatorId,
+      feedType,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_share', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+    });
+  }
+
+  async trackSave(
+    videoId: string,
+    creatorId: string,
+    isSaved: boolean,
+    feedType: 'forYou' | 'following'
+  ) {
+    const eventData = {
+      eventType: 'save',
+      videoId,
+      creatorId,
+      feedType,
+      isSaved,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_save', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+      is_saved: isSaved.toString(),
+    });
+  }
+
+  async trackFollowFromVideo(
+    videoId: string,
+    creatorId: string,
+    isFollowing: boolean,
+    feedType: 'forYou' | 'following'
+  ) {
+    const eventData = {
+      eventType: 'follow_from_video',
+      videoId,
+      creatorId,
+      feedType,
+      isFollowing,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_follow_from_video', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+      is_following: isFollowing.toString(),
+    });
+  }
+
+  async trackNotInterested(
+    videoId: string,
+    creatorId: string,
+    feedType: 'forYou' | 'following'
+  ) {
+    const eventData = {
+      eventType: 'not_interested',
+      videoId,
+      creatorId,
+      feedType,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_not_interested', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+    });
+  }
+
+  async trackReport(
+    videoId: string,
+    creatorId: string,
+    reason?: string,
+    feedType?: 'forYou' | 'following'
+  ) {
+    const eventData = {
+      eventType: 'report',
+      videoId,
+      creatorId,
+      feedType,
+      reason,
+      timestamp: Date.now(),
+    };
+
+    await trackEvent(eventData);
+    event('feed_report', {
+      video_id: videoId,
+      creator_id: creatorId,
+      feed_type: feedType,
+      reason,
+    });
+  }
+
+  cleanup(videoId: string) {
+    const timer = this.viewTimers.get(videoId);
+    if (timer) {
+      clearTimeout(timer);
+      this.viewTimers.delete(videoId);
+    }
+    this.viewStartTimes.delete(videoId);
+  }
+
+  reset() {
+    this.viewTimers.forEach(timer => clearTimeout(timer));
+    this.viewTimers.clear();
+    this.viewStartTimes.clear();
+  }
+}
+
+export const feedEventLogger = new FeedEventLogger();
+```
+
+**Integration Points**:
+- Sends to custom API via `trackEvent()`
+- Sends to Google Analytics via `event()`
+- Tracks view timers automatically
+- Cleans up timers on video change
+
+---
+
+## Firestore Queries & Indexes
+
+### Required Indexes
+
+#### For You Feed
+```
+Collection: videos
+Fields: status (Ascending), createdAt (Descending)
+```
+
+#### Following Feed
+```
+Collection: videos
+Fields: creatorId (Ascending), status (Ascending), createdAt (Descending)
+```
+
+**OR** (fallback):
+```
+Collection: videos
+Fields: userId (Ascending), status (Ascending), createdAt (Descending)
+```
+
+#### Follows Collection
+```
+Collection: follows
+Fields: followerUserId (Ascending), isActive (Ascending)
+```
+
+### Query Patterns
+
+#### For You Feed Query
+```typescript
+query(
+  collection(db, 'videos'),
+  where('status', '==', 'published'),
+  orderBy('createdAt', 'desc'),
+  limit(20)
+)
+```
+
+#### Following Feed Query (Batched)
+```typescript
+// For each batch of 10 user IDs:
+query(
+  collection(db, 'videos'),
+  where('creatorId', 'in', [userId1, userId2, ..., userId10]),
+  where('status', '==', 'published'),
+  orderBy('createdAt', 'desc'),
+  limit(40)
+)
+```
+
+#### Pagination Query
+```typescript
+const lastDoc = await getDoc(doc(db, 'videos', lastVideoId))
+query(
+  collection(db, 'videos'),
+  where('status', '==', 'published'),
+  orderBy('createdAt', 'desc'),
+  startAfter(lastDoc),
+  limit(20)
+)
+```
+
+### Fallback Strategy
+
+If composite index is missing:
+1. Query without `status` filter
+2. Fetch more documents (2x limit)
+3. Filter `status === 'published'` in memory
+4. Return filtered results
+
+---
+
+## Performance Optimizations
+
+### 1. Batch Creator Info Fetching
+
+**Problem**: Sequential creator lookups are slow
+
+**Solution**: Collect all unique creator IDs, then fetch in parallel
 
 ```typescript
-import React, { useState, useRef, useEffect } from 'react';
+// First pass: collect creator IDs
+const creatorIds = new Set<string>()
+videos.forEach(video => creatorIds.add(video.creatorId))
 
-interface PullToRefreshProps {
-  onRefresh: () => Promise<void>;
-  enabled: boolean;
-  children: React.ReactNode;
+// Second pass: batch fetch
+const creatorPromises = Array.from(creatorIds).map(id => 
+  getCreatorInfo(id)
+)
+const creators = await Promise.all(creatorPromises)
+```
+
+### 2. Reduced Initial Load
+
+**Problem**: Loading 500 videos initially is slow
+
+**Solution**: Load 20 videos initially, paginate as needed
+
+```typescript
+const INITIAL_LIMIT = 20 // Instead of 500
+```
+
+### 3. Timeout for Creator Lookups
+
+**Problem**: Slow creator lookups block entire feed
+
+**Solution**: 2-second timeout per creator lookup
+
+```typescript
+const timeoutPromise = new Promise(resolve => 
+  setTimeout(() => resolve(null), 2000)
+)
+const creator = await Promise.race([
+  getCreatorInfo(userId),
+  timeoutPromise
+])
+```
+
+### 4. Caching
+
+**Problem**: Repeated fetches for same data
+
+**Solution**: 5-minute cache for feed data
+
+```typescript
+private videos: HomeVideo[] = []
+private lastFetchTime: number = 0
+private readonly CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+```
+
+### 5. Deferred Initial Load
+
+**Problem**: Feed loading blocks initial render
+
+**Solution**: Defer load with `setTimeout`
+
+```typescript
+useEffect(() => {
+  const timer = setTimeout(() => {
+    loadVideos()
+  }, 0)
+  return () => clearTimeout(timer)
+}, [])
+```
+
+### 6. Lazy Loading Components
+
+**Problem**: Feed components load on every page
+
+**Solution**: Dynamic import with `next/dynamic`
+
+```typescript
+const HomeView = dynamic(
+  () => import('@/components/feed/HomeView').then(mod => mod.HomeView),
+  { ssr: false }
+)
+```
+
+---
+
+## Integration Guide
+
+### Step 1: Set Up Data Structures
+
+Create the `HomeVideo` and `User` interfaces in your app:
+
+```typescript
+// types/feed.ts
+interface HomeVideo {
+  id: string
+  creator: User
+  videoUrl: string
+  thumbnailUrl: string
+  // ... other fields
 }
 
-export const PullToRefresh: React.FC<PullToRefreshProps> = ({
-  onRefresh,
-  enabled,
-  children,
-}) => {
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pullDistance, setPullDistance] = useState(0);
-  const startY = useRef<number>(0);
-  const isPulling = useRef<boolean>(false);
+interface User {
+  id: string
+  displayName: string
+  username: string
+  avatarURL?: string
+}
+```
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (!enabled) return;
-    startY.current = e.touches[0].clientY;
-    isPulling.current = true;
-  };
+### Step 2: Implement Service Layer
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!enabled || !isPulling.current) return;
+#### For You Feed Service
 
-    const currentY = e.touches[0].clientY;
-    const distance = currentY - startY.current;
+```typescript
+class HomeFeedService {
+  async loadAllVideos(): Promise<HomeVideo[]> {
+    // 1. Query Firestore for published videos
+    // 2. Collect unique creator IDs
+    // 3. Batch fetch creator info
+    // 4. Map videos with creator data
+    // 5. Return HomeVideo[]
+  }
 
-    if (distance > 0) {
-      setPullDistance(Math.min(distance, 100));
+  async loadMoreVideos(lastVideo: HomeVideo): Promise<HomeVideo[]> {
+    // 1. Get last document snapshot
+    // 2. Query with startAfter
+    // 3. Batch fetch creator info
+    // 4. Return next batch
+  }
+}
+```
+
+#### Following Feed Service
+
+```typescript
+class FollowingFeedService {
+  async getFollowingIds(userId: string): Promise<string[]> {
+    // 1. Query follows collection
+    // 2. Return array of user IDs
+  }
+
+  async loadFollowingFeed(limit: number, lastVideo?: HomeVideo): Promise<HomeVideo[]> {
+    // 1. Get following IDs
+    // 2. Batch queries (10 IDs per batch)
+    // 3. Fetch videos from each batch
+    // 4. Deduplicate and sort
+    // 5. Return HomeVideo[]
+  }
+}
+```
+
+### Step 3: Implement State Management
+
+```typescript
+function useFeedState() {
+  const [forYouVideos, setForYouVideos] = useState<HomeVideo[]>([])
+  const [followingVideos, setFollowingVideos] = useState<HomeVideo[]>([])
+  const [activeTab, setActiveTab] = useState<'forYou' | 'following'>('forYou')
+  
+  const loadVideos = async () => {
+    if (activeTab === 'forYou') {
+      const videos = await homeFeedService.loadAllVideos()
+      setForYouVideos(videos)
+    } else {
+      const videos = await followingFeedService.loadFollowingFeed()
+      setFollowingVideos(videos)
     }
-  };
+  }
+  
+  return { forYouVideos, followingVideos, loadVideos, activeTab, setActiveTab }
+}
+```
 
-  const handleTouchEnd = async () => {
-    if (!enabled || !isPulling.current) return;
+### Step 4: Implement UI Components
 
-    isPulling.current = false;
-
-    if (pullDistance > 50) {
-      setIsRefreshing(true);
-      await onRefresh();
-      setIsRefreshing(false);
-    }
-
-    setPullDistance(0);
-  };
-
+#### Feed Selector
+```typescript
+function FeedSelector({ activeTab, onTabChange }) {
   return (
-    <div
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{ position: 'relative' }}
-    >
-      {isRefreshing && (
-        <div className="pull-to-refresh-indicator">
-          <div className="spinner">Refreshing...</div>
-        </div>
-      )}
-      {children}
+    <div>
+      <button onClick={() => onTabChange('forYou')}>
+        For You
+      </button>
+      <button onClick={() => onTabChange('following')}>
+        Following
+      </button>
     </div>
+  )
+}
+```
+
+#### Video Player
+```typescript
+function VideoPlayer({ video, isActive }) {
+  return (
+    <video
+      src={video.videoUrl}
+      autoPlay={isActive}
+      muted
+      loop
+      playsInline
+    />
+  )
+}
+```
+
+### Step 5: Implement Event Logging
+
+```typescript
+class FeedEventLogger {
+  async trackImpression(videoId, creatorId, feedType) {
+    await trackEvent({
+      eventType: 'impression',
+      videoId,
+      creatorId,
+      feedType
+    })
+  }
+  
+  async trackViewStart(videoId, creatorId, feedType) {
+    // Track view start
+    // Set up 2-second timer
+  }
+  
+  // ... other event methods
+}
+```
+
+### Step 6: Set Up Firestore Indexes
+
+Create composite indexes in Firebase Console:
+
+1. **For You Feed**:
+   - Collection: `videos`
+   - Fields: `status` (Ascending), `createdAt` (Descending)
+
+2. **Following Feed**:
+   - Collection: `videos`
+   - Fields: `creatorId` (Ascending), `status` (Ascending), `createdAt` (Descending)
+
+3. **Follows Collection**:
+   - Collection: `follows`
+   - Fields: `followerUserId` (Ascending), `isActive` (Ascending)
+
+---
+
+## API Reference
+
+### HomeFeedService
+
+#### `loadAllVideos(): Promise<HomeVideo[]>`
+Loads initial batch of For You feed videos.
+
+**Returns**: Array of `HomeVideo` objects
+
+**Throws**: Error if Firestore not initialized
+
+---
+
+#### `loadMoreVideos(lastVideo: HomeVideo): Promise<HomeVideo[]>`
+Loads next batch of videos for pagination.
+
+**Parameters**:
+- `lastVideo`: Last video in current batch
+
+**Returns**: Array of next `HomeVideo` objects
+
+**Throws**: Error if pagination fails
+
+---
+
+### FollowingFeedService
+
+#### `getFollowingIds(userId: string): Promise<string[]>`
+Gets list of user IDs that the current user follows.
+
+**Parameters**:
+- `userId`: Current user ID
+
+**Returns**: Array of user IDs
+
+---
+
+#### `loadFollowingFeed(limitCount: number, lastVideo?: HomeVideo): Promise<HomeVideo[]>`
+Loads videos from users the current user follows.
+
+**Parameters**:
+- `limitCount`: Number of videos to fetch (default: 20)
+- `lastVideo`: Optional last video for pagination
+
+**Returns**: Array of `HomeVideo` objects
+
+---
+
+### useFeedState Hook
+
+#### State
+- `forYouVideos: HomeVideo[]`
+- `followingVideos: HomeVideo[]`
+- `isLoading: boolean`
+- `isLoadingMore: boolean`
+- `hasMoreContent: boolean`
+- `currentIndex: number`
+- `activeTab: 'forYou' | 'following'`
+- `error: string | null`
+
+#### Methods
+- `loadVideos(): Promise<void>`
+- `loadMoreVideos(lastVideo: HomeVideo): Promise<void>`
+- `refreshFeed(): Promise<void>`
+- `switchTab(tab: 'forYou' | 'following'): void`
+- `setCurrentIndex(index: number): void`
+
+---
+
+### FeedEventLogger
+
+#### `trackImpression(videoId, creatorId, feedType, videoIndex?)`
+Tracks video impression.
+
+#### `trackViewStart(videoId, creatorId, feedType)`
+Tracks view start and sets up 2-second timer.
+
+#### `trackView2s(videoId, creatorId, feedType)`
+Tracks 2-second view milestone.
+
+#### `trackViewComplete(videoId, creatorId, feedType, progressPercent?)`
+Tracks view completion.
+
+#### `trackLike(videoId, creatorId, isLiked, feedType)`
+Tracks like/unlike action.
+
+#### `trackComment(videoId, creatorId, feedType)`
+Tracks comment action.
+
+#### `trackShare(videoId, creatorId, feedType)`
+Tracks share action.
+
+#### `trackSave(videoId, creatorId, isSaved, feedType)`
+Tracks save/bookmark action.
+
+#### `trackFollowFromVideo(videoId, creatorId, isFollowing, feedType)`
+Tracks follow/unfollow from video.
+
+#### `trackNotInterested(videoId, creatorId, feedType)`
+Tracks not interested action.
+
+#### `trackReport(videoId, creatorId, reason?, feedType)`
+Tracks report action.
+
+#### `cleanup(videoId)`
+Cleans up view tracking for a video.
+
+#### `reset()`
+Resets all tracking state.
+
+---
+
+## Firestore Schema
+
+### Videos Collection
+
+```typescript
+{
+  id: string                    // Document ID
+  creatorId: string             // Primary: creator user ID
+  userId?: string               // Fallback: creator user ID
+  status: 'published' | 'draft' | 'processing' | 'blocked' | 'deleted'
+  playbackUrl?: string          // Primary: transcoded playback URL
+  originalVideoUrl?: string     // Original video URL
+  videoUrl?: string             // Fallback: video URL
+  thumb?: string                // Primary: thumbnail URL
+  thumbnailUrl?: string         // Fallback: thumbnail URL
+  createdAt: Timestamp          // Creation timestamp
+  likes: number                 // Like count
+  comments: number              // Comment count
+  views: number                 // View count
+  shares: number                // Share count
+  bookmarks: number             // Bookmark count
+  caption: string               // Video caption
+  categoryId: string            // Category ID
+  category?: string             // Category name
+  tags: string[]                // Video tags
+  // ... other fields
+}
+```
+
+### Follows Collection
+
+```typescript
+{
+  id: string                    // Document ID (format: followerUserId_targetUserId)
+  followerUserId: string         // User who is following
+  targetUserId: string           // User being followed
+  isActive: boolean              // Is follow active
+  createdAt: Timestamp           // Follow timestamp
+}
+```
+
+### Users Collection
+
+```typescript
+{
+  id: string                     // Document ID (user ID)
+  uid: string                    // User ID (same as document ID)
+  username: string               // Username
+  displayName: string            // Display name
+  avatarURL?: string            // Avatar URL
+  bio?: string                  // User bio
+  hashtags?: string[]          // User hashtags
+  // ... other fields
+}
+```
+
+---
+
+## Error Handling
+
+### Common Errors
+
+1. **Index Missing Error**
+   - **Error**: `failed-precondition` or message contains "index"
+   - **Solution**: Use fallback query without status filter, filter in memory
+
+2. **Permission Denied**
+   - **Error**: `permission-denied`
+   - **Solution**: Check Firestore security rules, ensure user is authenticated
+
+3. **Network Error**
+   - **Error**: Network timeout or connection error
+   - **Solution**: Retry with exponential backoff, show error message to user
+
+4. **Empty Feed**
+   - **Error**: No videos returned
+   - **Solution**: Show empty state message, suggest following users (for Following tab)
+
+---
+
+## Best Practices
+
+1. **Always batch creator info fetching** - Don't fetch sequentially
+2. **Use pagination** - Don't load all videos at once
+3. **Implement fallback queries** - Handle missing indexes gracefully
+4. **Cache feed data** - Reduce unnecessary Firestore reads
+5. **Track events consistently** - Use FeedEventLogger for all interactions
+6. **Handle errors gracefully** - Show user-friendly error messages
+7. **Optimize initial load** - Defer loading, use lazy loading
+8. **Clean up timers** - Prevent memory leaks from event tracking
+
+---
+
+## Mobile App Integration
+
+### Flutter/Dart Implementation
+
+```dart
+// Service layer
+class HomeFeedService {
+  Future<List<HomeVideo>> loadAllVideos() async {
+    // Query Firestore
+    // Batch fetch creator info
+    // Return HomeVideo list
+  }
+}
+
+// State management (Riverpod)
+@riverpod
+class FeedState extends _$FeedState {
+  @override
+  FeedState build() => FeedState(
+    forYouVideos: [],
+    followingVideos: [],
+    isLoading: true,
   );
-};
-```
-
-## Infinite Scroll
-
-The infinite scroll is handled in the `VideoPageView` component's `handleScroll` function. When the user scrolls near the bottom, `onLoadMore` is called to fetch additional videos.
-
-## CSS Styling
-
-```css
-.home-view {
-  width: 100%;
-  height: 100vh;
-  background-color: #000;
-  overflow: hidden;
+  
+  Future<void> loadVideos() async {
+    state = state.copyWith(isLoading: true);
+    final videos = await homeFeedService.loadAllVideos();
+    state = state.copyWith(
+      forYouVideos: videos,
+      isLoading: false,
+    );
+  }
 }
 
-.feed-selector {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  padding: 10px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-}
-
-.feed-selector button {
-  background: transparent;
-  border: none;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
-  padding: 8px 16px;
-  cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-
-.feed-selector button.active {
-  opacity: 1;
-  border-bottom: 2px solid #fff;
-}
-
-.video-feed-container {
-  width: 100%;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.video-page-view {
-  width: 100%;
-  height: 100vh;
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-}
-
-.video-player-card {
-  position: relative;
-  width: 100%;
-  height: 100vh;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-}
-
-.video-player {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+// UI Component
+class FeedView extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feedState = ref.watch(feedStateProvider);
+    
+    return TabBarView(
+      children: [
+        VideoFeed(videos: feedState.forYouVideos),
+        VideoFeed(videos: feedState.followingVideos),
+      ],
+    );
+  }
 }
 ```
 
-## Summary
+---
 
-This implementation provides:
+## Conclusion
 
-1. **Vertical scrolling feed** with TikTok-style navigation
-2. **Two feed tabs** (For You / Following)
-3. **Automatic video playback** management
-4. **Pull-to-refresh** functionality
-5. **Infinite scroll** pagination
-6. **Video preloading** for smooth transitions
-7. **Real-time state updates** for likes, views, comments
+This feed system provides a scalable, performant solution for displaying videos in a TikTok-style vertical feed. Key features include:
 
-The architecture mirrors the Flutter implementation while using web-native technologies (React, TypeScript, Firebase).
+- **Separation of concerns**: Service layer, state management, and UI are clearly separated
+- **Performance optimized**: Batch fetching, caching, and pagination
+- **Error resilient**: Fallback queries and graceful error handling
+- **Analytics ready**: Comprehensive event tracking
+- **Mobile friendly**: Can be easily adapted to Flutter/Dart
 
+For questions or issues, refer to the code comments in the respective service files or component files.

@@ -38,13 +38,10 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     with TickerProviderStateMixin {
   late AnimationController _segmentedController;
 
-  // Stats tracking
-  int _followersCount = 0;
-  int _followingCount = 0;
-  int _postsCount = 0;
-
-  // Test flag to show if stats are loading
-  bool _statsLoaded = false;
+  // Stats tracking (nullable to distinguish "not loaded" from "zero")
+  int? _followersCount;
+  int? _followingCount;
+  int? _postsCount;
   bool _isLoadingStats =
       false; // 🔴 FIX #2: Prevent multiple simultaneous loads
   bool _isDisposed = false; // 🔴 FIX #2: Track disposal state
@@ -107,6 +104,22 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     // Auto-reconcile post count if needed (silent background fix with 5-min cooldown)
     // This ensures accuracy while allowing real-time updates to work
     _autoReconcilePostCountIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileViewOptimized oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.user.id != widget.user.id) {
+      // New user -> reset cache and stats
+      _cachedUserData = null;
+      _userDataDirty = true;
+      _followersCount = null;
+      _followingCount = null;
+      _postsCount = null;
+
+      _loadStats();
+    }
   }
 
   @override
@@ -216,10 +229,6 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _isLoadingStats = true;
 
     try {
-      setState(() {
-        _statsLoaded = true;
-      });
-
       // Cancel existing subscriptions and wait for cleanup
       await _postsSubscription?.cancel();
       await _followersSubscription?.cancel();
@@ -392,6 +401,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
       Navigator.of(context).push(
         MaterialPageRoute(
+          settings: const RouteSettings(name: '/streamer_card'),
           builder: (context) => StreamerCardView(
             userId: widget.user.id,
             currentUserId: _profileUpdateService?.currentUser?.uid,
@@ -536,7 +546,9 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     final userData = _getCurrentUserData();
 
     // Ensure stats are loaded when widget builds (only once)
-    if (!_statsLoaded) {
+    if (_followersCount == null ||
+        _followingCount == null ||
+        _postsCount == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_isLoadingStats) {
           // debugPrint('🔧 ProfileView: Widget built, calling _loadStats()');
@@ -684,7 +696,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         _buildStatsRow(),
         const SizedBox(height: 24),
         // Post count fix is handled by the simple button below in stats row
-        _buildPrimaryButtonsRow(),
+        _buildPrimaryButtonsRow(userData),
       ],
     );
   }
@@ -808,39 +820,35 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   Widget _buildStatsRow() {
-    return Consumer(
-      builder: (context, ref, child) {
-        // Stats row building
+    // Show loading indicator if stats haven't loaded yet
+    if (_followersCount == null ||
+        _followingCount == null ||
+        _postsCount == null) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildStatItem('Posts', '...'),
+          const SizedBox(width: 54),
+          _buildStatItem('Followers', '...'),
+          const SizedBox(width: 54),
+          _buildStatItem('Following', '...'),
+        ],
+      );
+    }
 
-        // Show loading indicator if stats haven't loaded yet
-        if (!_statsLoaded) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildStatItem('Posts', '...'),
-              const SizedBox(width: 54),
-              _buildStatItem('Followers', '...'),
-              const SizedBox(width: 54),
-              _buildStatItem('Following', '...'),
-            ],
-          );
-        }
-
-        return Column(
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildStatItem('Posts', _postsCount.toString()),
-                const SizedBox(width: 54),
-                _buildStatItem('Followers', _followersCount.toString()),
-                const SizedBox(width: 54),
-                _buildStatItem('Following', _followingCount.toString()),
-              ],
-            ),
+            _buildStatItem('Posts', _postsCount.toString()),
+            const SizedBox(width: 54),
+            _buildStatItem('Followers', _followersCount.toString()),
+            const SizedBox(width: 54),
+            _buildStatItem('Following', _followingCount.toString()),
           ],
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -870,9 +878,10 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
   }
 
-  Widget _buildPrimaryButtonsRow() {
-    // Get fresh user data for navigation
-    final userData = _getCurrentUserData();
+  Widget _buildPrimaryButtonsRow(Map<String, dynamic> userData) {
+    if (!widget.isCurrentUser) {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),

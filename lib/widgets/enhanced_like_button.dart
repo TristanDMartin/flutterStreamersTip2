@@ -389,83 +389,86 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
     // debugPrint(
     //     '🎨 EnhancedLikeButton: Building - videoId: ${widget.videoId}, local _isLiked: $_isLiked, _likeCount: $_likeCount');
 
-    return Semantics(
-      label: _isLiked ? 'Unlike' : 'Like',
-      hint: 'Double-tap video to like',
-      button: true,
-      onTap: _handleLike,
-      child: GestureDetector(
+    return SizedBox(
+      width: 64, // fixed box to stop layout shift of the right rail
+      height: 96,
+      child: Semantics(
+        label: _isLiked ? 'Unlike' : 'Like',
+        hint: 'Double-tap video to like',
+        button: true,
         onTap: _handleLike,
-        behavior: HitTestBehavior.opaque, // Prevent tap from passing through
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Main heart button (fixed: only icon animates, not the count)
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Animated heart icon with gradient fill when liked
-                AnimatedBuilder(
-                  animation: _heartAnimationController,
-                  builder: (context, child) {
-                    return Transform.scale(
-                      scale: _heartScaleAnimation.value,
-                      child: _isLiked
-                          ? ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Color(0xFF9248D2), // Purple
-                                  Color(0xFF7768DF), // Another purple
-                                  Color(0xFF1670DE), // Blue
-                                  Color(0xFF3C8BD6), // Lighter blue
-                                  Color(0xFF4897D2), // Lightest blue
-                                ],
-                                stops: [0.0, 0.25, 0.5, 0.75, 1.0],
-                              ).createShader(bounds),
-                              child: const Icon(
-                                Icons.favorite,
+        child: GestureDetector(
+          onTap: _handleLike,
+          behavior: HitTestBehavior.opaque,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedBuilder(
+                    animation: _heartAnimationController,
+                    builder: (context, child) {
+                      return Transform.scale(
+                        scale: _heartScaleAnimation.value,
+                        child: _isLiked
+                            ? ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFF9248D2),
+                                    Color(0xFF7768DF),
+                                    Color(0xFF1670DE),
+                                    Color(0xFF3C8BD6),
+                                    Color(0xFF4897D2),
+                                  ],
+                                  stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                                ).createShader(bounds),
+                                child: const Icon(
+                                  Icons.favorite,
+                                  color: Colors.white,
+                                  size: 34,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.favorite_border,
                                 color: Colors.white,
                                 size: 34,
                               ),
-                            )
-                          : const Icon(
-                              Icons.favorite_border,
-                              color: Colors.white,
-                              size: 34,
-                            ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 4),
-                // Like count (static - doesn't animate)
-                Text(
-                  _likeCount.toString(),
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _likeCount.toString(),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              if (_sparkleController.isAnimating)
+                IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _sparkleController,
+                    builder: (context, child) {
+                      return Transform.scale(
+                        scale: _sparkleScaleAnimation.value,
+                        child: Opacity(
+                          opacity: _sparkleOpacityAnimation.value,
+                          child: _buildSparkleEffect(),
+                        ),
+                      );
+                    },
                   ),
                 ),
-              ],
-            ),
-
-            // Sparkle effect overlay - show during animation
-            if (_sparkleController.isAnimating)
-              AnimatedBuilder(
-                animation: _sparkleController,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _sparkleScaleAnimation.value,
-                    child: Opacity(
-                      opacity: _sparkleOpacityAnimation.value,
-                      child: _buildSparkleEffect(),
-                    ),
-                  );
-                },
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

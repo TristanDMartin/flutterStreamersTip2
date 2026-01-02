@@ -1212,7 +1212,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        settings: const RouteSettings(name: 'playerScreen'),
+        settings: const RouteSettings(name: '/player'),
         fullscreenDialog: true,
         builder: (context) => PlayerScreen(
           mode: PlayerMode.homeFeed,
@@ -1311,7 +1311,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        settings: const RouteSettings(name: 'playerScreen'),
+        settings: const RouteSettings(name: '/player'),
         fullscreenDialog: true,
         builder: (context) => PlayerScreen(
           mode: PlayerMode.homeFeed,

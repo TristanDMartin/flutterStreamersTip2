@@ -70,6 +70,7 @@ class _HomeViewState extends ConsumerState<HomeView>
   HomeViewLifecycleState _lifecycleState = HomeViewLifecycleState.idle;
   DateTime? _lastReactivateAt;
   static const Duration _reactivationCooldown = Duration(milliseconds: 500);
+  bool _shouldResumeOnReturn = false;
 
   // ✅ IMPROVEMENT: Track navigation to prevent race conditions
   bool _isNavigatingToDiscover = false;
@@ -138,12 +139,14 @@ class _HomeViewState extends ConsumerState<HomeView>
 
     if (isActiveRoute) return false;
 
-    // We are leaving HomeView
-    if (_lifecycleState == HomeViewLifecycleState.activeOwner) {
-      log('🔇 HomeView: Navigating away - resetting state and pausing videos');
-      _markAsBackground();
-      GlobalPlaybackManager.instance.pauseAll();
-    }
+    // We are leaving HomeView: block + pause as a hard stop
+    final manager = GlobalPlaybackManager.instance;
+    log('🔇 HomeView: Navigating away - blocking and pausing');
+    _markAsBackground();
+    manager.block(reason: 'home_not_visible');
+    manager.pauseAll();
+    manager.onLeaveHomeView();
+    _shouldResumeOnReturn = true;
 
     return true;
   }
@@ -172,14 +175,15 @@ class _HomeViewState extends ConsumerState<HomeView>
 
     log('🔄 HomeView: Detected return from another view - reactivating feed');
 
-    // Set home as active owner
+    // Give Home ownership back
+    playbackManager.unblock();
     playbackManager.setActiveOwner(PlaybackOwners.home);
     _markAsActiveOwner();
 
-    // ✅ IMPROVEMENT: Flattened nested postFrameCallback
-    // Resume current video immediately (no nested callback)
-    if (mounted) {
+    // ✅ Resume only if we had paused due to leaving
+    if (mounted && _shouldResumeOnReturn) {
       _resumeCurrentVideoInstantly();
+      _shouldResumeOnReturn = false;
     }
   }
 
@@ -210,15 +214,27 @@ class _HomeViewState extends ConsumerState<HomeView>
     GlobalPlaybackManager.instance.onAppLifecycleChanged(state);
 
     if (state == AppLifecycleState.resumed) {
-      log('🔄 HomeView: App resumed - reactivating feed');
+      // ✅ FIX #1: Only resume if HomeView is actually visible
+      final route = ModalRoute.of(context);
+      final isCurrent = route?.isCurrent ?? false;
+
+      if (!isCurrent) {
+        log('🔄 HomeView: App resumed but route not current → skip resume');
+        _shouldResumeOnReturn = true;
+        return;
+      }
+
+      log('🔄 HomeView: App resumed & visible → reactivating feed');
 
       // 🚀 TIKTOK-STYLE: Use instant resume instead of deprecated _reactivateFeed()
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          final playbackManager = GlobalPlaybackManager.instance;
-          playbackManager.setActiveOwner(PlaybackOwners.home);
-          _resumeCurrentVideoInstantly();
-        }
+        if (!mounted) return;
+
+        final playbackManager = GlobalPlaybackManager.instance;
+        playbackManager.setActiveOwner(PlaybackOwners.home);
+        _markAsActiveOwner();
+        _resumeCurrentVideoInstantly();
+        _shouldResumeOnReturn = false;
       });
     }
   }
@@ -393,10 +409,19 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   /// ✅ IMPROVEMENT: Schedule focus timer with proper cancellation
+  /// ✅ FIX #3: Guard timer against non-current routes
   void _scheduleFocusFirstVideo() {
     _focusTimer?.cancel(); // Cancel previous timer if exists
     _focusTimer = Timer(const Duration(milliseconds: 500), () {
       if (!mounted) return;
+
+      final route = ModalRoute.of(context);
+      final isCurrent = route?.isCurrent ?? false;
+      if (!isCurrent) {
+        log('⏭️ HomeView: Focus timer fired but route not current → skip');
+        return;
+      }
+
       _ensureFirstVideoFocus();
     });
   }
@@ -509,6 +534,19 @@ class _HomeViewState extends ConsumerState<HomeView>
     // ⏱️ MEMORY FIX: Cancel timer to prevent memory leaks
     _focusTimer?.cancel();
 
+    // ✅ FIX #4: Clean up playback manager when HomeView is disposed
+    // Don't call onLeaveHomeView() - it's for route changes, not disposal
+    // Just pause - position is saved automatically by GlobalPlaybackManager
+    try {
+      final playbackManager = GlobalPlaybackManager.instance;
+      playbackManager.pauseAll();
+      // Position saving happens automatically in GlobalPlaybackManager._saveCurrentPosition()
+      // when onLeaveHomeView() is called, but for dispose we just pause
+      log('🧹 HomeView: Cleaned up playback manager on dispose');
+    } catch (e) {
+      log('⚠️ HomeView: Error cleaning up playback on dispose: $e');
+    }
+
     // 🚀 VIRAL ALGORITHM: End session and save retention data
     UnifiedAlgorithmService.instance.endSession();
     log('🎯 UnifiedAlgorithm: Session ended, retention data saved');
@@ -562,8 +600,13 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       HapticFeedback.lightImpact();
 
-      // Pause HomeView videos before showing StreamerCard
-      _pauseAllHomeViewVideos();
+      // ✅ FIX #2: Treat StreamerCard as overlay (block + pause, not full "leave")
+      try {
+        GlobalPlaybackManager.instance.block(reason: 'streamerCardOverlay');
+        GlobalPlaybackManager.instance.pauseAll();
+      } catch (e) {
+        log('❌ HomeView: Error blocking for StreamerCard: $e');
+      }
 
       // Convert User to StreamerCard
       final streamerCard = StreamerCard(
@@ -584,43 +627,25 @@ class _HomeViewState extends ConsumerState<HomeView>
     });
   }
 
+  /// ✅ FIX #3: Properly unblock and resume after overlay dismissal
   void _dismissStreamerCard() {
-    if (mounted) {
-      setState(() {
-        _showStreamerCard = false;
-        _currentStreamerCard = null;
-      });
+    if (!mounted) return;
 
-      // Resume current video when dismissing StreamerCard
-      try {
-        final homeNotifier = ref.read(hp.homeProvider.notifier);
-        homeNotifier.resumeCurrentVideo();
-        log('▶️ HomeView: Resumed current video after dismissing StreamerCard');
-      } catch (e) {
-        log('❌ HomeView: Error resuming video after StreamerCard dismissal: $e');
-      }
-    }
-  }
+    setState(() {
+      _showStreamerCard = false;
+      _currentStreamerCard = null;
+    });
 
-  void _pauseAllHomeViewVideos() {
-    log('⏸️ HomeView: Pausing all videos before navigation');
-    if (!mounted) {
-      log('⚠️ HomeView: Widget not mounted, skipping pause');
-      return;
-    }
-
+    // ✅ FIX #3: Unblock playback and restore HomeView ownership
     try {
-      // ✅ IMPROVEMENT: Mark as background instead of resetting boolean flag
-      _markAsBackground();
-
-      // TIKTOK-STYLE: Notify GlobalPlaybackManager that we're leaving HomeView
-      // This calls pauseAll() and block() to prevent audio bleeding
-      GlobalPlaybackManager.instance.onLeaveHomeView();
-
-      log('✅ HomeView: All videos paused and muted successfully');
+      final playbackManager = GlobalPlaybackManager.instance;
+      playbackManager.unblock(); // Remove overlay block
+      playbackManager.setActiveOwner(PlaybackOwners.home);
+      _markAsActiveOwner();
+      _resumeCurrentVideoInstantly(); // Will call requestFocus(...)
+      log('▶️ HomeView: Resumed current video after dismissing StreamerCard');
     } catch (e) {
-      log('❌ HomeView: Error pausing videos: $e');
-      _showSnackBar('Error pausing videos');
+      log('❌ HomeView: Error resuming after StreamerCard dismissal: $e');
     }
   }
 
@@ -634,6 +659,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => NetworkView(initialTab: tabName),
+        settings: const RouteSettings(name: '/network'),
       ),
     );
   }
@@ -654,8 +680,15 @@ class _HomeViewState extends ConsumerState<HomeView>
       });
     }
 
-    // 🔥 FIX: Videos are already loaded by HomeProvider.switchFeed()
-    // No need to duplicate the loading logic here
+    // ✅ FIX #2: Give focus to the first video in the new feed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        _ensureFirstVideoFocus();
+      } catch (e) {
+        log('⚠️ HomeView: Error ensuring first video focus after feed switch: $e');
+      }
+    });
 
     log('✅ HomeView: Feed switched to ${newTab.displayName}');
   }
@@ -688,6 +721,7 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   /// ✅ IMPROVEMENT: Navigate to DiscoverView with proper state tracking
+  /// ✅ FIX #2: Use onLeaveHomeView() for real route changes (not overlays)
   Future<void> _navigateToDiscover() async {
     if (!mounted || _isNavigatingToDiscover) return;
 
@@ -699,8 +733,13 @@ class _HomeViewState extends ConsumerState<HomeView>
     // Cancel any pending timer that might resume playback
     _focusTimer?.cancel();
 
-    _pauseAllHomeViewVideos();
+    // ✅ FIX #2: Real route change - block + pause + leave
+    final manager = GlobalPlaybackManager.instance;
     _markAsBackground();
+    manager.block(reason: 'leave_home_to_discover');
+    manager.pauseAll();
+    manager.onLeaveHomeView();
+    _shouldResumeOnReturn = true;
 
     // Navigate to DiscoverView
     if (!mounted) {
@@ -712,7 +751,7 @@ class _HomeViewState extends ConsumerState<HomeView>
       context,
       MaterialPageRoute(
         builder: (_) => const DiscoverView(),
-        settings: const RouteSettings(name: 'DiscoverView'),
+        settings: const RouteSettings(name: '/discover'),
       ),
     );
 
@@ -721,19 +760,10 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (!mounted) return;
 
     log('🔄 HomeView: Returned from DiscoverView - resuming videos');
-    final playbackManager = GlobalPlaybackManager.instance;
-
-    // Unblock first (DiscoverView may have blocked playback)
-    playbackManager.unblock();
-
-    // Set home as active owner
-    playbackManager.setActiveOwner(PlaybackOwners.home);
-    _markAsActiveOwner();
-
-    // Resume current video
-    _resumeCurrentVideoInstantly();
+    _handleReturnedToHome();
   }
 
+  /// ✅ FIX #2: Real route change - use onLeaveHomeView() to pause and save position
   void _navigateToNetwork() {
     if (!mounted) return;
 
@@ -742,7 +772,13 @@ class _HomeViewState extends ConsumerState<HomeView>
     // 🔥 CRITICAL: Cancel any pending timer that might resume playback
     _focusTimer?.cancel();
 
-    _pauseAllHomeViewVideos();
+    // ✅ FIX #2: Real route change - block + pause + leave
+    final manager = GlobalPlaybackManager.instance;
+    _markAsBackground();
+    manager.block(reason: 'leave_home_to_network');
+    manager.pauseAll();
+    manager.onLeaveHomeView();
+    _shouldResumeOnReturn = true;
     _navigateToNetworkViewWithTab('discover');
   }
 
@@ -778,11 +814,25 @@ class _HomeViewState extends ConsumerState<HomeView>
           }
 
           // TIKTOK-STYLE: Notify GlobalPlaybackManager of index change
-          GlobalPlaybackManager.instance
-              .onVisibleIndexChanged(index, currentVideo);
+          // 🔥 FIX: Wrap in try-catch to prevent crashes during swiping
+          try {
+            GlobalPlaybackManager.instance
+                .onVisibleIndexChanged(index, currentVideo);
+          } catch (e, stackTrace) {
+            log('❌ HomeView: Error in onVisibleIndexChanged: $e');
+            log('Stack trace: $stackTrace');
+            // Continue - don't crash
+          }
 
           // TIKTOK-STYLE: Preload adjacent videos for smooth transitions
-          GlobalPlaybackManager.instance.preloadAround(index, videos);
+          // 🔥 FIX: Wrap in try-catch to prevent crashes
+          try {
+            GlobalPlaybackManager.instance.preloadAround(index, videos);
+          } catch (e, stackTrace) {
+            log('❌ HomeView: Error in preloadAround: $e');
+            log('Stack trace: $stackTrace');
+            // Continue - don't crash
+          }
           // ✅ IMPROVEMENT: Removed redundant _preloadAdjacentVideos() call
           // preloadAround() already handles all preloading efficiently
         } else {

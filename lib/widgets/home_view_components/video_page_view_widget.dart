@@ -40,7 +40,7 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
 class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
   PageController? _pageController;
   bool _isHorizontalSwipe = false;
-  bool _isVerticalSwipe = false;
+  // ✅ FIX #3: Removed _isVerticalSwipe - PageView handles vertical scrolling
   bool _isRefreshing = false;
 
   @override
@@ -89,9 +89,20 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     if (oldWidget.videos.isEmpty && widget.videos.isNotEmpty) {
       // Videos were just loaded - create PageController
       _pageController?.dispose();
-      _pageController = PageController(
-          initialPage: widget.currentIndex.clamp(0, widget.videos.length - 1));
+      final safeIndex = widget.currentIndex.clamp(0, widget.videos.length - 1);
+      _pageController = PageController(initialPage: safeIndex);
       log('🔄 VideoPageView: Videos loaded, created PageController');
+
+      // ✅ FIX #1: Make sure parent + manager know which index is actually visible
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          widget.onPageChanged(safeIndex);
+        } catch (e) {
+          log('⚠️ VideoPageView: Error notifying parent after videos load: $e');
+        }
+      });
+
       return; // Don't try to use controller until next frame
     } else if (oldWidget.videos.isNotEmpty && widget.videos.isEmpty) {
       // Videos were cleared - dispose PageController
@@ -127,7 +138,18 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
 
           // Verify scroll position is ready before using controller
           if (_isScrollPositionReady()) {
-            _pageController!.jumpToPage(0);
+            const safeIndex = 0;
+            _pageController!.jumpToPage(safeIndex);
+
+            // ✅ FIX #1: Keep parent + manager in sync
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              try {
+                widget.onPageChanged(safeIndex);
+              } catch (e) {
+                log('⚠️ VideoPageView: Error notifying parent of index reset: $e');
+              }
+            });
           }
         }
       } catch (e) {
@@ -316,6 +338,8 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     } catch (e) {
       log('❌ VideoPageView: Error during pull-to-refresh: $e');
     } finally {
+      // ✅ FIX #4: Extra safety - always reset _pullStartY
+      _pullStartY = null;
       if (mounted) {
         setState(() {
           _isRefreshing = false;
@@ -360,9 +384,8 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
   }
 
   void _handlePanStart(DragStartDetails details) {
-    // Reset swipe tracking
+    // ✅ FIX #3: Reset horizontal swipe tracking (vertical handled by PageView)
     _isHorizontalSwipe = false;
-    _isVerticalSwipe = false;
   }
 
   void _handlePanUpdate(DragUpdateDetails details) {
@@ -370,32 +393,27 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     final absDx = delta.dx.abs();
     final absDy = delta.dy.abs();
 
-    // Track gesture direction early to prevent conflicts
+    // ✅ FIX #3: Only track horizontal swipes (vertical handled by PageView)
     if (absDx > absDy && absDx > 10) {
       _isHorizontalSwipe = true;
-    } else if (absDy > absDx && absDy > 10) {
-      _isVerticalSwipe = true;
     }
+    // Note: _isVerticalSwipe removed - PageView handles vertical scrolling
   }
 
   void _handleSwipe(DragEndDetails details) {
     final velocity = details.velocity.pixelsPerSecond;
     final absDx = velocity.dx.abs();
-    final absDy = velocity.dy.abs();
 
-    // Use tracked gesture direction to avoid conflicts
-    // If we already detected horizontal swipe, prioritize it
+    // ✅ FIX #3: Let PageView own vertical scrolling, keep GestureDetector for horizontal only
+    // Horizontal swipe → StreamerCard
     if (_isHorizontalSwipe && absDx > 300) {
-      // Left swipe (negative X velocity) - show StreamerCardView
       if (velocity.dx < -300) {
         log('👈 VideoPageView: Left swipe detected');
         if (widget.currentIndex < widget.videos.length) {
           final currentVideo = widget.videos[widget.currentIndex];
           widget.onLeftSwipe(currentVideo);
         }
-      }
-      // Right swipe (positive X velocity) - show StreamerCardView
-      else if (velocity.dx > 300) {
+      } else if (velocity.dx > 300) {
         log('👉 VideoPageView: Right swipe detected');
         if (widget.currentIndex < widget.videos.length) {
           final currentVideo = widget.videos[widget.currentIndex];
@@ -403,46 +421,6 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
         }
       }
     }
-    // Vertical swipe - handle video navigation
-    // Only if we didn't detect horizontal swipe
-    else if ((_isVerticalSwipe || (!_isHorizontalSwipe && absDy > absDx)) &&
-        absDy > 300) {
-      // Up swipe (negative Y velocity) - go to next video
-      if (velocity.dy < -300) {
-        log('⬆️ VideoPageView: Up swipe detected - next video');
-        if (_pageController != null &&
-            _pageController!.hasClients &&
-            widget.currentIndex < widget.videos.length - 1) {
-          try {
-            if (_isScrollPositionReady()) {
-              _pageController!.nextPage(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
-            }
-          } catch (e) {
-            log('⚠️ VideoPageView: Error in nextPage: $e');
-          }
-        }
-      }
-      // Down swipe (positive Y velocity) - go to previous video
-      else if (velocity.dy > 300) {
-        log('⬇️ VideoPageView: Down swipe detected - previous video');
-        if (_pageController != null &&
-            _pageController!.hasClients &&
-            widget.currentIndex > 0) {
-          try {
-            if (_isScrollPositionReady()) {
-              _pageController!.previousPage(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
-            }
-          } catch (e) {
-            log('⚠️ VideoPageView: Error in previousPage: $e');
-          }
-        }
-      }
-    }
+    // ❌ REMOVED: Manual vertical navigation - PageView handles it automatically
   }
 }

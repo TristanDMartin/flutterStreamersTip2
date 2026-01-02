@@ -64,8 +64,15 @@ class AudioEnhancementService {
   }
 
   /// Apply TikTok-style audio enhancement to a video player
+  /// 🔥 FIX: Added safety checks to prevent "Bad state: No active player" errors
   Future<void> enhanceVideoPlayer(VideoPlayerController player) async {
     try {
+      // 🔥 FIX: Validate controller is safe before accessing
+      if (!_isControllerSafe(player)) {
+        log('⚠️ AudioEnhancementService: Controller is not safe, skipping enhancement');
+        return;
+      }
+
       // Ensure we have audio focus
       if (!_hasAudioFocus) {
         await _requestAudioFocus();
@@ -80,22 +87,54 @@ class AudioEnhancementService {
       log('🔊 AudioEnhancementService: Video player enhanced with TikTok-style audio');
     } catch (e) {
       log('❌ AudioEnhancementService: Error enhancing video player: $e');
+      // Don't rethrow - just log the error
+    }
+  }
+
+  /// 🔥 FIX: Check if controller is safe to use before accessing
+  bool _isControllerSafe(VideoPlayerController player) {
+    try {
+      // Try to access controller value - if it throws, controller is disposed
+      final value = player.value;
+      return value.isInitialized && !value.hasError;
+    } catch (e) {
+      log('⚠️ AudioEnhancementService: Controller is disposed or invalid: $e');
+      return false;
     }
   }
 
   /// Apply dynamic gain boost with clipping protection
+  /// 🔥 FIX: Added safety checks to prevent accessing disposed controllers
   Future<void> _applyDynamicGainBoost(VideoPlayerController player) async {
     try {
+      // 🔥 FIX: Validate controller is safe before accessing
+      if (!_isControllerSafe(player)) {
+        log('⚠️ AudioEnhancementService: Controller not safe for gain boost, skipping');
+        return;
+      }
+
       // Calculate dynamic gain based on current volume
-      final currentVolume = player.value.volume;
+      double currentVolume;
+      try {
+        currentVolume = player.value.volume;
+      } catch (e) {
+        log('⚠️ AudioEnhancementService: Error accessing player volume: $e');
+        return; // Exit early if we can't access volume
+      }
+
       final targetVolume = calculateOptimalVolume(currentVolume);
 
       // Apply the enhanced volume
-      await player.setVolume(targetVolume);
-
-      log('🔊 AudioEnhancementService: Applied gain boost - Original: ${currentVolume.toStringAsFixed(2)}, Enhanced: ${targetVolume.toStringAsFixed(2)}');
+      try {
+        await player.setVolume(targetVolume);
+        log('🔊 AudioEnhancementService: Applied gain boost - Original: ${currentVolume.toStringAsFixed(2)}, Enhanced: ${targetVolume.toStringAsFixed(2)}');
+      } catch (e) {
+        log('⚠️ AudioEnhancementService: Error setting volume: $e');
+        // Don't rethrow - just log
+      }
     } catch (e) {
       log('❌ AudioEnhancementService: Error applying gain boost: $e');
+      // Don't rethrow - just log
     }
   }
 

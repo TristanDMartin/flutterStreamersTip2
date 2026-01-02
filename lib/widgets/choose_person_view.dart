@@ -55,7 +55,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
       // Use FollowsService to get all users from NetworkView (connections + followers + following)
       // This ensures consistency with the Connections tab in NetworkView
       final followsService = FollowsService();
-      
+
       // Load all three lists in parallel (same as NetworkView)
       final results = await Future.wait([
         followsService.getUsersForTab('connections'),
@@ -97,9 +97,16 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
         }
       }
 
-      if (allUsers.length < connectionsList.length + followersList.length + followingList.length) {
-        final filteredCount = (connectionsList.length + followersList.length + followingList.length) - allUsers.length;
-        debugPrint('⚠️ ChoosePersonView: Filtered out $filteredCount users with invalid IDs');
+      if (allUsers.length <
+          connectionsList.length +
+              followersList.length +
+              followingList.length) {
+        final filteredCount = (connectionsList.length +
+                followersList.length +
+                followingList.length) -
+            allUsers.length;
+        debugPrint(
+            '⚠️ ChoosePersonView: Filtered out $filteredCount users with invalid IDs');
       }
 
       setState(() {
@@ -107,7 +114,8 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
         _isLoading = false;
       });
 
-      debugPrint('🔗 ChoosePersonView: Loaded ${allUsers.length} total users (${connectionsList.length} connections, ${followersList.length} followers, ${followingList.length} following)');
+      debugPrint(
+          '🔗 ChoosePersonView: Loaded ${allUsers.length} total users (${connectionsList.length} connections, ${followersList.length} followers, ${followingList.length} following)');
     } catch (e) {
       debugPrint('❌ ChoosePersonView: Error loading connections: $e');
       setState(() {
@@ -144,7 +152,7 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
         // Share draft via DraftSharingService
         final draftSharingService = DraftSharingService();
         final draftId = widget.selectedDraft!['id'] as String?;
-        
+
         if (draftId != null) {
           // Validate person.id is not empty
           if (person.id.isEmpty) {
@@ -160,8 +168,9 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
             return;
           }
 
-          debugPrint('🔗 ChoosePersonView: Sharing draft $draftId with user ${person.id} (${person.displayName})');
-          
+          debugPrint(
+              '🔗 ChoosePersonView: Sharing draft $draftId with user ${person.id} (${person.displayName})');
+
           final success = await draftSharingService.shareDraftWithConnections(
             draftId: draftId,
             connectionIds: [person.id],
@@ -178,16 +187,19 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
 
             if (chat != null && chat.id != null && chat.id!.isNotEmpty) {
               // Get shared draft data
-              final sharedDrafts = await draftSharingService.getDraftsSharedByMe();
+              final sharedDrafts =
+                  await draftSharingService.getDraftsSharedByMe();
               final sharedDraft = sharedDrafts.firstWhere(
-                (d) => d['originalDraftId'] == draftId && 
-                       (d['recipients'] as List).contains(person.id),
+                (d) =>
+                    d['originalDraftId'] == draftId &&
+                    (d['recipients'] as List).contains(person.id),
                 orElse: () => widget.selectedDraft!,
               );
 
               // Add draft metadata to shared draft
               sharedDraft['videoPath'] = widget.selectedDraft!['videoPath'];
-              sharedDraft['thumbnailPath'] = widget.selectedDraft!['thumbnailPath'];
+              sharedDraft['thumbnailPath'] =
+                  widget.selectedDraft!['thumbnailPath'];
 
               // Navigate to draft feedback view
               Navigator.of(context).pushReplacement(
@@ -213,21 +225,25 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
               }
             } else {
               // Chat creation failed
-              debugPrint('❌ ChoosePersonView: Failed to create chat for user ${person.id}');
+              debugPrint(
+                  '❌ ChoosePersonView: Failed to create chat for user ${person.id}');
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Failed to create chat. The user may not be verified in the system.'),
+                    content: Text(
+                        'Failed to create chat. The user may not be verified in the system.'),
                     backgroundColor: Colors.red,
                   ),
                 );
               }
             }
           } else if (mounted) {
-            debugPrint('❌ ChoosePersonView: Draft sharing failed for user ${person.id}');
+            debugPrint(
+                '❌ ChoosePersonView: Draft sharing failed for user ${person.id}');
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Failed to share draft with ${person.displayName}. They may not be verified in the system.'),
+                content: Text(
+                    'Failed to share draft with ${person.displayName}. They may not be verified in the system.'),
                 backgroundColor: Colors.red,
                 duration: const Duration(seconds: 4),
               ),
@@ -245,12 +261,14 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
         if (chat != null && mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
+              settings: const RouteSettings(name: '/inbox'),
               builder: (context) => ChatView(
-              chat: chat,
-              otherUserId: person.id,
-              otherUserName: person.displayName,
-              otherUserAvatarURL: person.avatarURL,
-              otherUserIsOnline: person.onlineStatus == user_model.OnlineStatus.online,
+                chat: chat,
+                otherUserId: person.id,
+                otherUserName: person.displayName,
+                otherUserAvatarURL: person.avatarURL,
+                otherUserIsOnline:
+                    person.onlineStatus == user_model.OnlineStatus.online,
               ),
             ),
           );
@@ -540,8 +558,10 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                       ),
                     ),
                     // Online indicator
-                    if (connection.onlineStatus == user_model.OnlineStatus.online ||
-                        connection.onlineStatus == user_model.OnlineStatus.streaming)
+                    if (connection.onlineStatus ==
+                            user_model.OnlineStatus.online ||
+                        connection.onlineStatus ==
+                            user_model.OnlineStatus.streaming)
                       Positioned(
                         right: 0,
                         bottom: 0,
@@ -549,7 +569,8 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                           width: 14,
                           height: 14,
                           decoration: BoxDecoration(
-                            color: connection.onlineStatus == user_model.OnlineStatus.streaming
+                            color: connection.onlineStatus ==
+                                    user_model.OnlineStatus.streaming
                                 ? Colors.purple
                                 : Colors.green,
                             shape: BoxShape.circle,

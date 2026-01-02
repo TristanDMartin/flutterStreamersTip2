@@ -125,6 +125,7 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
+          settings: const RouteSettings(name: '/camera'),
           builder: (context) => CustomCameraScreen(
             cameras: cameras,
             onImageCaptured: (File imageFile) {
