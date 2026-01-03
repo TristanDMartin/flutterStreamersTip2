@@ -1080,17 +1080,43 @@ class _VideoPlayerViewOptimizedState
         return;
       }
 
-      _videoPlayerController = VideoPlayerController.networkUrl(
-        uri,
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: false, // prevent parallel audio mix
-          allowBackgroundPlayback: false,
-        ),
-      );
+      VideoPlayerController? tempController;
+      try {
+        tempController = VideoPlayerController.networkUrl(
+          uri,
+          videoPlayerOptions: VideoPlayerOptions(
+            mixWithOthers: false, // prevent parallel audio mix
+            allowBackgroundPlayback: false,
+          ),
+        );
 
-      await _videoPlayerController!
-          .initialize()
-          .timeout(const Duration(seconds: 15));
+        _videoPlayerController = tempController;
+
+        // 🔥 CRITICAL FIX: Wrap initialization in try-catch to handle failures gracefully
+        await _videoPlayerController!.initialize()
+            .timeout(const Duration(seconds: 15));
+
+        // 🔥 CRITICAL FIX: Validate controller is still valid after initialization
+        if (_isDisposed || !mounted) {
+          log('⚠️ VideoPlayer: Widget disposed during initialization');
+          throw Exception('Video initialization was interrupted');
+        }
+      } catch (initError) {
+        // 🔥 CRITICAL FIX: Clean up controller if initialization fails
+        log('❌ VideoPlayer: Controller initialization failed: $initError');
+        try {
+          await tempController?.dispose();
+          await _videoPlayerController?.dispose();
+        } catch (disposeError) {
+          log('⚠️ VideoPlayer: Error disposing failed controller: $disposeError');
+        }
+        _videoPlayerController = null;
+        // Let the outer catch block handle the error and track failures
+        if (initError is TimeoutException) {
+          rethrow;
+        }
+        throw Exception('Video initialization failed: $initError');
+      }
 
       // Reset retry count on success
       _videoRetryCount = 0;

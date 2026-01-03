@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart' as app_user;
@@ -50,6 +51,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     try {
       debugPrint('🎬 VideoService: ========== LOADING ALL VIDEOS ==========');
 
+      // 🔥 CRITICAL FIX: Check if Firebase is initialized before proceeding
+      if (Firebase.apps.isEmpty) {
+        debugPrint('⚠️ VideoService: Firebase not initialized yet, skipping video load');
+        state = [];
+        return;
+      }
+
       // Check authentication first
       final user = _auth.currentUser;
       if (user == null) {
@@ -69,7 +77,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             .collection('videos')
             .where('status', isEqualTo: 'published')
             .orderBy('createdAt', descending: true)
-            .limit(500);
+            .limit(50); // Reduced from 500 to prevent memory issues
         snapshot = await query.get();
         debugPrint(
             '🎬 VideoService: Found ${snapshot.docs.length} published videos in Firestore (with status filter)');
@@ -82,7 +90,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           final fallbackQuery = _firestore
               .collection('videos')
               .orderBy('createdAt', descending: true)
-              .limit(1000); // Get more to account for filtering
+              .limit(100); // Reduced from 1000 to prevent memory issues
           snapshot = await fallbackQuery.get();
           debugPrint(
               '🎬 VideoService: Found ${snapshot.docs.length} total videos (will filter in memory)');
@@ -91,7 +99,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
               '⚠️ VideoService: OrderBy also failed, trying simple query: $e2');
 
           // Fallback 2: Just get all videos without ordering
-          snapshot = await _firestore.collection('videos').limit(1000).get();
+          snapshot = await _firestore.collection('videos').limit(100).get(); // Reduced from 1000 to prevent memory issues
           debugPrint(
               '🎬 VideoService: Found ${snapshot.docs.length} total videos (no ordering)');
         }
@@ -389,7 +397,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         // Additional diagnostic: Count total videos in Firestore
         try {
           final totalSnapshot =
-              await _firestore.collection('videos').limit(1000).get();
+              await _firestore.collection('videos').limit(100).get(); // Reduced to prevent memory issues
           debugPrint(
               '📊 Diagnostic: Found ${totalSnapshot.docs.length} total videos in Firestore');
 
@@ -600,7 +608,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   /// Get diagnostic information about videos in Firestore
   Future<Map<String, dynamic>> getVideoDiagnostics() async {
     try {
-      final snapshot = await _firestore.collection('videos').limit(1000).get();
+      final snapshot = await _firestore.collection('videos').limit(100).get(); // Reduced to prevent memory issues
 
       final diagnostics = <String, dynamic>{
         'totalVideos': snapshot.docs.length,

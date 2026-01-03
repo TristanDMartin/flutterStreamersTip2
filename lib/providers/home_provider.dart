@@ -67,6 +67,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
         return state.forYouVideos;
       case FeedTab.following:
         return state.followingVideos;
+      case FeedTab.threads:
+        return []; // Threads don't have videos
     }
   }
 
@@ -667,6 +669,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
     print('🔄 switchFeed: Called with type: ${type.displayName}');
     log('🔄 switchFeed: Called with type: ${type.displayName}');
     state = state.copyWith(activeFeed: type);
+    
+    // Threads tab doesn't need video loading
+    if (type == FeedTab.threads) {
+      print('🔄 switchFeed: Switching to Threads feed');
+      log('🔄 switchFeed: Switching to Threads feed');
+      return;
+    }
+    
     final String rid = DateTime.now().microsecondsSinceEpoch.toString();
     if (type == FeedTab.forYou) {
       print('🔄 switchFeed: Switching to For You feed');
@@ -1042,6 +1052,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
           final followingIds = await _userService.getFollowingIds();
           await fetchFollowingVideos(followingIds: followingIds, reset: false);
           break;
+        case FeedTab.threads:
+          // Threads don't need video loading
+          break;
       }
     } catch (e) {
       log('Error loading more videos: $e');
@@ -1079,6 +1092,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
       case FeedTab.following:
         // video = followingVideos[index];
         break;
+      case FeedTab.threads:
+        // Threads don't have videos
+        break;
     }
 
     // Use the new FavoritesService to handle the toggle
@@ -1092,6 +1108,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
         break;
       case FeedTab.following:
         _updateFollowingVideoFavorite(index, isFavorited);
+        break;
+      case FeedTab.threads:
+        // Threads don't have videos
         break;
     }
   }

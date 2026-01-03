@@ -48,6 +48,9 @@ class GlobalPlaybackManager {
   /// Disposal tracking: videoId -> isDisposed
   final Map<String, bool> _disposedControllers = {};
 
+  /// 🔥 CRITICAL FIX: Track controllers currently being initialized to prevent disposal during init
+  final Set<String> _initializingControllers = {};
+
   /// Whether we're in a paused state (tab switching, etc.)
   bool _isPaused = false;
 
@@ -74,10 +77,10 @@ class GlobalPlaybackManager {
   final Map<String, int> _videoIdToIndex = {};
 
   /// Configuration
-  static const int poolRadius = 1; // previous, current, next
+  static const int poolRadius = 0; // 🔥 CRITICAL: No preloading - only current video to prevent OutOfMemoryErrors
   static const int recoveryTimeoutMs = 5000;
   static const int maxControllerPoolSize =
-      3; // 🔥 CRITICAL: Reduced from 5 to 3 to prevent OutOfMemoryErrors
+      1; // 🔥 CRITICAL: Reduced to 1 (only current video) to prevent OutOfMemoryErrors on devices with 256MB heap limit
 
   // ============================================
   // BLOCKING SYSTEM (from Coordinator)
@@ -763,15 +766,35 @@ class GlobalPlaybackManager {
     _disposedControllers.remove(videoId);
 
     // 🔥 CRITICAL MEMORY FIX: Enforce maximum pool size to prevent MediaCodec NO_MEMORY errors
-    // If pool is full, dispose the oldest non-active controller BEFORE adding new one
+    // With pool size = 1, dispose ALL other controllers when adding a new one
     if (_controllerPool.length >= maxControllerPoolSize &&
         !_controllerPool.containsKey(videoId)) {
-      log('⚠️ PlaybackManager: Pool size limit reached (${_controllerPool.length}), disposing oldest controllers before adding new one');
-      _disposeOldestController();
-      // Double-check after disposal
-      if (_controllerPool.length >= maxControllerPoolSize) {
-        log('⚠️ PlaybackManager: Pool still full after disposal, disposing more aggressively');
-        _disposeOldestController();
+      log('⚠️ PlaybackManager: Pool size limit reached (${_controllerPool.length}/${maxControllerPoolSize}), disposing ALL non-active controllers before adding new one');
+      // 🔥 CRITICAL: Dispose ALL non-active controllers immediately to prevent OOM
+      final controllersToDispose = <String>[];
+      for (final entry in _controllerPool.entries) {
+        final id = entry.key;
+        // Keep only the active video if it exists, dispose everything else
+        if (id != _activeVideoId && 
+            !_isActiveVideo(id) && 
+            !_initializingControllers.contains(id)) {
+          controllersToDispose.add(id);
+        }
+      }
+      // If we still need to make room and active video exists, we may need to dispose it too
+      // But only if it's not the video we're trying to register
+      if (controllersToDispose.isEmpty && _controllerPool.isNotEmpty && videoId != _activeVideoId) {
+        // Last resort: dispose even active video if we have no other choice
+        final firstKey = _controllerPool.keys.first;
+        if (firstKey != videoId) {
+          controllersToDispose.add(firstKey);
+          log('⚠️ PlaybackManager: Pool full, disposing active controller $firstKey to make room for $videoId');
+        }
+      }
+      // Dispose collected controllers
+      for (final id in controllersToDispose) {
+        log('🗑️ PlaybackManager: Aggressively disposing controller $id to prevent OOM');
+        unregisterController(id);
       }
     }
 
@@ -1195,9 +1218,19 @@ class GlobalPlaybackManager {
     // Controller not ready - ensure it's ready, then request focus
     // This lets VideoPlayerViewOptimized handle the actual playback to avoid duplicate play calls
     // 🔥 FIX: Wrap in try-catch to prevent crashes during swiping
+    // 🔥 CRITICAL FIX: Use unawaited to prevent blocking, but track the future to prevent disposal during init
     try {
-      // 🔥 FIX: Start initialization immediately without blocking
-      ensureControllerReady(newIndex, video).then((_) {
+      // Track the initialization future to prevent disposal during init
+      final initFuture = ensureControllerReady(newIndex, video);
+      
+      // Use unawaited to prevent blocking, but handle errors
+      initFuture.then((_) {
+        // 🔥 FIX: Check if index has changed during initialization (rapid swiping)
+        if (_currentFeedIndex != newIndex) {
+          log('⚠️ PlaybackManager: Index changed during initialization ($newIndex -> $_currentFeedIndex), skipping focus request');
+          return;
+        }
+        
         try {
           // Seek to last position if available (before requesting focus)
           final controller = getControllerForIndex(newIndex);
@@ -1228,7 +1261,10 @@ class GlobalPlaybackManager {
         // 🔥 FIX: Don't rethrow - just log and continue to prevent crash
         // Try to request focus anyway - VideoPlayerViewOptimized might handle it
         try {
-          requestFocus(video.id, 'home/feed');
+          // Only request focus if index hasn't changed (rapid swiping protection)
+          if (_currentFeedIndex == newIndex) {
+            requestFocus(video.id, 'home/feed');
+          }
         } catch (e2) {
           log('❌ PlaybackManager: Error requesting focus after initialization failure: $e2');
         }
@@ -1285,8 +1321,29 @@ class GlobalPlaybackManager {
       }
     }
 
+    // 🔥 CRITICAL FIX: Check if already initializing to prevent duplicate initialization
+    if (_initializingControllers.contains(videoId)) {
+      log('⚠️ PlaybackManager: Controller for $videoId is already being initialized, waiting...');
+      // Wait a bit and check again
+      await Future.delayed(const Duration(milliseconds: 100));
+      final existingController = _controllerPool[videoId];
+      if (existingController != null && _isControllerSafe(videoId, existingController)) {
+        try {
+          if (existingController.value.isInitialized && !existingController.value.hasError) {
+            log('✅ PlaybackManager: Controller became ready during wait');
+            return;
+          }
+        } catch (e) {
+          // Continue to create new one
+        }
+      }
+    }
+
     // Controller missing or unhealthy - create new one
     log('🔄 PlaybackManager: Creating controller for index $index, video $videoId');
+    
+    // 🔥 CRITICAL FIX: Mark as initializing to prevent disposal during init
+    _initializingControllers.add(videoId);
 
     try {
       controller = VideoPlayerController.networkUrl(
@@ -1360,6 +1417,9 @@ class GlobalPlaybackManager {
       // 🔥 FIX: Don't rethrow - return gracefully to prevent crash
       // The video will continue with existing controller or retry later
       return;
+    } finally {
+      // 🔥 CRITICAL FIX: Always remove from initializing set, even on error
+      _initializingControllers.remove(videoId);
     }
   }
 
@@ -1381,11 +1441,11 @@ class GlobalPlaybackManager {
       return;
     }
 
-    // 🔥 FIX: Wrap in try-catch to prevent crashes during rapid swiping
-    try {
-      // 🔥 FIX: More aggressive preloading - preload current video + next 2 videos
-      // This ensures the current video is ready when scrolled to, and next videos are ready too
-      final preloadIndices = [index, index + 1, index + 2];
+      // 🔥 FIX: Wrap in try-catch to prevent crashes during rapid swiping
+      try {
+        // 🔥 CRITICAL MEMORY FIX: Only preload current video (no preloading with poolRadius=0)
+        // This prevents OutOfMemoryErrors by limiting to 1 controller at a time
+        final preloadIndices = [index];
 
       for (final n in preloadIndices) {
         // 🔒 SAFETY: Double-check bounds before accessing
@@ -1434,6 +1494,29 @@ class GlobalPlaybackManager {
       disposeFarControllers(index);
     } catch (e) {
       log('❌ PlaybackManager: Error disposing far controllers (immediate): $e');
+    }
+
+    // 🔥 CRITICAL: Always enforce pool size limit immediately, don't wait for next frame
+    // This prevents OutOfMemoryErrors during rapid swiping
+    if (_controllerPool.length > maxControllerPoolSize) {
+      log('⚠️ PlaybackManager: Pool size (${_controllerPool.length}) exceeds limit ($maxControllerPoolSize), forcing immediate cleanup');
+      try {
+        final excessCount = _controllerPool.length - maxControllerPoolSize;
+        int disposed = 0;
+        for (final entry in _controllerPool.entries) {
+          if (disposed >= excessCount) break;
+          final videoId = entry.key;
+          if (videoId != _activeVideoId && 
+              !_isActiveVideo(videoId) && 
+              !_initializingControllers.contains(videoId)) {
+            unregisterController(videoId);
+            disposed++;
+          }
+        }
+        log('✅ PlaybackManager: Disposed $disposed excess controllers, pool size now: ${_controllerPool.length}');
+      } catch (e) {
+        log('❌ PlaybackManager: Error in immediate pool size enforcement: $e');
+      }
     }
 
     // 🔒 SAFETY: Defer additional cleanup to next frame to avoid disposing controllers
@@ -1510,11 +1593,13 @@ class GlobalPlaybackManager {
             // 1. Video is far from current index (beyond poolRadius)
             // 2. Video is NOT the active video (currently playing)
             // 3. Controller is safe to dispose
+            // 4. Controller is NOT currently being initialized (prevents crashes during rapid swiping)
             // 🔥 FIX: Double-check active video protection to prevent auto-pause
             if (videoIndex != null &&
                 (videoIndex - index).abs() > poolRadius &&
                 videoId != _activeVideoId &&
-                !_isActiveVideo(videoId)) {
+                !_isActiveVideo(videoId) &&
+                !_initializingControllers.contains(videoId)) {
               // 🔥 FIX: Extra protection check
               final controller = entry.value;
               if (_isControllerSafe(videoId, controller)) {
@@ -1523,8 +1608,10 @@ class GlobalPlaybackManager {
             } else if (videoIndex == null) {
               // 🔥 FIX: Controller without index mapping should be disposed
               // This handles controllers that lost their index mapping
-              // 🔥 FIX: Extra protection - never dispose active video
-              if (videoId != _activeVideoId && !_isActiveVideo(videoId)) {
+              // 🔥 FIX: Extra protection - never dispose active video or initializing controllers
+              if (videoId != _activeVideoId && 
+                  !_isActiveVideo(videoId) &&
+                  !_initializingControllers.contains(videoId)) {
                 final controller = entry.value;
                 if (_isControllerSafe(videoId, controller)) {
                   toDispose.add(videoId);
@@ -1553,6 +1640,7 @@ class GlobalPlaybackManager {
               final videoId = entry.key;
               if (videoId != _activeVideoId &&
                   !_isActiveVideo(videoId) && // 🔥 FIX: Extra protection check
+                  !_initializingControllers.contains(videoId) && // 🔥 CRITICAL: Never dispose during init
                   !toDispose.contains(videoId)) {
                 final controller = entry.value;
                 if (_isControllerSafe(videoId, controller)) {

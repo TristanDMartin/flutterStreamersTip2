@@ -5,11 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_core/firebase_core.dart';
 
 import '../models/feed_tab.dart';
 import '../models/home_video.dart';
 import '../providers/home_provider.dart' as hp;
-import '../services/video_service.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/following_provider.dart';
 import '../providers/feed_state_provider.dart';
@@ -100,19 +100,43 @@ class _HomeViewState extends ConsumerState<HomeView>
     GlobalPlaybackManager.instance.setActiveOwner(PlaybackOwners.home);
 
     // 🚀 VIRAL ALGORITHM: Start tracking session for engagement analytics
-    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (currentUser != null) {
-      UnifiedAlgorithmService.instance.startSession(currentUser.uid);
-      log('🎯 UnifiedAlgorithm: Session started for user ${currentUser.uid}');
+    // 🔥 CRITICAL FIX: Wrap Firebase access in try-catch to prevent crashes
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          UnifiedAlgorithmService.instance.startSession(currentUser.uid);
+          log('🎯 UnifiedAlgorithm: Session started for user ${currentUser.uid}');
+        }
+      }
+    } catch (e) {
+      log('⚠️ HomeView: Error accessing FirebaseAuth: $e');
+      // Continue without starting session - non-critical
     }
 
     // Setup favorites manager and load videos
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 🔥 CRITICAL FIX: Check if Firebase is ready before accessing services
+      if (Firebase.apps.isEmpty) {
+        log('⚠️ HomeView: Firebase not ready yet, deferring video load');
+        // Retry after a short delay
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && Firebase.apps.isNotEmpty) {
+            _setupFavoritesManager();
+            _loadUserLikedVideos();
+            _loadUserFavorites();
+            _loadVideos();
+            _markAsActiveOwner();
+          }
+        });
+        return;
+      }
+
       _setupFavoritesManager();
       _loadUserLikedVideos(); // TikTok-style: Load liked videos for heart state
       _loadUserFavorites(); // Load user's bookmarked videos
       _loadVideos();
-      _initializeVideoService();
+      // REMOVED: _initializeVideoService() - duplicate call, HomeProvider.loadVideos() already calls loadAllVideos()
 
       // Mark as active on initial load
       _markAsActiveOwner();
@@ -372,20 +396,9 @@ class _HomeViewState extends ConsumerState<HomeView>
     // Favorites manager setup complete
   }
 
-  /// Initialize VideoService to load all videos
-  void _initializeVideoService() {
-    try {
-      final videoService = ref.read(videoServiceProvider.notifier);
-      videoService.loadAllVideos();
-      if (kDebugMode) {
-        log('✅ HomeView: VideoService initialized');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        log('❌ HomeView: Error initializing VideoService: $e');
-      }
-    }
-  }
+  /// REMOVED: _initializeVideoService() - duplicate call
+  /// HomeProvider.loadVideos() already calls VideoService.loadAllVideos()
+  /// This was causing duplicate video loads and memory issues
 
   /// Load videos from VideoService based on current feed tab
   Future<void> _loadVideos() async {
@@ -912,8 +925,11 @@ class _HomeViewState extends ConsumerState<HomeView>
                     activeTab: activeFeed.displayName,
                     currentIndex: _currentIndex,
                     onTabChange: (tab) {
-                      final newTab =
-                          tab == 'For You' ? FeedTab.forYou : FeedTab.following;
+                      final newTab = tab == 'For You'
+                          ? FeedTab.forYou
+                          : tab == 'Following'
+                              ? FeedTab.following
+                              : FeedTab.threads;
                       _handleFeedTabChange(newTab);
                     },
                     onPageChanged: _onPageChanged,
