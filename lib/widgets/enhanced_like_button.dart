@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math' as math;
 import '../services/streamers_tip_like_service.dart';
 
@@ -48,9 +50,18 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
 
   bool _isAnimating = false;
   bool _isProcessing = false;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _videoStatsSubscription;
   DateTime? _lastTapTime;
   static const Duration _debounceDuration =
       Duration(milliseconds: 150); // Faster response
+
+  int _coerceServiceLikeCount(int serviceLikeCount) {
+    if (serviceLikeCount > 0) return serviceLikeCount;
+    if (_likeCount > 0) return _likeCount;
+    if (widget.initialLikeCount > 0) return widget.initialLikeCount;
+    return 0;
+  }
 
   @override
   void initState() {
@@ -68,6 +79,7 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
       debugPrint(
           '🔄 EnhancedLikeButton: addPostFrameCallback triggered for videoId: ${widget.videoId}');
       _loadPersistentState();
+      _subscribeToLiveLikeCount();
       _startListeningToServiceChanges();
     });
   }
@@ -89,6 +101,8 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
         // Update local state if it differs from service state
         if (_isLiked != currentState.isLiked ||
             _likeCount != currentState.likeCount) {
+          final int nextLikeCount =
+              _coerceServiceLikeCount(currentState.likeCount);
           debugPrint(
               '⚠️ POLLING OVERRIDE: Service state differs from UI! videoId: ${widget.videoId}');
           debugPrint('   UI: _isLiked=$_isLiked, _likeCount=$_likeCount');
@@ -99,7 +113,7 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
           if (mounted) {
             setState(() {
               _isLiked = currentState.isLiked;
-              _likeCount = currentState.likeCount;
+              _likeCount = nextLikeCount;
             });
             debugPrint(
                 '✅ POLLING: UI updated - _isLiked: $_isLiked, _likeCount: $_likeCount');
@@ -123,9 +137,11 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
             streamersTipLikeService.getLikeState(widget.videoId);
         if (_isLiked != currentState.isLiked ||
             _likeCount != currentState.likeCount) {
+          final int nextLikeCount =
+              _coerceServiceLikeCount(currentState.likeCount);
           setState(() {
             _isLiked = currentState.isLiked;
-            _likeCount = currentState.likeCount;
+            _likeCount = nextLikeCount;
           });
           debugPrint(
               '🔄 REACTIVE: UI updated immediately - _isLiked: $_isLiked, _likeCount: $_likeCount');
@@ -182,19 +198,50 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   void didUpdateWidget(EnhancedLikeButton oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    if (oldWidget.initialLikeCount != widget.initialLikeCount &&
+        !_isProcessing &&
+        _likeCount != widget.initialLikeCount) {
+      _likeCount = widget.initialLikeCount;
+    }
+
     // Only update if video ID changed (not on every rebuild)
     if (oldWidget.videoId != widget.videoId) {
       _isLiked = widget.initialIsLiked;
       _likeCount = widget.initialLikeCount;
+      _videoStatsSubscription?.cancel();
       _loadPersistentState();
+      _subscribeToLiveLikeCount();
     }
   }
 
   @override
   void dispose() {
+    _videoStatsSubscription?.cancel();
     _heartAnimationController.dispose();
     _sparkleController.dispose();
     super.dispose();
+  }
+
+  void _subscribeToLiveLikeCount() {
+    _videoStatsSubscription?.cancel();
+    _videoStatsSubscription = FirebaseFirestore.instance
+        .collection('videos')
+        .doc(widget.videoId)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted || !snapshot.exists) return;
+      final data = snapshot.data();
+      if (data == null) return;
+
+      final dynamic rawLikeCount =
+          data['likes'] ?? data['likeCount'] ?? data['likesCount'];
+      final int nextLikeCount = rawLikeCount is num ? rawLikeCount.toInt() : 0;
+      if (_likeCount == nextLikeCount) return;
+
+      setState(() {
+        _likeCount = nextLikeCount;
+      });
+    });
   }
 
   /// Load persistent state from local storage
@@ -217,10 +264,7 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
         if (mounted) {
           setState(() {
             _isLiked = true; // ❤️ Trust service for liked state
-            _likeCount = state.likeCount > 0
-                ? state.likeCount
-                : widget
-                    .initialLikeCount; // Use video's count if service doesn't have it yet
+            _likeCount = _coerceServiceLikeCount(state.likeCount);
           });
           debugPrint(
               '✅ EnhancedLikeButton: Video is LIKED (from service) - _isLiked: $_isLiked, _likeCount: $_likeCount');
@@ -230,8 +274,7 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
         if (mounted) {
           setState(() {
             _isLiked = false; // 🤍 Not liked
-            _likeCount =
-                state.likeCount > 0 ? state.likeCount : widget.initialLikeCount;
+            _likeCount = _coerceServiceLikeCount(state.likeCount);
           });
           debugPrint(
               '✅ EnhancedLikeButton: Video is NOT LIKED - _isLiked: $_isLiked, _likeCount: $_likeCount');
@@ -443,7 +486,7 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _likeCount.toString(),
+                    _formatCompactCount(_likeCount),
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.85),
                       fontSize: 12,
@@ -482,6 +525,23 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
         animationValue: _sparkleController.value,
       ),
     );
+  }
+
+  String _formatCompactCount(int value) {
+    if (value <= 0) return '0';
+    if (value < 1000) return value.toString();
+    if (value < 1000000) {
+      final compact = value / 1000;
+      final text = compact < 10
+          ? compact.toStringAsFixed(1)
+          : compact.toStringAsFixed(0);
+      return '${text.replaceFirst(RegExp(r'\\.0$'), '')}K';
+    }
+    final compact = value / 1000000;
+    final text = compact < 10
+        ? compact.toStringAsFixed(1)
+        : compact.toStringAsFixed(0);
+    return '${text.replaceFirst(RegExp(r'\\.0$'), '')}M';
   }
 }
 

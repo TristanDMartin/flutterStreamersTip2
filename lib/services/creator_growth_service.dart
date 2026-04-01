@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// Creator growth service - Boosts new and consistent creators
-/// Implements growth velocity tracking and creator scoring
 class CreatorGrowthService {
   static CreatorGrowthService? _instance;
   static CreatorGrowthService get instance =>
@@ -12,12 +12,13 @@ class CreatorGrowthService {
   CreatorGrowthService._();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Creator boost multipliers
-  static const double NEW_CREATOR_BOOST = 2.0; // First 10 videos
-  static const double CONSISTENCY_BOOST = 1.5; // Weekly uploaders
-  static const double GROWTH_BOOST = 1.8; // Fast-growing creators
-  static const double COMEBACK_BOOST = 1.4; // Returning creators
+  static const double newCreatorBoost = 2.0; // First 10 videos
+  static const double consistencyBoost = 1.5; // Weekly uploaders
+  static const double growthBoost = 1.8; // Fast-growing creators
+  static const double comebackBoost = 1.4; // Returning creators
 
   /// Calculate creator boost multiplier for video scoring
   Future<double> getCreatorBoostMultiplier(String creatorId) async {
@@ -28,26 +29,34 @@ class CreatorGrowthService {
 
       // 1. New Creator Boost (first 10 videos)
       if (metrics.totalVideos <= 10) {
-        multiplier *= NEW_CREATOR_BOOST;
-        log('🆕 New creator boost applied: $creatorId (${metrics.totalVideos} videos) - ${NEW_CREATOR_BOOST}x');
+        multiplier *= newCreatorBoost;
+        log('🆕 New creator boost applied: $creatorId (${metrics.totalVideos} videos) - ${newCreatorBoost}x');
       }
 
       // 2. Consistency Boost (uploads weekly)
       if (metrics.uploadConsistency > 0.7) {
-        multiplier *= CONSISTENCY_BOOST;
-        log('📅 Consistency boost applied: $creatorId (${(metrics.uploadConsistency * 100).toStringAsFixed(0)}%) - ${CONSISTENCY_BOOST}x');
+        multiplier *= consistencyBoost;
+        log(
+          '📅 Consistency boost applied: $creatorId '
+          '(${(metrics.uploadConsistency * 100).toStringAsFixed(0)}%) - '
+          '${consistencyBoost}x',
+        );
       }
 
       // 3. Growth Velocity Boost (>20% follower growth per week)
       if (metrics.growthVelocity > 0.2) {
-        multiplier *= GROWTH_BOOST;
-        log('📈 Growth boost applied: $creatorId (${(metrics.growthVelocity * 100).toStringAsFixed(0)}% growth) - ${GROWTH_BOOST}x');
+        multiplier *= growthBoost;
+        log(
+          '📈 Growth boost applied: $creatorId '
+          '(${(metrics.growthVelocity * 100).toStringAsFixed(0)}% growth) - '
+          '${growthBoost}x',
+        );
       }
 
       // 4. Comeback Boost (inactive → active)
       if (metrics.isComebackCreator) {
-        multiplier *= COMEBACK_BOOST;
-        log('🔄 Comeback boost applied: $creatorId - ${COMEBACK_BOOST}x');
+        multiplier *= comebackBoost;
+        log('🔄 Comeback boost applied: $creatorId - ${comebackBoost}x');
       }
 
       log('✅ Total creator boost for $creatorId: ${multiplier.toStringAsFixed(2)}x');
@@ -129,14 +138,14 @@ class CreatorGrowthService {
 
   /// Calculate follower growth velocity (% per week)
   Future<double> _calculateGrowthVelocity(String creatorId) async {
+    if (_auth.currentUser == null) return 0.0;
     try {
-      // Get creator's follower count history
       final snapshot = await _firestore
           .collection('creator_stats')
           .doc(creatorId)
           .collection('follower_history')
           .orderBy('timestamp', descending: true)
-          .limit(8) // Last 8 weeks
+          .limit(8)
           .get();
 
       if (snapshot.docs.length < 2) return 0.0;
@@ -154,7 +163,11 @@ class CreatorGrowthService {
 
       return growth / weeks; // Growth per week
     } catch (e) {
-      log('❌ Error calculating growth velocity: $e');
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return 0.0;
+      }
+      log('⚠️ Error calculating growth velocity: $e');
       return 0.0;
     }
   }

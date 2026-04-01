@@ -47,6 +47,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   final Map<String, bool> _likeStates = {}; // Cache like states
   final Map<String, bool> _bookmarkStates = {}; // Cache bookmark states
 
+  void _restoreCurrentVideoFocus({String reason = 'player_restore'}) {
+    if (_videos.isEmpty || _currentIndex < 0 || _currentIndex >= _videos.length) {
+      return;
+    }
+
+    final manager = GlobalPlaybackManager.instance;
+    final currentVideo = _videos[_currentIndex];
+    manager.setActiveOwner(PlaybackOwners.player);
+    manager.clearDesiredFocusForOwner(
+      PlaybackOwners.player,
+      exceptVideoId: currentVideo.id,
+    );
+    manager.setDesiredFocus(currentVideo.id, PlaybackOwners.player);
+    manager.preloadAround(_currentIndex, _videos);
+    debugPrint(
+      '🎬 PlayerScreen: Restored current video focus (${currentVideo.id}) after $reason',
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +73,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final manager = GlobalPlaybackManager.instance;
     manager.forceUnblock(); // Force clear all blocks when opening PlayerScreen
     manager.setActiveOwner(PlaybackOwners.player);
+    manager.clearDesiredFocusForOwner(PlaybackOwners.home);
     _currentIndex = widget.initialIndex;
     // Don't create PageController until videos are loaded
     _loadVideos();
@@ -61,6 +81,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   void dispose() {
+    GlobalPlaybackManager.instance.clearDesiredFocusForOwner(
+      PlaybackOwners.player,
+    );
     _pageController?.dispose();
     // Video controllers are disposed by their respective VideoPlayerViewSimple widgets
     super.dispose();
@@ -115,8 +138,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     setState(() {}); // Trigger rebuild to show videos
 
     if (_videos.isNotEmpty) {
-      GlobalPlaybackManager.instance
-          .preloadAround(_currentIndex, _videos); // preload neighbors
+      _restoreCurrentVideoFocus(reason: 'initial_load');
     }
   }
 
@@ -176,9 +198,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       _currentIndex = index;
     });
     // 🎯 SINGLE ACTIVE OWNER: setActiveOwner already handles pausing non-active owners
+    final manager = GlobalPlaybackManager.instance;
+    manager.setActiveOwner(PlaybackOwners.player);
+    if (_videos.isNotEmpty && index >= 0 && index < _videos.length) {
+      final currentVideo = _videos[index];
+      manager.clearDesiredFocusForOwner(
+        PlaybackOwners.player,
+        exceptVideoId: currentVideo.id,
+      );
+      manager.setDesiredFocus(currentVideo.id, PlaybackOwners.player);
+    }
     // Preload next videos for smooth playback
     if (_videos.isNotEmpty) {
-      GlobalPlaybackManager.instance.preloadAround(index, _videos);
+      manager.preloadAround(index, _videos);
     }
   }
 
@@ -746,7 +778,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
         // Resume playback after navigation
         await Future.delayed(const Duration(milliseconds: 150));
-        GlobalPlaybackManager.instance.resumeAfterTabSwitch();
+        _restoreCurrentVideoFocus(reason: 'delete_navigation');
       }
 
       // Show success message
@@ -801,10 +833,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     playbackManager.unblock();
 
     // Request focus for the current video to resume playback
-    if (_videos.isNotEmpty && _currentIndex < _videos.length) {
-      final currentVideo = _videos[_currentIndex];
-      playbackManager.requestFocus(currentVideo.id, 'playerScreen');
-    }
+    _restoreCurrentVideoFocus(reason: 'insights_return');
   }
 
   /// DEPRECATED: These HUD methods are no longer used since we enabled showHUD: true on VideoPlayerViewOptimized

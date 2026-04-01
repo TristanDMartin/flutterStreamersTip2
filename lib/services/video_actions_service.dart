@@ -299,9 +299,11 @@ class VideoActionsService {
   Future<void> shareVideo(String videoId) async {
     try {
       final link = 'https://streamerstip.com/video/$videoId';
-      await Share.share(
-        link,
-        subject: 'Check out this video on StreamersTip',
+      await SharePlus.instance.share(
+        ShareParams(
+          text: link,
+          subject: 'Check out this video on StreamersTip',
+        ),
       );
     } catch (e) {
       rethrow;

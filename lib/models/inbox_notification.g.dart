@@ -6,17 +6,15 @@ part of 'inbox_notification.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$InboxNotificationImpl _$$InboxNotificationImplFromJson(
-        Map<String, dynamic> json) =>
-    _$InboxNotificationImpl(
+_InboxNotification _$InboxNotificationFromJson(Map<String, dynamic> json) =>
+    _InboxNotification(
       id: json['id'] as String,
       text: json['text'] as String,
       timestamp: json['timestamp'] as String,
       type: $enumDecode(_$NotificationTypeEnumMap, json['type']),
     );
 
-Map<String, dynamic> _$$InboxNotificationImplToJson(
-        _$InboxNotificationImpl instance) =>
+Map<String, dynamic> _$InboxNotificationToJson(_InboxNotification instance) =>
     <String, dynamic>{
       'id': instance.id,
       'text': instance.text,

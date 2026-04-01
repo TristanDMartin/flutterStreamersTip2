@@ -19,9 +19,14 @@ import '../services/unified_avatar_service.dart';
 import '../services/chat_service.dart';
 import '../services/follows_service.dart';
 import '../providers/follows_provider.dart';
+import '../providers/follow_refresh_provider.dart';
+import '../providers/following_provider.dart';
+import '../providers/home_provider.dart' as hp;
 import '../services/user_blocking_service.dart';
 import '../services/global_playback_manager.dart';
-import 'chat_view.dart';
+import '../routing/app_navigator.dart';
+import 'user_stats_row.dart';
+import '../constants/app_colors.dart';
 
 class StreamerCardView extends ConsumerStatefulWidget {
   final String userId; // Changed from StreamerCard to userId for live data
@@ -87,18 +92,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   bool _isFollowing = false;
   bool _isFollowedByStreamer = false;
   bool _isConnected = false;
-  bool _isFollowingPrimary = false;
-  bool _isFollowingLegacy = false;
-  bool _isFollowedByPrimary = false;
-  bool _isFollowedByLegacy = false;
-  bool _isFollowedByPrimaryReady = false;
-  bool _isFollowedByLegacyReady = false;
-  bool _isFollowedByLegacyAltReady = false;
-
-  // Stats
-  int _postsCount = 0;
-  int _followersCount = 0;
-  int _followingCount = 0;
 
   // Tab management
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
@@ -109,17 +102,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   // Firestore listeners for proper cleanup
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
-  StreamSubscription<DocumentSnapshot>? _userStatsSubscription;
-  StreamSubscription<QuerySnapshot>? _followersSubscription;
-  StreamSubscription<QuerySnapshot>? _followingSubscription;
-  StreamSubscription<QuerySnapshot>? _followingRelationshipSubscription;
-  StreamSubscription<QuerySnapshot>? _followedByRelationshipSubscription;
   StreamSubscription<QuerySnapshot>? _followingRelationshipPrimarySubscription;
   StreamSubscription<QuerySnapshot>? _followedByRelationshipPrimarySubscription;
-  StreamSubscription<QuerySnapshot>?
-      _followingRelationshipLegacyAltSubscription;
-  StreamSubscription<QuerySnapshot>?
-      _followedByRelationshipLegacyAltSubscription;
 
   // Loading states for async operations
   bool _isFollowingOperation = false;
@@ -249,7 +233,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         _isLoading = false;
         _error = null;
       });
-      _loadStats();
       _checkRelationshipStatus();
       _loadPlatforms();
       _loadCalendarEvents();
@@ -324,7 +307,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           _error = null;
 
           // Load all dependent data synchronously (no setState in these methods)
-          _loadStats();
           _checkRelationshipStatus();
           _loadPlatforms();
           _loadCalendarEvents();
@@ -364,88 +346,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     });
   }
 
-  void _loadStats() {
-    if (_userData == null) return;
-
-    // ✅ MATCHED TO PROFILEVIEW: Use live queries from follows collection
-    // This ensures real-time accuracy and matches ProfileView behavior
-
-    // Cancel existing subscriptions to prevent memory leaks
-    _userStatsSubscription?.cancel();
-    _followersSubscription?.cancel();
-    _followingSubscription?.cancel();
-
-    // Load posts count from user document (denormalized)
-    _userStatsSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .snapshots()
-        .listen((snapshot) {
-      if (mounted && snapshot.exists) {
-        final data = snapshot.data()!;
-        setState(() {
-          _postsCount = data['postCount'] ?? 0;
-        });
-
-        if (kDebugMode) {
-          debugPrint("📊 StreamerCardView: Posts count loaded: $_postsCount");
-        }
-      }
-    });
-
-    // ✅ MATCHED TO PROFILEVIEW: Live followers count from follows collection
-    _followersSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .where('followedId', isEqualTo: widget.userId)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        if (mounted) {
-          setState(() {
-            _followersCount = snapshot.docs.length;
-          });
-
-          if (kDebugMode) {
-            debugPrint(
-                "📊 StreamerCardView: Followers count updated: $_followersCount");
-          }
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          debugPrint('❌ StreamerCardView: Error watching followers: $error');
-        }
-      },
-      cancelOnError: false,
-    );
-
-    // ✅ MATCHED TO PROFILEVIEW: Live following count from follows collection
-    _followingSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .where('followerId', isEqualTo: widget.userId)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        if (mounted) {
-          setState(() {
-            _followingCount = snapshot.docs.length;
-          });
-
-          if (kDebugMode) {
-            debugPrint(
-                "📊 StreamerCardView: Following count updated: $_followingCount");
-          }
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          debugPrint('❌ StreamerCardView: Error watching following: $error');
-        }
-      },
-      cancelOnError: false,
-    );
-  }
-
   void _checkRelationshipStatus() {
     if (widget.currentUserId == null || widget.currentUserId == widget.userId) {
       if (kDebugMode) {
@@ -473,46 +373,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   void _setupRelationshipListeners() {
-    _followingRelationshipSubscription?.cancel();
-    _followedByRelationshipSubscription?.cancel();
     _followingRelationshipPrimarySubscription?.cancel();
     _followedByRelationshipPrimarySubscription?.cancel();
-    _followingRelationshipLegacyAltSubscription?.cancel();
-    _followedByRelationshipLegacyAltSubscription?.cancel();
-    _isFollowedByPrimaryReady = false;
-    _isFollowedByLegacyReady = false;
-    _isFollowedByLegacyAltReady = false;
 
     if (kDebugMode) {
-      debugPrint("🔘 StreamerCardView: Setting up relationship listeners");
-    }
-
-    bool isActive(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-      final val = doc.data()['isActive'];
-      if (val is bool) return val;
-      return true;
-    }
-
-    bool allFollowedByReady() =>
-        _isFollowedByPrimaryReady &&
-        _isFollowedByLegacyReady &&
-        _isFollowedByLegacyAltReady;
-
-    void updateAggregatedState() {
-      final following = _isFollowingPrimary || _isFollowingLegacy;
-      final followed = _isFollowedByPrimary || _isFollowedByLegacy;
-
-      final previousFollowed = _isFollowedByStreamer;
-      final nextFollowed =
-          followed || (!allFollowedByReady() && previousFollowed);
-
-      if (mounted) {
-        setState(() {
-          _isFollowing = following;
-          _isFollowedByStreamer = nextFollowed;
-          _updateConnectionStatus();
-        });
-      }
+      debugPrint("🔘 StreamerCardView: Setting up relationship listeners (2)");
     }
 
     _followingRelationshipPrimarySubscription = FirebaseFirestore.instance
@@ -523,77 +388,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         .snapshots()
         .listen(
       (snapshot) {
-        _isFollowingPrimary = snapshot.docs.isNotEmpty;
-        updateAggregatedState();
+        _applyRelationshipState(
+          isFollowing: snapshot.docs.isNotEmpty,
+          isFollowedByStreamer: _isFollowedByStreamer,
+        );
         if (kDebugMode) {
           debugPrint(
-              "🔄 StreamerCardView: Primary following listener - isFollowingPrimary: $_isFollowingPrimary, docs: ${snapshot.docs.length}");
+              "🔄 StreamerCardView: Following listener - isFollowing: ${snapshot.docs.isNotEmpty}");
         }
       },
       onError: (error) {
-        if (kDebugMode) {
-          debugPrint(
-              "❌ StreamerCardView: Error in primary following listener: $error");
-        }
+        if (kDebugMode) debugPrint("❌ StreamerCardView: Following listener: $error");
         _followingRelationshipPrimarySubscription?.cancel();
         _followingRelationshipPrimarySubscription = null;
-        _isFollowingPrimary = false;
-        updateAggregatedState();
-      },
-      cancelOnError: true,
-    );
-
-    _followingRelationshipSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .where('followerId', isEqualTo: widget.currentUserId)
-        .where('followingId', isEqualTo: widget.userId)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        final hasLegacy = snapshot.docs.any(isActive);
-        _isFollowingLegacy = hasLegacy;
-        updateAggregatedState();
-        if (kDebugMode) {
-          debugPrint(
-              "🔄 StreamerCardView: Legacy following listener - isFollowingLegacy: $_isFollowingLegacy, docs: ${snapshot.docs.length}");
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          debugPrint(
-              "❌ StreamerCardView: Error in legacy following listener: $error");
-        }
-        _followingRelationshipSubscription?.cancel();
-        _followingRelationshipSubscription = null;
-        _isFollowingLegacy = false;
-        updateAggregatedState();
-      },
-      cancelOnError: true,
-    );
-
-    _followingRelationshipLegacyAltSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .where('followerId', isEqualTo: widget.currentUserId)
-        .where('followedId', isEqualTo: widget.userId)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        final hasLegacyAlt = snapshot.docs.any(isActive);
-        _isFollowingLegacy = _isFollowingLegacy || hasLegacyAlt;
-        updateAggregatedState();
-        if (kDebugMode) {
-          debugPrint(
-              "🔄 StreamerCardView: Legacy alt following listener - hasLegacyAlt: $hasLegacyAlt, docs: ${snapshot.docs.length}");
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          debugPrint(
-              "❌ StreamerCardView: Error in legacy alt following listener: $error");
-        }
-        _followingRelationshipLegacyAltSubscription?.cancel();
-        _followingRelationshipLegacyAltSubscription = null;
-        updateAggregatedState();
+        _applyRelationshipState(
+          isFollowing: false,
+          isFollowedByStreamer: _isFollowedByStreamer,
+        );
       },
       cancelOnError: true,
     );
@@ -606,83 +417,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         .snapshots()
         .listen(
       (snapshot) {
-        _isFollowedByPrimary = snapshot.docs.isNotEmpty;
-        _isFollowedByPrimaryReady = true;
-        updateAggregatedState();
+        _applyRelationshipState(
+          isFollowing: _isFollowing,
+          isFollowedByStreamer: snapshot.docs.isNotEmpty,
+        );
         if (kDebugMode) {
           debugPrint(
-              "🔄 StreamerCardView: Primary followed-by listener - isFollowedByPrimary: $_isFollowedByPrimary, docs: ${snapshot.docs.length}");
+              "🔄 StreamerCardView: Followed-by listener - isFollowedBy: ${snapshot.docs.isNotEmpty}");
         }
       },
       onError: (error) {
-        if (kDebugMode) {
-          debugPrint(
-              "❌ StreamerCardView: Error in primary followed-by listener: $error");
-        }
+        if (kDebugMode) debugPrint("❌ StreamerCardView: Followed-by listener: $error");
         _followedByRelationshipPrimarySubscription?.cancel();
         _followedByRelationshipPrimarySubscription = null;
-        _isFollowedByPrimary = false;
-        _isFollowedByPrimaryReady = true;
-        updateAggregatedState();
-      },
-      cancelOnError: true,
-    );
-
-    _followedByRelationshipSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .where('followerId', isEqualTo: widget.userId)
-        .where('followingId', isEqualTo: widget.currentUserId)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        final hasLegacy = snapshot.docs.any(isActive);
-        _isFollowedByLegacy = hasLegacy;
-        _isFollowedByLegacyReady = true;
-        updateAggregatedState();
-        if (kDebugMode) {
-          debugPrint(
-              "🔄 StreamerCardView: Legacy followed-by listener - isFollowedByLegacy: $_isFollowedByLegacy, docs: ${snapshot.docs.length}");
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          debugPrint(
-              "❌ StreamerCardView: Error in legacy followed-by listener: $error");
-        }
-        _followedByRelationshipSubscription?.cancel();
-        _followedByRelationshipSubscription = null;
-        _isFollowedByLegacy = false;
-        _isFollowedByLegacyReady = true;
-        updateAggregatedState();
-      },
-      cancelOnError: true,
-    );
-
-    _followedByRelationshipLegacyAltSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .where('followerId', isEqualTo: widget.userId)
-        .where('followedId', isEqualTo: widget.currentUserId)
-        .snapshots()
-        .listen(
-      (snapshot) {
-        final hasLegacyAlt = snapshot.docs.any(isActive);
-        _isFollowedByLegacy = _isFollowedByLegacy || hasLegacyAlt;
-        _isFollowedByLegacyAltReady = true;
-        updateAggregatedState();
-        if (kDebugMode) {
-          debugPrint(
-              "🔄 StreamerCardView: Legacy alt followed-by listener - hasLegacyAlt: $hasLegacyAlt, docs: ${snapshot.docs.length}");
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          debugPrint(
-              "❌ StreamerCardView: Error in legacy alt followed-by listener: $error");
-        }
-        _followedByRelationshipLegacyAltSubscription?.cancel();
-        _followedByRelationshipLegacyAltSubscription = null;
-        _isFollowedByLegacyAltReady = true;
-        updateAggregatedState();
+        _applyRelationshipState(
+          isFollowing: _isFollowing,
+          isFollowedByStreamer: false,
+        );
       },
       cancelOnError: true,
     );
@@ -849,15 +600,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
     // Cancel all Firestore subscriptions to prevent memory leaks
     _userDataSubscription?.cancel();
-    _userStatsSubscription?.cancel();
-    _followersSubscription?.cancel();
-    _followingSubscription?.cancel();
-    _followingRelationshipSubscription?.cancel();
-    _followedByRelationshipSubscription?.cancel();
     _followingRelationshipPrimarySubscription?.cancel();
     _followedByRelationshipPrimarySubscription?.cancel();
-    _followingRelationshipLegacyAltSubscription?.cancel();
-    _followedByRelationshipLegacyAltSubscription?.cancel();
 
     // Unblock playback now that this card is closing
     _playbackManager.unblock();
@@ -896,24 +640,40 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       }
 
       if (mounted) {
-        setState(() {
-          _isFollowing = isFollowing;
-          _isFollowedByStreamer = isFollowedByStreamer;
-          _isConnected = isConnected;
-        });
+        _applyRelationshipState(
+          isFollowing: isFollowing,
+          isFollowedByStreamer: isFollowedByStreamer,
+        );
       }
     } catch (e) {
       if (kDebugMode) {
         debugPrint("❌ StreamerCardView: Error checking connection status: $e");
       }
       if (mounted) {
-        setState(() {
-          _isFollowing = false;
-          _isFollowedByStreamer = false;
-          _isConnected = false;
-        });
+        _applyRelationshipState(
+          isFollowing: false,
+          isFollowedByStreamer: false,
+        );
       }
     }
+  }
+
+  void _applyRelationshipState({
+    required bool isFollowing,
+    required bool isFollowedByStreamer,
+  }) {
+    if (!mounted) return;
+    setState(() {
+      _isFollowing = isFollowing;
+      _isFollowedByStreamer = isFollowedByStreamer;
+      _isConnected = isFollowing && isFollowedByStreamer;
+    });
+  }
+
+  void _notifyFollowStateChanged() {
+    ref.read(followRefreshProvider.notifier).state++;
+    ref.invalidate(followingProvider);
+    ref.invalidate(hp.homeProvider);
   }
 
   Future<bool> _checkIfFollowing(String userId) async {
@@ -1332,16 +1092,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         Container(
           width: double.infinity,
           height: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF6137EB), // Purple
-                Color(0xFF1C135D), // Dark purple
-              ],
-            ),
-          ),
+          color: AppColors.supportBackground,
         ),
         // Main content with proper safe area handling and scrolling
         SafeArea(
@@ -1366,50 +1117,62 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Widget _buildTopBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Back button
-          InstantResponseButton(
-            onPressed: widget.onDismiss,
-            hapticType: HapticFeedbackType.lightImpact,
-            child: const Icon(
-              Icons.arrow_back,
-              color: Colors.white,
-              size: 24,
-            ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
           ),
-          // Center: No title, clean gradient background
-          const SizedBox(width: 40), // Spacer for center
-          // Right side action buttons
-          Row(
-            children: [
-              InstantResponseButton(
-                onPressed: () => _flipCard(),
-                hapticType: HapticFeedbackType.lightImpact,
-                child: const Icon(
-                  Icons.flip,
-                  color: Colors.white,
-                  size: 24,
-                ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            InstantResponseButton(
+              onPressed: widget.onDismiss,
+              hapticType: HapticFeedbackType.lightImpact,
+              child: const Icon(
+                Icons.arrow_back,
+                color: Colors.white,
+                size: 22,
               ),
-              const SizedBox(width: 16),
-              InstantResponseButton(
-                onPressed: () => _showShareSheet(context),
-                hapticType: HapticFeedbackType.lightImpact,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
+            ),
+            Text(
+              'Streamer Profile',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Row(
+              children: [
+                InstantResponseButton(
+                  onPressed: () => _flipCard(),
+                  hapticType: HapticFeedbackType.lightImpact,
+                  child: const Icon(
+                    Icons.flip,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                InstantResponseButton(
+                  onPressed: () => _showShareSheet(context),
+                  hapticType: HapticFeedbackType.lightImpact,
                   child: const Icon(
                     Icons.more_horiz,
                     color: Colors.white,
-                    size: 24,
+                    size: 22,
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1417,60 +1180,36 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Widget _buildProfileSection() {
     return Column(
       children: [
-        const SizedBox(height: 20), // Add top spacing to match ProfileView
+        const SizedBox(height: 14),
         _buildAvatarWithOnlineIndicator(),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         _buildProfileTextInfo(),
-        const SizedBox(height: 4), // Minimal spacing to match ProfileView
+        const SizedBox(height: 8),
       ],
     );
   }
 
   Widget _buildStatisticsRow() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildStatItem('Posts', _postsCount.toString()),
-          const SizedBox(width: 54),
-          _buildStatItem('Followers', _followersCount.toString()),
-          const SizedBox(width: 54),
-          _buildStatItem('Following', _followingCount.toString()),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
+          ),
+        ),
+        child: UserStatsRow(userId: widget.userId),
       ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w900,
-            height: 1.0,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            height: 1.0,
-          ),
-        ),
-      ],
     );
   }
 
   Widget _buildActionButtons() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       child: Row(
         children: [
           // Follow Button
@@ -1512,13 +1251,25 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     return GestureDetector(
       onTap: onPressed,
       child: Container(
-        height: 48,
+        height: 46,
         decoration: BoxDecoration(
           gradient: onPressed != null ? _getFollowButtonGradient() : null,
           color: onPressed == null ? Colors.grey.withValues(alpha: 0.3) : null,
           borderRadius: BorderRadius.circular(24),
-          border: onPressed == null
-              ? Border.all(color: Colors.grey.withValues(alpha: 0.5))
+          border: Border.all(
+            color: onPressed != null
+                ? Colors.white.withValues(alpha: 0.16)
+                : Colors.grey.withValues(alpha: 0.5),
+            width: 1,
+          ),
+          boxShadow: onPressed != null
+              ? [
+                  BoxShadow(
+                    color: AppColors.supportAccent.withValues(alpha: 0.16),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ]
               : null,
         ),
         child: Center(
@@ -1535,8 +1286,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
                   text,
                   style: TextStyle(
                     color: onPressed != null ? Colors.white : Colors.grey,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
         ),
@@ -2246,6 +1997,8 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           await _updateFollowButtonState();
         }
 
+        _notifyFollowStateChanged();
+
         if (kDebugMode) {
           debugPrint(
               "🔘 StreamerCardView: Parent follow callback completed successfully");
@@ -2308,6 +2061,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
         // Update follow button state to reflect the new relationship
         await _updateFollowButtonState();
+        _notifyFollowStateChanged();
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2400,6 +2154,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
       // Update follow button state to reflect the new relationship
       await _updateFollowButtonState();
+      _notifyFollowStateChanged();
 
       // Remove follow notification
       await _removeFollowNotification();
@@ -2553,18 +2308,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           debugPrint("💬 StreamerCardView: - Online: $otherUserIsOnline");
         }
 
-        // Navigate to chat view
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            settings: const RouteSettings(name: '/inbox'),
-            builder: (context) => ChatView(
-              chat: chat,
-              otherUserId: widget.userId,
-              otherUserName: otherUserName,
-              otherUserAvatarURL: otherUserAvatarURL,
-              otherUserIsOnline: otherUserIsOnline,
-            ),
-          ),
+        AppNavigator.openChat(
+          context,
+          chat: chat,
+          otherUserId: widget.userId,
+          otherUserName: otherUserName,
+          otherUserAvatarUrl: otherUserAvatarURL,
+          otherUserIsOnline: otherUserIsOnline,
         );
       } else {
         if (mounted) {
@@ -2666,24 +2416,60 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Widget _buildContentTabs() {
     return Container(
-      height: 56,
+      height: 48,
       margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.15),
+          color: Colors.white.withValues(alpha: 0.12),
           width: 1,
         ),
       ),
       child: Row(
-        children: [
-          _buildTab('Video', 0),
-          _buildTab('Favorites', 1),
-          _buildTab('Tagged', 2),
-        ],
+        children: _buildTabs(),
       ),
     );
+  }
+
+  List<Widget> _buildTabs() {
+    final tabs = <Widget>[
+      _buildTab('Video', 0),
+    ];
+
+    if (_showFavoritesOnCard) {
+      tabs.add(_buildTab('Favorites', 1));
+    }
+
+    tabs.add(_buildTab('Tagged', 2));
+    return tabs;
+  }
+
+  bool get _showFavoritesOnCard {
+    final privacy = _userData?['privacy'] as Map<String, dynamic>? ?? {};
+    return privacy['showFavoritesOnCard'] ?? false;
+  }
+
+  ProfileVideoFeedType _getSelectedFeedType() {
+    if (_selectedTabIndex == 0) {
+      return ProfileVideoFeedType.videos;
+    }
+
+    if (!_showFavoritesOnCard) {
+      return _selectedTabIndex == 1
+          ? ProfileVideoFeedType.tagged
+          : ProfileVideoFeedType.videos;
+    }
+
+    if (_selectedTabIndex == 1) {
+      return ProfileVideoFeedType.favorites;
+    }
+
+    if (_selectedTabIndex == 2) {
+      return ProfileVideoFeedType.tagged;
+    }
+
+    return ProfileVideoFeedType.videos;
   }
 
   Widget _buildTab(String label, int index) {
@@ -2701,16 +2487,21 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
           curve: Curves.easeInOut,
           margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: isSelected
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: isSelected
-                ? Border.all(
-                    color: Colors.white.withValues(alpha: 0.25),
-                    width: 1,
+            gradient: isSelected
+                ? const LinearGradient(
+                    colors: AppColors.supportAccentGradient,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                   )
                 : null,
+            color: isSelected ? null : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected
+                  ? Colors.white.withValues(alpha: 0.18)
+                  : Colors.transparent,
+              width: 1,
+            ),
           ),
           child: Center(
             child: AnimatedDefaultTextStyle(
@@ -2718,9 +2509,9 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
               style: TextStyle(
                 color: isSelected
                     ? Colors.white
-                    : Colors.white.withValues(alpha: 0.7),
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+                    : Colors.white.withValues(alpha: 0.72),
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
               ),
               child: Text(label),
             ),
@@ -2735,37 +2526,13 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildVideoFeed() {
-    switch (_selectedTabIndex) {
-      case 0: // Video
-        return ProfileVideoFeedView(
-          userId: widget.userId,
-          feedType: ProfileVideoFeedType.videos,
-          // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
-          // It will open the real PlayerScreen with actual videos
-          onVideoTap: null,
-        );
-      case 1: // Favorites
-        return ProfileVideoFeedView(
-          userId: widget.userId,
-          feedType: ProfileVideoFeedType.favorites,
-          // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
-          onVideoTap: null,
-        );
-      case 2: // Tagged
-        return ProfileVideoFeedView(
-          userId: widget.userId,
-          feedType: ProfileVideoFeedType.tagged,
-          // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
-          onVideoTap: null,
-        );
-      default:
-        return const Center(
-          child: Text(
-            'No content available',
-            style: TextStyle(color: Colors.white70),
-          ),
-        );
-    }
+    return ProfileVideoFeedView(
+      userId: widget.userId,
+      feedType: _getSelectedFeedType(),
+      // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
+      // It will open the real PlayerScreen with actual videos
+      onVideoTap: null,
+    );
   }
 
   Widget _buildAvatarWithOnlineIndicator() {
@@ -2875,16 +2642,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         Container(
           width: double.infinity,
           height: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Color(0xFF6137EB),
-                Color(0xFF1C135D),
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
+          color: AppColors.supportBackground,
         ),
         // Main content with proper safe area handling
         SafeArea(
@@ -2940,20 +2698,38 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          // Right side: Flip button
-          InstantResponseButton(
-            onPressed: _flipCard,
-            hapticType: HapticFeedbackType.lightImpact,
-            child: const Icon(
-              Icons.flip,
-              color: Colors.white,
-              size: 24,
-            ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
           ),
-        ],
+        ),
+        child: Row(
+          children: [
+            Text(
+              'Streamer Details',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            InstantResponseButton(
+              onPressed: _flipCard,
+              hapticType: HapticFeedbackType.lightImpact,
+              child: const Icon(
+                Icons.flip,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3081,13 +2857,24 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
             '🔗 _buildPlatforms: No platforms found, showing empty state');
       }
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-        child: Text(
-          'No platforms added yet.',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.10),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            'No platforms added yet.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       );
@@ -3150,25 +2937,36 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
         onTap: onTap,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            Icon(
-              isExpanded
-                  ? Icons.keyboard_arrow_down
-                  : Icons.keyboard_arrow_right,
-              color: Colors.white.withValues(alpha: 0.9),
-              size: 24,
-            ),
-          ],
+              Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_down
+                    : Icons.keyboard_arrow_right,
+                color: Colors.white.withValues(alpha: 0.9),
+                size: 24,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -4061,25 +3859,62 @@ class _EmptyStateWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Center(
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color: Colors.white.withValues(alpha: 0.4),
-              size: 48,
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 320),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
             ),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: AppColors.supportAccentGradient,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  icon,
+                  color: Colors.white.withValues(alpha: 0.95),
+                  size: 30,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 18),
+              Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This section will show up here once there is something to share.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.68),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );

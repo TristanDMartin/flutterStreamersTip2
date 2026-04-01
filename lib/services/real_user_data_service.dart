@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/video_url_resolver.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../models/user_count_fields.dart';
 import '../models/user.dart';
 import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
@@ -106,7 +107,11 @@ class RealUserDataService {
         return null;
       }
 
-      final data = doc.data()!;
+      final data = <String, dynamic>{
+        ...doc.data()!,
+        'id': userId,
+        'uid': userId,
+      };
       return User.fromMap(data);
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error getting user by ID',
@@ -289,7 +294,7 @@ class RealUserDataService {
           username: data['username'] ?? 'Unknown',
           displayName: data['displayName'],
           avatarURL: data['avatarURL'],
-          followerCount: data['followerCount'] ?? 0,
+          followerCount: UserCountFields.readFollowersCount(data),
           isActive: (data['onlineStatus'] ?? 'offline') == 'online',
         );
       }).toList();
@@ -306,32 +311,46 @@ class RealUserDataService {
   }
 
   /// Get user's videos
+  /// Uses canonical owner: queries both userId and user_id, merges, then
+  /// builds with getOwnerId so both paths match VideoService filtering.
   /// 🚀 NEWEST FIRST: Returns videos sorted by creation date (newest first)
   Future<List<HomeVideo>> getUserVideos(String userId, {int limit = 20}) async {
     try {
-      // 🚀 NEWEST FIRST: Query with orderBy to get newest videos first
-      Query query = _firestore
-          .collection('videos')
-          .where('userId', isEqualTo: userId)
-          .where('status', isEqualTo: 'published')
-          .orderBy('createdAt', descending: true)
-          .limit(limit);
+      final docMap = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
 
-      final snapshot = await query.get();
+      Future<void> addFromQuery(String ownerField) async {
+        final query = _firestore
+            .collection('videos')
+            .where(ownerField, isEqualTo: userId)
+            .where('status', whereIn: ['published', 'ready'])
+            .orderBy('createdAt', descending: true)
+            .limit(limit);
+        final snapshot = await query.get();
+        for (final doc in snapshot.docs) {
+          docMap[doc.id] = doc;
+        }
+      }
+
+      await addFromQuery('userId');
+      try {
+        await addFromQuery('user_id');
+      } catch (_) {
+        // user_id composite index may not exist; userId query is enough
+      }
 
       final videos = <HomeVideo>[];
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>?;
-        if (data == null) continue;
+      for (final doc in docMap.values) {
+        final data = doc.data();
+        final ownerId = getOwnerId(data);
+        if (ownerId == null) continue;
 
-        // Get creator data
-        final creator = await getUserById(userId);
+        final creator = await getUserById(ownerId);
         if (creator == null) continue;
 
-        // Create thumbnails object from legacy thumbnailUrl
+        final thumbnailUrl = (data['thumbnailUrl'] ?? data['thumbnailURL'])
+            as String?;
         VideoThumbnails? thumbnails;
-        final thumbnailUrl = data['thumbnailUrl'] as String?;
         if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
           thumbnails = VideoThumbnails(
             urls: {
@@ -362,11 +381,10 @@ class RealUserDataService {
         videos.add(video);
       }
 
-      // 🚀 NEWEST FIRST: Sort by creation date (newest first) as safety net
       videos.sort((a, b) {
         final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
         final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
-        return bTime.compareTo(aTime); // Reverse order for newest first
+        return bTime.compareTo(aTime);
       });
 
       final limitedVideos = videos.take(limit).toList();

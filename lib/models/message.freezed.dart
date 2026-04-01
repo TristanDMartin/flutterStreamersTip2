@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,170 +9,122 @@ part of 'message.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
 
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-Message _$MessageFromJson(Map<String, dynamic> json) {
-  return _Message.fromJson(json);
-}
-
 /// @nodoc
-mixin _$Message {
-  String? get id => throw _privateConstructorUsedError;
-  String? get chatId => throw _privateConstructorUsedError;
-  String get text => throw _privateConstructorUsedError;
-  String get from => throw _privateConstructorUsedError;
-  String get to => throw _privateConstructorUsedError;
+mixin _$Message implements DiagnosticableTreeMixin {
+  String? get id;
+  String? get chatId;
+  String get text;
+  String get from;
+  String get to;
   @TimestampConverter()
-  DateTime? get timestamp => throw _privateConstructorUsedError;
-  bool get isRead => throw _privateConstructorUsedError;
-  List<String> get recipients => throw _privateConstructorUsedError;
-  List<String> get readBy => throw _privateConstructorUsedError;
-  String? get gifUrl => throw _privateConstructorUsedError;
-  String get messageType => throw _privateConstructorUsedError;
-  bool get isDeviceGif =>
-      throw _privateConstructorUsedError; // Video share fields
-  String? get videoId => throw _privateConstructorUsedError;
-  String? get shareToken => throw _privateConstructorUsedError;
-  String? get videoThumbnailUrl => throw _privateConstructorUsedError;
-  String? get videoTitle => throw _privateConstructorUsedError;
+  DateTime? get timestamp;
+  bool get isRead;
+  List<String> get recipients;
+  List<String> get readBy;
+  String? get gifUrl;
+  String get messageType;
+  bool get isDeviceGif; // Video share fields
+  String? get videoId;
+  String? get shareToken;
+  String? get videoThumbnailUrl;
+  String? get videoTitle;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $MessageCopyWith<Message> get copyWith => throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $MessageCopyWith<$Res> {
-  factory $MessageCopyWith(Message value, $Res Function(Message) then) =
-      _$MessageCopyWithImpl<$Res, Message>;
-  @useResult
-  $Res call(
-      {String? id,
-      String? chatId,
-      String text,
-      String from,
-      String to,
-      @TimestampConverter() DateTime? timestamp,
-      bool isRead,
-      List<String> recipients,
-      List<String> readBy,
-      String? gifUrl,
-      String messageType,
-      bool isDeviceGif,
-      String? videoId,
-      String? shareToken,
-      String? videoThumbnailUrl,
-      String? videoTitle});
-}
-
-/// @nodoc
-class _$MessageCopyWithImpl<$Res, $Val extends Message>
-    implements $MessageCopyWith<$Res> {
-  _$MessageCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of Message
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $MessageCopyWith<Message> get copyWith =>
+      _$MessageCopyWithImpl<Message>(this as Message, _$identity);
+
+  /// Serializes this Message to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? id = freezed,
-    Object? chatId = freezed,
-    Object? text = null,
-    Object? from = null,
-    Object? to = null,
-    Object? timestamp = freezed,
-    Object? isRead = null,
-    Object? recipients = null,
-    Object? readBy = null,
-    Object? gifUrl = freezed,
-    Object? messageType = null,
-    Object? isDeviceGif = null,
-    Object? videoId = freezed,
-    Object? shareToken = freezed,
-    Object? videoThumbnailUrl = freezed,
-    Object? videoTitle = freezed,
-  }) {
-    return _then(_value.copyWith(
-      id: freezed == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String?,
-      chatId: freezed == chatId
-          ? _value.chatId
-          : chatId // ignore: cast_nullable_to_non_nullable
-              as String?,
-      text: null == text
-          ? _value.text
-          : text // ignore: cast_nullable_to_non_nullable
-              as String,
-      from: null == from
-          ? _value.from
-          : from // ignore: cast_nullable_to_non_nullable
-              as String,
-      to: null == to
-          ? _value.to
-          : to // ignore: cast_nullable_to_non_nullable
-              as String,
-      timestamp: freezed == timestamp
-          ? _value.timestamp
-          : timestamp // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-      isRead: null == isRead
-          ? _value.isRead
-          : isRead // ignore: cast_nullable_to_non_nullable
-              as bool,
-      recipients: null == recipients
-          ? _value.recipients
-          : recipients // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      readBy: null == readBy
-          ? _value.readBy
-          : readBy // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      gifUrl: freezed == gifUrl
-          ? _value.gifUrl
-          : gifUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      messageType: null == messageType
-          ? _value.messageType
-          : messageType // ignore: cast_nullable_to_non_nullable
-              as String,
-      isDeviceGif: null == isDeviceGif
-          ? _value.isDeviceGif
-          : isDeviceGif // ignore: cast_nullable_to_non_nullable
-              as bool,
-      videoId: freezed == videoId
-          ? _value.videoId
-          : videoId // ignore: cast_nullable_to_non_nullable
-              as String?,
-      shareToken: freezed == shareToken
-          ? _value.shareToken
-          : shareToken // ignore: cast_nullable_to_non_nullable
-              as String?,
-      videoThumbnailUrl: freezed == videoThumbnailUrl
-          ? _value.videoThumbnailUrl
-          : videoThumbnailUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      videoTitle: freezed == videoTitle
-          ? _value.videoTitle
-          : videoTitle // ignore: cast_nullable_to_non_nullable
-              as String?,
-    ) as $Val);
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    properties
+      ..add(DiagnosticsProperty('type', 'Message'))
+      ..add(DiagnosticsProperty('id', id))
+      ..add(DiagnosticsProperty('chatId', chatId))
+      ..add(DiagnosticsProperty('text', text))
+      ..add(DiagnosticsProperty('from', from))
+      ..add(DiagnosticsProperty('to', to))
+      ..add(DiagnosticsProperty('timestamp', timestamp))
+      ..add(DiagnosticsProperty('isRead', isRead))
+      ..add(DiagnosticsProperty('recipients', recipients))
+      ..add(DiagnosticsProperty('readBy', readBy))
+      ..add(DiagnosticsProperty('gifUrl', gifUrl))
+      ..add(DiagnosticsProperty('messageType', messageType))
+      ..add(DiagnosticsProperty('isDeviceGif', isDeviceGif))
+      ..add(DiagnosticsProperty('videoId', videoId))
+      ..add(DiagnosticsProperty('shareToken', shareToken))
+      ..add(DiagnosticsProperty('videoThumbnailUrl', videoThumbnailUrl))
+      ..add(DiagnosticsProperty('videoTitle', videoTitle));
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is Message &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.chatId, chatId) || other.chatId == chatId) &&
+            (identical(other.text, text) || other.text == text) &&
+            (identical(other.from, from) || other.from == from) &&
+            (identical(other.to, to) || other.to == to) &&
+            (identical(other.timestamp, timestamp) ||
+                other.timestamp == timestamp) &&
+            (identical(other.isRead, isRead) || other.isRead == isRead) &&
+            const DeepCollectionEquality()
+                .equals(other.recipients, recipients) &&
+            const DeepCollectionEquality().equals(other.readBy, readBy) &&
+            (identical(other.gifUrl, gifUrl) || other.gifUrl == gifUrl) &&
+            (identical(other.messageType, messageType) ||
+                other.messageType == messageType) &&
+            (identical(other.isDeviceGif, isDeviceGif) ||
+                other.isDeviceGif == isDeviceGif) &&
+            (identical(other.videoId, videoId) || other.videoId == videoId) &&
+            (identical(other.shareToken, shareToken) ||
+                other.shareToken == shareToken) &&
+            (identical(other.videoThumbnailUrl, videoThumbnailUrl) ||
+                other.videoThumbnailUrl == videoThumbnailUrl) &&
+            (identical(other.videoTitle, videoTitle) ||
+                other.videoTitle == videoTitle));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      chatId,
+      text,
+      from,
+      to,
+      timestamp,
+      isRead,
+      const DeepCollectionEquality().hash(recipients),
+      const DeepCollectionEquality().hash(readBy),
+      gifUrl,
+      messageType,
+      isDeviceGif,
+      videoId,
+      shareToken,
+      videoThumbnailUrl,
+      videoTitle);
+
+  @override
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle)';
   }
 }
 
 /// @nodoc
-abstract class _$$MessageImplCopyWith<$Res> implements $MessageCopyWith<$Res> {
-  factory _$$MessageImplCopyWith(
-          _$MessageImpl value, $Res Function(_$MessageImpl) then) =
-      __$$MessageImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $MessageCopyWith<$Res> {
+  factory $MessageCopyWith(Message value, $Res Function(Message) _then) =
+      _$MessageCopyWithImpl;
   @useResult
   $Res call(
       {String? id,
@@ -194,13 +146,14 @@ abstract class _$$MessageImplCopyWith<$Res> implements $MessageCopyWith<$Res> {
 }
 
 /// @nodoc
-class __$$MessageImplCopyWithImpl<$Res>
-    extends _$MessageCopyWithImpl<$Res, _$MessageImpl>
-    implements _$$MessageImplCopyWith<$Res> {
-  __$$MessageImplCopyWithImpl(
-      _$MessageImpl _value, $Res Function(_$MessageImpl) _then)
-      : super(_value, _then);
+class _$MessageCopyWithImpl<$Res> implements $MessageCopyWith<$Res> {
+  _$MessageCopyWithImpl(this._self, this._then);
 
+  final Message _self;
+  final $Res Function(Message) _then;
+
+  /// Create a copy of Message
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -221,79 +174,331 @@ class __$$MessageImplCopyWithImpl<$Res>
     Object? videoThumbnailUrl = freezed,
     Object? videoTitle = freezed,
   }) {
-    return _then(_$MessageImpl(
+    return _then(_self.copyWith(
       id: freezed == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String?,
       chatId: freezed == chatId
-          ? _value.chatId
+          ? _self.chatId
           : chatId // ignore: cast_nullable_to_non_nullable
               as String?,
       text: null == text
-          ? _value.text
+          ? _self.text
           : text // ignore: cast_nullable_to_non_nullable
               as String,
       from: null == from
-          ? _value.from
+          ? _self.from
           : from // ignore: cast_nullable_to_non_nullable
               as String,
       to: null == to
-          ? _value.to
+          ? _self.to
           : to // ignore: cast_nullable_to_non_nullable
               as String,
       timestamp: freezed == timestamp
-          ? _value.timestamp
+          ? _self.timestamp
           : timestamp // ignore: cast_nullable_to_non_nullable
               as DateTime?,
       isRead: null == isRead
-          ? _value.isRead
+          ? _self.isRead
           : isRead // ignore: cast_nullable_to_non_nullable
               as bool,
       recipients: null == recipients
-          ? _value._recipients
+          ? _self.recipients
           : recipients // ignore: cast_nullable_to_non_nullable
               as List<String>,
       readBy: null == readBy
-          ? _value._readBy
+          ? _self.readBy
           : readBy // ignore: cast_nullable_to_non_nullable
               as List<String>,
       gifUrl: freezed == gifUrl
-          ? _value.gifUrl
+          ? _self.gifUrl
           : gifUrl // ignore: cast_nullable_to_non_nullable
               as String?,
       messageType: null == messageType
-          ? _value.messageType
+          ? _self.messageType
           : messageType // ignore: cast_nullable_to_non_nullable
               as String,
       isDeviceGif: null == isDeviceGif
-          ? _value.isDeviceGif
+          ? _self.isDeviceGif
           : isDeviceGif // ignore: cast_nullable_to_non_nullable
               as bool,
       videoId: freezed == videoId
-          ? _value.videoId
+          ? _self.videoId
           : videoId // ignore: cast_nullable_to_non_nullable
               as String?,
       shareToken: freezed == shareToken
-          ? _value.shareToken
+          ? _self.shareToken
           : shareToken // ignore: cast_nullable_to_non_nullable
               as String?,
       videoThumbnailUrl: freezed == videoThumbnailUrl
-          ? _value.videoThumbnailUrl
+          ? _self.videoThumbnailUrl
           : videoThumbnailUrl // ignore: cast_nullable_to_non_nullable
               as String?,
       videoTitle: freezed == videoTitle
-          ? _value.videoTitle
+          ? _self.videoTitle
           : videoTitle // ignore: cast_nullable_to_non_nullable
               as String?,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [Message].
+extension MessagePatterns on Message {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_Message value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Message() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_Message value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Message():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_Message value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Message() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String? id,
+            String? chatId,
+            String text,
+            String from,
+            String to,
+            @TimestampConverter() DateTime? timestamp,
+            bool isRead,
+            List<String> recipients,
+            List<String> readBy,
+            String? gifUrl,
+            String messageType,
+            bool isDeviceGif,
+            String? videoId,
+            String? shareToken,
+            String? videoThumbnailUrl,
+            String? videoTitle)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Message() when $default != null:
+        return $default(
+            _that.id,
+            _that.chatId,
+            _that.text,
+            _that.from,
+            _that.to,
+            _that.timestamp,
+            _that.isRead,
+            _that.recipients,
+            _that.readBy,
+            _that.gifUrl,
+            _that.messageType,
+            _that.isDeviceGif,
+            _that.videoId,
+            _that.shareToken,
+            _that.videoThumbnailUrl,
+            _that.videoTitle);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String? id,
+            String? chatId,
+            String text,
+            String from,
+            String to,
+            @TimestampConverter() DateTime? timestamp,
+            bool isRead,
+            List<String> recipients,
+            List<String> readBy,
+            String? gifUrl,
+            String messageType,
+            bool isDeviceGif,
+            String? videoId,
+            String? shareToken,
+            String? videoThumbnailUrl,
+            String? videoTitle)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Message():
+        return $default(
+            _that.id,
+            _that.chatId,
+            _that.text,
+            _that.from,
+            _that.to,
+            _that.timestamp,
+            _that.isRead,
+            _that.recipients,
+            _that.readBy,
+            _that.gifUrl,
+            _that.messageType,
+            _that.isDeviceGif,
+            _that.videoId,
+            _that.shareToken,
+            _that.videoThumbnailUrl,
+            _that.videoTitle);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String? id,
+            String? chatId,
+            String text,
+            String from,
+            String to,
+            @TimestampConverter() DateTime? timestamp,
+            bool isRead,
+            List<String> recipients,
+            List<String> readBy,
+            String? gifUrl,
+            String messageType,
+            bool isDeviceGif,
+            String? videoId,
+            String? shareToken,
+            String? videoThumbnailUrl,
+            String? videoTitle)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Message() when $default != null:
+        return $default(
+            _that.id,
+            _that.chatId,
+            _that.text,
+            _that.from,
+            _that.to,
+            _that.timestamp,
+            _that.isRead,
+            _that.recipients,
+            _that.readBy,
+            _that.gifUrl,
+            _that.messageType,
+            _that.isDeviceGif,
+            _that.videoId,
+            _that.shareToken,
+            _that.videoThumbnailUrl,
+            _that.videoTitle);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
-  const _$MessageImpl(
+class _Message with DiagnosticableTreeMixin implements Message {
+  const _Message(
       {this.id,
       this.chatId,
       this.text = '',
@@ -312,9 +517,8 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
       this.videoTitle})
       : _recipients = recipients,
         _readBy = readBy;
-
-  factory _$MessageImpl.fromJson(Map<String, dynamic> json) =>
-      _$$MessageImplFromJson(json);
+  factory _Message.fromJson(Map<String, dynamic> json) =>
+      _$MessageFromJson(json);
 
   @override
   final String? id;
@@ -371,14 +575,23 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
   @override
   final String? videoTitle;
 
+  /// Create a copy of Message
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$MessageCopyWith<_Message> get copyWith =>
+      __$MessageCopyWithImpl<_Message>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$MessageToJson(
+      this,
+    );
   }
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
     properties
       ..add(DiagnosticsProperty('type', 'Message'))
       ..add(DiagnosticsProperty('id', id))
@@ -403,7 +616,7 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$MessageImpl &&
+            other is _Message &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.chatId, chatId) || other.chatId == chatId) &&
             (identical(other.text, text) || other.text == text) &&
@@ -429,7 +642,7 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
                 other.videoTitle == videoTitle));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType,
@@ -450,76 +663,133 @@ class _$MessageImpl with DiagnosticableTreeMixin implements _Message {
       videoThumbnailUrl,
       videoTitle);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$MessageImplCopyWith<_$MessageImpl> get copyWith =>
-      __$$MessageImplCopyWithImpl<_$MessageImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$MessageImplToJson(
-      this,
-    );
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return 'Message(id: $id, chatId: $chatId, text: $text, from: $from, to: $to, timestamp: $timestamp, isRead: $isRead, recipients: $recipients, readBy: $readBy, gifUrl: $gifUrl, messageType: $messageType, isDeviceGif: $isDeviceGif, videoId: $videoId, shareToken: $shareToken, videoThumbnailUrl: $videoThumbnailUrl, videoTitle: $videoTitle)';
   }
 }
 
-abstract class _Message implements Message {
-  const factory _Message(
-      {final String? id,
-      final String? chatId,
-      final String text,
-      final String from,
-      final String to,
-      @TimestampConverter() final DateTime? timestamp,
-      final bool isRead,
-      final List<String> recipients,
-      final List<String> readBy,
-      final String? gifUrl,
-      final String messageType,
-      final bool isDeviceGif,
-      final String? videoId,
-      final String? shareToken,
-      final String? videoThumbnailUrl,
-      final String? videoTitle}) = _$MessageImpl;
-
-  factory _Message.fromJson(Map<String, dynamic> json) = _$MessageImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$MessageCopyWith<$Res> implements $MessageCopyWith<$Res> {
+  factory _$MessageCopyWith(_Message value, $Res Function(_Message) _then) =
+      __$MessageCopyWithImpl;
   @override
-  String? get id;
-  @override
-  String? get chatId;
-  @override
-  String get text;
-  @override
-  String get from;
-  @override
-  String get to;
-  @override
-  @TimestampConverter()
-  DateTime? get timestamp;
-  @override
-  bool get isRead;
-  @override
-  List<String> get recipients;
-  @override
-  List<String> get readBy;
-  @override
-  String? get gifUrl;
-  @override
-  String get messageType;
-  @override
-  bool get isDeviceGif;
-  @override // Video share fields
-  String? get videoId;
-  @override
-  String? get shareToken;
-  @override
-  String? get videoThumbnailUrl;
-  @override
-  String? get videoTitle;
-  @override
-  @JsonKey(ignore: true)
-  _$$MessageImplCopyWith<_$MessageImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String? id,
+      String? chatId,
+      String text,
+      String from,
+      String to,
+      @TimestampConverter() DateTime? timestamp,
+      bool isRead,
+      List<String> recipients,
+      List<String> readBy,
+      String? gifUrl,
+      String messageType,
+      bool isDeviceGif,
+      String? videoId,
+      String? shareToken,
+      String? videoThumbnailUrl,
+      String? videoTitle});
 }
+
+/// @nodoc
+class __$MessageCopyWithImpl<$Res> implements _$MessageCopyWith<$Res> {
+  __$MessageCopyWithImpl(this._self, this._then);
+
+  final _Message _self;
+  final $Res Function(_Message) _then;
+
+  /// Create a copy of Message
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = freezed,
+    Object? chatId = freezed,
+    Object? text = null,
+    Object? from = null,
+    Object? to = null,
+    Object? timestamp = freezed,
+    Object? isRead = null,
+    Object? recipients = null,
+    Object? readBy = null,
+    Object? gifUrl = freezed,
+    Object? messageType = null,
+    Object? isDeviceGif = null,
+    Object? videoId = freezed,
+    Object? shareToken = freezed,
+    Object? videoThumbnailUrl = freezed,
+    Object? videoTitle = freezed,
+  }) {
+    return _then(_Message(
+      id: freezed == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String?,
+      chatId: freezed == chatId
+          ? _self.chatId
+          : chatId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      text: null == text
+          ? _self.text
+          : text // ignore: cast_nullable_to_non_nullable
+              as String,
+      from: null == from
+          ? _self.from
+          : from // ignore: cast_nullable_to_non_nullable
+              as String,
+      to: null == to
+          ? _self.to
+          : to // ignore: cast_nullable_to_non_nullable
+              as String,
+      timestamp: freezed == timestamp
+          ? _self.timestamp
+          : timestamp // ignore: cast_nullable_to_non_nullable
+              as DateTime?,
+      isRead: null == isRead
+          ? _self.isRead
+          : isRead // ignore: cast_nullable_to_non_nullable
+              as bool,
+      recipients: null == recipients
+          ? _self._recipients
+          : recipients // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      readBy: null == readBy
+          ? _self._readBy
+          : readBy // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      gifUrl: freezed == gifUrl
+          ? _self.gifUrl
+          : gifUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      messageType: null == messageType
+          ? _self.messageType
+          : messageType // ignore: cast_nullable_to_non_nullable
+              as String,
+      isDeviceGif: null == isDeviceGif
+          ? _self.isDeviceGif
+          : isDeviceGif // ignore: cast_nullable_to_non_nullable
+              as bool,
+      videoId: freezed == videoId
+          ? _self.videoId
+          : videoId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      shareToken: freezed == shareToken
+          ? _self.shareToken
+          : shareToken // ignore: cast_nullable_to_non_nullable
+              as String?,
+      videoThumbnailUrl: freezed == videoThumbnailUrl
+          ? _self.videoThumbnailUrl
+          : videoThumbnailUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      videoTitle: freezed == videoTitle
+          ? _self.videoTitle
+          : videoTitle // ignore: cast_nullable_to_non_nullable
+              as String?,
+    ));
+  }
+}
+
+// dart format on

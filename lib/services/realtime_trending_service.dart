@@ -136,6 +136,10 @@ class RealtimeTrendingService {
 
       return snapshot.docs.length;
     } catch (e) {
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return 0;
+      }
       log('❌ Error getting engagement count: $e');
       return 0;
     }
@@ -205,6 +209,10 @@ class RealtimeTrendingService {
       // Trending if >10 users from same location engaged
       return snapshot.docs.length >= 10;
     } catch (e) {
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return false;
+      }
       log('❌ Error checking geo trending: $e');
       return false;
     }
@@ -228,36 +236,16 @@ class RealtimeTrendingService {
 
       if (connectionIds.isEmpty) return [];
 
-      // Get videos engaged by connections in last 24 hours
-      final cutoff = DateTime.now().subtract(const Duration(hours: 24));
-      final Map<String, int> videoEngagementCounts = {};
-
-      for (int i = 0; i < connectionIds.length; i += 10) {
-        final chunk = connectionIds.skip(i).take(10).toList();
-
-        final engagementSnapshot = await _firestore
-            .collection('engagement')
-            .where('userId', whereIn: chunk)
-            .where('lastUpdated', isGreaterThan: Timestamp.fromDate(cutoff))
-            .where('engagementScore', isGreaterThan: 10.0)
-            .get();
-
-        for (final doc in engagementSnapshot.docs) {
-          final videoId = doc.data()['videoId'] as String;
-          videoEngagementCounts[videoId] =
-              (videoEngagementCounts[videoId] ?? 0) + 1;
-        }
-      }
-
-      // Sort by engagement count and return top videos
-      final trending = videoEngagementCounts.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-
-      final trendingVideoIds = trending.take(limit).map((e) => e.key).toList();
-
-      log('🔥 Found ${trendingVideoIds.length} trending videos in network');
-
-      return trendingVideoIds;
+      // ✅ FIX: Client-side engagement queries are not allowed (requires complex indexes + violates security)
+      // This should be computed server-side and exposed via public aggregates
+      // TODO: Move to server-side (Cloud Functions)
+      // Server should:
+      // 1. Compute trending videos based on engagement (server-side only)
+      // 2. Store results in: trending_network/{userId} or public_trending/{timeWindow}
+      // 3. Client reads only pre-computed results
+      
+      log('⚠️ Trending in network: Feature disabled (should be server-side)');
+      return [];
     } catch (e) {
       log('❌ Error getting trending in network: $e');
       return [];

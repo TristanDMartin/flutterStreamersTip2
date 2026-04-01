@@ -41,7 +41,12 @@ class SupportTicketsNotifier extends StateNotifier<SupportTicketsState> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   void _listenToTickets() {
-    _db.collection('support_tickets').snapshots().listen((snapshot) {
+    _db
+        .collection('support_tickets')
+        .orderBy(FieldPath.documentId)
+        .limit(500)
+        .snapshots()
+        .listen((snapshot) {
       final tickets = snapshot.docs;
 
       int pending = 0;

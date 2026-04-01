@@ -18,6 +18,8 @@ class PostCounterService {
   static const List<String> _countableStatuses = [
     'published',
     'public',
+    'ready',
+    'active',
   ];
 
   static const List<String> _excludedStatuses = [

@@ -1,23 +1,43 @@
 import 'package:flutter/material.dart';
+import 'about_view.dart';
 import 'blocked_accounts_view.dart';
-import '../widgets/video_categorization_screen.dart';
-import '../widgets/two_factor_settings_view.dart';
+import 'linked_platforms_view.dart';
+import 'community_guidelines_view.dart';
+import 'content_preferences_view.dart';
 import 'manage_account_view.dart';
-import 'privacy_settings_view.dart';
 import 'mentions_tags_view.dart';
 import 'notifications_view.dart';
-import 'content_preferences_view.dart';
+import 'privacy_settings_view.dart';
+import 'contact_support_view.dart';
+import 'safety_center_view.dart';
+import 'terms_and_privacy_view.dart';
+import '../widgets/two_factor_settings_view.dart';
+import '../widgets/video_categorization_screen.dart';
 
 class SettingsView extends StatefulWidget {
-  const SettingsView({super.key});
+  const SettingsView({
+    super.key,
+    this.initialSearchQuery,
+  });
+
+  final String? initialSearchQuery;
 
   @override
   State<SettingsView> createState() => _SettingsViewState();
 }
 
 class _SettingsViewState extends State<SettingsView> {
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
+  late final TextEditingController _searchController;
+  late String _searchQuery;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchQuery = widget.initialSearchQuery?.toLowerCase() ?? '';
+    _searchController = TextEditingController(
+      text: widget.initialSearchQuery ?? '',
+    );
+  }
 
   @override
   void dispose() {
@@ -63,6 +83,13 @@ class _SettingsViewState extends State<SettingsView> {
                             subtitle: 'Phone, email, password',
                             onTap: () =>
                                 _navigateToPage(context, 'Manage Account'),
+                          ),
+                          _buildSettingsItem(
+                            icon: Icons.link,
+                            title: 'Linked Platforms',
+                            subtitle: 'Reconnect YouTube, TikTok, Instagram, and more',
+                            onTap: () =>
+                                _navigateToPage(context, 'Linked Platforms'),
                           ),
                         ],
                       ),
@@ -407,6 +434,13 @@ class _SettingsViewState extends State<SettingsView> {
           ),
         );
         return;
+      case 'Linked Platforms':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const LinkedPlatformsView(),
+          ),
+        );
+        return;
       case 'Blocked Accounts':
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -449,64 +483,48 @@ class _SettingsViewState extends State<SettingsView> {
           ),
         );
         return;
-      default:
+      case 'Report a Problem':
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => _PlaceholderPage(title: pageName),
+            builder: (context) => const ContactSupportView(),
+          ),
+        );
+        return;
+      case 'Safety Center':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const SafetyCenterView(),
+          ),
+        );
+        return;
+      case 'Community Guidelines':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const CommunityGuidelinesView(),
+          ),
+        );
+        return;
+      case 'Terms & Privacy Policy':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const TermsAndPrivacyView(),
+          ),
+        );
+        return;
+      case 'About':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const AboutView(),
+          ),
+        );
+        return;
+      default:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$pageName is not available yet.'),
           ),
         );
         break;
     }
-  }
-}
-
-// Placeholder page for settings subsections
-class _PlaceholderPage extends StatelessWidget {
-  final String title;
-
-  const _PlaceholderPage({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0E1220),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0E1220),
-        title: Text(
-          title,
-          style: const TextStyle(color: Colors.white),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.construction,
-              color: Colors.white.withValues(alpha: 0.5),
-              size: 64,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'This page will be implemented here',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

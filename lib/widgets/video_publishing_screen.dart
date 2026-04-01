@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:math';
 import '../services/video_upload_service.dart';
-import '../services/video_service.dart';
 import '../services/local_draft_service.dart';
-import '../models/user.dart' as user_model;
-import '../models/home_video.dart';
-import '../providers/home_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/video_moderation_service.dart';
 import '../services/enhanced_error_handling_service.dart';
@@ -20,8 +18,15 @@ import '../widgets/schedule_post_widget.dart';
 import '../models/scheduled_post.dart';
 import '../services/firebase_ios_service.dart';
 import '../services/network_connectivity_service.dart';
-import '../services/firestore_scheduled_post_service.dart';
 import '../services/video_processing_service.dart';
+import '../services/upload_status_manager.dart';
+import '../services/cross_post_service.dart';
+import '../providers/publish_provider.dart';
+import '../providers/feed_state_provider.dart';
+import '../providers/video_service_provider.dart' as video_providers;
+import '../routing/app_navigator.dart';
+import '../widgets/platform_row.dart';
+import '../constants/app_colors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:developer' as developer;
@@ -30,9 +35,27 @@ import 'dart:developer' as developer;
 class _VideoPublishingConstants {
   static const int maxCaptionLength = 500;
   static const int maxFileSizeMB = 500;
-  static const int minFileSizeBytes = 1024; // 1KB minimum
+  static const int minFileSizeBytes = 1024;
   static const double minVideoDurationSeconds = 1.0;
-  static const double maxVideoDurationSeconds = 300.0; // 5 minutes
+  static const double maxVideoDurationSeconds = 300.0;
+  static const int minResolutionHeight = 480;
+
+  static const List<String> allowedExtensions = ['mp4', 'mov', 'webm'];
+
+  // Spec-exact error messages
+  static const String errorFileType =
+      'Please upload an MP4, MOV, or WebM file.';
+  static const String errorFileSize =
+      'File exceeds the 500MB limit. Please compress and retry.';
+  static const String errorDuration =
+      'Videos must be between 1 second and 5 minutes.';
+  static const String errorResolution =
+      'Video resolution is too low. Minimum 480p required.';
+  static const String errorCaption =
+      'Please add a caption before publishing.';
+  static const String errorCategory = 'Please select a category.';
+  static const String warningAspectRatio =
+      'Vertical video (9:16) performs best in the feed.';
 }
 
 class VideoPublishingScreen extends ConsumerStatefulWidget {
@@ -176,23 +199,41 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   String _caption = '';
   List<String> _hashtags = [];
   String _selectedPrivacy = 'Everyone';
-  String _selectedCategory = 'gaming'; // Default to gaming
-  final bool _allowComments = true;
+  String _selectedCategory = 'gaming'; // has default; user can change
+  bool _allowComments = true;
   bool _isUploading = false;
   double _uploadProgress = 0.0;
+  String? _aspectRatioWarning;
+  bool _aspectRatioWarningDismissed = false;
+
+  // Thumbnail state
+  double _thumbnailTimeSeconds = 0.0;
+  bool _isCustomThumbnail = false;
+  File? _customThumbnailFile;
+  Uint8List? _frameThumbBytes;
+  bool _isGeneratingThumb = false;
   bool _isModerating = false;
+  bool _showThumbnailOptions = false;
+  bool _showPrivacyOptions = false;
+  bool _showCrossPostOptions = false;
+  bool _showScheduleOptions = false;
   final Set<String> _selectedPlatforms = <String>{};
   PostSchedule? _schedule;
-  final VideoUploadService _uploadService = VideoUploadService();
+
+  // Cross-posting state
+  /// Platforms from user's profile (display-linked, shown for cross-posting).
+  List<({String name, IconData icon, Color color})> _connectedPlatforms = [];
+  /// Which platform toggles are ON (default: all OFF per spec #7).
+  final Map<String, bool> _platformEnabled = {};
+  /// Per-platform caption (pre-filled from main caption, independently editable).
+  final Map<String, String> _platformCaptions = {};
+
   final VideoModerationService _moderationService = VideoModerationService();
   final EnhancedErrorHandlingService _errorHandler =
       EnhancedErrorHandlingService();
   final VideoWatermarkService _watermarkService = VideoWatermarkService();
   final OptimisticVideoService _optimisticVideoService =
       OptimisticVideoService();
-  final FirestoreScheduledPostService _scheduledPostService =
-      FirestoreScheduledPostService();
-
   // Text controllers
   late TextEditingController _captionController;
 
@@ -213,12 +254,99 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     _scrollController.addListener(_onScroll);
 
     _initializeVideo();
+    _loadConnectedPlatforms();
+  }
+
+  Future<void> _loadConnectedPlatforms() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      final raw = doc.data()?['platforms'];
+      if (raw is! List || raw.isEmpty) return;
+      final loaded = raw
+          .whereType<Map<String, dynamic>>()
+          .map((p) {
+            final typeStr = p['type'] as String? ?? '';
+            final icon = _iconForType(typeStr);
+            final color = _colorForType(typeStr);
+            final name = _displayNameForType(typeStr);
+            return (name: name, icon: icon, color: color);
+          })
+          .where((p) => p.name.isNotEmpty)
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _connectedPlatforms = loaded;
+        for (final p in loaded) {
+          _platformEnabled[p.name] = false; // Default OFF (spec #7)
+          _platformCaptions[p.name] = _caption;
+        }
+      });
+    } catch (_) {
+      // No platforms available — section hidden
+    }
+  }
+
+  IconData _iconForType(String type) {
+    switch (type.toLowerCase()) {
+      case 'youtube': return Icons.play_circle;
+      case 'tiktok': return Icons.music_note;
+      case 'instagram': return Icons.camera_alt;
+      case 'twitch': return Icons.live_tv;
+      case 'kick': return Icons.sports_esports;
+      case 'twitter': return Icons.alternate_email;
+      case 'facebook': return Icons.facebook;
+      case 'bluesky': return Icons.cloud;
+      case 'reddit': return Icons.note;
+      default: return Icons.link;
+    }
+  }
+
+  Color _colorForType(String type) {
+    switch (type.toLowerCase()) {
+      case 'youtube': return const Color(0xFFFF0000);
+      case 'tiktok': return const Color(0xFF69C9D0);
+      case 'instagram': return const Color(0xFFE4405F);
+      case 'twitch': return const Color(0xFF9146FF);
+      case 'kick': return const Color(0xFF53FC18);
+      case 'twitter': return const Color(0xFF1DA1F2);
+      case 'facebook': return const Color(0xFF1877F2);
+      case 'bluesky': return const Color(0xFF00A2FF);
+      case 'reddit': return const Color(0xFFFF6B6B);
+      default: return Colors.grey;
+    }
+  }
+
+  String _displayNameForType(String type) {
+    switch (type.toLowerCase()) {
+      case 'youtube': return 'YouTube';
+      case 'tiktok': return 'TikTok';
+      case 'instagram': return 'Instagram';
+      case 'twitch': return 'Twitch';
+      case 'kick': return 'Kick';
+      case 'twitter': return 'Twitter';
+      case 'facebook': return 'Facebook';
+      case 'bluesky': return 'Bluesky';
+      case 'reddit': return 'Reddit';
+      default: return '';
+    }
   }
 
   void _onCaptionChanged() {
+    final newCaption = _captionController.text;
     setState(() {
-      _caption = _captionController.text;
-      _captionCharacterCount = _caption.length;
+      _caption = newCaption;
+      _captionCharacterCount = newCaption.length;
+      // Sync captions for platforms that haven't been manually edited.
+      for (final p in _connectedPlatforms) {
+        if (!(_platformEnabled[p.name] ?? false)) {
+          _platformCaptions[p.name] = newCaption;
+        }
+      }
     });
   }
 
@@ -236,23 +364,35 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
   Future<void> _initializeVideo() async {
     try {
-      // Validate file exists and is readable
       if (!await widget.videoFile.exists()) {
         throw Exception('Video file does not exist');
       }
 
+      // Rule 1: File type
+      final extension =
+          widget.videoFile.path.split('.').last.toLowerCase();
+      if (!_VideoPublishingConstants.allowedExtensions.contains(extension)) {
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _initializationError =
+                _VideoPublishingConstants.errorFileType;
+          });
+        }
+        return;
+      }
+
+      // Rule 2: File size
       final fileSize = await widget.videoFile.length();
       if (fileSize < _VideoPublishingConstants.minFileSizeBytes) {
         throw Exception('Video file is too small or corrupted');
       }
-
       final fileSizeMB = fileSize / (1024 * 1024);
       if (fileSizeMB > _VideoPublishingConstants.maxFileSizeMB) {
         if (mounted) {
           setState(() {
             _hasError = true;
-            _initializationError =
-                'Video file is too large (${fileSizeMB.toStringAsFixed(1)}MB). Maximum size is ${_VideoPublishingConstants.maxFileSizeMB}MB.';
+            _initializationError = _VideoPublishingConstants.errorFileSize;
           });
         }
         return;
@@ -261,18 +401,48 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       _controller = VideoPlayerController.file(widget.videoFile);
       await _controller.initialize();
 
-      // Validate video duration
+      // Rule 3: Duration
       _videoDuration = _controller.value.duration;
       final durationSeconds = _videoDuration!.inSeconds.toDouble();
-      
-      if (durationSeconds < _VideoPublishingConstants.minVideoDurationSeconds) {
+      if (durationSeconds < _VideoPublishingConstants.minVideoDurationSeconds ||
+          durationSeconds > _VideoPublishingConstants.maxVideoDurationSeconds) {
         await _controller.dispose();
-        throw Exception('Video is too short (minimum 1 second)');
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _initializationError = _VideoPublishingConstants.errorDuration;
+          });
+        }
+        return;
       }
-      
-      if (durationSeconds > _VideoPublishingConstants.maxVideoDurationSeconds) {
+
+      // Rule 4: Resolution minimum (480p = shortest side ≥ 480)
+      final videoSize = _controller.value.size;
+      final shortSide = videoSize.height < videoSize.width
+          ? videoSize.height
+          : videoSize.width;
+      if (shortSide > 0 &&
+          shortSide < _VideoPublishingConstants.minResolutionHeight) {
         await _controller.dispose();
-        throw Exception('Video is too long (maximum 5 minutes)');
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _initializationError =
+                _VideoPublishingConstants.errorResolution;
+          });
+        }
+        return;
+      }
+
+      // Rule 5: Aspect ratio — non-blocking warning
+      String? arWarning;
+      if (videoSize.height > 0) {
+        final ar = videoSize.width / videoSize.height;
+        const preferredAr = 9.0 / 16.0; // ~0.5625
+        const tolerance = 0.08;
+        if ((ar - preferredAr).abs() > tolerance) {
+          arWarning = _VideoPublishingConstants.warningAspectRatio;
+        }
       }
 
       if (mounted) {
@@ -280,6 +450,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           _isInitialized = true;
           _hasError = false;
           _initializationError = null;
+          _aspectRatioWarning = arWarning;
+          _aspectRatioWarningDismissed = false;
         });
       }
     } catch (e) {
@@ -287,12 +459,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           name: 'VideoPublishingScreen');
       if (mounted) {
         setState(() {
-          _isInitialized = true; // Set to true to show error UI
+          _isInitialized = true;
           _hasError = true;
           _initializationError = e.toString().replaceAll('Exception: ', '');
         });
       }
-      // Don't dispose controller here as it might not be initialized
     }
   }
 
@@ -376,72 +547,342 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     });
   }
 
+  Future<void> _generateFrameThumb(double timeSeconds) async {
+    if (!_isInitialized || _isGeneratingThumb) return;
+    setState(() => _isGeneratingThumb = true);
+    try {
+      await _controller.seekTo(
+        Duration(milliseconds: (timeSeconds * 1000).round()),
+      );
+      await _controller.pause();
+      setState(() => _isPlaying = false);
+      final bytes = await VideoThumbnail.thumbnailData(
+        video: widget.videoFile.path,
+        imageFormat: ImageFormat.JPEG,
+        timeMs: (timeSeconds * 1000).round(),
+        quality: 75,
+      );
+      if (mounted) {
+        setState(() {
+          _frameThumbBytes = bytes;
+          _thumbnailTimeSeconds = timeSeconds;
+          _isCustomThumbnail = false;
+          _customThumbnailFile = null;
+        });
+      }
+    } catch (_) {
+      // Silently fail — the Mux default thumbnail is still used
+    } finally {
+      if (mounted) setState(() => _isGeneratingThumb = false);
+    }
+  }
+
+  String _selectedCategoryName() {
+    return _categories
+            .firstWhere(
+              (category) => category.id == _selectedCategory,
+              orElse: () => _categories.first,
+            )
+            .name;
+  }
+
+  String _friendlyUploadStatusMessage() {
+    final raw = UploadStatusManager().currentStatusMessage.trim();
+    if (raw.isNotEmpty) {
+      final lower = raw.toLowerCase();
+      if (lower.contains('preparing')) return 'Preparing your post...';
+      if (lower.contains('transcod')) return 'Finishing your video...';
+      if (lower.contains('processing')) return 'Getting your post ready...';
+      if (lower.contains('upload')) {
+        return 'Uploading your video ${(_uploadProgress * 100).toInt()}%';
+      }
+      return raw;
+    }
+
+    if (_uploadProgress > 0) {
+      return 'Uploading your video ${(_uploadProgress * 100).toInt()}%';
+    }
+
+    return 'Getting your post ready...';
+  }
+
+  Future<void> _pickThumbnailFromGallery() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _customThumbnailFile = File(picked.path);
+      _isCustomThumbnail = true;
+      _frameThumbBytes = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.supportBackground,
       resizeToAvoidBottomInset: true,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+      body: Column(
+        children: [
+          // Header
+          _buildHeader(),
+
+          // Video Player Area (collapsible on scroll)
+          Expanded(
+            flex: _videoFlex.round(),
+            child: _buildVideoPreview(),
           ),
-        ),
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(),
 
-            // Video Player Area (collapsible on scroll)
-            Expanded(
-              flex: _videoFlex.round(),
-              child: _buildVideoPreview(),
-            ),
+          // Content
+          Expanded(
+            flex: (7 - _videoFlex).round().clamp(3, 6),
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
 
-            // Content
-            Expanded(
-              flex: (7 - _videoFlex).round().clamp(3, 6),
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 20),
-
-                    // Category Selection
-                    _buildCategorySection(),
-
-                    const SizedBox(height: 20),
-
-                    // Caption Section
-                    _buildCaptionSection(),
-
-                    const SizedBox(height: 20),
-
-                    // Privacy Settings
-                    _buildPrivacySection(),
-
-                    const SizedBox(height: 20),
-
-                    // Schedule Post
-                    _buildSchedulePostSection(),
-
-                    // Cross-Platform Sharing - Hidden for now
-                    // _buildSharingSection(),
-
-                    const SizedBox(
-                        height: 120), // Space for bottom buttons with safe area
+                  // Aspect ratio warning (non-blocking)
+                  if (_aspectRatioWarning != null &&
+                      !_aspectRatioWarningDismissed) ...[
+                    _AspectRatioWarningBanner(
+                      message: _aspectRatioWarning!,
+                      onDismiss: () => setState(
+                          () => _aspectRatioWarningDismissed = true),
+                    ),
+                    const SizedBox(height: 12),
                   ],
-                ),
+
+                  // Caption (most important — first)
+                  _buildCaptionSection(),
+
+                  const SizedBox(height: 20),
+
+                  // Category chips
+                  _buildCategorySection(),
+
+                  const SizedBox(height: 20),
+
+                  _buildComposerGuidance(),
+
+                  const SizedBox(height: 20),
+
+                  _buildExpandableSection(
+                    icon: Icons.image_outlined,
+                    title: 'Thumbnail',
+                    subtitle: _isCustomThumbnail
+                        ? 'Custom image selected'
+                        : _thumbnailTimeSeconds > 0
+                            ? 'Frame chosen at ${_thumbnailTimeSeconds.toStringAsFixed(1)}s'
+                            : 'Optional cover image',
+                    isExpanded: _showThumbnailOptions,
+                    onToggle: () => setState(
+                      () => _showThumbnailOptions = !_showThumbnailOptions,
+                    ),
+                    child: _buildThumbnailSection(),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildExpandableSection(
+                    icon: Icons.lock_outline,
+                    title: 'Privacy & comments',
+                    subtitle:
+                        '$_selectedPrivacy · comments ${_allowComments ? 'on' : 'off'}',
+                    isExpanded: _showPrivacyOptions,
+                    onToggle: () => setState(
+                      () => _showPrivacyOptions = !_showPrivacyOptions,
+                    ),
+                    child: _buildPrivacySection(),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildExpandableSection(
+                    icon: Icons.share_outlined,
+                    title: 'Cross-posting',
+                    subtitle: _connectedPlatforms.isEmpty
+                        ? 'No linked platforms yet'
+                        : _platformEnabled.values.any((v) => v)
+                            ? '${_platformEnabled.values.where((v) => v).length} platform${_platformEnabled.values.where((v) => v).length == 1 ? '' : 's'} selected'
+                            : 'Optional: also share to linked platforms',
+                    isExpanded: _showCrossPostOptions,
+                    onToggle: () => setState(
+                      () => _showCrossPostOptions = !_showCrossPostOptions,
+                    ),
+                    child: _connectedPlatforms.isNotEmpty
+                        ? _buildPlatformSelectorSection()
+                        : _buildConnectPlatformsHint(),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildExpandableSection(
+                    icon: Icons.schedule_outlined,
+                    title: 'Schedule',
+                    subtitle: _schedule == null
+                        ? 'Optional: publish later'
+                        : 'Post scheduled',
+                    isExpanded: _showScheduleOptions,
+                    onToggle: () => setState(
+                      () => _showScheduleOptions = !_showScheduleOptions,
+                    ),
+                    child: _buildSchedulePostSection(),
+                  ),
+
+                  const SizedBox(
+                      height: 120), // Space for bottom actions
+                ],
               ),
             ),
+          ),
 
-            // Bottom Actions
-            _buildBottomActions(),
-          ],
+          // Bottom Actions
+          _buildBottomActions(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComposerGuidance() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
         ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.auto_awesome_outlined,
+            color: Color(0xFF9248D2),
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Start with the basics: add a caption, pick a category, then publish. Everything below is optional.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.82),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpandableSection({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool isExpanded,
+    required VoidCallback onToggle,
+    required Widget child,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.62),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: Colors.white.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded)
+            Container(
+              height: 1,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              color: Colors.white.withValues(alpha: 0.06),
+            ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 220),
+            crossFadeState: isExpanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: child,
+            ),
+            secondChild: const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }
@@ -449,89 +890,73 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   Widget _buildHeader() {
     return Container(
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 8,
-        left: 16,
-        right: 16,
-        bottom: 16,
+        top: MediaQuery.of(context).padding.top + 4,
+        left: 8,
+        right: 8,
+        bottom: 8,
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () {
+          // Back
+          IconButton(
+            onPressed: () {
               HapticFeedback.lightImpact();
               widget.onCancel();
             },
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  width: 1,
-                ),
-              ),
-              child: const Icon(
-                Icons.arrow_back,
-                color: Colors.white,
-                size: 24,
-              ),
+            icon: const Icon(Icons.close, color: Colors.white, size: 22),
+          ),
+          const Expanded(
+            child: Text(
+              'New Post',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600),
             ),
           ),
-          const SizedBox(width: 16),
-          const Text(
-            'Publish Video',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const Spacer(),
+          // Draft / status
           if (_isModerating)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.orange,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox(
+                  width: 12, height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.orange),
                   ),
-                  SizedBox(width: 8),
-                  Text(
-                    'Moderating...',
+                ),
+                const SizedBox(width: 6),
+                const Text('Checking…',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
+                        color: Colors.orange,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500)),
+              ]),
             )
           else if (_isUploading)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF9248D2),
-                borderRadius: BorderRadius.circular(16),
-              ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
               child: Text(
                 '${(_uploadProgress * 100).toInt()}%',
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                    color: Color(0xFF9248D2),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700),
+              ),
+            )
+          else
+            TextButton(
+              onPressed: _hasError ? null : _saveAsDraft,
+              child: Text(
+                'Draft',
+                style: TextStyle(
+                  color: _hasError
+                      ? Colors.white24
+                      : Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
                 ),
               ),
             ),
@@ -546,15 +971,30 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
           color: Colors.black,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.10),
+              Colors.white.withValues(alpha: 0.02),
+            ],
+          ),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withValues(alpha: 0.16),
             width: 1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -622,31 +1062,120 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                   ),
                 ),
 
-              // Upload Progress
+              if (_isInitialized && !_hasError)
+                Positioned(
+                  top: 14,
+                  left: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.42),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.play_circle_outline_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _schedule != null
+                              ? 'Scheduled preview'
+                              : 'Ready to post',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              if (_isInitialized && !_hasError)
+                Positioned(
+                  bottom: 14,
+                  left: 14,
+                  right: 14,
+                  child: IgnorePointer(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.15),
+                            Colors.black.withValues(alpha: 0.55),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        _schedule != null
+                            ? 'Your video is queued to go out when you are ready.'
+                            : 'Tap the preview anytime to pause and double-check your post.',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.88),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Upload Progress overlay
               if (_isUploading)
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.black.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          CircularProgressIndicator(
-                            value: _uploadProgress,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                                Color(0xFF9248D2)),
+                          SizedBox(
+                            width: 56,
+                            height: 56,
+                            child: CircularProgressIndicator(
+                              value: _uploadProgress > 0 ? _uploadProgress : null,
+                              strokeWidth: 4,
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF9248D2)),
+                            ),
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Uploading... ${(_uploadProgress * 100).toInt()}%',
+                            _friendlyUploadStatusMessage(),
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 16,
+                              fontSize: 15,
                               fontWeight: FontWeight.w600,
                             ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'You can stay here while we finish everything safely.',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.72),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
@@ -661,81 +1190,117 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildCategorySection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+    final selectedCategory = _categories.firstWhere(
+      (category) => category.id == _selectedCategory,
+      orElse: () => _categories.first,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Category',
+          Row(
+            children: [
+              const Text(
+                'Category',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                '(required)',
+                style: TextStyle(color: Colors.white38, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Pick the one that best fits this post. You can always change it before publishing.',
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              color: Colors.white.withValues(alpha: 0.62),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  selectedCategory.emoji,
+                  style: const TextStyle(fontSize: 18),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Selected: ${selectedCategory.name}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 12),
-          Text(
-            'Choose the category that best fits your video',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Category Dropdown
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
-                width: 1,
-              ),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedCategory,
-                isExpanded: true,
-                dropdownColor: const Color(0xFF1A1A1A),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                ),
-                icon: const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: Colors.white,
-                ),
-                items: _categories.map((category) {
-                  return DropdownMenuItem<String>(
-                    value: category.id,
-                    child: Row(
-                      children: [
-                        Text(
-                          category.emoji,
-                          style: const TextStyle(fontSize: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          category.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _categories.map((category) {
+              final isSelected = _selectedCategory == category.id;
+              return GestureDetector(
+                onTap: () =>
+                    setState(() => _selectedCategory = category.id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? category.color.withValues(alpha: 0.25)
+                        : Colors.white.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected
+                          ? category.color
+                          : Colors.white.withValues(alpha: 0.15),
+                      width: isSelected ? 1.5 : 1,
                     ),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _selectedCategory = newValue;
-                    });
-                  }
-                },
-              ),
-            ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(category.emoji,
+                          style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 6),
+                      Text(
+                        category.name,
+                        style: TextStyle(
+                          color: isSelected
+                              ? category.color
+                              : Colors.white70,
+                          fontSize: 13.5,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
@@ -743,8 +1308,210 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildCaptionSection() {
+    final charCount = _captionCharacterCount;
+    final maxLen = _VideoPublishingConstants.maxCaptionLength;
+    final counterColor = charCount > maxLen
+        ? Colors.red
+        : charCount >= (maxLen * 0.9).toInt()
+            ? Colors.orange
+            : Colors.white38;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                const Text('Caption',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(width: 6),
+                const Text('(required)',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+              ]),
+              Text('$charCount/$maxLen',
+                  style: TextStyle(
+                      color: counterColor, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Tell people what they are about to watch. A clear first line usually performs best.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.62),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _captionController,
+            maxLength: maxLen,
+            maxLines: 4,
+            minLines: 2,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: TextInputAction.newline,
+            keyboardType: TextInputType.multiline,
+            style: const TextStyle(
+                color: Colors.white, fontSize: 15, height: 1.5),
+            decoration: InputDecoration(
+              hintText: 'Describe your video…',
+              hintStyle:
+                  TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.15)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.15)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    const BorderSide(color: Color(0xFF9248D2), width: 1.5),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 12),
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.06),
+              counterText: '',
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(
+                Icons.tips_and_updates_outlined,
+                color: Colors.white.withValues(alpha: 0.42),
+                size: 14,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Quick hashtags',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.56),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Hashtag quick-add chips
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _buildHashtagChip('#trending'),
+              _buildHashtagChip('#viral'),
+              _buildHashtagChip('#fyp'),
+              _buildHashtagChip('#streaming'),
+              _buildHashtagChip('#${_selectedCategoryName().toLowerCase().replaceAll(' ', '')}'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConnectPlatformsHint() {
+    return GestureDetector(
+      onTap: () {
+        AppNavigator.openLinkedPlatforms(context);
+      },
+      child: Row(
+        children: [
+          Icon(Icons.add_link,
+              color: Colors.white.withValues(alpha: 0.4), size: 16),
+          const SizedBox(width: 6),
+          Text(
+            'Connect platforms to cross-post →',
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlatformSelectorSection() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.share_outlined,
+                  color: Color(0xFF9248D2), size: 18),
+              const SizedBox(width: 8),
+              const Text(
+                'Also post to',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              if (_platformEnabled.values.any((v) => v))
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF9248D2).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${_platformEnabled.values.where((v) => v).length} on',
+                    style: const TextStyle(
+                        color: Color(0xFF9248D2), fontSize: 11),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Publish once — reach all your audiences.',
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          ..._connectedPlatforms.map((p) => PlatformRow(
+                platformName: p.name,
+                platformIcon: p.icon,
+                platformColor: p.color,
+                isEnabled: _platformEnabled[p.name] ?? false,
+                initialCaption: _platformCaptions[p.name] ?? _caption,
+                characterLimit:
+                    PlatformCharacterLimits.limitFor(p.name),
+                onToggle: (enabled) => setState(
+                    () => _platformEnabled[p.name] = enabled),
+                onCaptionChanged: (text) =>
+                    _platformCaptions[p.name] = text,
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThumbnailSection() {
+    final durationSeconds = _videoDuration?.inMilliseconds != null
+        ? _videoDuration!.inMilliseconds / 1000.0
+        : 0.0;
+    return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),
@@ -754,135 +1521,115 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Caption',
+            'Thumbnail',
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold),
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Choose the frame that appears before your video plays.',
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          // Preview + picker row
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Caption',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                '${_captionCharacterCount}/${_VideoPublishingConstants.maxCaptionLength}',
-                style: TextStyle(
-                  color: _captionCharacterCount >
-                          _VideoPublishingConstants.maxCaptionLength
-                      ? Colors.red
-                      : _captionCharacterCount >=
-                              _VideoPublishingConstants.maxCaptionLength * 0.9
-                          ? Colors.orange
-                          : Colors.white.withValues(alpha: 0.7),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _captionController,
-            maxLength: _VideoPublishingConstants.maxCaptionLength,
-            maxLines: 4,
-            minLines: 1,
-            textInputAction: TextInputAction.newline,
-            keyboardType: TextInputType.multiline,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              height: 1.4,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Write a caption...',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-              border: OutlineInputBorder(
+              // Thumbnail preview
+              ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                    color: _caption.trim().isEmpty
-                        ? Colors.red.withValues(alpha: 0.5)
-                        : Colors.white.withValues(alpha: 0.3)),
+                child: _buildThumbnailPreview(),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                    color: _caption.trim().isEmpty
-                        ? Colors.red.withValues(alpha: 0.5)
-                        : Colors.white.withValues(alpha: 0.3)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                    color: _caption.trim().isEmpty
-                        ? Colors.red
-                        : const Color(0xFF9248D2)),
-              ),
-              contentPadding: const EdgeInsets.all(16),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.03),
-              counterText: '', // Hide default counter, we show our own
-            ),
-          ),
-          if (_caption.trim().isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Caption is required',
-                style: TextStyle(
-                  color: Colors.red.withValues(alpha: 0.9),
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          const SizedBox(height: 12),
-          // Tag users hint
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: Colors.white.withValues(alpha: 0.7),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Tip: Tag users in your caption by typing "tagged: @username"',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 12,
+              const SizedBox(width: 16),
+              // Controls
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (durationSeconds > 0) ...[
+                      Text(
+                        'Scrub to pick frame',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 12),
+                      ),
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          thumbColor: const Color(0xFF9248D2),
+                          activeTrackColor: const Color(0xFF9248D2),
+                          inactiveTrackColor:
+                              Colors.white.withValues(alpha: 0.2),
+                          thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 8),
+                          overlayShape: const RoundSliderOverlayShape(
+                              overlayRadius: 16),
+                          trackHeight: 3,
+                        ),
+                        child: Slider(
+                          value: _thumbnailTimeSeconds.clamp(
+                              0.0, durationSeconds),
+                          min: 0,
+                          max: durationSeconds,
+                          onChangeEnd: _generateFrameThumb,
+                          onChanged: (value) => setState(
+                              () => _thumbnailTimeSeconds = value),
+                        ),
+                      ),
+                      Text(
+                        'At ${_thumbnailTimeSeconds.toStringAsFixed(1)}s',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 11),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    GestureDetector(
+                      onTap: _pickThumbnailFromGallery,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color:
+                                  Colors.white.withValues(alpha: 0.3)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.photo_library_outlined,
+                                color:
+                                    Colors.white.withValues(alpha: 0.8),
+                                size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Upload image',
+                              style: TextStyle(
+                                  color:
+                                      Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                    if (_isCustomThumbnail)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Custom image selected',
+                          style: TextStyle(
+                              color: Colors.greenAccent.withValues(
+                                  alpha: 0.9),
+                              fontSize: 11),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Hashtag suggestions
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildHashtagChip('#trending'),
-              _buildHashtagChip('#viral'),
-              _buildHashtagChip('#fyp'),
-              _buildHashtagChip('#streaming'),
+              ),
             ],
           ),
         ],
@@ -890,9 +1637,54 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     );
   }
 
+  Widget _buildThumbnailPreview() {
+    const double w = 72;
+    const double h = 96;
+    if (_isGeneratingThumb) {
+      return Container(
+        width: w,
+        height: h,
+        color: Colors.black54,
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor:
+                  AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+            ),
+          ),
+        ),
+      );
+    }
+    if (_isCustomThumbnail && _customThumbnailFile != null) {
+      return Image.file(
+        _customThumbnailFile!,
+        width: w,
+        height: h,
+        fit: BoxFit.cover,
+      );
+    }
+    if (_frameThumbBytes != null) {
+      return Image.memory(
+        _frameThumbBytes!,
+        width: w,
+        height: h,
+        fit: BoxFit.cover,
+      );
+    }
+    return Container(
+      width: w,
+      height: h,
+      color: Colors.black54,
+      child: Icon(Icons.movie_outlined,
+          color: Colors.white.withValues(alpha: 0.4), size: 28),
+    );
+  }
+
   Widget _buildPrivacySection() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),
@@ -911,8 +1703,38 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           ),
           const SizedBox(height: 16),
           _buildPrivacyOption('Everyone', 'Anyone can see this video'),
-          _buildPrivacyOption('Connections', 'Only your connections can see'),
+          _buildPrivacyOption('Followers', 'Only your followers can see'),
           _buildPrivacyOption('Private', 'Only you can see this video'),
+          const Divider(color: Colors.white12, height: 28),
+          Row(
+            children: [
+              const Icon(Icons.comment_outlined,
+                  color: Colors.white70, size: 20),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Allow comments',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500)),
+                    Text('Viewers can comment on your video',
+                        style:
+                            TextStyle(color: Colors.white54, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _allowComments,
+                onChanged: (value) =>
+                    setState(() => _allowComments = value),
+                activeThumbColor: const Color(0xFF9248D2),
+                inactiveTrackColor: Colors.white24,
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -1019,141 +1841,125 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildBottomActions() {
+    final isBlocked = _isUploading || _isModerating || _hasError;
+    final label = _isModerating
+        ? 'Checking your video…'
+        : _isUploading
+            ? 'Publishing your post…'
+            : _schedule != null
+                ? 'Schedule Post'
+                : 'Publish Now';
+    final sublabel = _isModerating
+        ? 'Making sure everything is safe and ready.'
+        : _isUploading
+            ? 'Stay here for a moment while we finish things up.'
+            : _schedule != null
+                ? 'Your post will go live at the time you selected.'
+                : 'Share it to StreamersTip right away.';
+
     return SafeArea(
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
               Colors.transparent,
-              const Color(0xFF1C135D).withValues(alpha: 0.9),
+              const Color(0xFF1C135D).withValues(alpha: 0.95),
             ],
           ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _saveAsDraft();
+        child: GestureDetector(
+          onTap: isBlocked
+              ? null
+              : () {
+                  HapticFeedback.mediumImpact();
+                  _publishVideo();
                 },
-                child: Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      width: 1,
+          child: Container(
+            height: 72,
+            decoration: BoxDecoration(
+              gradient: isBlocked
+                  ? null
+                  : const LinearGradient(
+                      colors: [Color(0xFF9248D2), Color(0xFF4E9FD4)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
                     ),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'Save as Draft',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+              color: isBlocked ? Colors.white12 : null,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: isBlocked
+                  ? null
+                  : [
+                      BoxShadow(
+                        color:
+                            const Color(0xFF9248D2).withValues(alpha: 0.45),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
-                  ),
-                ),
-              ),
+                    ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: GestureDetector(
-                onTap: (_isUploading ||
-                        _isModerating ||
-                        _caption.trim().isEmpty ||
-                        _hasError)
-                    ? null
-                    : () {
-                        HapticFeedback.lightImpact();
-                        _publishVideo();
-                      },
-                child: Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: (_isUploading ||
-                            _isModerating ||
-                            _caption.trim().isEmpty ||
-                            _hasError)
-                        ? null
-                        : const LinearGradient(
-                            colors: [Color(0xFF9248D2), Color(0xFF4897D2)],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
+            child: Center(
+              child: _isModerating || _isUploading
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white),
                           ),
-                    color: (_isUploading ||
-                            _isModerating ||
-                            _caption.trim().isEmpty ||
-                            _hasError)
-                        ? Colors.grey.withValues(alpha: 0.3)
-                        : null,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: (_isUploading || _isModerating)
-                        ? null
-                        : [
-                            BoxShadow(
-                              color: const Color(0xFF9248D2)
-                                  .withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                        ),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(label,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _schedule != null
+                                  ? Icons.schedule_send_rounded
+                                  : Icons.rocket_launch_outlined,
+                              color: Colors.white,
+                              size: 18,
                             ),
-                          ],
-                  ),
-                  child: Center(
-                    child: _isModerating
-                        ? const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Moderating...',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          )
-                        : _isUploading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              )
-                            : Text(
-                                _schedule != null ? 'Schedule' : 'Publish',
+                            const SizedBox(width: 8),
+                            Text(label,
                                 style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                  ),
-                ),
-              ),
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          sublabel,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.78),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1361,13 +2167,18 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
     // Validate caption
     if (_caption.trim().isEmpty) {
-      _showUploadErrorDialog('Please add a caption to your video');
+      _showUploadErrorDialog(_VideoPublishingConstants.errorCaption);
+      return;
+    }
+    if (_caption.length > _VideoPublishingConstants.maxCaptionLength) {
+      _showUploadErrorDialog(
+          'Caption is too long (maximum ${_VideoPublishingConstants.maxCaptionLength} characters).');
       return;
     }
 
-    if (_caption.length > _VideoPublishingConstants.maxCaptionLength) {
-      _showUploadErrorDialog(
-          'Caption is too long (maximum ${_VideoPublishingConstants.maxCaptionLength} characters)');
+    // Validate category
+    if (_selectedCategory.isEmpty) {
+      _showUploadErrorDialog(_VideoPublishingConstants.errorCategory);
       return;
     }
 
@@ -1449,7 +2260,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         videoId: videoId,
         caption: _caption,
         categories: [_selectedCategory],
-        localThumbnailPath: null, // Will be generated during upload
+        localThumbnailPath: _customThumbnailFile?.path,
         localVideoPath: videoFileToUpload.path,
         metadata: {
           'privacy': _selectedPrivacy,
@@ -1499,104 +2310,79 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         developer.log('👤 User ID: ${currentUser.uid}',
             name: 'VideoPublishingScreen');
 
-        final uploadResult = await _uploadService.uploadVideo(
-          videoFile: videoFileToUpload,
-          caption: _caption,
-          hashtags: _hashtags,
-          privacy: _selectedPrivacy,
-          allowComments: _allowComments,
-          additionalMetadata: {
-            'category': _selectedCategory,
-            'cross_platform_sharing': _selectedPlatforms.toList(),
-            'watermark_applied':
-                _watermarkService.shouldApplyWatermark(_selectedPlatforms),
-            'moderation_confidence': moderationResult.confidence,
-            'moderation_checked_at': DateTime.now().toIso8601String(),
-            'duration': 0,
-            'fileSize': await videoFileToUpload.length(),
-          },
+        final fileSize = await videoFileToUpload.length();
+
+        // Build cross-post requests for selected platforms.
+        final crossPostRequests = _connectedPlatforms
+            .where((p) => _platformEnabled[p.name] == true)
+            .map((p) => CrossPostRequest(
+                  platformName: p.name,
+                  caption: _platformCaptions[p.name] ?? _caption,
+                  scheduleAt: _schedule?.scheduledAtUtc,
+                ))
+            .toList();
+
+        final publishController = ref.read(publishControllerProvider);
+        final execution = await publishController.publishNow(
+          PublishNowRequest(
+            videoFile: videoFileToUpload,
+            caption: _caption,
+            hashtags: _hashtags,
+            privacy: _selectedPrivacy,
+            allowComments: _allowComments,
+            crossPostRequests: crossPostRequests,
+            additionalMetadata: {
+              'category': _selectedCategory,
+              'cross_platform_sharing': crossPostRequests
+                  .map((r) => r.platformName)
+                  .toList(),
+              'watermark_applied':
+                  _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+              'moderation_confidence': moderationResult.confidence,
+              'moderation_checked_at': DateTime.now().toIso8601String(),
+              'duration': 0,
+              'fileSize': fileSize,
+              'thumbnailTimeSeconds': _thumbnailTimeSeconds,
+              'isCustomThumbnail': _isCustomThumbnail,
+            },
+            onProgress: (progress) {
+              if (mounted) setState(() => _uploadProgress = progress);
+            },
+          ),
         );
+        final result = execution.publishResult!;
 
         developer.log(
-            '📤 Upload result: success=${uploadResult.success}, error=${uploadResult.error}',
+            '📤 ST result: ${result.streamerstipSuccess}, '
+            'crossPost ok: ${result.successfulPlatforms.length}, '
+            'failed: ${result.failedPlatforms.length}',
             name: 'VideoPublishingScreen');
 
-        setState(() {
-          _isUploading = false;
-        });
+        if (!mounted) return;
+        setState(() => _isUploading = false);
 
-        if (uploadResult.success) {
-          // Add video to centralized VideoService for immediate display
-          final newVideoId = await _addVideoToService(uploadResult);
+        if (result.streamerstipSuccess) {
+          final uploadedVideoId = execution.uploadedVideoId ?? videoId;
+          UploadStatusManager().enterProcessing(uploadedVideoId);
 
-          // Show success message
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Video published successfully! 🎉'),
-                backgroundColor: Color(0xFF9248D2),
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-          
-          // Navigate back to main tab view (which shows HomeView by default)
-          if (mounted) {
-            Navigator.of(context).popUntil((route) => route.isFirst);
-            // Feed refresh will happen automatically when HomeView becomes visible via _reactivateFeed()
-            developer.log('✅ VideoPublishingScreen: Navigated back to HomeView, feed will refresh for video: $newVideoId');
-          }
+          _showCrossPostResultSheet(
+            result: result,
+            uploadedVideoId: uploadedVideoId,
+            crossPostRequests: crossPostRequests,
+          );
         } else {
-          if (mounted) {
-            String errorMessage =
-                uploadResult.error ?? 'Failed to publish video';
-
-            // Provide more specific error messages
-            if (errorMessage.contains('PERMISSION_DENIED')) {
-              errorMessage =
-                  'Permission denied. Please check your account status and try again.';
-            } else if (errorMessage.contains('UNAVAILABLE')) {
-              errorMessage =
-                  'Service temporarily unavailable. Please try again in a few minutes.';
-            } else if (errorMessage.contains('UNAUTHENTICATED')) {
-              errorMessage = 'Please log in again to publish videos.';
-            } else if (errorMessage.contains('thumbnail')) {
-              errorMessage =
-                  'Failed to generate video thumbnail. Please try again.';
-            }
-
-            _showUploadErrorDialog(errorMessage);
-          }
+          // StreamersTip failed — do NOT show cross-post UI.
+          final raw = result.streamerstipResult.error ??
+              'Failed to publish video';
+          _showUploadErrorDialog(_friendlyUploadError(raw));
         }
       } catch (e) {
-        debugPrint(
-            '❌ VideoPublishingScreen: Error during video upload process: $e');
-        debugPrint('❌ VideoPublishingScreen: Error type: ${e.runtimeType}');
-        debugPrint(
-            '❌ VideoPublishingScreen: Stack trace: ${StackTrace.current}');
-
-        setState(() {
-          _isUploading = false;
-        });
-        if (mounted) {
-          String errorMessage = 'Failed to publish video: ${e.toString()}';
-
-          // Provide more specific error messages
-          if (e.toString().contains('PERMISSION_DENIED')) {
-            errorMessage =
-                'Permission denied. Please check your account status and try again.';
-          } else if (e.toString().contains('UNAVAILABLE')) {
-            errorMessage =
-                'Service temporarily unavailable. Please try again in a few minutes.';
-          } else if (e.toString().contains('UNAUTHENTICATED')) {
-            errorMessage = 'Please log in again to publish videos.';
-          } else if (e.toString().contains('thumbnail')) {
-            errorMessage =
-                'Failed to generate video thumbnail. Please try again.';
-          }
-
-          _showUploadErrorDialog(errorMessage);
-        }
+        developer.log(
+            '❌ VideoPublishingScreen: upload error: $e',
+            name: 'VideoPublishingScreen');
+        if (!mounted) return;
+        setState(() => _isUploading = false);
+        _showUploadErrorDialog(_friendlyUploadError(e.toString()));
       }
     } catch (e) {
       setState(() {
@@ -1612,6 +2398,21 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     }
   }
 
+  String _friendlyUploadError(String raw) {
+    if (raw.contains('PERMISSION_DENIED')) {
+      return 'Permission denied. Please check your account and try again.';
+    } else if (raw.contains('UNAVAILABLE')) {
+      return 'Service unavailable. Please try again in a few minutes.';
+    } else if (raw.contains('UNAUTHENTICATED')) {
+      return 'Please log in again to publish videos.';
+    } else if (raw.contains('thumbnail')) {
+      return 'Failed to generate thumbnail. Please try again.';
+    } else if (raw.contains('network') || raw.contains('SocketException')) {
+      return 'No internet connection. Please check your network.';
+    }
+    return 'Failed to publish video. Please try again.';
+  }
+
   String _generateVideoId() {
     return 'video_${DateTime.now().millisecondsSinceEpoch}_${_generateRandomString(8)}';
   }
@@ -1623,6 +2424,49 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     return String.fromCharCodes(
       Iterable.generate(
           length, (_) => chars.codeUnitAt(random.nextInt(chars.length))),
+    );
+  }
+
+  void _showCrossPostResultSheet({
+    required CrossPublishResult result,
+    required String uploadedVideoId,
+    required List<CrossPostRequest> crossPostRequests,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (ctx) => _CrossPostResultSheet(
+        uploadedVideoId: uploadedVideoId,
+        crossPostRequests: crossPostRequests,
+        result: result,
+        onOpenManagePosts: () {
+          Navigator.of(ctx).pop();
+          AppNavigator.openManagePosts(context);
+        },
+        onOpenLinkedPlatforms: (platforms) {
+          Navigator.of(ctx).pop();
+          AppNavigator.openLinkedPlatforms(
+            context,
+            initialPlatforms: platforms,
+          );
+        },
+        onDone: () {
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+          if (currentUserId != null) {
+            ref.invalidate(video_providers.userVideosProvider(currentUserId));
+            ref
+                .read(video_providers.videoServiceStateProvider.notifier)
+                .loadAllVideos();
+          }
+          ref.read(homeViewReactivateProvider.notifier).triggerReactivation();
+          Navigator.of(ctx).pop();
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        },
+      ),
     );
   }
 
@@ -1831,48 +2675,6 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
   /// Add uploaded video to centralized VideoService for immediate display
   /// Returns the video ID for use in feed refresh
-  Future<String?> _addVideoToService(VideoUploadResult uploadResult) async {
-    try {
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return null;
-
-      // Create a HomeVideo object from the upload result
-      final video = HomeVideo(
-        id: uploadResult.metadata?['videoId'] as String? ?? '',
-        creator: user_model.User(
-          id: currentUser.uid,
-          username: currentUser.displayName ?? 'User',
-          displayName: currentUser.displayName ?? 'User',
-          bio: '',
-          avatarURL: currentUser.photoURL ?? '',
-          followerCount: 0,
-          followingCount: 0,
-        ),
-        videoURL: uploadResult.videoUrl ?? '',
-        thumbnailURL: uploadResult.thumbnailUrl ?? '',
-        caption: _caption.isNotEmpty ? _caption : 'Untitled',
-        categoryId: _selectedCategory,
-        isDraft: false,
-      );
-
-      // Add to VideoService for immediate display (at the top - newest first)
-      final videoService = ref.read(videoServiceProvider.notifier);
-      videoService.addVideo(video);
-
-      // 🚀 REFRESH FEED: Refresh HomeView to show the new video immediately
-      final homeProviderNotifier = ref.read(homeProvider.notifier);
-      await homeProviderNotifier.refreshAfterUpload(newVideoId: video.id);
-
-      debugPrint(
-          '✅ Video added to VideoService and HomeView refreshed: ${video.caption}');
-      
-      return video.id;
-    } catch (e) {
-      debugPrint('❌ Error adding video to VideoService: $e');
-      return null;
-    }
-  }
-
   /// Schedule a video for future publishing
   Future<void> _scheduleVideo({
     required File videoFileToUpload,
@@ -1915,26 +2717,38 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       );
 
       // 4. Save scheduled post to Firestore
-      final scheduledPostId = await _scheduledPostService.saveScheduledPost(
-        videoId: videoId,
-        videoUrl: videoUrl,
-        thumbnailUrl: thumbnailUrl,
-        caption: _caption,
-        hashtags: _hashtags,
-        category: _selectedCategory,
-        privacy: _selectedPrivacy,
-        allowComments: _allowComments,
-        schedule: _schedule!,
-        metadata: {
-          'moderation_confidence': moderationResult.confidence,
-          'moderation_checked_at': DateTime.now().toIso8601String(),
-          'duration': _videoDuration?.inSeconds ?? 0,
-          'fileSize': await videoFileToUpload.length(),
-          'cross_platform_sharing': _selectedPlatforms.toList(),
-          'watermark_applied':
-              _watermarkService.shouldApplyWatermark(_selectedPlatforms),
-        },
+      final scheduledExecution =
+          await ref.read(publishControllerProvider).saveScheduledPublish(
+        SchedulePublishRequest(
+          videoId: videoId,
+          videoUrl: videoUrl,
+          thumbnailUrl: thumbnailUrl,
+          caption: _caption,
+          hashtags: _hashtags,
+          category: _selectedCategory,
+          privacy: _selectedPrivacy,
+          allowComments: _allowComments,
+          schedule: _schedule!,
+          metadata: {
+            'moderation_confidence': moderationResult.confidence,
+            'moderation_checked_at': DateTime.now().toIso8601String(),
+            'duration': _videoDuration?.inSeconds ?? 0,
+            'fileSize': await videoFileToUpload.length(),
+            'cross_platform_sharing': _selectedPlatforms.toList(),
+            'watermark_applied':
+                _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+          },
+          crossPostRequests: _connectedPlatforms
+              .where((p) => _platformEnabled[p.name] == true)
+              .map((p) => CrossPostRequest(
+                    platformName: p.name,
+                    caption: _platformCaptions[p.name] ?? _caption,
+                    scheduleAt: _schedule?.scheduledAtUtc,
+                  ))
+              .toList(),
+        ),
       );
+      final scheduledPostId = scheduledExecution.scheduledPostId ?? videoId;
 
       developer.log('✅ Video scheduled successfully: $scheduledPostId',
           name: 'VideoPublishingScreen');
@@ -2039,6 +2853,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         'id': videoId,
         'userId': currentUser.uid,
         'creatorId': currentUser.uid,
+        'creator_id': currentUser.uid,
         'videoUrl': videoUrl,
         'thumbnailUrl': thumbnailUrl,
         'caption': _caption,
@@ -2091,5 +2906,374 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           name: 'VideoPublishingScreen');
       rethrow;
     }
+  }
+}
+
+class _CrossPostResultSheet extends ConsumerStatefulWidget {
+  final CrossPublishResult result;
+  final String uploadedVideoId;
+  final List<CrossPostRequest> crossPostRequests;
+  final VoidCallback onOpenManagePosts;
+  final ValueChanged<List<String>> onOpenLinkedPlatforms;
+  final VoidCallback onDone;
+
+  const _CrossPostResultSheet({
+    required this.uploadedVideoId,
+    required this.crossPostRequests,
+    required this.result,
+    required this.onOpenManagePosts,
+    required this.onOpenLinkedPlatforms,
+    required this.onDone,
+  });
+
+  @override
+  ConsumerState<_CrossPostResultSheet> createState() =>
+      _CrossPostResultSheetState();
+}
+
+class _CrossPostResultSheetState extends ConsumerState<_CrossPostResultSheet> {
+  bool _isRetrying = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final publishState = ref.watch(publishControllerProvider);
+    final overallState = publishState.overallState;
+    final failedRequests = widget.crossPostRequests
+        .where(
+          (request) =>
+              publishState.crossPostResults[request.platformName] ==
+              CrossPostState.failed,
+        )
+        .toList();
+    final successfulRequests = widget.crossPostRequests
+        .where(
+          (request) =>
+              publishState.crossPostResults[request.platformName] ==
+              CrossPostState.success,
+        )
+        .toList();
+    final reconnectPlatforms = failedRequests
+        .where(
+          (request) => _isReauthError(
+            publishState.errorDetails[request.platformName],
+          ),
+        )
+        .map((request) => request.platformName.toLowerCase())
+        .toList();
+
+    String title;
+    String subtitle;
+    switch (overallState) {
+      case OverallPublishState.allSuccess:
+        title = 'Your video is live everywhere selected';
+        subtitle = 'StreamersTip is live, and every selected destination succeeded.';
+        break;
+      case OverallPublishState.partialSuccess:
+        title = 'Your video is live on StreamersTip';
+        subtitle = 'Some cross-post destinations succeeded, and some still need attention.';
+        break;
+      case OverallPublishState.streamerstipOnlySuccess:
+        title = 'Your video is live on StreamersTip';
+        subtitle = 'Cross-posting did not complete yet, but your StreamersTip upload succeeded.';
+        break;
+      default:
+        title = 'Your video is live on StreamersTip';
+        subtitle = 'Cross-post status is still being finalized.';
+        break;
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.greenAccent, size: 24),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              subtitle,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            if (widget.crossPostRequests.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Destination status',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...widget.crossPostRequests.map(
+                (request) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _buildPlatformResultRow(
+                    request.platformName,
+                    publishState.crossPostResults[request.platformName] ??
+                        CrossPostState.idle,
+                    publishState.errorDetails[request.platformName],
+                  ),
+                ),
+              ),
+            ],
+            if (successfulRequests.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Posted successfully to: ${successfulRequests.map((r) => r.platformName).join(', ')}',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+            if (failedRequests.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'If you close this now, you can review the same destination states later in Manage Posts.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  fontSize: 12,
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            if (failedRequests.isNotEmpty) ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isRetrying
+                      ? null
+                      : () async {
+                          setState(() => _isRetrying = true);
+                          try {
+                            await ref
+                                .read(publishControllerProvider)
+                                .retryCrossPosts(
+                                  videoId: widget.uploadedVideoId,
+                                  requests: failedRequests,
+                                );
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isRetrying = false);
+                            }
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF9248D2),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text(
+                    _isRetrying ? 'Retrying failed destinations...' : 'Retry Failed Destinations',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (reconnectPlatforms.isNotEmpty) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () =>
+                        widget.onOpenLinkedPlatforms(reconnectPlatforms),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: Colors.orangeAccent.withValues(alpha: 0.45),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text(
+                      'Reconnect Platforms',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: widget.onOpenManagePosts,
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text(
+                    'Open Manage Posts',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: widget.onDone,
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text(
+                  'Done',
+                  style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlatformResultRow(
+    String platformName,
+    CrossPostState state,
+    String? errorMessage,
+  ) {
+    final (icon, color, label) = switch (state) {
+      CrossPostState.success =>
+        (Icons.check_circle, Colors.greenAccent, 'Posted'),
+      CrossPostState.failed =>
+        (Icons.error_outline, Colors.redAccent, 'Failed'),
+      CrossPostState.sending =>
+        (Icons.schedule_send, Colors.orangeAccent, 'Retrying'),
+      CrossPostState.idle =>
+        (Icons.radio_button_unchecked, Colors.white54, 'Pending'),
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  platformName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  errorMessage?.isNotEmpty == true
+                      ? '$label: $errorMessage'
+                      : label,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isReauthError(String? message) {
+    if (message == null) {
+      return false;
+    }
+    final normalized = message.toLowerCase();
+    return normalized.contains('401') ||
+        normalized.contains('403') ||
+        normalized.contains('auth') ||
+        normalized.contains('token') ||
+        normalized.contains('reauth');
+  }
+}
+
+class _AspectRatioWarningBanner extends StatelessWidget {
+  final String message;
+  final VoidCallback onDismiss;
+
+  const _AspectRatioWarningBanner({
+    required this.message,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF332B00),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, color: Colors.amber, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(color: Colors.amber, fontSize: 13),
+            ),
+          ),
+          GestureDetector(
+            onTap: onDismiss,
+            child: const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: Icon(Icons.close, color: Colors.amber, size: 16),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

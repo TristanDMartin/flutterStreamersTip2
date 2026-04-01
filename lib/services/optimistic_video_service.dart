@@ -64,10 +64,6 @@ class OptimisticVideoService extends ChangeNotifier {
     // Set up listener for this video
     _setupVideoListener(videoId);
 
-    // Trigger feed refresh
-    _feedRefreshController.add('home');
-    _categoryRefreshController.add(categories);
-
     notifyListeners();
     return optimisticVideo;
   }
@@ -211,153 +207,26 @@ class OptimisticVideoService extends ChangeNotifier {
       rethrow;
     }
 
-    // Get privacy setting from metadata
+    // Keep processing placeholders out of Home/Following until the backend
+    // marks them ready. UploadStatusManager already communicates progress.
     final privacy = video.metadata?['privacy'] as String? ?? 'Everyone';
     debugPrint('🔥 OptimisticVideoService: Privacy setting: $privacy');
+    debugPrint(
+        '🔥 OptimisticVideoService: Skipping feed insertion while video is processing');
 
-    // Add to appropriate feeds based on privacy setting
-    switch (privacy) {
-      case 'Everyone':
-        // Add to public feeds (For You feed)
-        debugPrint('🔥 OptimisticVideoService: Adding to For You feed');
-        try {
-          await _firestore
-              .collection('feeds')
-              .doc('for_you')
-              .collection('videos')
-              .doc(video.videoId)
-              .set({
-            'videoId': video.videoId,
-            'userId': video.ownerId,
-            'privacy': privacy,
-            'status': 'processing',
-            'addedAt': video.createdAt,
-          });
-          debugPrint(
-              '🔥 OptimisticVideoService: Successfully added to For You feed!');
-        } catch (e) {
-          debugPrint(
-              '🔥 OptimisticVideoService: Error adding to For You feed: $e');
-          rethrow;
-        }
-
-        // Add to following feed
-        debugPrint('🔥 OptimisticVideoService: Adding to Following feed');
-        try {
-          await _firestore
-              .collection('feeds')
-              .doc('following')
-              .collection('videos')
-              .doc(video.videoId)
-              .set({
-            'videoId': video.videoId,
-            'userId': video.ownerId,
-            'privacy': privacy,
-            'status': 'processing',
-            'addedAt': video.createdAt,
-          });
-          debugPrint(
-              '🔥 OptimisticVideoService: Successfully added to Following feed!');
-        } catch (e) {
-          debugPrint(
-              '🔥 OptimisticVideoService: Error adding to Following feed: $e');
-          rethrow;
-        }
-
-        // Add to category feeds for each category
-        debugPrint(
-            '🔥 OptimisticVideoService: Adding to category feeds: ${video.categories}');
-        for (final category in video.categories) {
-          debugPrint(
-              '🔥 OptimisticVideoService: Adding to category: $category');
-          try {
-            await _firestore
-                .collection('feeds')
-                .doc('categories')
-                .collection(category)
-                .doc(video.videoId)
-                .set({
-              'videoId': video.videoId,
-              'userId': video.ownerId,
-              'category': category,
-              'privacy': privacy,
-              'status': 'processing',
-              'addedAt': video.createdAt,
-            });
-            debugPrint(
-                '🔥 OptimisticVideoService: Successfully added to category $category!');
-          } catch (e) {
-            debugPrint(
-                '🔥 OptimisticVideoService: Error adding to category $category: $e');
-            rethrow;
-          }
-        }
-        break;
-
-      case 'Connections':
-        // Add only to following feed
-        await _firestore
-            .collection('feeds')
-            .doc('following')
-            .collection('videos')
-            .doc(video.videoId)
-            .set({
-          'videoId': video.videoId,
-          'userId': video.ownerId,
-          'privacy': privacy,
-          'status': 'processing',
-          'addedAt': video.createdAt,
-        });
-
-        // Add to connections-only category feeds
-        for (final category in video.categories) {
-          await _firestore
-              .collection('feeds')
-              .doc('connections_categories')
-              .collection(category)
-              .doc(video.videoId)
-              .set({
-            'videoId': video.videoId,
-            'userId': video.ownerId,
-            'category': category,
-            'privacy': privacy,
-            'status': 'processing',
-            'addedAt': video.createdAt,
-          });
-        }
-        break;
-
-      case 'Private':
-        // Add only to user's private collection
-        await _firestore
-            .collection('users')
-            .doc(video.ownerId)
-            .collection('private_videos')
-            .doc(video.videoId)
-            .set({
-          'videoId': video.videoId,
-          'userId': video.ownerId,
-          'privacy': privacy,
-          'status': 'processing',
-          'addedAt': video.createdAt,
-        });
-        break;
-
-      default:
-        // Default to private
-        await _firestore
-            .collection('users')
-            .doc(video.ownerId)
-            .collection('private_videos')
-            .doc(video.videoId)
-            .set({
-          'videoId': video.videoId,
-          'userId': video.ownerId,
-          'privacy': privacy,
-          'status': 'processing',
-          'addedAt': video.createdAt,
-        });
-        break;
+    if (privacy == 'Private' || privacy != 'Everyone' && privacy != 'Connections') {
+      await _firestore
+          .collection('users')
+          .doc(video.ownerId)
+          .collection('private_videos')
+          .doc(video.videoId)
+          .set({
+        'videoId': video.videoId,
+        'userId': video.ownerId,
+        'privacy': privacy,
+        'status': 'processing',
+        'addedAt': video.createdAt,
+      });
     }
   }
 

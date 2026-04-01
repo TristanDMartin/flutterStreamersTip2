@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'draft_thumbnail_service.dart';
@@ -33,6 +34,14 @@ class LocalDraftService {
     try {
       debugPrint('💾 LocalDraftService: Saving draft locally...');
 
+      final metadata = <String, dynamic>{
+        'fileSize': await videoFile.length(),
+        'duration': 30.0, // Placeholder - would get from video processing
+        'resolution': '1080x1920', // Placeholder
+        'format': 'mp4',
+        ...?additionalMetadata,
+      };
+
       // 1. Generate unique draft ID
       final draftId = _generateDraftId();
 
@@ -62,13 +71,11 @@ class LocalDraftService {
         'status': 'draft',
         'isSharedWithConnections': false,
         'sharedConnections': <String>[],
-        'metadata': {
-          'fileSize': await videoFile.length(),
-          'duration': 30.0, // Placeholder - would get from video processing
-          'resolution': '1080x1920', // Placeholder
-          'format': 'mp4',
-          ...?additionalMetadata,
-        },
+        'sharedDraftId': metadata['sharedDraftId'],
+        'canonicalDraftId': metadata['canonicalDraftId'],
+        'videoUrl': metadata['videoUrl'],
+        'thumbnailUrl': metadata['thumbnailUrl'],
+        'metadata': metadata,
       };
 
       // 5. Save to SharedPreferences (@AppStorage equivalent)
@@ -95,22 +102,28 @@ class LocalDraftService {
       final List<dynamic> draftsList = json.decode(draftsJson);
       final List<Map<String, dynamic>> drafts =
           draftsList.map((draft) => Map<String, dynamic>.from(draft)).toList();
+      bool draftsChanged = false;
 
       // Check and regenerate missing thumbnails with high quality
       final draftThumbnailService = DraftThumbnailService();
       for (final draft in drafts) {
         final videoPath = draft['videoPath'] as String?;
         final thumbnailPath = draft['thumbnailPath'] as String?;
+        final thumbnailUrl = draft['thumbnailUrl'] as String?;
         final draftId = draft['id'] as String?;
+        final hasLocalVideo = videoPath != null && await File(videoPath).exists();
 
-        if (videoPath != null && draftId != null) {
+        if (draftId != null && hasLocalVideo) {
           // Check if thumbnail exists and is valid
           bool needsRegeneration = false;
-          if (thumbnailPath == null || thumbnailPath.isEmpty) {
+          if ((thumbnailPath == null || thumbnailPath.isEmpty) &&
+              (thumbnailUrl == null || thumbnailUrl.isEmpty)) {
             needsRegeneration = true;
           } else {
-            final thumbnailFile = File(thumbnailPath);
-            if (!await thumbnailFile.exists()) {
+            final thumbnailFile = thumbnailPath == null || thumbnailPath.isEmpty
+                ? null
+                : File(thumbnailPath);
+            if (thumbnailFile != null && !await thumbnailFile.exists()) {
               needsRegeneration = true;
             }
           }
@@ -124,11 +137,14 @@ class LocalDraftService {
             );
             if (newThumbnailPath != null) {
               draft['thumbnailPath'] = newThumbnailPath;
-              // Update in SharedPreferences
-              await _saveDraftToPreferences(draft);
+              draftsChanged = true;
             }
           }
         }
+      }
+
+      if (draftsChanged) {
+        await _saveDraftsToPreferences(drafts);
       }
 
       // Sort by creation date (newest first)
@@ -222,6 +238,100 @@ class LocalDraftService {
     } catch (e) {
       debugPrint('❌ Error sharing draft: $e');
       return false;
+    }
+  }
+
+  Future<void> updateDraftFields(
+    String draftId,
+    Map<String, dynamic> updates,
+  ) async {
+    final drafts = await getAllDrafts();
+    final draftIndex = drafts.indexWhere((d) => d['id'] == draftId);
+    if (draftIndex == -1) return;
+
+    final updatedDraft = Map<String, dynamic>.from(drafts[draftIndex]);
+    updatedDraft.addAll(updates);
+
+    final existingMetadata =
+        Map<String, dynamic>.from(updatedDraft['metadata'] ?? const <String, dynamic>{});
+    existingMetadata.addAll(
+      updates['metadata'] is Map<String, dynamic>
+          ? Map<String, dynamic>.from(updates['metadata'] as Map<String, dynamic>)
+          : const <String, dynamic>{},
+    );
+    updatedDraft['metadata'] = existingMetadata;
+    updatedDraft['updatedAt'] = DateTime.now().toIso8601String();
+
+    drafts[draftIndex] = updatedDraft;
+    await _saveDraftsToPreferences(drafts);
+  }
+
+  Future<File?> ensureLocalVideoFile(String draftId) async {
+    try {
+      final drafts = await getAllDrafts();
+      final draft = drafts.firstWhere(
+        (d) => d['id'] == draftId,
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (draft.isEmpty) {
+        debugPrint('❌ Draft not found: $draftId');
+        return null;
+      }
+
+      final localVideoPath = draft['videoPath'] as String?;
+      if (localVideoPath != null && localVideoPath.isNotEmpty) {
+        final localFile = File(localVideoPath);
+        if (await localFile.exists()) {
+          return localFile;
+        }
+      }
+
+      final canonicalVideoUrl = draft['videoUrl'] as String?;
+      if (canonicalVideoUrl == null || canonicalVideoUrl.isEmpty) {
+        debugPrint('⚠️ Draft has no local file or canonical video URL: $draftId');
+        return null;
+      }
+
+      final response = await http.get(Uri.parse(canonicalVideoUrl));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        debugPrint('❌ Failed to download canonical draft video: ${response.statusCode}');
+        return null;
+      }
+
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final draftsDir = Directory(path.join(documentsDir.path, 'DraftVideos'));
+      if (!await draftsDir.exists()) {
+        await draftsDir.create(recursive: true);
+      }
+
+      final extension = path.extension(Uri.parse(canonicalVideoUrl).path).isNotEmpty
+          ? path.extension(Uri.parse(canonicalVideoUrl).path)
+          : '.mp4';
+      final localPath = path.join(draftsDir.path, '$draftId$extension');
+      final localFile = File(localPath);
+      await localFile.writeAsBytes(response.bodyBytes, flush: true);
+
+      await updateDraftFields(draftId, {'videoPath': localFile.path});
+
+      final thumbnailPath = draft['thumbnailPath'] as String?;
+      final thumbnailUrl = draft['thumbnailUrl'] as String?;
+      final hasLocalThumbnail =
+          thumbnailPath != null && thumbnailPath.isNotEmpty && await File(thumbnailPath).exists();
+      if (!hasLocalThumbnail && (thumbnailUrl == null || thumbnailUrl.isEmpty)) {
+        final generatedThumbnailPath =
+            await _generateAndSaveThumbnail(localFile, draftId);
+        if (generatedThumbnailPath != null) {
+          await updateDraftFields(draftId, {
+            'thumbnailPath': generatedThumbnailPath,
+          });
+        }
+      }
+
+      return localFile;
+    } catch (e) {
+      debugPrint('❌ Error ensuring local draft file: $e');
+      return null;
     }
   }
 

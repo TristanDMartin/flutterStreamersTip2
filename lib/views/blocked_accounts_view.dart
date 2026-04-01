@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../constants/app_colors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/user_blocking_service.dart';
@@ -139,9 +140,9 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0E1220),
+      backgroundColor: AppColors.supportBackground,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0E1220),
+        backgroundColor: AppColors.supportTopSurface,
         title: const Text(
           'Blocked Accounts',
           style: TextStyle(color: Colors.white),

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../constants/app_colors.dart';
 
-/// Feed dropdown widget for HomeView (shows For You / Following options)
+/// Feed dropdown widget for HomeView (shows For You / Following / Threads options)
 class FeedDropdownWidget extends StatelessWidget {
   final String activeTab;
   final bool isVisible;
   final VoidCallback onForYouTap;
   final VoidCallback onFollowingTap;
+  final VoidCallback onThreadsTap;
   final VoidCallback onClose;
 
   const FeedDropdownWidget({
@@ -14,6 +16,7 @@ class FeedDropdownWidget extends StatelessWidget {
     required this.isVisible,
     required this.onForYouTap,
     required this.onFollowingTap,
+    required this.onThreadsTap,
     required this.onClose,
   });
 
@@ -21,42 +24,32 @@ class FeedDropdownWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!isVisible) return const SizedBox.shrink();
 
-    debugPrint(
-        '🔘 FeedDropdown: Building dropdown widget - activeTab: $activeTab, isVisible: $isVisible');
-
     return Stack(
       children: [
-        // Debug overlay to show dropdown bounds
-        Positioned.fill(
-          child: Container(
-            color: Colors.red.withValues(alpha: 0.1),
-            child: Center(
-              child: Text(
-                'DEBUG: Dropdown Area',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Actual dropdown
         Material(
-          elevation: 20, // Very high elevation to appear above video
+          elevation: 20,
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           child: Container(
             width: 200,
             decoration: BoxDecoration(
-              color: Colors.black
-                  .withValues(alpha: 0.9), // More opaque for better visibility
-              borderRadius: BorderRadius.circular(20),
+              color: AppColors.supportBackground.withValues(alpha: 0.96),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color:
-                    Colors.white.withValues(alpha: 0.3), // More visible border
-                width: 2, // Thicker border
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.24),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: AppColors.supportSurfaceGradient,
               ),
             ),
             child: Column(
@@ -73,6 +66,12 @@ class FeedDropdownWidget extends StatelessWidget {
                   isSelected: activeTab == 'Following',
                   onTap: onFollowingTap,
                 ),
+                _buildDivider(),
+                _buildDropdownItem(
+                  'Threads',
+                  isSelected: activeTab == 'Threads',
+                  onTap: onThreadsTap,
+                ),
               ],
             ),
           ),
@@ -85,16 +84,15 @@ class FeedDropdownWidget extends StatelessWidget {
       {required bool isSelected, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: () {
-        debugPrint('🔘 FeedDropdown: $title item tapped');
         onTap();
       },
-      behavior: HitTestBehavior.opaque, // Ensure it captures taps
+      behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           color: isSelected
-              ? const Color(0xFF9248D2).withValues(alpha: 0.1)
+              ? AppColors.supportAccent.withValues(alpha: 0.16)
               : Colors.transparent,
         ),
         child: Row(
@@ -102,16 +100,16 @@ class FeedDropdownWidget extends StatelessWidget {
             Text(
               title,
               style: TextStyle(
-                color: isSelected ? const Color(0xFF9248D2) : Colors.white,
+                color: Colors.white,
                 fontSize: 16,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
             const Spacer(),
             if (isSelected)
               const Icon(
                 Icons.check,
-                color: Color(0xFF9248D2),
+                color: Colors.white,
                 size: 20,
               ),
           ],

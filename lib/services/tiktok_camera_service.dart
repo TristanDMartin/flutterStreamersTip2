@@ -4,14 +4,10 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 
-/// TikTok-quality camera service with professional settings
+/// TikTok-quality camera service
 ///
-/// Implements the complete spec for TikTok-quality video recording:
-/// - Zero stretch/squash distortion
-/// - True 9:16 vertical video
-/// - Stable autofocus/exposure/white-balance
-/// - Smooth 60fps with stabilization
-/// - High quality encoding
+/// Matches TikTok upload specs: 1080×1920, 9:16, 30fps, 10–12 Mbps,
+/// H.264 High Profile. Zero distortion, stable AF/AE, high-quality encoding.
 class TikTokCameraService {
   static final TikTokCameraService _instance = TikTokCameraService._internal();
   factory TikTokCameraService() => _instance;
@@ -24,10 +20,10 @@ class TikTokCameraService {
   String? _currentCameraId;
   CameraLensDirection _currentLensDirection = CameraLensDirection.back;
 
-  // Quality settings
+  // Quality settings (TikTok spec: 1080×1920, 30fps, 10–12 Mbps)
   ResolutionPreset _resolutionPreset = ResolutionPreset.high;
   int _targetFps = 30;
-  double _targetBitrate = 15.0; // Mbps
+  double _targetBitrate = 12.0; // Mbps (TikTok optimal)
 
   // Camera capabilities
   bool _supports60fps = false;
@@ -100,32 +96,15 @@ class TikTokCameraService {
   /// Apply Pixel 6 specific optimizations
   Future<void> _applyPixel6Optimizations() async {
     try {
-      // Pixel 6 specific settings based on the spec you provided
       if (Platform.isAndroid) {
-        // Pixel 6 can reliably do 1080p60 on back camera
-        if (_currentLensDirection == CameraLensDirection.back) {
-          _supports60fps = true;
-          _targetFps = 60;
-          _resolutionPreset = ResolutionPreset.veryHigh; // 1080p60
-          _targetBitrate = 22.0; // 22 Mbps for 1080p60
-          log('📱 Pixel 6: Enabled 1080p60 @ 22Mbps for back camera');
-        } else {
-          // Front camera gets high quality 1080p30 on Pixel 6
-          _supports60fps = false;
-          _targetFps = 30;
-          _resolutionPreset = ResolutionPreset.veryHigh; // 1080p30
-          _targetBitrate = 18.0; // 18 Mbps for 1080p30 (higher than default)
-          log('📱 Pixel 6: Enabled 1080p30 @ 18Mbps for front camera (high quality)');
-        }
-
-        // Pixel 6 supports 4K recording
+        _supports60fps = false;
+        _targetFps = 30;
+        _resolutionPreset = ResolutionPreset.veryHigh;
+        _targetBitrate = 12.0; // TikTok optimal 10–12 Mbps
+        log('📱 Pixel 6: 1080p30 @ 12Mbps (TikTok spec)');
         _supports4K = true;
-
-        // Prefer EIS over OIS on Pixel 6 (as per spec)
         _supportsEIS = true;
         _supportsOIS = false;
-
-        log('📱 Pixel 6: Optimizations applied - Back: 1080p60@22Mbps, Front: 1080p30@18Mbps, 4K enabled, EIS preferred');
       }
     } catch (e) {
       log('⚠️ Error applying Pixel 6 optimizations: $e');
@@ -272,29 +251,11 @@ class TikTokCameraService {
     return ResolutionPreset.high; // Often gives 16:9 at high quality (1080p/1440p)
   }
 
-  /// Get optimal frame rate based on device capabilities
-  int _getOptimalFps() {
-    if (_supports60fps && _currentLensDirection == CameraLensDirection.back) {
-      return 60; // 60fps for back camera
-    }
-    return 30; // 30fps for front camera or if 60fps not supported
-  }
+  /// Get optimal frame rate (TikTok standard: 30fps)
+  int _getOptimalFps() => 30;
 
-  /// Get optimal bitrate based on resolution and frame rate
-  double _getOptimalBitrate() {
-    // Pixel 6 optimized bitrates (as per TikTok spec)
-    if (_resolutionPreset == ResolutionPreset.veryHigh) {
-      // 4K bitrates: 45-60 Mbps
-      return _targetFps == 60 ? 60.0 : 45.0;
-    }
-
-    // 1080p bitrates: 12-24 Mbps (TikTok spec)
-    if (_targetFps == 60) {
-      return 22.0; // 1080p60: 18-24 Mbps (using 22 Mbps)
-    } else {
-      return 15.0; // 1080p30: 12-16 Mbps (using 15 Mbps)
-    }
-  }
+  /// Get optimal bitrate (TikTok: 10–12 Mbps for 1080p30)
+  double _getOptimalBitrate() => 12.0;
 
   /// Apply TikTok-quality camera settings
   Future<void> _applyTikTokSettings() async {
@@ -538,9 +499,7 @@ class TikTokCameraService {
       'cameraType': _currentLensDirection == CameraLensDirection.back
           ? 'Back Camera'
           : 'Front Camera',
-      'qualityLevel': _currentLensDirection == CameraLensDirection.back
-          ? '1080p60 High'
-          : '1080p30 High',
+      'qualityLevel': '1080p30 (TikTok standard)',
     };
   }
 
@@ -556,20 +515,19 @@ class TikTokCameraService {
           : 'NO (${aspectRatio.toStringAsFixed(3)})',
       '✅ High-quality 1080p/4K recording':
           _supports4K ? 'YES (4K)' : 'YES (1080p)',
-      '✅ Smooth 60fps when supported':
-          _supports60fps ? 'YES (60fps)' : 'NO (30fps)',
+      '✅ 30fps (TikTok standard)': 'YES',
       '✅ Professional autofocus and exposure': 'YES (Continuous AF/AE)',
       '✅ Optimized bitrates': 'YES (${_targetBitrate}Mbps)',
       '✅ Zero distortion in preview and recording':
           isPerfectAspectRatio ? 'YES' : 'NO',
       'Pixel 6 Specific': {
-        'Back Camera': '1080p60 @ 22Mbps',
-        'Front Camera': '1080p30 @ 18Mbps (High Quality)',
+        'Back Camera': '1080p30 @ 12Mbps',
+        'Front Camera': '1080p30 @ 12Mbps',
         '4K Support': _supports4K ? 'YES' : 'NO',
         'Stabilization': 'EIS Preferred',
         'Aspect Ratio': '9:16 (${aspectRatio.toStringAsFixed(3)})',
         'Current Camera': _currentLensDirection == CameraLensDirection.back
-            ? 'Back (1080p60)'
+            ? 'Back (1080p30)'
             : 'Front (1080p30)',
       }
     };

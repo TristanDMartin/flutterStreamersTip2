@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
+import '../models/user_count_fields.dart';
 import '../models/user.dart';
-import '../widgets/player_screen.dart';
 import '../providers/home_provider.dart' as hp;
+import '../routing/app_navigator.dart';
+import '../widgets/player_screen.dart';
 
 /// Service for handling navigation from notifications to posts/videos
 ///
@@ -37,17 +39,12 @@ class NotificationNavigationService {
           debugPrint(
               '🎬 NotificationNavigationService: Using existing video: $videoId');
           if (context.mounted) {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                settings: const RouteSettings(name: '/player'),
-                fullscreenDialog: true,
-                builder: (context) => PlayerScreen(
-                  mode: PlayerMode.homeFeed,
-                  initialIndex: 0,
-                  videoIds: [videoId],
-                  videos: [existingVideo], // Use existing video data
-                ),
-              ),
+            AppNavigator.openPlayer(
+              context,
+              mode: PlayerMode.homeFeed,
+              initialIndex: 0,
+              videoIds: [videoId],
+              videos: [existingVideo],
             );
           }
           return;
@@ -60,15 +57,14 @@ class NotificationNavigationService {
       final videoDoc = await _firestore.collection('videos').doc(videoId).get();
 
       if (!videoDoc.exists) {
-        _showVideoUnavailable(context);
+        if (context.mounted) _showVideoUnavailable(context);
         return;
       }
 
       final videoData = videoDoc.data()!;
 
-      // Check if video is deleted or private
       if (videoData['isDeleted'] == true) {
-        _showVideoUnavailable(context);
+        if (context.mounted) _showVideoUnavailable(context);
         return;
       }
 
@@ -78,17 +74,12 @@ class NotificationNavigationService {
       // Navigate using the canonical PlayerScreen (same as HomeView)
       // This ensures consistent HUD layout with proper screen edge anchoring
       if (context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            settings: const RouteSettings(name: '/player'),
-            fullscreenDialog: true,
-            builder: (context) => PlayerScreen(
-              mode: PlayerMode.homeFeed,
-              initialIndex: 0, // Single video, so index 0
-              videoIds: [videoId],
-              videos: [homeVideo], // Pass the actual video data
-            ),
-          ),
+        AppNavigator.openPlayer(
+          context,
+          mode: PlayerMode.homeFeed,
+          initialIndex: 0,
+          videoIds: [videoId],
+          videos: [homeVideo],
         );
       }
     } catch (e) {
@@ -111,8 +102,8 @@ class NotificationNavigationService {
       bio: data['bio'] ?? '',
       onlineStatus: data['onlineStatus'] ?? 'offline',
       hashtags: (data['hashtags'] as List<dynamic>?)?.cast<String>() ?? [],
-      followerCount: data['followerCount'] ?? 0,
-      followingCount: data['followingCount'] ?? 0,
+      followerCount: UserCountFields.readFollowersCount(data),
+      followingCount: UserCountFields.readFollowingCount(data),
       postCount: data['postCount'] ?? 0,
     );
 

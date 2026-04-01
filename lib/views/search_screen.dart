@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../services/search_api_service.dart';
-import '../widgets/streamer_card_view.dart';
 import '../services/logging_service.dart';
-import '../providers/follows_provider.dart';
+import '../providers/follow_refresh_provider.dart';
+import '../routing/app_navigator.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../constants/app_colors.dart';
 
 /// StreamersTip search screen with unified results feed
 class SearchScreen extends ConsumerStatefulWidget {
@@ -226,15 +227,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(followRefreshProvider, (previous, next) {
+      if (previous == next) return;
+      if (_searchQuery.isNotEmpty) {
+        _performSearch();
+      } else {
+        _loadThingsYouMayLike();
+      }
+    });
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF6633CC), // Purple
-            Color(0xFF1A1A4D), // Dark blue
-          ],
+          colors: AppColors.supportSurfaceGradient,
         ),
       ),
       child: Scaffold(
@@ -534,27 +541,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget _buildUserCard(SearchResult result) {
     return InkWell(
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => StreamerCardView(
-              userId: result.userId ?? '',
-              currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
-              onDismiss: () => Navigator.of(context).pop(),
-              onFollow: (userId) async {
-                // Use FollowsService to actually follow the user
-                final followsService = ref.read(followsServiceProvider);
-                final success = await followsService.followUser(userId);
-                if (success) {
-                  debugPrint('✅ Successfully followed user: $userId');
-                } else {
-                  debugPrint('❌ Failed to follow user: $userId');
-                }
-              },
-              onMessage: (userId) {},
-              onNavigateToTab: (tabName) {},
-              onShare: (userId) {},
-            ),
-          ),
+        AppNavigator.openStreamerCard(
+          context,
+          userId: result.userId ?? '',
+          currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+          onDismiss: () => Navigator.of(context).pop(),
         );
       },
       child: Container(

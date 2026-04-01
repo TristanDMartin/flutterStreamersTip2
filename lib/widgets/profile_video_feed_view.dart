@@ -3,16 +3,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
 import '../providers/favorites_provider.dart';
 import '../services/unified_bookmark_service.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../services/video_service.dart';
 import '../services/local_draft_service.dart';
-import '../services/real_user_data_service.dart';
+import '../services/optimistic_video_service.dart';
+import '../models/optimistic_video.dart';
 import '../providers/video_service_provider.dart' as providers;
+import '../routing/app_navigator.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
 import 'video_publishing_screen.dart';
@@ -52,9 +54,51 @@ enum ProfileVideoFeedType {
 class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   // Real-time deletion listeners
   final Map<String, StreamSubscription<DocumentSnapshot>> _videoListeners = {};
+  StreamSubscription<String>? _optimisticFeedRefreshSubscription;
+  Future<List<Map<String, dynamic>>>? _draftsFuture;
+  List<Map<String, dynamic>> _lastResolvedDrafts = const <Map<String, dynamic>>[];
+  bool _bootstrapLoadScheduled = false;
+  Set<String> _lastSyncedListenerVideoIds = const <String>{};
+
+  bool get _isViewingOwnProfile {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    return currentUser != null &&
+        widget.userId != null &&
+        widget.userId == currentUser.uid;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _resetCachedFutures();
+    _primeProfileVideoTab();
+    _optimisticFeedRefreshSubscription =
+        OptimisticVideoService().feedRefreshStream.listen((_) {
+      if (!mounted) return;
+      if (widget.feedType != ProfileVideoFeedType.videos) return;
+      if (!_isViewingOwnProfile) return;
+
+      _resetCachedFutures();
+      ref.invalidate(userVideosProvider(widget.userId ?? ''));
+      ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileVideoFeedView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId ||
+        oldWidget.feedType != widget.feedType) {
+      _resetCachedFutures();
+      _bootstrapLoadScheduled = false;
+      _lastSyncedListenerVideoIds = const <String>{};
+      _primeProfileVideoTab();
+    }
+  }
 
   @override
   void dispose() {
+    _optimisticFeedRefreshSubscription?.cancel();
     // Cancel all video deletion listeners
     for (final subscription in _videoListeners.values) {
       subscription.cancel();
@@ -68,10 +112,80 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     return _buildGridLayout();
   }
 
-  /// Set up real-time deletion listeners for videos
+  void _resetCachedFutures() {
+    _draftsFuture = null;
+    _lastResolvedDrafts = const <Map<String, dynamic>>[];
+  }
+
+  Future<List<Map<String, dynamic>>> _getDraftsFuture() {
+    return _draftsFuture ??= LocalDraftService().getAllDrafts();
+  }
+
+  void _primeProfileVideoTab() {
+    if (widget.feedType != ProfileVideoFeedType.videos) return;
+    if (_isViewingOwnProfile) {
+      _getDraftsFuture();
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensureVideoServiceLoaded();
+    });
+  }
+
+  void _ensureVideoServiceLoaded() {
+    if (!mounted || widget.feedType != ProfileVideoFeedType.videos) return;
+
+    final videoServiceState = ref.read(providers.videoServiceStateProvider);
+    final isLoadingVideos = ref.read(providers.videoServiceLoadingProvider);
+    if (videoServiceState.isNotEmpty) {
+      _bootstrapLoadScheduled = false;
+      return;
+    }
+    if (isLoadingVideos || _bootstrapLoadScheduled) {
+      return;
+    }
+
+    _bootstrapLoadScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      try {
+        if (kDebugMode) {
+          debugPrint('🎬 ProfileView: VideoService is empty, loading videos...');
+        }
+        ref.read(providers.videoServiceLoadingProvider.notifier).setIsLoading(true);
+        await ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
+      } catch (e, stackTrace) {
+        if (kDebugMode) {
+          debugPrint('❌ ProfileView: Error bootstrapping videos: $e');
+          debugPrint('❌ ProfileView: Stack trace: $stackTrace');
+        }
+      } finally {
+        if (mounted) {
+          ref.read(providers.videoServiceLoadingProvider.notifier).setIsLoading(false);
+        }
+        _bootstrapLoadScheduled = false;
+      }
+    });
+  }
+
+  void _scheduleRealtimeDeletionSync(List<HomeVideo> videos) {
+    final nextIds = videos.take(15).map((video) => video.id).toSet();
+    if (setEquals(_lastSyncedListenerVideoIds, nextIds)) {
+      return;
+    }
+    _lastSyncedListenerVideoIds = nextIds;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _setupRealtimeDeletionListeners(videos);
+    });
+  }
+
+  /// Set up real-time deletion listeners for videos (first 15 to limit reads)
   void _setupRealtimeDeletionListeners(List<HomeVideo> videos) {
-    // Cancel existing listeners for videos no longer in the list
-    final currentVideoIds = videos.map((v) => v.id).toSet();
+    final videosToListen = videos.take(15).toList();
+    final currentVideoIds = videosToListen.map((v) => v.id).toSet();
     final listenersToRemove = _videoListeners.keys
         .where((id) => !currentVideoIds.contains(id))
         .toList();
@@ -80,8 +194,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       _videoListeners.remove(id);
     }
 
-    // Add listeners for new videos
-    for (final video in videos) {
+    for (final video in videosToListen) {
       if (_videoListeners.containsKey(video.id)) continue;
 
       final subscription = FirebaseFirestore.instance
@@ -98,10 +211,13 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         }
 
         final data = snapshot.data();
-        final status = data?['status'] as String?;
+        final status = (data?['status'] as String?)?.toLowerCase();
 
-        // Remove video if status is 'deleted' or not 'published'
-        if (status == 'deleted' || status != 'published') {
+        // Published videos in this app commonly use `active`, so keep those
+        // mounted instead of treating them like deleted content.
+        const visibleStatuses = {'published', 'ready', 'active'};
+        if (status == 'deleted' ||
+            (status != null && !visibleStatuses.contains(status))) {
           _handleVideoDeletion(video.id);
         }
       });
@@ -120,7 +236,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
     // Invalidate providers to refresh the feed
     ref.invalidate(userVideosProvider(widget.userId ?? ''));
-    ref.invalidate(videoServiceProvider);
+    ref.invalidate(providers.videoServiceStateProvider);
   }
 
   /// Check if favorites should be visible based on privacy settings
@@ -153,31 +269,6 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             '❌ ProfileVideoFeedView: Error checking favorites visibility: $e');
       }
       return false; // Default to hidden on error
-    }
-  }
-
-  /// Load user videos directly from Firestore (bypasses VideoService)
-  Future<List<HomeVideo>> _loadUserVideosDirectly(String userId) async {
-    try {
-      if (kDebugMode) {
-        debugPrint(
-            '🎬 ProfileView: Loading videos directly for userId: $userId');
-      }
-
-      final userDataService = RealUserDataService();
-      final videos = await userDataService.getUserVideos(userId, limit: 100);
-
-      if (kDebugMode) {
-        debugPrint(
-            '🎬 ProfileView: Loaded ${videos.length} videos directly from Firestore');
-      }
-
-      return videos;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ ProfileView: Error loading videos directly: $e');
-      }
-      return [];
     }
   }
 
@@ -230,143 +321,64 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     return Consumer(
       builder: (context, ref, child) {
         try {
-          // Only try to load VideoService once per build cycle
-          final videoServiceState = ref.watch(videoServiceProvider);
+          final videoServiceState = ref.watch(providers.videoServiceStateProvider);
           final isLoadingVideos =
-              ref.read(providers.videoServiceLoadingProvider);
-
-          // Only trigger load if VideoService is empty and not already loading
-          if (videoServiceState.isEmpty && !isLoadingVideos) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              try {
-                final videoService = ref.read(videoServiceProvider.notifier);
-                if (kDebugMode) {
-                  debugPrint(
-                      '🎬 ProfileView: VideoService is empty, loading videos...');
-                }
-                // Mark as loading to prevent multiple simultaneous loads
-                ref.read(providers.videoServiceLoadingProvider.notifier).state =
-                    true;
-                // Load videos in background
-                videoService.loadAllVideos().then((_) {
-                  if (mounted) {
-                    ref
-                        .read(providers.videoServiceLoadingProvider.notifier)
-                        .state = false;
-                  }
-                }).catchError((e, stackTrace) {
-                  if (mounted) {
-                    ref
-                        .read(providers.videoServiceLoadingProvider.notifier)
-                        .state = false;
-                  }
-                  if (kDebugMode) {
-                    debugPrint('❌ ProfileView: Error loading videos: $e');
-                    debugPrint('❌ ProfileView: Stack trace: $stackTrace');
-                  }
-                });
-              } catch (e, stackTrace) {
-                if (kDebugMode) {
-                  debugPrint('❌ ProfileView: Error in postFrameCallback: $e');
-                  debugPrint('❌ ProfileView: Stack trace: $stackTrace');
-                }
-                // Reset loading state on error
-                try {
-                  ref
-                      .read(providers.videoServiceLoadingProvider.notifier)
-                      .state = false;
-                } catch (_) {
-                  // Ignore errors when resetting state
-                }
-              }
-            });
-          }
+              ref.watch(providers.videoServiceLoadingProvider);
+          final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+          final isViewingOwnProfile = currentUser != null &&
+              widget.userId != null &&
+              widget.userId == currentUser.uid;
+          _ensureVideoServiceLoaded();
 
           // Watch user videos from centralized VideoService
           final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
+          final List<OptimisticVideo> optimisticVideos = _isViewingOwnProfile
+              ? (OptimisticVideoService()
+                    .getOptimisticVideosForUser(widget.userId ?? '')
+                    .where((video) => video.status.isProcessing)
+                    .where((video) =>
+                        !userVideos.any((item) => item.id == video.videoId))
+                    .toList()
+                ..sort((a, b) => b.createdAt.compareTo(a.createdAt)))
+              : <OptimisticVideo>[];
 
           if (kDebugMode) {
             debugPrint(
                 '🎬 ProfileView: Found ${userVideos.length} user videos for userId: ${widget.userId}');
             debugPrint(
                 '🎬 ProfileView: Total videos in VideoService: ${videoServiceState.length}');
+            debugPrint(
+                '🎬 ProfileView: Found ${optimisticVideos.length} optimistic processing videos');
           }
 
-          // If no videos found and VideoService is empty, try loading directly
-          if (userVideos.isEmpty && videoServiceState.isEmpty) {
-            return FutureBuilder<List<HomeVideo>>(
-              future: _loadUserVideosDirectly(widget.userId ?? ''),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF9248d2),
-                    ),
-                  );
-                }
+          final bool isServiceBootstrapping =
+              videoServiceState.isEmpty && isLoadingVideos;
+          final bool shouldShowLoadingPlaceholder =
+              videoServiceState.isEmpty &&
+              userVideos.isEmpty &&
+              optimisticVideos.isEmpty &&
+              (isLoadingVideos || !isViewingOwnProfile);
 
-                if (snapshot.hasError) {
-                  if (kDebugMode) {
-                    debugPrint(
-                        '❌ ProfileView: Error loading videos directly: ${snapshot.error}');
-                  }
-                  return _buildEmptyState(
-                    icon: Icons.videocam_outlined,
-                    title: 'No Videos Yet',
-                    subtitle: 'Start creating content to see your videos here',
-                  );
-                }
-
-                final directVideos = snapshot.data ?? [];
-                if (directVideos.isEmpty) {
-                  return _buildEmptyState(
-                    icon: Icons.videocam_outlined,
-                    title: 'No Videos Yet',
-                    subtitle: 'Start creating content to see your videos here',
-                  );
-                }
-
-                // Show videos loaded directly
-                final currentUser =
-                    firebase_auth.FirebaseAuth.instance.currentUser;
-                final isViewingOwnProfile = currentUser != null &&
-                    widget.userId != null &&
-                    widget.userId == currentUser.uid;
-
-                if (isViewingOwnProfile) {
-                  return FutureBuilder<List<Map<String, dynamic>>>(
-                    future: LocalDraftService().getAllDrafts(),
-                    builder: (context, draftSnapshot) {
-                      final drafts = draftSnapshot.data ?? [];
-                      return _buildVideoGridWithDrafts(directVideos, drafts);
-                    },
-                  );
-                } else {
-                  return _buildVideoGridWithoutDrafts(directVideos);
-                }
-              },
-            );
-          }
-
-          // Check if viewing own profile - only show drafts for current user
-          final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-          final isViewingOwnProfile = currentUser != null &&
-              widget.userId != null &&
-              widget.userId == currentUser.uid;
-
-          // Only load drafts if viewing own profile
+          // Own profile should stay on one stable grid path instead of bouncing
+          // between multiple async sources while VideoService warms up.
           if (isViewingOwnProfile) {
             return FutureBuilder<List<Map<String, dynamic>>>(
-              future: LocalDraftService().getAllDrafts(),
+              future: _getDraftsFuture(),
+              initialData: _lastResolvedDrafts,
               builder: (context, snapshot) {
-                final drafts = snapshot.data ?? [];
-
-                if (kDebugMode) {
-                  debugPrint(
-                      '🎬 ProfileView: Found ${drafts.length} drafts (own profile)');
+                final drafts = snapshot.data ?? _lastResolvedDrafts;
+                if (snapshot.hasData) {
+                  _lastResolvedDrafts = drafts;
                 }
 
-                if (userVideos.isEmpty && drafts.isEmpty) {
+                if (userVideos.isEmpty &&
+                    drafts.isEmpty &&
+                    optimisticVideos.isEmpty &&
+                    isServiceBootstrapping) {
+                  return _buildLoadingGridPlaceholder();
+                }
+
+                if (userVideos.isEmpty && drafts.isEmpty && optimisticVideos.isEmpty) {
                   return _buildEmptyState(
                     icon: Icons.videocam_outlined,
                     title: 'No Videos Yet',
@@ -374,21 +386,28 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                   );
                 }
 
-                return _buildVideoGridWithDrafts(userVideos, drafts);
+                return _buildVideoGridWithDrafts(
+                  userVideos,
+                  drafts,
+                  optimisticVideos,
+                );
               },
             );
-          } else {
-            // Viewing someone else's profile - don't show drafts
-            if (userVideos.isEmpty) {
-              return _buildEmptyState(
-                icon: Icons.videocam_outlined,
-                title: 'No Videos Yet',
-                subtitle: 'This user hasn\'t posted any videos yet',
-              );
-            }
-
-            return _buildVideoGridWithoutDrafts(userVideos);
           }
+
+          if (shouldShowLoadingPlaceholder) {
+            return _buildLoadingGridPlaceholder();
+          }
+
+          if (userVideos.isEmpty && optimisticVideos.isEmpty) {
+            return _buildEmptyState(
+              icon: Icons.videocam_outlined,
+              title: 'No Videos Yet',
+              subtitle: 'This user hasn\'t posted any videos yet',
+            );
+          }
+
+          return _buildVideoGridWithoutDrafts(userVideos);
         } catch (e, stackTrace) {
           if (kDebugMode) {
             debugPrint('❌ ProfileView: Error in _buildUserVideosGrid: $e');
@@ -616,16 +635,17 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   }
 
   Widget _buildVideoGridWithDrafts(
-      List<HomeVideo> videos, List<Map<String, dynamic>> drafts) {
-    // Set up real-time deletion listeners for videos
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _setupRealtimeDeletionListeners(videos);
-    });
+      List<HomeVideo> videos,
+      List<Map<String, dynamic>> drafts,
+      List<OptimisticVideo> optimisticVideos) {
+    _scheduleRealtimeDeletionSync(videos);
 
-    final itemCount = (drafts.isNotEmpty ? 1 : 0) + videos.length;
+    final itemCount =
+        (drafts.isNotEmpty ? 1 : 0) + optimisticVideos.length + videos.length;
 
     return RefreshIndicator(
       onRefresh: () async {
+        _resetCachedFutures();
         // Refresh data based on feed type
         switch (widget.feedType) {
           case ProfileVideoFeedType.favorites:
@@ -633,7 +653,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             break;
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
-            // Refresh for user videos and tagged content - placeholder for future implementation
+            ref.invalidate(userVideosProvider(widget.userId ?? ''));
+            await ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
             break;
         }
       },
@@ -649,6 +670,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         ),
         itemCount: itemCount,
         itemBuilder: (context, index) {
+          final draftOffset = drafts.isNotEmpty ? 1 : 0;
+
           // Show all drafts in the first position (index 0)
           if (drafts.isNotEmpty && index == 0) {
             final firstDraft = drafts[0];
@@ -658,8 +681,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             }
             final draftVideo = HomeVideo(
               id: 'all_drafts',
-              videoURL: firstDraft['videoPath'] ?? '',
-              thumbnailURL: firstDraft['thumbnailPath'] ?? '',
+              videoURL: firstDraft['videoPath'] ??
+                  firstDraft['videoUrl'] ??
+                  '',
+              thumbnailURL: firstDraft['thumbnailPath'] ??
+                  firstDraft['thumbnailUrl'],
               creator: User(
                 id: 'current_user',
                 displayName: 'You',
@@ -686,8 +712,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             );
           }
 
+          final optimisticIndex = index - draftOffset;
+          if (optimisticIndex >= 0 && optimisticIndex < optimisticVideos.length) {
+            return _buildOptimisticProcessingCard(
+              optimisticVideos[optimisticIndex],
+            );
+          }
+
           // Show published videos after the drafts thumbnail
-          final videoIndex = drafts.isNotEmpty ? index - 1 : index;
+          final videoIndex = index - draftOffset - optimisticVideos.length;
           if (videoIndex >= 0 && videoIndex < videos.length) {
             final video = videos[videoIndex];
             return _buildHomeVideoCard(video, videoIndex, videos);
@@ -699,14 +732,150 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     );
   }
 
+  Widget _buildOptimisticProcessingCard(OptimisticVideo video) {
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
+    final tileWidth = (screenWidth - 32 - 32) / 3;
+
+    DecorationImage? backgroundImage;
+    if (video.localThumbnailPath != null && video.localThumbnailPath!.isNotEmpty) {
+      final localFile = File(video.localThumbnailPath!);
+      if (localFile.existsSync()) {
+        backgroundImage = DecorationImage(
+          image: FileImage(localFile),
+          fit: BoxFit.cover,
+        );
+      }
+    } else if (video.thumbnailUrl != null && video.thumbnailUrl!.isNotEmpty) {
+      backgroundImage = DecorationImage(
+        image: NetworkImage(video.thumbnailUrl!),
+        fit: BoxFit.cover,
+      );
+    }
+
+    final progress = ((video.uploadProgress ?? 0.0) * 100).clamp(0, 100);
+
+    return AspectRatio(
+      aspectRatio: 9 / 16,
+      child: Opacity(
+        opacity: 0.92,
+        child: Container(
+          width: tileWidth,
+          decoration: BoxDecoration(
+            color: const Color(0xFF161616),
+            borderRadius: BorderRadius.circular(12),
+            image: backgroundImage,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.12),
+                        Colors.black.withValues(alpha: 0.22),
+                        Colors.black.withValues(alpha: 0.62),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1670DE).withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'Processing',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.38),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.hourglass_top_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (video.caption.isNotEmpty)
+                        Text(
+                          video.caption,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      if (video.caption.isNotEmpty) const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        value: (video.uploadProgress ?? 0.0).clamp(0.0, 1.0),
+                        minHeight: 4,
+                        borderRadius: BorderRadius.circular(999),
+                        backgroundColor: Colors.white.withValues(alpha: 0.18),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFF9248D2),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        progress <= 0
+                            ? 'Preparing your post...'
+                            : 'Transcoding ${progress.toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.86),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildVideoGridWithoutDrafts(List<HomeVideo> videos) {
-    // Set up real-time deletion listeners for videos
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _setupRealtimeDeletionListeners(videos);
-    });
+    _scheduleRealtimeDeletionSync(videos);
 
     return RefreshIndicator(
       onRefresh: () async {
+        _resetCachedFutures();
         // Refresh data based on feed type
         switch (widget.feedType) {
           case ProfileVideoFeedType.favorites:
@@ -714,7 +883,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             break;
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
-            // Refresh for user videos and tagged content - placeholder for future implementation
+            ref.invalidate(userVideosProvider(widget.userId ?? ''));
+            await ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
             break;
         }
       },
@@ -775,13 +945,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         .whereType<HomeVideo>()
         .toList();
 
-    // Set up real-time deletion listeners for videos
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _setupRealtimeDeletionListeners(homeVideos);
-    });
+    _scheduleRealtimeDeletionSync(homeVideos);
 
     return RefreshIndicator(
       onRefresh: () async {
+        _resetCachedFutures();
         // Refresh data based on feed type
         switch (widget.feedType) {
           case ProfileVideoFeedType.favorites:
@@ -789,7 +957,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             break;
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
-            // Refresh for user videos and tagged content - placeholder for future implementation
+            ref.invalidate(userVideosProvider(widget.userId ?? ''));
+            await ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
             break;
         }
       },
@@ -817,34 +986,134 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     int draftCount,
     List<Map<String, dynamic>> allDrafts,
   ) {
-    return Stack(
-      children: [
-        GridThumbnail(
-          video: draftVideo,
-          onTap: () => _openAllDrafts(allDrafts),
-          showDraftBadge: false,
-          showDurationBadge: false,
-        ),
-        Positioned(
-          top: 8,
-          right: 8,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.orange.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              '$draftCount Draft${draftCount > 1 ? 's' : ''}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+    final latestDraft = allDrafts.isNotEmpty ? allDrafts.first : const <String, dynamic>{};
+    final latestCaption =
+        (latestDraft['caption'] as String?)?.trim().isNotEmpty == true
+            ? (latestDraft['caption'] as String).trim()
+            : 'Continue editing your drafts';
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openAllDrafts(allDrafts),
+      child: Stack(
+        children: [
+          GridThumbnail(
+            video: draftVideo,
+            onTap: null,
+            showDraftBadge: false,
+            showDurationBadge: false,
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.10),
+                      Colors.black.withValues(alpha: 0.20),
+                      Colors.black.withValues(alpha: 0.72),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ],
+          Positioned(
+            top: 8,
+            left: 8,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.edit_note_rounded,
+                      size: 12,
+                      color: Colors.white,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Drafts',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.52),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
+                ),
+                child: Text(
+                  '$draftCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 10,
+            child: IgnorePointer(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    latestCaption,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    draftCount == 1
+                        ? '1 draft ready to finish'
+                        : '$draftCount drafts ready to finish',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.82),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -952,6 +1221,35 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     );
   }
 
+  Widget _buildLoadingGridPlaceholder() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 9 / 16,
+      ),
+      itemCount: 6,
+      itemBuilder: (context, index) {
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.08),
+                Colors.white.withValues(alpha: 0.03),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _openAllDrafts(List<Map<String, dynamic>> drafts) {
     if (mounted) {
       Navigator.of(context)
@@ -961,27 +1259,26 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             drafts: drafts,
             onDraftTap: (selectedDraft) => _editDraft(selectedDraft),
             onDelete: (draftToDelete) async {
+              final messenger = ScaffoldMessenger.of(context);
               final success =
                   await LocalDraftService().deleteDraft(draftToDelete['id']);
               if (success) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                          'Deleted draft: ${draftToDelete['caption']?.isNotEmpty == true ? draftToDelete['caption'] : 'Untitled Draft'}'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
+                if (!mounted) return success;
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        'Deleted draft: ${draftToDelete['caption']?.isNotEmpty == true ? draftToDelete['caption'] : 'Untitled Draft'}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Failed to delete draft'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
+                if (!mounted) return success;
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to delete draft'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
               return success;
             },
@@ -999,23 +1296,35 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   void _editDraft(Map<String, dynamic> draft) {
     try {
-      final videoFile = File(draft['videoPath']);
-      if (!videoFile.existsSync()) {
+      final draftId = draft['id'] as String?;
+      if (draftId == null || draftId.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Video file not found'),
+            content: Text('Draft is missing its ID'),
             backgroundColor: Colors.red,
           ),
         );
         return;
       }
 
-      final hashtags = (draft['hashtags'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [];
+      LocalDraftService().ensureLocalVideoFile(draftId).then((videoFile) {
+        if (!mounted) return;
 
-      if (mounted) {
+        if (videoFile == null || !videoFile.existsSync()) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Draft video is not available on this device yet'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        final hashtags = (draft['hashtags'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [];
+
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => VideoPublishingScreen(
@@ -1034,7 +1343,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             ),
           ),
         );
-      }
+      });
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ Error editing draft: $e');
@@ -1052,8 +1361,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
   // Helper methods
 
-  /// ✅ FIX: Fetch real tagged videos from Firestore
+  /// ✅ FIX: Fetch real tagged videos from Firestore (requires auth).
   Future<List<Map<String, dynamic>>> _fetchTaggedVideos(String userId) async {
+    if (firebase_auth.FirebaseAuth.instance.currentUser == null) {
+      return [];
+    }
     try {
       if (kDebugMode) {
         debugPrint(
@@ -1149,6 +1461,10 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           '✅ ProfileVideoFeedView: Loaded ${taggedVideos.length} tagged videos');
       return taggedVideos;
     } catch (e) {
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return [];
+      }
       debugPrint('❌ ProfileVideoFeedView: Error fetching tagged videos: $e');
       return [];
     }
@@ -1210,17 +1526,12 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   void _openVideoPlayer(HomeVideo video, int index, List<HomeVideo> videos) {
     final videoIds = videos.map((v) => v.id).toList();
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: '/player'),
-        fullscreenDialog: true,
-        builder: (context) => PlayerScreen(
-          mode: PlayerMode.homeFeed,
-          initialIndex: index,
-          videoIds: videoIds,
-          videos: videos, // Pass the actual video data
-        ),
-      ),
+    AppNavigator.openPlayer(
+      context,
+      mode: PlayerMode.homeFeed,
+      initialIndex: index,
+      videoIds: videoIds,
+      videos: videos,
     );
   }
 
@@ -1309,17 +1620,13 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
     final videoIds = homeVideos.map((v) => v.id).toList();
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: '/player'),
-        fullscreenDialog: true,
-        builder: (context) => PlayerScreen(
-          mode: PlayerMode.homeFeed,
-          initialIndex: index,
-          videoIds: videoIds,
-          videos: homeVideos, // Pass the actual video data
-        ),
-      ),
+    if (!mounted) return;
+    AppNavigator.openPlayer(
+      context,
+      mode: PlayerMode.homeFeed,
+      initialIndex: index,
+      videoIds: videoIds,
+      videos: homeVideos,
     );
   }
 }

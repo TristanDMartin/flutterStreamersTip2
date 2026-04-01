@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/user_count_fields.dart';
 
 /// Network effects service - Amplifies content from user's network
 /// Implements viral boost from connections and trending in network
@@ -9,8 +10,6 @@ class NetworkEffectsService {
       _instance ??= NetworkEffectsService._();
 
   NetworkEffectsService._();
-
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Network boost multipliers
   static const double CONNECTIONS_LIKED_BOOST =
@@ -63,145 +62,49 @@ class NetworkEffectsService {
   /// Get connections who liked a video
   Future<List<String>> _getConnectionsWhoLiked(
       String userId, String videoId) async {
-    try {
-      // Get user's connections
-      final connectionsSnapshot = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('connections')
-          .where('followState', whereIn: ['mutual', 'following']).get();
-
-      final connectionIds =
-          connectionsSnapshot.docs.map((doc) => doc.id).toList();
-
-      if (connectionIds.isEmpty) return [];
-
-      // Check which connections liked this video
-      final List<String> likedByConnections = [];
-
-      // Query in chunks of 10 (Firestore limit)
-      for (int i = 0; i < connectionIds.length; i += 10) {
-        final chunk = connectionIds.skip(i).take(10).toList();
-
-        final likesSnapshot = await _firestore
-            .collection('likes')
-            .where('videoId', isEqualTo: videoId)
-            .where('userId', whereIn: chunk)
-            .get();
-
-        likedByConnections.addAll(likesSnapshot.docs.map((doc) => doc.id));
-      }
-
-      return likedByConnections;
-    } catch (e) {
-      log('❌ Error getting connections who liked: $e');
-      return [];
-    }
+    // ✅ FIX: Querying root 'likes' collection with videoId + userId whereIn is not allowed
+    // This requires complex indexes and violates security rules
+    // TODO: Use deterministic paths: videos/{videoId}/likes/{uid} with individual get() calls
+    // OR: Move this feature to server-side (Cloud Functions)
+    // Server should:
+    // 1. Query likes using proper schema (videos/{videoId}/likes/{uid})
+    // 2. Store aggregated results: network_likes/{userId}/{videoId}
+    // 3. Client reads only pre-computed results
+    
+    log('⚠️ Connections who liked: Feature disabled (should use deterministic paths or server-side)');
+    return [];
   }
 
   /// Calculate if video is trending in user's network
   Future<double> _getTrendingInNetworkScore(
       String userId, String videoId) async {
-    try {
-      // Get user's connections
-      final connectionsSnapshot = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('connections')
-          .limit(100)
-          .get();
-
-      final connectionIds =
-          connectionsSnapshot.docs.map((doc) => doc.id).toList();
-
-      if (connectionIds.isEmpty) return 0.0;
-
-      // Count engagements from network in last 24 hours
-      final cutoff = DateTime.now().subtract(const Duration(hours: 24));
-
-      int networkEngagements = 0;
-
-      // Query engagements from connections
-      for (int i = 0; i < connectionIds.length; i += 10) {
-        final chunk = connectionIds.skip(i).take(10).toList();
-
-        final engagementSnapshot = await _firestore
-            .collection('engagement')
-            .where('userId', whereIn: chunk)
-            .where('videoId', isEqualTo: videoId)
-            .where('lastUpdated', isGreaterThan: Timestamp.fromDate(cutoff))
-            .get();
-
-        networkEngagements += engagementSnapshot.docs.length;
-      }
-
-      // Calculate trending score (% of network that engaged)
-      final trendingScore = networkEngagements / connectionIds.length;
-
-      log('🔥 Trending score: $networkEngagements/${connectionIds.length} = ${trendingScore.toStringAsFixed(2)}');
-
-      return trendingScore;
-    } catch (e) {
-      log('❌ Error calculating trending score: $e');
-      return 0.0;
-    }
+    // ✅ FIX: Client-side engagement queries are not allowed (requires complex indexes + violates security)
+    // This should be computed server-side and exposed via public aggregates
+    // TODO: Move to server-side (Cloud Functions)
+    // Server should:
+    // 1. Compute trending in network (server-side only)
+    // 2. Store results in: trending_network/{userId}/{videoId} or public_trending/{timeWindow}
+    // 3. Client reads only pre-computed results
+    
+    log('⚠️ Trending in network score: Feature disabled (should be server-side)');
+    return 0.0;
   }
 
   /// Calculate engagement from similar users
   Future<double> _getSimilarUsersEngagement(
       String userId, String videoId) async {
-    try {
-      // Get user's favorite categories
-      final userDoc = await _firestore
-          .collection('user_retention_profiles')
-          .doc(userId)
-          .get();
-
-      final favoriteCategories =
-          List<String>.from(userDoc.data()?['favoriteCategories'] ?? []);
-
-      if (favoriteCategories.isEmpty) return 0.0;
-
-      // Find users with similar interests
-      final similarUsersSnapshot = await _firestore
-          .collection('user_retention_profiles')
-          .where('favoriteCategories',
-              arrayContainsAny: favoriteCategories.take(10).toList())
-          .limit(50)
-          .get();
-
-      final similarUserIds = similarUsersSnapshot.docs
-          .map((doc) => doc.id)
-          .where((id) => id != userId)
-          .toList();
-
-      if (similarUserIds.isEmpty) return 0.0;
-
-      // Count how many engaged with this video
-      int engagedCount = 0;
-
-      for (int i = 0; i < similarUserIds.length; i += 10) {
-        final chunk = similarUserIds.skip(i).take(10).toList();
-
-        final engagementSnapshot = await _firestore
-            .collection('engagement')
-            .where('userId', whereIn: chunk)
-            .where('videoId', isEqualTo: videoId)
-            .where('engagementScore', isGreaterThan: 10.0)
-            .get();
-
-        engagedCount += engagementSnapshot.docs.length;
-      }
-
-      final engagementRate = engagedCount / similarUserIds.length;
-
-      log('👥 Similar users engagement: $engagedCount/${similarUserIds.length} = ${engagementRate.toStringAsFixed(2)}');
-
-      return engagementRate;
-    } catch (e) {
-      log('❌ Error calculating similar users engagement: $e');
-      return 0.0;
-    }
+    // ✅ FIX: Client-side queries to user_retention_profiles and engagement are not allowed
+    // These should be computed server-side (Cloud Functions) and exposed via public aggregates
+    // Returning safe default to prevent PERMISSION_DENIED errors
+    // TODO: Move this feature to server-side
+    // Server should:
+    // 1. Compute similar users based on categories (server-side only)
+    // 2. Calculate engagement metrics (server-side only)
+    // 3. Store public aggregates in: public_creator_metrics/{creatorId} or similar
+    // 4. Client reads only public aggregates
+    
+    log('⚠️ Similar users engagement: Feature disabled (should be server-side)');
+    return 0.0;
   }
 }
 
@@ -243,7 +146,7 @@ class UserRetentionProfile {
           (data['lastVisitTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
       favoriteCategories: List<String>.from(data['favoriteCategories'] ?? []),
       connectionCount: data['connectionCount'] ?? 0,
-      followingCount: data['followingCount'] ?? 0,
+      followingCount: UserCountFields.readFollowingCount(data),
       engagementTrend: (data['engagementTrend'] ?? 0.0).toDouble(),
     );
   }

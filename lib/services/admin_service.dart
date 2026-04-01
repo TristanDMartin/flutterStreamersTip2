@@ -10,18 +10,15 @@ class AdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // List of admin user IDs (UIDs)
-  // Add your technqs account UID here
-  static const List<String> _adminUserIds = [
-    'bU0RxyZ2L4ULAv1Co5L4f825yV73', // technqs UID
-    // Add more admin UIDs as needed
-  ];
+  bool _hasAdminRole(Map<String, dynamic>? userData) {
+    if (userData == null) {
+      return false;
+    }
 
-  // List of admin usernames (as backup)
-  static const List<String> _adminUsernames = [
-    'technqs',
-    // Add more admin usernames as needed
-  ];
+    final role = userData['role'] as String?;
+    final isAdmin = userData['isAdmin'] as bool? ?? false;
+    return isAdmin || role == 'admin';
+  }
 
   /// Check if current user is an admin
   Future<bool> isCurrentUserAdmin() async {
@@ -29,30 +26,14 @@ class AdminService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return false;
 
-      // Check by UID first (most reliable)
-      if (_adminUserIds.contains(currentUser.uid)) {
-        debugPrint('✅ Admin check: User ${currentUser.uid} is admin (by UID)');
-        return true;
-      }
-
       // Check by username (backup method)
       final userDoc =
           await _firestore.collection('users').doc(currentUser.uid).get();
       if (!userDoc.exists) return false;
 
-      final username = userDoc.data()?['username'] as String?;
-      if (username != null && _adminUsernames.contains(username)) {
+      if (_hasAdminRole(userDoc.data())) {
         debugPrint(
-          '✅ Admin check: User $username is admin (by username)',
-        );
-        return true;
-      }
-
-      // Check role field in user document
-      final role = userDoc.data()?['role'] as String?;
-      if (role == 'admin') {
-        debugPrint(
-          '✅ Admin check: User ${currentUser.uid} has admin role',
+          '✅ Admin check: User ${currentUser.uid} has Firestore admin access',
         );
         return true;
       }
@@ -67,16 +48,9 @@ class AdminService {
   /// Check if a specific user ID is an admin
   Future<bool> isUserAdmin(String userId) async {
     try {
-      if (_adminUserIds.contains(userId)) return true;
-
       final userDoc = await _firestore.collection('users').doc(userId).get();
       if (!userDoc.exists) return false;
-
-      final username = userDoc.data()?['username'] as String?;
-      if (username != null && _adminUsernames.contains(username)) return true;
-
-      final role = userDoc.data()?['role'] as String?;
-      return role == 'admin';
+      return _hasAdminRole(userDoc.data());
     } catch (e) {
       debugPrint('❌ Error checking user admin status: $e');
       return false;
@@ -88,6 +62,7 @@ class AdminService {
     try {
       await _firestore.collection('users').doc(userId).update({
         'role': 'admin',
+        'isAdmin': true,
         'updatedAt': FieldValue.serverTimestamp(),
       });
       debugPrint('✅ Granted admin role to user: $userId');
@@ -102,6 +77,7 @@ class AdminService {
     try {
       await _firestore.collection('users').doc(userId).update({
         'role': 'user',
+        'isAdmin': false,
         'updatedAt': FieldValue.serverTimestamp(),
       });
       debugPrint('✅ Revoked admin role from user: $userId');

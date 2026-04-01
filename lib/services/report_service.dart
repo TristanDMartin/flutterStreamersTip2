@@ -11,6 +11,25 @@ class ReportService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  Future<String> _requireReporterId() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      throw Exception('User must be authenticated to report content');
+    }
+    return currentUser.uid;
+  }
+
+  Future<void> _submitContentReport(Map<String, dynamic> reportData) async {
+    await _firestore.collection('reports').add({
+      ...reportData,
+      'timestamp': FieldValue.serverTimestamp(),
+      'status': 'pending',
+      'reviewedBy': null,
+      'reviewedAt': null,
+      'actionTaken': null,
+    });
+  }
+
   /// Report a video with specific reason
   Future<void> reportVideo({
     required String videoId,
@@ -19,26 +38,18 @@ class ReportService {
     String? additionalDetails,
   }) async {
     try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) {
-        throw Exception('User must be authenticated to report content');
-      }
+      final reporterId = await _requireReporterId();
 
       final reportData = {
+        'reportType': 'video',
         'videoId': videoId,
         'creatorId': creatorId,
-        'reporterId': currentUser.uid,
+        'reporterId': reporterId,
         'reason': reason,
         'additionalDetails': additionalDetails,
-        'timestamp': FieldValue.serverTimestamp(),
-        'status': 'pending', // pending, reviewed, resolved, dismissed
-        'reviewedBy': null,
-        'reviewedAt': null,
-        'actionTaken': null,
       };
 
-      // Add report to reports collection
-      await _firestore.collection('reports').add(reportData);
+      await _submitContentReport(reportData);
 
       // Update video report count
       await _firestore.collection('videos').doc(videoId).update({
@@ -68,14 +79,11 @@ class ReportService {
     String? additionalDetails,
   }) async {
     try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) {
-        throw Exception('User must be authenticated to report content');
-      }
+      final reporterId = await _requireReporterId();
 
       final reportData = {
         'userId': userId,
-        'reporterId': currentUser.uid,
+        'reporterId': reporterId,
         'reason': reason,
         'additionalDetails': additionalDetails,
         'timestamp': FieldValue.serverTimestamp(),
@@ -98,6 +106,112 @@ class ReportService {
           name: 'ReportService');
     } catch (e) {
       dev.log('❌ ReportService: Error reporting user: $e',
+          name: 'ReportService');
+      rethrow;
+    }
+  }
+
+  Future<void> reportComment({
+    required String videoId,
+    required String commentId,
+    required String commentAuthorId,
+    required String reason,
+    String? additionalDetails,
+  }) async {
+    try {
+      final reporterId = await _requireReporterId();
+
+      await _submitContentReport({
+        'reportType': 'videoComment',
+        'videoId': videoId,
+        'commentId': commentId,
+        'creatorId': commentAuthorId,
+        'reporterId': reporterId,
+        'reason': reason,
+        'additionalDetails': additionalDetails,
+      });
+
+      await _firestore.collection('videos').doc(videoId).update({
+        'commentReportCount': FieldValue.increment(1),
+        'lastReportedAt': FieldValue.serverTimestamp(),
+      });
+
+      await _firestore.collection('users').doc(commentAuthorId).update({
+        'reportCount': FieldValue.increment(1),
+        'lastReportedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      dev.log('❌ ReportService: Error reporting comment: $e',
+          name: 'ReportService');
+      rethrow;
+    }
+  }
+
+  Future<void> reportThread({
+    required String postId,
+    required String authorId,
+    required String reason,
+    String? additionalDetails,
+  }) async {
+    try {
+      final reporterId = await _requireReporterId();
+
+      await _submitContentReport({
+        'reportType': 'thread',
+        'postId': postId,
+        'creatorId': authorId,
+        'reporterId': reporterId,
+        'reason': reason,
+        'additionalDetails': additionalDetails,
+      });
+
+      await _firestore.collection('forumPosts').doc(postId).update({
+        'reportCount': FieldValue.increment(1),
+        'lastReportedAt': FieldValue.serverTimestamp(),
+      });
+
+      await _firestore.collection('users').doc(authorId).update({
+        'reportCount': FieldValue.increment(1),
+        'lastReportedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      dev.log('❌ ReportService: Error reporting thread: $e',
+          name: 'ReportService');
+      rethrow;
+    }
+  }
+
+  Future<void> reportThreadComment({
+    required String postId,
+    required String commentId,
+    required String commentAuthorId,
+    required String reason,
+    String? additionalDetails,
+  }) async {
+    try {
+      final reporterId = await _requireReporterId();
+
+      await _submitContentReport({
+        'reportType': 'threadComment',
+        'postId': postId,
+        'commentId': commentId,
+        'creatorId': commentAuthorId,
+        'reporterId': reporterId,
+        'reason': reason,
+        'additionalDetails': additionalDetails,
+      });
+
+      await _firestore.collection('forumPosts').doc(postId).update({
+        'commentReportCount': FieldValue.increment(1),
+        'lastReportedAt': FieldValue.serverTimestamp(),
+      });
+
+      await _firestore.collection('users').doc(commentAuthorId).update({
+        'reportCount': FieldValue.increment(1),
+        'lastReportedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      dev.log('❌ ReportService: Error reporting thread comment: $e',
           name: 'ReportService');
       rethrow;
     }
@@ -155,6 +269,68 @@ class ReportService {
       return existingReport.docs.isNotEmpty;
     } catch (e) {
       dev.log('❌ ReportService: Error checking if user reported video: $e',
+          name: 'ReportService');
+      return false;
+    }
+  }
+
+  Future<bool> hasUserReportedComment({
+    required String videoId,
+    required String commentId,
+  }) async {
+    try {
+      final reporterId = await _requireReporterId();
+      final existingReport = await _firestore
+          .collection('reports')
+          .where('reportType', isEqualTo: 'videoComment')
+          .where('videoId', isEqualTo: videoId)
+          .where('commentId', isEqualTo: commentId)
+          .where('reporterId', isEqualTo: reporterId)
+          .limit(1)
+          .get();
+      return existingReport.docs.isNotEmpty;
+    } catch (e) {
+      dev.log('❌ ReportService: Error checking comment report status: $e',
+          name: 'ReportService');
+      return false;
+    }
+  }
+
+  Future<bool> hasUserReportedThread(String postId) async {
+    try {
+      final reporterId = await _requireReporterId();
+      final existingReport = await _firestore
+          .collection('reports')
+          .where('reportType', isEqualTo: 'thread')
+          .where('postId', isEqualTo: postId)
+          .where('reporterId', isEqualTo: reporterId)
+          .limit(1)
+          .get();
+      return existingReport.docs.isNotEmpty;
+    } catch (e) {
+      dev.log('❌ ReportService: Error checking thread report status: $e',
+          name: 'ReportService');
+      return false;
+    }
+  }
+
+  Future<bool> hasUserReportedThreadComment({
+    required String postId,
+    required String commentId,
+  }) async {
+    try {
+      final reporterId = await _requireReporterId();
+      final existingReport = await _firestore
+          .collection('reports')
+          .where('reportType', isEqualTo: 'threadComment')
+          .where('postId', isEqualTo: postId)
+          .where('commentId', isEqualTo: commentId)
+          .where('reporterId', isEqualTo: reporterId)
+          .limit(1)
+          .get();
+      return existingReport.docs.isNotEmpty;
+    } catch (e) {
+      dev.log('❌ ReportService: Error checking thread comment report status: $e',
           name: 'ReportService');
       return false;
     }

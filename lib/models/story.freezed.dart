@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,119 +9,70 @@ part of 'story.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-Story _$StoryFromJson(Map<String, dynamic> json) {
-  return _Story.fromJson(json);
-}
 
 /// @nodoc
 mixin _$Story {
-  String get id => throw _privateConstructorUsedError;
-  String get creatorId => throw _privateConstructorUsedError;
-  String get creatorName => throw _privateConstructorUsedError;
-  String? get creatorAvatarURL => throw _privateConstructorUsedError;
-  String get mediaURL => throw _privateConstructorUsedError;
-  MediaType get mediaType => throw _privateConstructorUsedError;
-  DateTime get timestamp => throw _privateConstructorUsedError;
-  double get duration => throw _privateConstructorUsedError;
-  bool get isViewed => throw _privateConstructorUsedError;
+  String get id;
+  String get creatorId;
+  String get creatorName;
+  String? get creatorAvatarURL;
+  String get mediaURL;
+  MediaType get mediaType;
+  DateTime get timestamp;
+  double get duration;
+  bool get isViewed;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $StoryCopyWith<Story> get copyWith => throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $StoryCopyWith<$Res> {
-  factory $StoryCopyWith(Story value, $Res Function(Story) then) =
-      _$StoryCopyWithImpl<$Res, Story>;
-  @useResult
-  $Res call(
-      {String id,
-      String creatorId,
-      String creatorName,
-      String? creatorAvatarURL,
-      String mediaURL,
-      MediaType mediaType,
-      DateTime timestamp,
-      double duration,
-      bool isViewed});
-}
-
-/// @nodoc
-class _$StoryCopyWithImpl<$Res, $Val extends Story>
-    implements $StoryCopyWith<$Res> {
-  _$StoryCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of Story
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $StoryCopyWith<Story> get copyWith =>
+      _$StoryCopyWithImpl<Story>(this as Story, _$identity);
+
+  /// Serializes this Story to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? id = null,
-    Object? creatorId = null,
-    Object? creatorName = null,
-    Object? creatorAvatarURL = freezed,
-    Object? mediaURL = null,
-    Object? mediaType = null,
-    Object? timestamp = null,
-    Object? duration = null,
-    Object? isViewed = null,
-  }) {
-    return _then(_value.copyWith(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      creatorId: null == creatorId
-          ? _value.creatorId
-          : creatorId // ignore: cast_nullable_to_non_nullable
-              as String,
-      creatorName: null == creatorName
-          ? _value.creatorName
-          : creatorName // ignore: cast_nullable_to_non_nullable
-              as String,
-      creatorAvatarURL: freezed == creatorAvatarURL
-          ? _value.creatorAvatarURL
-          : creatorAvatarURL // ignore: cast_nullable_to_non_nullable
-              as String?,
-      mediaURL: null == mediaURL
-          ? _value.mediaURL
-          : mediaURL // ignore: cast_nullable_to_non_nullable
-              as String,
-      mediaType: null == mediaType
-          ? _value.mediaType
-          : mediaType // ignore: cast_nullable_to_non_nullable
-              as MediaType,
-      timestamp: null == timestamp
-          ? _value.timestamp
-          : timestamp // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      duration: null == duration
-          ? _value.duration
-          : duration // ignore: cast_nullable_to_non_nullable
-              as double,
-      isViewed: null == isViewed
-          ? _value.isViewed
-          : isViewed // ignore: cast_nullable_to_non_nullable
-              as bool,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is Story &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.creatorId, creatorId) ||
+                other.creatorId == creatorId) &&
+            (identical(other.creatorName, creatorName) ||
+                other.creatorName == creatorName) &&
+            (identical(other.creatorAvatarURL, creatorAvatarURL) ||
+                other.creatorAvatarURL == creatorAvatarURL) &&
+            (identical(other.mediaURL, mediaURL) ||
+                other.mediaURL == mediaURL) &&
+            (identical(other.mediaType, mediaType) ||
+                other.mediaType == mediaType) &&
+            (identical(other.timestamp, timestamp) ||
+                other.timestamp == timestamp) &&
+            (identical(other.duration, duration) ||
+                other.duration == duration) &&
+            (identical(other.isViewed, isViewed) ||
+                other.isViewed == isViewed));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, id, creatorId, creatorName,
+      creatorAvatarURL, mediaURL, mediaType, timestamp, duration, isViewed);
+
+  @override
+  String toString() {
+    return 'Story(id: $id, creatorId: $creatorId, creatorName: $creatorName, creatorAvatarURL: $creatorAvatarURL, mediaURL: $mediaURL, mediaType: $mediaType, timestamp: $timestamp, duration: $duration, isViewed: $isViewed)';
   }
 }
 
 /// @nodoc
-abstract class _$$StoryImplCopyWith<$Res> implements $StoryCopyWith<$Res> {
-  factory _$$StoryImplCopyWith(
-          _$StoryImpl value, $Res Function(_$StoryImpl) then) =
-      __$$StoryImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $StoryCopyWith<$Res> {
+  factory $StoryCopyWith(Story value, $Res Function(Story) _then) =
+      _$StoryCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -136,13 +87,14 @@ abstract class _$$StoryImplCopyWith<$Res> implements $StoryCopyWith<$Res> {
 }
 
 /// @nodoc
-class __$$StoryImplCopyWithImpl<$Res>
-    extends _$StoryCopyWithImpl<$Res, _$StoryImpl>
-    implements _$$StoryImplCopyWith<$Res> {
-  __$$StoryImplCopyWithImpl(
-      _$StoryImpl _value, $Res Function(_$StoryImpl) _then)
-      : super(_value, _then);
+class _$StoryCopyWithImpl<$Res> implements $StoryCopyWith<$Res> {
+  _$StoryCopyWithImpl(this._self, this._then);
 
+  final Story _self;
+  final $Res Function(Story) _then;
+
+  /// Create a copy of Story
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -156,51 +108,261 @@ class __$$StoryImplCopyWithImpl<$Res>
     Object? duration = null,
     Object? isViewed = null,
   }) {
-    return _then(_$StoryImpl(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       creatorId: null == creatorId
-          ? _value.creatorId
+          ? _self.creatorId
           : creatorId // ignore: cast_nullable_to_non_nullable
               as String,
       creatorName: null == creatorName
-          ? _value.creatorName
+          ? _self.creatorName
           : creatorName // ignore: cast_nullable_to_non_nullable
               as String,
       creatorAvatarURL: freezed == creatorAvatarURL
-          ? _value.creatorAvatarURL
+          ? _self.creatorAvatarURL
           : creatorAvatarURL // ignore: cast_nullable_to_non_nullable
               as String?,
       mediaURL: null == mediaURL
-          ? _value.mediaURL
+          ? _self.mediaURL
           : mediaURL // ignore: cast_nullable_to_non_nullable
               as String,
       mediaType: null == mediaType
-          ? _value.mediaType
+          ? _self.mediaType
           : mediaType // ignore: cast_nullable_to_non_nullable
               as MediaType,
       timestamp: null == timestamp
-          ? _value.timestamp
+          ? _self.timestamp
           : timestamp // ignore: cast_nullable_to_non_nullable
               as DateTime,
       duration: null == duration
-          ? _value.duration
+          ? _self.duration
           : duration // ignore: cast_nullable_to_non_nullable
               as double,
       isViewed: null == isViewed
-          ? _value.isViewed
+          ? _self.isViewed
           : isViewed // ignore: cast_nullable_to_non_nullable
               as bool,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [Story].
+extension StoryPatterns on Story {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_Story value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Story() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_Story value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Story():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_Story value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Story() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String id,
+            String creatorId,
+            String creatorName,
+            String? creatorAvatarURL,
+            String mediaURL,
+            MediaType mediaType,
+            DateTime timestamp,
+            double duration,
+            bool isViewed)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Story() when $default != null:
+        return $default(
+            _that.id,
+            _that.creatorId,
+            _that.creatorName,
+            _that.creatorAvatarURL,
+            _that.mediaURL,
+            _that.mediaType,
+            _that.timestamp,
+            _that.duration,
+            _that.isViewed);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String id,
+            String creatorId,
+            String creatorName,
+            String? creatorAvatarURL,
+            String mediaURL,
+            MediaType mediaType,
+            DateTime timestamp,
+            double duration,
+            bool isViewed)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Story():
+        return $default(
+            _that.id,
+            _that.creatorId,
+            _that.creatorName,
+            _that.creatorAvatarURL,
+            _that.mediaURL,
+            _that.mediaType,
+            _that.timestamp,
+            _that.duration,
+            _that.isViewed);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String id,
+            String creatorId,
+            String creatorName,
+            String? creatorAvatarURL,
+            String mediaURL,
+            MediaType mediaType,
+            DateTime timestamp,
+            double duration,
+            bool isViewed)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Story() when $default != null:
+        return $default(
+            _that.id,
+            _that.creatorId,
+            _that.creatorName,
+            _that.creatorAvatarURL,
+            _that.mediaURL,
+            _that.mediaType,
+            _that.timestamp,
+            _that.duration,
+            _that.isViewed);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$StoryImpl with DiagnosticableTreeMixin implements _Story {
-  const _$StoryImpl(
+class _Story implements Story {
+  const _Story(
       {required this.id,
       required this.creatorId,
       required this.creatorName,
@@ -210,9 +372,7 @@ class _$StoryImpl with DiagnosticableTreeMixin implements _Story {
       required this.timestamp,
       required this.duration,
       this.isViewed = false});
-
-  factory _$StoryImpl.fromJson(Map<String, dynamic> json) =>
-      _$$StoryImplFromJson(json);
+  factory _Story.fromJson(Map<String, dynamic> json) => _$StoryFromJson(json);
 
   @override
   final String id;
@@ -234,32 +394,26 @@ class _$StoryImpl with DiagnosticableTreeMixin implements _Story {
   @JsonKey()
   final bool isViewed;
 
+  /// Create a copy of Story
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'Story(id: $id, creatorId: $creatorId, creatorName: $creatorName, creatorAvatarURL: $creatorAvatarURL, mediaURL: $mediaURL, mediaType: $mediaType, timestamp: $timestamp, duration: $duration, isViewed: $isViewed)';
-  }
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$StoryCopyWith<_Story> get copyWith =>
+      __$StoryCopyWithImpl<_Story>(this, _$identity);
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
-    properties
-      ..add(DiagnosticsProperty('type', 'Story'))
-      ..add(DiagnosticsProperty('id', id))
-      ..add(DiagnosticsProperty('creatorId', creatorId))
-      ..add(DiagnosticsProperty('creatorName', creatorName))
-      ..add(DiagnosticsProperty('creatorAvatarURL', creatorAvatarURL))
-      ..add(DiagnosticsProperty('mediaURL', mediaURL))
-      ..add(DiagnosticsProperty('mediaType', mediaType))
-      ..add(DiagnosticsProperty('timestamp', timestamp))
-      ..add(DiagnosticsProperty('duration', duration))
-      ..add(DiagnosticsProperty('isViewed', isViewed));
+  Map<String, dynamic> toJson() {
+    return _$StoryToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$StoryImpl &&
+            other is _Story &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.creatorId, creatorId) ||
                 other.creatorId == creatorId) &&
@@ -279,59 +433,96 @@ class _$StoryImpl with DiagnosticableTreeMixin implements _Story {
                 other.isViewed == isViewed));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(runtimeType, id, creatorId, creatorName,
       creatorAvatarURL, mediaURL, mediaType, timestamp, duration, isViewed);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$StoryImplCopyWith<_$StoryImpl> get copyWith =>
-      __$$StoryImplCopyWithImpl<_$StoryImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$StoryImplToJson(
-      this,
-    );
+  String toString() {
+    return 'Story(id: $id, creatorId: $creatorId, creatorName: $creatorName, creatorAvatarURL: $creatorAvatarURL, mediaURL: $mediaURL, mediaType: $mediaType, timestamp: $timestamp, duration: $duration, isViewed: $isViewed)';
   }
 }
 
-abstract class _Story implements Story {
-  const factory _Story(
-      {required final String id,
-      required final String creatorId,
-      required final String creatorName,
-      final String? creatorAvatarURL,
-      required final String mediaURL,
-      required final MediaType mediaType,
-      required final DateTime timestamp,
-      required final double duration,
-      final bool isViewed}) = _$StoryImpl;
-
-  factory _Story.fromJson(Map<String, dynamic> json) = _$StoryImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$StoryCopyWith<$Res> implements $StoryCopyWith<$Res> {
+  factory _$StoryCopyWith(_Story value, $Res Function(_Story) _then) =
+      __$StoryCopyWithImpl;
   @override
-  String get id;
-  @override
-  String get creatorId;
-  @override
-  String get creatorName;
-  @override
-  String? get creatorAvatarURL;
-  @override
-  String get mediaURL;
-  @override
-  MediaType get mediaType;
-  @override
-  DateTime get timestamp;
-  @override
-  double get duration;
-  @override
-  bool get isViewed;
-  @override
-  @JsonKey(ignore: true)
-  _$$StoryImplCopyWith<_$StoryImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String id,
+      String creatorId,
+      String creatorName,
+      String? creatorAvatarURL,
+      String mediaURL,
+      MediaType mediaType,
+      DateTime timestamp,
+      double duration,
+      bool isViewed});
 }
+
+/// @nodoc
+class __$StoryCopyWithImpl<$Res> implements _$StoryCopyWith<$Res> {
+  __$StoryCopyWithImpl(this._self, this._then);
+
+  final _Story _self;
+  final $Res Function(_Story) _then;
+
+  /// Create a copy of Story
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = null,
+    Object? creatorId = null,
+    Object? creatorName = null,
+    Object? creatorAvatarURL = freezed,
+    Object? mediaURL = null,
+    Object? mediaType = null,
+    Object? timestamp = null,
+    Object? duration = null,
+    Object? isViewed = null,
+  }) {
+    return _then(_Story(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      creatorId: null == creatorId
+          ? _self.creatorId
+          : creatorId // ignore: cast_nullable_to_non_nullable
+              as String,
+      creatorName: null == creatorName
+          ? _self.creatorName
+          : creatorName // ignore: cast_nullable_to_non_nullable
+              as String,
+      creatorAvatarURL: freezed == creatorAvatarURL
+          ? _self.creatorAvatarURL
+          : creatorAvatarURL // ignore: cast_nullable_to_non_nullable
+              as String?,
+      mediaURL: null == mediaURL
+          ? _self.mediaURL
+          : mediaURL // ignore: cast_nullable_to_non_nullable
+              as String,
+      mediaType: null == mediaType
+          ? _self.mediaType
+          : mediaType // ignore: cast_nullable_to_non_nullable
+              as MediaType,
+      timestamp: null == timestamp
+          ? _self.timestamp
+          : timestamp // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      duration: null == duration
+          ? _self.duration
+          : duration // ignore: cast_nullable_to_non_nullable
+              as double,
+      isViewed: null == isViewed
+          ? _self.isViewed
+          : isViewed // ignore: cast_nullable_to_non_nullable
+              as bool,
+    ));
+  }
+}
+
+// dart format on

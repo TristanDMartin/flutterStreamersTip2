@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,42 +9,92 @@ part of 'scheduled_post.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-ScheduledPost _$ScheduledPostFromJson(Map<String, dynamic> json) {
-  return _ScheduledPost.fromJson(json);
-}
 
 /// @nodoc
 mixin _$ScheduledPost {
-  String get id => throw _privateConstructorUsedError;
-  String get authorId => throw _privateConstructorUsedError;
-  PostStatus get status => throw _privateConstructorUsedError;
-  String get caption => throw _privateConstructorUsedError;
-  List<String> get tags => throw _privateConstructorUsedError;
-  PostVisibility get visibility => throw _privateConstructorUsedError;
-  List<PostMedia> get media => throw _privateConstructorUsedError;
-  List<PlatformConfig> get platforms => throw _privateConstructorUsedError;
-  PostSchedule? get schedule => throw _privateConstructorUsedError;
-  Map<String, dynamic> get analyticsHints => throw _privateConstructorUsedError;
-  String? get idempotencyKey => throw _privateConstructorUsedError;
-  DateTime get createdAt => throw _privateConstructorUsedError;
-  DateTime get updatedAt => throw _privateConstructorUsedError;
+  String get id;
+  String get authorId;
+  PostStatus get status;
+  String get caption;
+  List<String> get tags;
+  PostVisibility get visibility;
+  List<PostMedia> get media;
+  List<PlatformConfig> get platforms;
+  PostSchedule? get schedule;
+  Map<String, dynamic> get analyticsHints;
+  String? get idempotencyKey;
+  DateTime get createdAt;
+  DateTime get updatedAt;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
+  /// Create a copy of ScheduledPost
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
   $ScheduledPostCopyWith<ScheduledPost> get copyWith =>
-      throw _privateConstructorUsedError;
+      _$ScheduledPostCopyWithImpl<ScheduledPost>(
+          this as ScheduledPost, _$identity);
+
+  /// Serializes this ScheduledPost to a JSON map.
+  Map<String, dynamic> toJson();
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is ScheduledPost &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.authorId, authorId) ||
+                other.authorId == authorId) &&
+            (identical(other.status, status) || other.status == status) &&
+            (identical(other.caption, caption) || other.caption == caption) &&
+            const DeepCollectionEquality().equals(other.tags, tags) &&
+            (identical(other.visibility, visibility) ||
+                other.visibility == visibility) &&
+            const DeepCollectionEquality().equals(other.media, media) &&
+            const DeepCollectionEquality().equals(other.platforms, platforms) &&
+            (identical(other.schedule, schedule) ||
+                other.schedule == schedule) &&
+            const DeepCollectionEquality()
+                .equals(other.analyticsHints, analyticsHints) &&
+            (identical(other.idempotencyKey, idempotencyKey) ||
+                other.idempotencyKey == idempotencyKey) &&
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt) &&
+            (identical(other.updatedAt, updatedAt) ||
+                other.updatedAt == updatedAt));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      authorId,
+      status,
+      caption,
+      const DeepCollectionEquality().hash(tags),
+      visibility,
+      const DeepCollectionEquality().hash(media),
+      const DeepCollectionEquality().hash(platforms),
+      schedule,
+      const DeepCollectionEquality().hash(analyticsHints),
+      idempotencyKey,
+      createdAt,
+      updatedAt);
+
+  @override
+  String toString() {
+    return 'ScheduledPost(id: $id, authorId: $authorId, status: $status, caption: $caption, tags: $tags, visibility: $visibility, media: $media, platforms: $platforms, schedule: $schedule, analyticsHints: $analyticsHints, idempotencyKey: $idempotencyKey, createdAt: $createdAt, updatedAt: $updatedAt)';
+  }
 }
 
 /// @nodoc
-abstract class $ScheduledPostCopyWith<$Res> {
+abstract mixin class $ScheduledPostCopyWith<$Res> {
   factory $ScheduledPostCopyWith(
-          ScheduledPost value, $Res Function(ScheduledPost) then) =
-      _$ScheduledPostCopyWithImpl<$Res, ScheduledPost>;
+          ScheduledPost value, $Res Function(ScheduledPost) _then) =
+      _$ScheduledPostCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -65,15 +115,15 @@ abstract class $ScheduledPostCopyWith<$Res> {
 }
 
 /// @nodoc
-class _$ScheduledPostCopyWithImpl<$Res, $Val extends ScheduledPost>
+class _$ScheduledPostCopyWithImpl<$Res>
     implements $ScheduledPostCopyWith<$Res> {
-  _$ScheduledPostCopyWithImpl(this._value, this._then);
+  _$ScheduledPostCopyWithImpl(this._self, this._then);
 
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
+  final ScheduledPost _self;
+  final $Res Function(ScheduledPost) _then;
 
+  /// Create a copy of ScheduledPost
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -91,188 +141,315 @@ class _$ScheduledPostCopyWithImpl<$Res, $Val extends ScheduledPost>
     Object? createdAt = null,
     Object? updatedAt = null,
   }) {
-    return _then(_value.copyWith(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       authorId: null == authorId
-          ? _value.authorId
+          ? _self.authorId
           : authorId // ignore: cast_nullable_to_non_nullable
               as String,
       status: null == status
-          ? _value.status
+          ? _self.status
           : status // ignore: cast_nullable_to_non_nullable
               as PostStatus,
       caption: null == caption
-          ? _value.caption
+          ? _self.caption
           : caption // ignore: cast_nullable_to_non_nullable
               as String,
       tags: null == tags
-          ? _value.tags
+          ? _self.tags
           : tags // ignore: cast_nullable_to_non_nullable
               as List<String>,
       visibility: null == visibility
-          ? _value.visibility
+          ? _self.visibility
           : visibility // ignore: cast_nullable_to_non_nullable
               as PostVisibility,
       media: null == media
-          ? _value.media
+          ? _self.media
           : media // ignore: cast_nullable_to_non_nullable
               as List<PostMedia>,
       platforms: null == platforms
-          ? _value.platforms
+          ? _self.platforms
           : platforms // ignore: cast_nullable_to_non_nullable
               as List<PlatformConfig>,
       schedule: freezed == schedule
-          ? _value.schedule
+          ? _self.schedule
           : schedule // ignore: cast_nullable_to_non_nullable
               as PostSchedule?,
       analyticsHints: null == analyticsHints
-          ? _value.analyticsHints
+          ? _self.analyticsHints
           : analyticsHints // ignore: cast_nullable_to_non_nullable
               as Map<String, dynamic>,
       idempotencyKey: freezed == idempotencyKey
-          ? _value.idempotencyKey
+          ? _self.idempotencyKey
           : idempotencyKey // ignore: cast_nullable_to_non_nullable
               as String?,
       createdAt: null == createdAt
-          ? _value.createdAt
+          ? _self.createdAt
           : createdAt // ignore: cast_nullable_to_non_nullable
               as DateTime,
       updatedAt: null == updatedAt
-          ? _value.updatedAt
+          ? _self.updatedAt
           : updatedAt // ignore: cast_nullable_to_non_nullable
               as DateTime,
-    ) as $Val);
+    ));
   }
 
+  /// Create a copy of ScheduledPost
+  /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
   $PostScheduleCopyWith<$Res>? get schedule {
-    if (_value.schedule == null) {
+    if (_self.schedule == null) {
       return null;
     }
 
-    return $PostScheduleCopyWith<$Res>(_value.schedule!, (value) {
-      return _then(_value.copyWith(schedule: value) as $Val);
+    return $PostScheduleCopyWith<$Res>(_self.schedule!, (value) {
+      return _then(_self.copyWith(schedule: value));
     });
   }
 }
 
-/// @nodoc
-abstract class _$$ScheduledPostImplCopyWith<$Res>
-    implements $ScheduledPostCopyWith<$Res> {
-  factory _$$ScheduledPostImplCopyWith(
-          _$ScheduledPostImpl value, $Res Function(_$ScheduledPostImpl) then) =
-      __$$ScheduledPostImplCopyWithImpl<$Res>;
-  @override
-  @useResult
-  $Res call(
-      {String id,
-      String authorId,
-      PostStatus status,
-      String caption,
-      List<String> tags,
-      PostVisibility visibility,
-      List<PostMedia> media,
-      List<PlatformConfig> platforms,
-      PostSchedule? schedule,
-      Map<String, dynamic> analyticsHints,
-      String? idempotencyKey,
-      DateTime createdAt,
-      DateTime updatedAt});
+/// Adds pattern-matching-related methods to [ScheduledPost].
+extension ScheduledPostPatterns on ScheduledPost {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
 
-  @override
-  $PostScheduleCopyWith<$Res>? get schedule;
-}
-
-/// @nodoc
-class __$$ScheduledPostImplCopyWithImpl<$Res>
-    extends _$ScheduledPostCopyWithImpl<$Res, _$ScheduledPostImpl>
-    implements _$$ScheduledPostImplCopyWith<$Res> {
-  __$$ScheduledPostImplCopyWithImpl(
-      _$ScheduledPostImpl _value, $Res Function(_$ScheduledPostImpl) _then)
-      : super(_value, _then);
-
-  @pragma('vm:prefer-inline')
-  @override
-  $Res call({
-    Object? id = null,
-    Object? authorId = null,
-    Object? status = null,
-    Object? caption = null,
-    Object? tags = null,
-    Object? visibility = null,
-    Object? media = null,
-    Object? platforms = null,
-    Object? schedule = freezed,
-    Object? analyticsHints = null,
-    Object? idempotencyKey = freezed,
-    Object? createdAt = null,
-    Object? updatedAt = null,
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_ScheduledPost value)? $default, {
+    required TResult orElse(),
   }) {
-    return _then(_$ScheduledPostImpl(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      authorId: null == authorId
-          ? _value.authorId
-          : authorId // ignore: cast_nullable_to_non_nullable
-              as String,
-      status: null == status
-          ? _value.status
-          : status // ignore: cast_nullable_to_non_nullable
-              as PostStatus,
-      caption: null == caption
-          ? _value.caption
-          : caption // ignore: cast_nullable_to_non_nullable
-              as String,
-      tags: null == tags
-          ? _value._tags
-          : tags // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      visibility: null == visibility
-          ? _value.visibility
-          : visibility // ignore: cast_nullable_to_non_nullable
-              as PostVisibility,
-      media: null == media
-          ? _value._media
-          : media // ignore: cast_nullable_to_non_nullable
-              as List<PostMedia>,
-      platforms: null == platforms
-          ? _value._platforms
-          : platforms // ignore: cast_nullable_to_non_nullable
-              as List<PlatformConfig>,
-      schedule: freezed == schedule
-          ? _value.schedule
-          : schedule // ignore: cast_nullable_to_non_nullable
-              as PostSchedule?,
-      analyticsHints: null == analyticsHints
-          ? _value._analyticsHints
-          : analyticsHints // ignore: cast_nullable_to_non_nullable
-              as Map<String, dynamic>,
-      idempotencyKey: freezed == idempotencyKey
-          ? _value.idempotencyKey
-          : idempotencyKey // ignore: cast_nullable_to_non_nullable
-              as String?,
-      createdAt: null == createdAt
-          ? _value.createdAt
-          : createdAt // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      updatedAt: null == updatedAt
-          ? _value.updatedAt
-          : updatedAt // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-    ));
+    final _that = this;
+    switch (_that) {
+      case _ScheduledPost() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_ScheduledPost value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ScheduledPost():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_ScheduledPost value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ScheduledPost() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String id,
+            String authorId,
+            PostStatus status,
+            String caption,
+            List<String> tags,
+            PostVisibility visibility,
+            List<PostMedia> media,
+            List<PlatformConfig> platforms,
+            PostSchedule? schedule,
+            Map<String, dynamic> analyticsHints,
+            String? idempotencyKey,
+            DateTime createdAt,
+            DateTime updatedAt)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ScheduledPost() when $default != null:
+        return $default(
+            _that.id,
+            _that.authorId,
+            _that.status,
+            _that.caption,
+            _that.tags,
+            _that.visibility,
+            _that.media,
+            _that.platforms,
+            _that.schedule,
+            _that.analyticsHints,
+            _that.idempotencyKey,
+            _that.createdAt,
+            _that.updatedAt);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String id,
+            String authorId,
+            PostStatus status,
+            String caption,
+            List<String> tags,
+            PostVisibility visibility,
+            List<PostMedia> media,
+            List<PlatformConfig> platforms,
+            PostSchedule? schedule,
+            Map<String, dynamic> analyticsHints,
+            String? idempotencyKey,
+            DateTime createdAt,
+            DateTime updatedAt)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ScheduledPost():
+        return $default(
+            _that.id,
+            _that.authorId,
+            _that.status,
+            _that.caption,
+            _that.tags,
+            _that.visibility,
+            _that.media,
+            _that.platforms,
+            _that.schedule,
+            _that.analyticsHints,
+            _that.idempotencyKey,
+            _that.createdAt,
+            _that.updatedAt);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String id,
+            String authorId,
+            PostStatus status,
+            String caption,
+            List<String> tags,
+            PostVisibility visibility,
+            List<PostMedia> media,
+            List<PlatformConfig> platforms,
+            PostSchedule? schedule,
+            Map<String, dynamic> analyticsHints,
+            String? idempotencyKey,
+            DateTime createdAt,
+            DateTime updatedAt)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ScheduledPost() when $default != null:
+        return $default(
+            _that.id,
+            _that.authorId,
+            _that.status,
+            _that.caption,
+            _that.tags,
+            _that.visibility,
+            _that.media,
+            _that.platforms,
+            _that.schedule,
+            _that.analyticsHints,
+            _that.idempotencyKey,
+            _that.createdAt,
+            _that.updatedAt);
+      case _:
+        return null;
+    }
   }
 }
 
 /// @nodoc
 @JsonSerializable()
-class _$ScheduledPostImpl implements _ScheduledPost {
-  const _$ScheduledPostImpl(
+class _ScheduledPost implements ScheduledPost {
+  const _ScheduledPost(
       {required this.id,
       required this.authorId,
       required this.status,
@@ -290,9 +467,8 @@ class _$ScheduledPostImpl implements _ScheduledPost {
         _media = media,
         _platforms = platforms,
         _analyticsHints = analyticsHints;
-
-  factory _$ScheduledPostImpl.fromJson(Map<String, dynamic> json) =>
-      _$$ScheduledPostImplFromJson(json);
+  factory _ScheduledPost.fromJson(Map<String, dynamic> json) =>
+      _$ScheduledPostFromJson(json);
 
   @override
   final String id;
@@ -350,16 +526,26 @@ class _$ScheduledPostImpl implements _ScheduledPost {
   @override
   final DateTime updatedAt;
 
+  /// Create a copy of ScheduledPost
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'ScheduledPost(id: $id, authorId: $authorId, status: $status, caption: $caption, tags: $tags, visibility: $visibility, media: $media, platforms: $platforms, schedule: $schedule, analyticsHints: $analyticsHints, idempotencyKey: $idempotencyKey, createdAt: $createdAt, updatedAt: $updatedAt)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$ScheduledPostCopyWith<_ScheduledPost> get copyWith =>
+      __$ScheduledPostCopyWithImpl<_ScheduledPost>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$ScheduledPostToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$ScheduledPostImpl &&
+            other is _ScheduledPost &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.authorId, authorId) ||
                 other.authorId == authorId) &&
@@ -383,7 +569,7 @@ class _$ScheduledPostImpl implements _ScheduledPost {
                 other.updatedAt == updatedAt));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType,
@@ -401,160 +587,186 @@ class _$ScheduledPostImpl implements _ScheduledPost {
       createdAt,
       updatedAt);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$ScheduledPostImplCopyWith<_$ScheduledPostImpl> get copyWith =>
-      __$$ScheduledPostImplCopyWithImpl<_$ScheduledPostImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$ScheduledPostImplToJson(
-      this,
-    );
+  String toString() {
+    return 'ScheduledPost(id: $id, authorId: $authorId, status: $status, caption: $caption, tags: $tags, visibility: $visibility, media: $media, platforms: $platforms, schedule: $schedule, analyticsHints: $analyticsHints, idempotencyKey: $idempotencyKey, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 }
 
-abstract class _ScheduledPost implements ScheduledPost {
-  const factory _ScheduledPost(
-      {required final String id,
-      required final String authorId,
-      required final PostStatus status,
-      required final String caption,
-      final List<String> tags,
-      final PostVisibility visibility,
-      final List<PostMedia> media,
-      final List<PlatformConfig> platforms,
-      final PostSchedule? schedule,
-      final Map<String, dynamic> analyticsHints,
-      final String? idempotencyKey,
-      required final DateTime createdAt,
-      required final DateTime updatedAt}) = _$ScheduledPostImpl;
+/// @nodoc
+abstract mixin class _$ScheduledPostCopyWith<$Res>
+    implements $ScheduledPostCopyWith<$Res> {
+  factory _$ScheduledPostCopyWith(
+          _ScheduledPost value, $Res Function(_ScheduledPost) _then) =
+      __$ScheduledPostCopyWithImpl;
+  @override
+  @useResult
+  $Res call(
+      {String id,
+      String authorId,
+      PostStatus status,
+      String caption,
+      List<String> tags,
+      PostVisibility visibility,
+      List<PostMedia> media,
+      List<PlatformConfig> platforms,
+      PostSchedule? schedule,
+      Map<String, dynamic> analyticsHints,
+      String? idempotencyKey,
+      DateTime createdAt,
+      DateTime updatedAt});
 
-  factory _ScheduledPost.fromJson(Map<String, dynamic> json) =
-      _$ScheduledPostImpl.fromJson;
-
   @override
-  String get id;
-  @override
-  String get authorId;
-  @override
-  PostStatus get status;
-  @override
-  String get caption;
-  @override
-  List<String> get tags;
-  @override
-  PostVisibility get visibility;
-  @override
-  List<PostMedia> get media;
-  @override
-  List<PlatformConfig> get platforms;
-  @override
-  PostSchedule? get schedule;
-  @override
-  Map<String, dynamic> get analyticsHints;
-  @override
-  String? get idempotencyKey;
-  @override
-  DateTime get createdAt;
-  @override
-  DateTime get updatedAt;
-  @override
-  @JsonKey(ignore: true)
-  _$$ScheduledPostImplCopyWith<_$ScheduledPostImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  $PostScheduleCopyWith<$Res>? get schedule;
 }
 
-PostMedia _$PostMediaFromJson(Map<String, dynamic> json) {
-  return _PostMedia.fromJson(json);
+/// @nodoc
+class __$ScheduledPostCopyWithImpl<$Res>
+    implements _$ScheduledPostCopyWith<$Res> {
+  __$ScheduledPostCopyWithImpl(this._self, this._then);
+
+  final _ScheduledPost _self;
+  final $Res Function(_ScheduledPost) _then;
+
+  /// Create a copy of ScheduledPost
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = null,
+    Object? authorId = null,
+    Object? status = null,
+    Object? caption = null,
+    Object? tags = null,
+    Object? visibility = null,
+    Object? media = null,
+    Object? platforms = null,
+    Object? schedule = freezed,
+    Object? analyticsHints = null,
+    Object? idempotencyKey = freezed,
+    Object? createdAt = null,
+    Object? updatedAt = null,
+  }) {
+    return _then(_ScheduledPost(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      authorId: null == authorId
+          ? _self.authorId
+          : authorId // ignore: cast_nullable_to_non_nullable
+              as String,
+      status: null == status
+          ? _self.status
+          : status // ignore: cast_nullable_to_non_nullable
+              as PostStatus,
+      caption: null == caption
+          ? _self.caption
+          : caption // ignore: cast_nullable_to_non_nullable
+              as String,
+      tags: null == tags
+          ? _self._tags
+          : tags // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      visibility: null == visibility
+          ? _self.visibility
+          : visibility // ignore: cast_nullable_to_non_nullable
+              as PostVisibility,
+      media: null == media
+          ? _self._media
+          : media // ignore: cast_nullable_to_non_nullable
+              as List<PostMedia>,
+      platforms: null == platforms
+          ? _self._platforms
+          : platforms // ignore: cast_nullable_to_non_nullable
+              as List<PlatformConfig>,
+      schedule: freezed == schedule
+          ? _self.schedule
+          : schedule // ignore: cast_nullable_to_non_nullable
+              as PostSchedule?,
+      analyticsHints: null == analyticsHints
+          ? _self._analyticsHints
+          : analyticsHints // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>,
+      idempotencyKey: freezed == idempotencyKey
+          ? _self.idempotencyKey
+          : idempotencyKey // ignore: cast_nullable_to_non_nullable
+              as String?,
+      createdAt: null == createdAt
+          ? _self.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      updatedAt: null == updatedAt
+          ? _self.updatedAt
+          : updatedAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+    ));
+  }
+
+  /// Create a copy of ScheduledPost
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $PostScheduleCopyWith<$Res>? get schedule {
+    if (_self.schedule == null) {
+      return null;
+    }
+
+    return $PostScheduleCopyWith<$Res>(_self.schedule!, (value) {
+      return _then(_self.copyWith(schedule: value));
+    });
+  }
 }
 
 /// @nodoc
 mixin _$PostMedia {
-  String get id => throw _privateConstructorUsedError;
-  MediaType get type => throw _privateConstructorUsedError;
-  String get src => throw _privateConstructorUsedError;
-  double get aspectRatio => throw _privateConstructorUsedError;
-  int? get durationMs => throw _privateConstructorUsedError;
-  List<MediaVariant> get variants => throw _privateConstructorUsedError;
+  String get id;
+  MediaType get type;
+  String get src;
+  double get aspectRatio;
+  int? get durationMs;
+  List<MediaVariant> get variants;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $PostMediaCopyWith<PostMedia> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $PostMediaCopyWith<$Res> {
-  factory $PostMediaCopyWith(PostMedia value, $Res Function(PostMedia) then) =
-      _$PostMediaCopyWithImpl<$Res, PostMedia>;
-  @useResult
-  $Res call(
-      {String id,
-      MediaType type,
-      String src,
-      double aspectRatio,
-      int? durationMs,
-      List<MediaVariant> variants});
-}
-
-/// @nodoc
-class _$PostMediaCopyWithImpl<$Res, $Val extends PostMedia>
-    implements $PostMediaCopyWith<$Res> {
-  _$PostMediaCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of PostMedia
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $PostMediaCopyWith<PostMedia> get copyWith =>
+      _$PostMediaCopyWithImpl<PostMedia>(this as PostMedia, _$identity);
+
+  /// Serializes this PostMedia to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? id = null,
-    Object? type = null,
-    Object? src = null,
-    Object? aspectRatio = null,
-    Object? durationMs = freezed,
-    Object? variants = null,
-  }) {
-    return _then(_value.copyWith(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      type: null == type
-          ? _value.type
-          : type // ignore: cast_nullable_to_non_nullable
-              as MediaType,
-      src: null == src
-          ? _value.src
-          : src // ignore: cast_nullable_to_non_nullable
-              as String,
-      aspectRatio: null == aspectRatio
-          ? _value.aspectRatio
-          : aspectRatio // ignore: cast_nullable_to_non_nullable
-              as double,
-      durationMs: freezed == durationMs
-          ? _value.durationMs
-          : durationMs // ignore: cast_nullable_to_non_nullable
-              as int?,
-      variants: null == variants
-          ? _value.variants
-          : variants // ignore: cast_nullable_to_non_nullable
-              as List<MediaVariant>,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is PostMedia &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.type, type) || other.type == type) &&
+            (identical(other.src, src) || other.src == src) &&
+            (identical(other.aspectRatio, aspectRatio) ||
+                other.aspectRatio == aspectRatio) &&
+            (identical(other.durationMs, durationMs) ||
+                other.durationMs == durationMs) &&
+            const DeepCollectionEquality().equals(other.variants, variants));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, id, type, src, aspectRatio,
+      durationMs, const DeepCollectionEquality().hash(variants));
+
+  @override
+  String toString() {
+    return 'PostMedia(id: $id, type: $type, src: $src, aspectRatio: $aspectRatio, durationMs: $durationMs, variants: $variants)';
   }
 }
 
 /// @nodoc
-abstract class _$$PostMediaImplCopyWith<$Res>
-    implements $PostMediaCopyWith<$Res> {
-  factory _$$PostMediaImplCopyWith(
-          _$PostMediaImpl value, $Res Function(_$PostMediaImpl) then) =
-      __$$PostMediaImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $PostMediaCopyWith<$Res> {
+  factory $PostMediaCopyWith(PostMedia value, $Res Function(PostMedia) _then) =
+      _$PostMediaCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -566,13 +778,14 @@ abstract class _$$PostMediaImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$PostMediaImplCopyWithImpl<$Res>
-    extends _$PostMediaCopyWithImpl<$Res, _$PostMediaImpl>
-    implements _$$PostMediaImplCopyWith<$Res> {
-  __$$PostMediaImplCopyWithImpl(
-      _$PostMediaImpl _value, $Res Function(_$PostMediaImpl) _then)
-      : super(_value, _then);
+class _$PostMediaCopyWithImpl<$Res> implements $PostMediaCopyWith<$Res> {
+  _$PostMediaCopyWithImpl(this._self, this._then);
 
+  final PostMedia _self;
+  final $Res Function(PostMedia) _then;
+
+  /// Create a copy of PostMedia
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -583,39 +796,201 @@ class __$$PostMediaImplCopyWithImpl<$Res>
     Object? durationMs = freezed,
     Object? variants = null,
   }) {
-    return _then(_$PostMediaImpl(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       type: null == type
-          ? _value.type
+          ? _self.type
           : type // ignore: cast_nullable_to_non_nullable
               as MediaType,
       src: null == src
-          ? _value.src
+          ? _self.src
           : src // ignore: cast_nullable_to_non_nullable
               as String,
       aspectRatio: null == aspectRatio
-          ? _value.aspectRatio
+          ? _self.aspectRatio
           : aspectRatio // ignore: cast_nullable_to_non_nullable
               as double,
       durationMs: freezed == durationMs
-          ? _value.durationMs
+          ? _self.durationMs
           : durationMs // ignore: cast_nullable_to_non_nullable
               as int?,
       variants: null == variants
-          ? _value._variants
+          ? _self.variants
           : variants // ignore: cast_nullable_to_non_nullable
               as List<MediaVariant>,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [PostMedia].
+extension PostMediaPatterns on PostMedia {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_PostMedia value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _PostMedia() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_PostMedia value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PostMedia():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_PostMedia value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PostMedia() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(String id, MediaType type, String src, double aspectRatio,
+            int? durationMs, List<MediaVariant> variants)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _PostMedia() when $default != null:
+        return $default(_that.id, _that.type, _that.src, _that.aspectRatio,
+            _that.durationMs, _that.variants);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(String id, MediaType type, String src, double aspectRatio,
+            int? durationMs, List<MediaVariant> variants)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PostMedia():
+        return $default(_that.id, _that.type, _that.src, _that.aspectRatio,
+            _that.durationMs, _that.variants);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(String id, MediaType type, String src, double aspectRatio,
+            int? durationMs, List<MediaVariant> variants)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PostMedia() when $default != null:
+        return $default(_that.id, _that.type, _that.src, _that.aspectRatio,
+            _that.durationMs, _that.variants);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$PostMediaImpl implements _PostMedia {
-  const _$PostMediaImpl(
+class _PostMedia implements PostMedia {
+  const _PostMedia(
       {required this.id,
       required this.type,
       required this.src,
@@ -623,9 +998,8 @@ class _$PostMediaImpl implements _PostMedia {
       this.durationMs,
       final List<MediaVariant> variants = const []})
       : _variants = variants;
-
-  factory _$PostMediaImpl.fromJson(Map<String, dynamic> json) =>
-      _$$PostMediaImplFromJson(json);
+  factory _PostMedia.fromJson(Map<String, dynamic> json) =>
+      _$PostMediaFromJson(json);
 
   @override
   final String id;
@@ -646,16 +1020,26 @@ class _$PostMediaImpl implements _PostMedia {
     return EqualUnmodifiableListView(_variants);
   }
 
+  /// Create a copy of PostMedia
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'PostMedia(id: $id, type: $type, src: $src, aspectRatio: $aspectRatio, durationMs: $durationMs, variants: $variants)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$PostMediaCopyWith<_PostMedia> get copyWith =>
+      __$PostMediaCopyWithImpl<_PostMedia>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$PostMediaToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$PostMediaImpl &&
+            other is _PostMedia &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.type, type) || other.type == type) &&
             (identical(other.src, src) || other.src == src) &&
@@ -666,138 +1050,132 @@ class _$PostMediaImpl implements _PostMedia {
             const DeepCollectionEquality().equals(other._variants, _variants));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(runtimeType, id, type, src, aspectRatio,
       durationMs, const DeepCollectionEquality().hash(_variants));
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$PostMediaImplCopyWith<_$PostMediaImpl> get copyWith =>
-      __$$PostMediaImplCopyWithImpl<_$PostMediaImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$PostMediaImplToJson(
-      this,
-    );
+  String toString() {
+    return 'PostMedia(id: $id, type: $type, src: $src, aspectRatio: $aspectRatio, durationMs: $durationMs, variants: $variants)';
   }
 }
 
-abstract class _PostMedia implements PostMedia {
-  const factory _PostMedia(
-      {required final String id,
-      required final MediaType type,
-      required final String src,
-      required final double aspectRatio,
-      final int? durationMs,
-      final List<MediaVariant> variants}) = _$PostMediaImpl;
-
-  factory _PostMedia.fromJson(Map<String, dynamic> json) =
-      _$PostMediaImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$PostMediaCopyWith<$Res>
+    implements $PostMediaCopyWith<$Res> {
+  factory _$PostMediaCopyWith(
+          _PostMedia value, $Res Function(_PostMedia) _then) =
+      __$PostMediaCopyWithImpl;
   @override
-  String get id;
-  @override
-  MediaType get type;
-  @override
-  String get src;
-  @override
-  double get aspectRatio;
-  @override
-  int? get durationMs;
-  @override
-  List<MediaVariant> get variants;
-  @override
-  @JsonKey(ignore: true)
-  _$$PostMediaImplCopyWith<_$PostMediaImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String id,
+      MediaType type,
+      String src,
+      double aspectRatio,
+      int? durationMs,
+      List<MediaVariant> variants});
 }
 
-MediaVariant _$MediaVariantFromJson(Map<String, dynamic> json) {
-  return _MediaVariant.fromJson(json);
+/// @nodoc
+class __$PostMediaCopyWithImpl<$Res> implements _$PostMediaCopyWith<$Res> {
+  __$PostMediaCopyWithImpl(this._self, this._then);
+
+  final _PostMedia _self;
+  final $Res Function(_PostMedia) _then;
+
+  /// Create a copy of PostMedia
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = null,
+    Object? type = null,
+    Object? src = null,
+    Object? aspectRatio = null,
+    Object? durationMs = freezed,
+    Object? variants = null,
+  }) {
+    return _then(_PostMedia(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      type: null == type
+          ? _self.type
+          : type // ignore: cast_nullable_to_non_nullable
+              as MediaType,
+      src: null == src
+          ? _self.src
+          : src // ignore: cast_nullable_to_non_nullable
+              as String,
+      aspectRatio: null == aspectRatio
+          ? _self.aspectRatio
+          : aspectRatio // ignore: cast_nullable_to_non_nullable
+              as double,
+      durationMs: freezed == durationMs
+          ? _self.durationMs
+          : durationMs // ignore: cast_nullable_to_non_nullable
+              as int?,
+      variants: null == variants
+          ? _self._variants
+          : variants // ignore: cast_nullable_to_non_nullable
+              as List<MediaVariant>,
+    ));
+  }
 }
 
 /// @nodoc
 mixin _$MediaVariant {
-  String get platform => throw _privateConstructorUsedError;
-  String get src => throw _privateConstructorUsedError;
-  double get aspectRatio => throw _privateConstructorUsedError;
-  int? get durationMs => throw _privateConstructorUsedError;
-  Map<String, dynamic>? get metadata => throw _privateConstructorUsedError;
+  String get platform;
+  String get src;
+  double get aspectRatio;
+  int? get durationMs;
+  Map<String, dynamic>? get metadata;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $MediaVariantCopyWith<MediaVariant> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $MediaVariantCopyWith<$Res> {
-  factory $MediaVariantCopyWith(
-          MediaVariant value, $Res Function(MediaVariant) then) =
-      _$MediaVariantCopyWithImpl<$Res, MediaVariant>;
-  @useResult
-  $Res call(
-      {String platform,
-      String src,
-      double aspectRatio,
-      int? durationMs,
-      Map<String, dynamic>? metadata});
-}
-
-/// @nodoc
-class _$MediaVariantCopyWithImpl<$Res, $Val extends MediaVariant>
-    implements $MediaVariantCopyWith<$Res> {
-  _$MediaVariantCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of MediaVariant
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $MediaVariantCopyWith<MediaVariant> get copyWith =>
+      _$MediaVariantCopyWithImpl<MediaVariant>(
+          this as MediaVariant, _$identity);
+
+  /// Serializes this MediaVariant to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? platform = null,
-    Object? src = null,
-    Object? aspectRatio = null,
-    Object? durationMs = freezed,
-    Object? metadata = freezed,
-  }) {
-    return _then(_value.copyWith(
-      platform: null == platform
-          ? _value.platform
-          : platform // ignore: cast_nullable_to_non_nullable
-              as String,
-      src: null == src
-          ? _value.src
-          : src // ignore: cast_nullable_to_non_nullable
-              as String,
-      aspectRatio: null == aspectRatio
-          ? _value.aspectRatio
-          : aspectRatio // ignore: cast_nullable_to_non_nullable
-              as double,
-      durationMs: freezed == durationMs
-          ? _value.durationMs
-          : durationMs // ignore: cast_nullable_to_non_nullable
-              as int?,
-      metadata: freezed == metadata
-          ? _value.metadata
-          : metadata // ignore: cast_nullable_to_non_nullable
-              as Map<String, dynamic>?,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is MediaVariant &&
+            (identical(other.platform, platform) ||
+                other.platform == platform) &&
+            (identical(other.src, src) || other.src == src) &&
+            (identical(other.aspectRatio, aspectRatio) ||
+                other.aspectRatio == aspectRatio) &&
+            (identical(other.durationMs, durationMs) ||
+                other.durationMs == durationMs) &&
+            const DeepCollectionEquality().equals(other.metadata, metadata));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, platform, src, aspectRatio,
+      durationMs, const DeepCollectionEquality().hash(metadata));
+
+  @override
+  String toString() {
+    return 'MediaVariant(platform: $platform, src: $src, aspectRatio: $aspectRatio, durationMs: $durationMs, metadata: $metadata)';
   }
 }
 
 /// @nodoc
-abstract class _$$MediaVariantImplCopyWith<$Res>
-    implements $MediaVariantCopyWith<$Res> {
-  factory _$$MediaVariantImplCopyWith(
-          _$MediaVariantImpl value, $Res Function(_$MediaVariantImpl) then) =
-      __$$MediaVariantImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $MediaVariantCopyWith<$Res> {
+  factory $MediaVariantCopyWith(
+          MediaVariant value, $Res Function(MediaVariant) _then) =
+      _$MediaVariantCopyWithImpl;
   @useResult
   $Res call(
       {String platform,
@@ -808,13 +1186,14 @@ abstract class _$$MediaVariantImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$MediaVariantImplCopyWithImpl<$Res>
-    extends _$MediaVariantCopyWithImpl<$Res, _$MediaVariantImpl>
-    implements _$$MediaVariantImplCopyWith<$Res> {
-  __$$MediaVariantImplCopyWithImpl(
-      _$MediaVariantImpl _value, $Res Function(_$MediaVariantImpl) _then)
-      : super(_value, _then);
+class _$MediaVariantCopyWithImpl<$Res> implements $MediaVariantCopyWith<$Res> {
+  _$MediaVariantCopyWithImpl(this._self, this._then);
 
+  final MediaVariant _self;
+  final $Res Function(MediaVariant) _then;
+
+  /// Create a copy of MediaVariant
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -824,44 +1203,205 @@ class __$$MediaVariantImplCopyWithImpl<$Res>
     Object? durationMs = freezed,
     Object? metadata = freezed,
   }) {
-    return _then(_$MediaVariantImpl(
+    return _then(_self.copyWith(
       platform: null == platform
-          ? _value.platform
+          ? _self.platform
           : platform // ignore: cast_nullable_to_non_nullable
               as String,
       src: null == src
-          ? _value.src
+          ? _self.src
           : src // ignore: cast_nullable_to_non_nullable
               as String,
       aspectRatio: null == aspectRatio
-          ? _value.aspectRatio
+          ? _self.aspectRatio
           : aspectRatio // ignore: cast_nullable_to_non_nullable
               as double,
       durationMs: freezed == durationMs
-          ? _value.durationMs
+          ? _self.durationMs
           : durationMs // ignore: cast_nullable_to_non_nullable
               as int?,
       metadata: freezed == metadata
-          ? _value._metadata
+          ? _self.metadata
           : metadata // ignore: cast_nullable_to_non_nullable
               as Map<String, dynamic>?,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [MediaVariant].
+extension MediaVariantPatterns on MediaVariant {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_MediaVariant value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _MediaVariant() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_MediaVariant value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _MediaVariant():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_MediaVariant value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _MediaVariant() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(String platform, String src, double aspectRatio,
+            int? durationMs, Map<String, dynamic>? metadata)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _MediaVariant() when $default != null:
+        return $default(_that.platform, _that.src, _that.aspectRatio,
+            _that.durationMs, _that.metadata);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(String platform, String src, double aspectRatio,
+            int? durationMs, Map<String, dynamic>? metadata)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _MediaVariant():
+        return $default(_that.platform, _that.src, _that.aspectRatio,
+            _that.durationMs, _that.metadata);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(String platform, String src, double aspectRatio,
+            int? durationMs, Map<String, dynamic>? metadata)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _MediaVariant() when $default != null:
+        return $default(_that.platform, _that.src, _that.aspectRatio,
+            _that.durationMs, _that.metadata);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$MediaVariantImpl implements _MediaVariant {
-  const _$MediaVariantImpl(
+class _MediaVariant implements MediaVariant {
+  const _MediaVariant(
       {required this.platform,
       required this.src,
       required this.aspectRatio,
       this.durationMs,
       final Map<String, dynamic>? metadata})
       : _metadata = metadata;
-
-  factory _$MediaVariantImpl.fromJson(Map<String, dynamic> json) =>
-      _$$MediaVariantImplFromJson(json);
+  factory _MediaVariant.fromJson(Map<String, dynamic> json) =>
+      _$MediaVariantFromJson(json);
 
   @override
   final String platform;
@@ -881,16 +1421,26 @@ class _$MediaVariantImpl implements _MediaVariant {
     return EqualUnmodifiableMapView(value);
   }
 
+  /// Create a copy of MediaVariant
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'MediaVariant(platform: $platform, src: $src, aspectRatio: $aspectRatio, durationMs: $durationMs, metadata: $metadata)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$MediaVariantCopyWith<_MediaVariant> get copyWith =>
+      __$MediaVariantCopyWithImpl<_MediaVariant>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$MediaVariantToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$MediaVariantImpl &&
+            other is _MediaVariant &&
             (identical(other.platform, platform) ||
                 other.platform == platform) &&
             (identical(other.src, src) || other.src == src) &&
@@ -901,142 +1451,133 @@ class _$MediaVariantImpl implements _MediaVariant {
             const DeepCollectionEquality().equals(other._metadata, _metadata));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(runtimeType, platform, src, aspectRatio,
       durationMs, const DeepCollectionEquality().hash(_metadata));
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$MediaVariantImplCopyWith<_$MediaVariantImpl> get copyWith =>
-      __$$MediaVariantImplCopyWithImpl<_$MediaVariantImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$MediaVariantImplToJson(
-      this,
-    );
+  String toString() {
+    return 'MediaVariant(platform: $platform, src: $src, aspectRatio: $aspectRatio, durationMs: $durationMs, metadata: $metadata)';
   }
 }
 
-abstract class _MediaVariant implements MediaVariant {
-  const factory _MediaVariant(
-      {required final String platform,
-      required final String src,
-      required final double aspectRatio,
-      final int? durationMs,
-      final Map<String, dynamic>? metadata}) = _$MediaVariantImpl;
-
-  factory _MediaVariant.fromJson(Map<String, dynamic> json) =
-      _$MediaVariantImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$MediaVariantCopyWith<$Res>
+    implements $MediaVariantCopyWith<$Res> {
+  factory _$MediaVariantCopyWith(
+          _MediaVariant value, $Res Function(_MediaVariant) _then) =
+      __$MediaVariantCopyWithImpl;
   @override
-  String get platform;
-  @override
-  String get src;
-  @override
-  double get aspectRatio;
-  @override
-  int? get durationMs;
-  @override
-  Map<String, dynamic>? get metadata;
-  @override
-  @JsonKey(ignore: true)
-  _$$MediaVariantImplCopyWith<_$MediaVariantImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String platform,
+      String src,
+      double aspectRatio,
+      int? durationMs,
+      Map<String, dynamic>? metadata});
 }
 
-PlatformConfig _$PlatformConfigFromJson(Map<String, dynamic> json) {
-  return _PlatformConfig.fromJson(json);
+/// @nodoc
+class __$MediaVariantCopyWithImpl<$Res>
+    implements _$MediaVariantCopyWith<$Res> {
+  __$MediaVariantCopyWithImpl(this._self, this._then);
+
+  final _MediaVariant _self;
+  final $Res Function(_MediaVariant) _then;
+
+  /// Create a copy of MediaVariant
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? platform = null,
+    Object? src = null,
+    Object? aspectRatio = null,
+    Object? durationMs = freezed,
+    Object? metadata = freezed,
+  }) {
+    return _then(_MediaVariant(
+      platform: null == platform
+          ? _self.platform
+          : platform // ignore: cast_nullable_to_non_nullable
+              as String,
+      src: null == src
+          ? _self.src
+          : src // ignore: cast_nullable_to_non_nullable
+              as String,
+      aspectRatio: null == aspectRatio
+          ? _self.aspectRatio
+          : aspectRatio // ignore: cast_nullable_to_non_nullable
+              as double,
+      durationMs: freezed == durationMs
+          ? _self.durationMs
+          : durationMs // ignore: cast_nullable_to_non_nullable
+              as int?,
+      metadata: freezed == metadata
+          ? _self._metadata
+          : metadata // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>?,
+    ));
+  }
 }
 
 /// @nodoc
 mixin _$PlatformConfig {
-  String get key => throw _privateConstructorUsedError;
-  bool get enabled => throw _privateConstructorUsedError;
-  Map<String, dynamic>? get payload => throw _privateConstructorUsedError;
-  PlatformStatus? get status => throw _privateConstructorUsedError;
-  String? get error => throw _privateConstructorUsedError;
-  DateTime? get scheduledAtUtc => throw _privateConstructorUsedError;
+  String get key;
+  bool get enabled;
+  Map<String, dynamic>? get payload;
+  PlatformStatus? get status;
+  String? get error;
+  DateTime? get scheduledAtUtc;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $PlatformConfigCopyWith<PlatformConfig> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $PlatformConfigCopyWith<$Res> {
-  factory $PlatformConfigCopyWith(
-          PlatformConfig value, $Res Function(PlatformConfig) then) =
-      _$PlatformConfigCopyWithImpl<$Res, PlatformConfig>;
-  @useResult
-  $Res call(
-      {String key,
-      bool enabled,
-      Map<String, dynamic>? payload,
-      PlatformStatus? status,
-      String? error,
-      DateTime? scheduledAtUtc});
-}
-
-/// @nodoc
-class _$PlatformConfigCopyWithImpl<$Res, $Val extends PlatformConfig>
-    implements $PlatformConfigCopyWith<$Res> {
-  _$PlatformConfigCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of PlatformConfig
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $PlatformConfigCopyWith<PlatformConfig> get copyWith =>
+      _$PlatformConfigCopyWithImpl<PlatformConfig>(
+          this as PlatformConfig, _$identity);
+
+  /// Serializes this PlatformConfig to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? key = null,
-    Object? enabled = null,
-    Object? payload = freezed,
-    Object? status = freezed,
-    Object? error = freezed,
-    Object? scheduledAtUtc = freezed,
-  }) {
-    return _then(_value.copyWith(
-      key: null == key
-          ? _value.key
-          : key // ignore: cast_nullable_to_non_nullable
-              as String,
-      enabled: null == enabled
-          ? _value.enabled
-          : enabled // ignore: cast_nullable_to_non_nullable
-              as bool,
-      payload: freezed == payload
-          ? _value.payload
-          : payload // ignore: cast_nullable_to_non_nullable
-              as Map<String, dynamic>?,
-      status: freezed == status
-          ? _value.status
-          : status // ignore: cast_nullable_to_non_nullable
-              as PlatformStatus?,
-      error: freezed == error
-          ? _value.error
-          : error // ignore: cast_nullable_to_non_nullable
-              as String?,
-      scheduledAtUtc: freezed == scheduledAtUtc
-          ? _value.scheduledAtUtc
-          : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is PlatformConfig &&
+            (identical(other.key, key) || other.key == key) &&
+            (identical(other.enabled, enabled) || other.enabled == enabled) &&
+            const DeepCollectionEquality().equals(other.payload, payload) &&
+            (identical(other.status, status) || other.status == status) &&
+            (identical(other.error, error) || other.error == error) &&
+            (identical(other.scheduledAtUtc, scheduledAtUtc) ||
+                other.scheduledAtUtc == scheduledAtUtc));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      key,
+      enabled,
+      const DeepCollectionEquality().hash(payload),
+      status,
+      error,
+      scheduledAtUtc);
+
+  @override
+  String toString() {
+    return 'PlatformConfig(key: $key, enabled: $enabled, payload: $payload, status: $status, error: $error, scheduledAtUtc: $scheduledAtUtc)';
   }
 }
 
 /// @nodoc
-abstract class _$$PlatformConfigImplCopyWith<$Res>
-    implements $PlatformConfigCopyWith<$Res> {
-  factory _$$PlatformConfigImplCopyWith(_$PlatformConfigImpl value,
-          $Res Function(_$PlatformConfigImpl) then) =
-      __$$PlatformConfigImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $PlatformConfigCopyWith<$Res> {
+  factory $PlatformConfigCopyWith(
+          PlatformConfig value, $Res Function(PlatformConfig) _then) =
+      _$PlatformConfigCopyWithImpl;
   @useResult
   $Res call(
       {String key,
@@ -1048,13 +1589,15 @@ abstract class _$$PlatformConfigImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$PlatformConfigImplCopyWithImpl<$Res>
-    extends _$PlatformConfigCopyWithImpl<$Res, _$PlatformConfigImpl>
-    implements _$$PlatformConfigImplCopyWith<$Res> {
-  __$$PlatformConfigImplCopyWithImpl(
-      _$PlatformConfigImpl _value, $Res Function(_$PlatformConfigImpl) _then)
-      : super(_value, _then);
+class _$PlatformConfigCopyWithImpl<$Res>
+    implements $PlatformConfigCopyWith<$Res> {
+  _$PlatformConfigCopyWithImpl(this._self, this._then);
 
+  final PlatformConfig _self;
+  final $Res Function(PlatformConfig) _then;
+
+  /// Create a copy of PlatformConfig
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -1065,39 +1608,201 @@ class __$$PlatformConfigImplCopyWithImpl<$Res>
     Object? error = freezed,
     Object? scheduledAtUtc = freezed,
   }) {
-    return _then(_$PlatformConfigImpl(
+    return _then(_self.copyWith(
       key: null == key
-          ? _value.key
+          ? _self.key
           : key // ignore: cast_nullable_to_non_nullable
               as String,
       enabled: null == enabled
-          ? _value.enabled
+          ? _self.enabled
           : enabled // ignore: cast_nullable_to_non_nullable
               as bool,
       payload: freezed == payload
-          ? _value._payload
+          ? _self.payload
           : payload // ignore: cast_nullable_to_non_nullable
               as Map<String, dynamic>?,
       status: freezed == status
-          ? _value.status
+          ? _self.status
           : status // ignore: cast_nullable_to_non_nullable
               as PlatformStatus?,
       error: freezed == error
-          ? _value.error
+          ? _self.error
           : error // ignore: cast_nullable_to_non_nullable
               as String?,
       scheduledAtUtc: freezed == scheduledAtUtc
-          ? _value.scheduledAtUtc
+          ? _self.scheduledAtUtc
           : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
               as DateTime?,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [PlatformConfig].
+extension PlatformConfigPatterns on PlatformConfig {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_PlatformConfig value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformConfig() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_PlatformConfig value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformConfig():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_PlatformConfig value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformConfig() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(String key, bool enabled, Map<String, dynamic>? payload,
+            PlatformStatus? status, String? error, DateTime? scheduledAtUtc)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformConfig() when $default != null:
+        return $default(_that.key, _that.enabled, _that.payload, _that.status,
+            _that.error, _that.scheduledAtUtc);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(String key, bool enabled, Map<String, dynamic>? payload,
+            PlatformStatus? status, String? error, DateTime? scheduledAtUtc)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformConfig():
+        return $default(_that.key, _that.enabled, _that.payload, _that.status,
+            _that.error, _that.scheduledAtUtc);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(String key, bool enabled, Map<String, dynamic>? payload,
+            PlatformStatus? status, String? error, DateTime? scheduledAtUtc)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformConfig() when $default != null:
+        return $default(_that.key, _that.enabled, _that.payload, _that.status,
+            _that.error, _that.scheduledAtUtc);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$PlatformConfigImpl implements _PlatformConfig {
-  const _$PlatformConfigImpl(
+class _PlatformConfig implements PlatformConfig {
+  const _PlatformConfig(
       {required this.key,
       required this.enabled,
       final Map<String, dynamic>? payload,
@@ -1105,9 +1810,8 @@ class _$PlatformConfigImpl implements _PlatformConfig {
       this.error,
       this.scheduledAtUtc})
       : _payload = payload;
-
-  factory _$PlatformConfigImpl.fromJson(Map<String, dynamic> json) =>
-      _$$PlatformConfigImplFromJson(json);
+  factory _PlatformConfig.fromJson(Map<String, dynamic> json) =>
+      _$PlatformConfigFromJson(json);
 
   @override
   final String key;
@@ -1130,16 +1834,26 @@ class _$PlatformConfigImpl implements _PlatformConfig {
   @override
   final DateTime? scheduledAtUtc;
 
+  /// Create a copy of PlatformConfig
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'PlatformConfig(key: $key, enabled: $enabled, payload: $payload, status: $status, error: $error, scheduledAtUtc: $scheduledAtUtc)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$PlatformConfigCopyWith<_PlatformConfig> get copyWith =>
+      __$PlatformConfigCopyWithImpl<_PlatformConfig>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$PlatformConfigToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$PlatformConfigImpl &&
+            other is _PlatformConfig &&
             (identical(other.key, key) || other.key == key) &&
             (identical(other.enabled, enabled) || other.enabled == enabled) &&
             const DeepCollectionEquality().equals(other._payload, _payload) &&
@@ -1149,7 +1863,7 @@ class _$PlatformConfigImpl implements _PlatformConfig {
                 other.scheduledAtUtc == scheduledAtUtc));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType,
@@ -1160,135 +1874,135 @@ class _$PlatformConfigImpl implements _PlatformConfig {
       error,
       scheduledAtUtc);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$PlatformConfigImplCopyWith<_$PlatformConfigImpl> get copyWith =>
-      __$$PlatformConfigImplCopyWithImpl<_$PlatformConfigImpl>(
-          this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$PlatformConfigImplToJson(
-      this,
-    );
+  String toString() {
+    return 'PlatformConfig(key: $key, enabled: $enabled, payload: $payload, status: $status, error: $error, scheduledAtUtc: $scheduledAtUtc)';
   }
 }
 
-abstract class _PlatformConfig implements PlatformConfig {
-  const factory _PlatformConfig(
-      {required final String key,
-      required final bool enabled,
-      final Map<String, dynamic>? payload,
-      final PlatformStatus? status,
-      final String? error,
-      final DateTime? scheduledAtUtc}) = _$PlatformConfigImpl;
-
-  factory _PlatformConfig.fromJson(Map<String, dynamic> json) =
-      _$PlatformConfigImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$PlatformConfigCopyWith<$Res>
+    implements $PlatformConfigCopyWith<$Res> {
+  factory _$PlatformConfigCopyWith(
+          _PlatformConfig value, $Res Function(_PlatformConfig) _then) =
+      __$PlatformConfigCopyWithImpl;
   @override
-  String get key;
-  @override
-  bool get enabled;
-  @override
-  Map<String, dynamic>? get payload;
-  @override
-  PlatformStatus? get status;
-  @override
-  String? get error;
-  @override
-  DateTime? get scheduledAtUtc;
-  @override
-  @JsonKey(ignore: true)
-  _$$PlatformConfigImplCopyWith<_$PlatformConfigImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String key,
+      bool enabled,
+      Map<String, dynamic>? payload,
+      PlatformStatus? status,
+      String? error,
+      DateTime? scheduledAtUtc});
 }
 
-PostSchedule _$PostScheduleFromJson(Map<String, dynamic> json) {
-  return _PostSchedule.fromJson(json);
+/// @nodoc
+class __$PlatformConfigCopyWithImpl<$Res>
+    implements _$PlatformConfigCopyWith<$Res> {
+  __$PlatformConfigCopyWithImpl(this._self, this._then);
+
+  final _PlatformConfig _self;
+  final $Res Function(_PlatformConfig) _then;
+
+  /// Create a copy of PlatformConfig
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? key = null,
+    Object? enabled = null,
+    Object? payload = freezed,
+    Object? status = freezed,
+    Object? error = freezed,
+    Object? scheduledAtUtc = freezed,
+  }) {
+    return _then(_PlatformConfig(
+      key: null == key
+          ? _self.key
+          : key // ignore: cast_nullable_to_non_nullable
+              as String,
+      enabled: null == enabled
+          ? _self.enabled
+          : enabled // ignore: cast_nullable_to_non_nullable
+              as bool,
+      payload: freezed == payload
+          ? _self._payload
+          : payload // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>?,
+      status: freezed == status
+          ? _self.status
+          : status // ignore: cast_nullable_to_non_nullable
+              as PlatformStatus?,
+      error: freezed == error
+          ? _self.error
+          : error // ignore: cast_nullable_to_non_nullable
+              as String?,
+      scheduledAtUtc: freezed == scheduledAtUtc
+          ? _self.scheduledAtUtc
+          : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
+              as DateTime?,
+    ));
+  }
 }
 
 /// @nodoc
 mixin _$PostSchedule {
-  DateTime get scheduledAtUtc => throw _privateConstructorUsedError;
-  String get timezone => throw _privateConstructorUsedError;
-  Map<String, PlatformSchedule> get perPlatform =>
-      throw _privateConstructorUsedError;
-  DateTime get createdAtUtc => throw _privateConstructorUsedError;
-  DateTime get updatedAtUtc => throw _privateConstructorUsedError;
+  DateTime get scheduledAtUtc;
+  String get timezone;
+  Map<String, PlatformSchedule> get perPlatform;
+  DateTime get createdAtUtc;
+  DateTime get updatedAtUtc;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $PostScheduleCopyWith<PostSchedule> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $PostScheduleCopyWith<$Res> {
-  factory $PostScheduleCopyWith(
-          PostSchedule value, $Res Function(PostSchedule) then) =
-      _$PostScheduleCopyWithImpl<$Res, PostSchedule>;
-  @useResult
-  $Res call(
-      {DateTime scheduledAtUtc,
-      String timezone,
-      Map<String, PlatformSchedule> perPlatform,
-      DateTime createdAtUtc,
-      DateTime updatedAtUtc});
-}
-
-/// @nodoc
-class _$PostScheduleCopyWithImpl<$Res, $Val extends PostSchedule>
-    implements $PostScheduleCopyWith<$Res> {
-  _$PostScheduleCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of PostSchedule
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $PostScheduleCopyWith<PostSchedule> get copyWith =>
+      _$PostScheduleCopyWithImpl<PostSchedule>(
+          this as PostSchedule, _$identity);
+
+  /// Serializes this PostSchedule to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? scheduledAtUtc = null,
-    Object? timezone = null,
-    Object? perPlatform = null,
-    Object? createdAtUtc = null,
-    Object? updatedAtUtc = null,
-  }) {
-    return _then(_value.copyWith(
-      scheduledAtUtc: null == scheduledAtUtc
-          ? _value.scheduledAtUtc
-          : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      timezone: null == timezone
-          ? _value.timezone
-          : timezone // ignore: cast_nullable_to_non_nullable
-              as String,
-      perPlatform: null == perPlatform
-          ? _value.perPlatform
-          : perPlatform // ignore: cast_nullable_to_non_nullable
-              as Map<String, PlatformSchedule>,
-      createdAtUtc: null == createdAtUtc
-          ? _value.createdAtUtc
-          : createdAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      updatedAtUtc: null == updatedAtUtc
-          ? _value.updatedAtUtc
-          : updatedAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is PostSchedule &&
+            (identical(other.scheduledAtUtc, scheduledAtUtc) ||
+                other.scheduledAtUtc == scheduledAtUtc) &&
+            (identical(other.timezone, timezone) ||
+                other.timezone == timezone) &&
+            const DeepCollectionEquality()
+                .equals(other.perPlatform, perPlatform) &&
+            (identical(other.createdAtUtc, createdAtUtc) ||
+                other.createdAtUtc == createdAtUtc) &&
+            (identical(other.updatedAtUtc, updatedAtUtc) ||
+                other.updatedAtUtc == updatedAtUtc));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      scheduledAtUtc,
+      timezone,
+      const DeepCollectionEquality().hash(perPlatform),
+      createdAtUtc,
+      updatedAtUtc);
+
+  @override
+  String toString() {
+    return 'PostSchedule(scheduledAtUtc: $scheduledAtUtc, timezone: $timezone, perPlatform: $perPlatform, createdAtUtc: $createdAtUtc, updatedAtUtc: $updatedAtUtc)';
   }
 }
 
 /// @nodoc
-abstract class _$$PostScheduleImplCopyWith<$Res>
-    implements $PostScheduleCopyWith<$Res> {
-  factory _$$PostScheduleImplCopyWith(
-          _$PostScheduleImpl value, $Res Function(_$PostScheduleImpl) then) =
-      __$$PostScheduleImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $PostScheduleCopyWith<$Res> {
+  factory $PostScheduleCopyWith(
+          PostSchedule value, $Res Function(PostSchedule) _then) =
+      _$PostScheduleCopyWithImpl;
   @useResult
   $Res call(
       {DateTime scheduledAtUtc,
@@ -1299,13 +2013,14 @@ abstract class _$$PostScheduleImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$PostScheduleImplCopyWithImpl<$Res>
-    extends _$PostScheduleCopyWithImpl<$Res, _$PostScheduleImpl>
-    implements _$$PostScheduleImplCopyWith<$Res> {
-  __$$PostScheduleImplCopyWithImpl(
-      _$PostScheduleImpl _value, $Res Function(_$PostScheduleImpl) _then)
-      : super(_value, _then);
+class _$PostScheduleCopyWithImpl<$Res> implements $PostScheduleCopyWith<$Res> {
+  _$PostScheduleCopyWithImpl(this._self, this._then);
 
+  final PostSchedule _self;
+  final $Res Function(PostSchedule) _then;
+
+  /// Create a copy of PostSchedule
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -1315,44 +2030,217 @@ class __$$PostScheduleImplCopyWithImpl<$Res>
     Object? createdAtUtc = null,
     Object? updatedAtUtc = null,
   }) {
-    return _then(_$PostScheduleImpl(
+    return _then(_self.copyWith(
       scheduledAtUtc: null == scheduledAtUtc
-          ? _value.scheduledAtUtc
+          ? _self.scheduledAtUtc
           : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
               as DateTime,
       timezone: null == timezone
-          ? _value.timezone
+          ? _self.timezone
           : timezone // ignore: cast_nullable_to_non_nullable
               as String,
       perPlatform: null == perPlatform
-          ? _value._perPlatform
+          ? _self.perPlatform
           : perPlatform // ignore: cast_nullable_to_non_nullable
               as Map<String, PlatformSchedule>,
       createdAtUtc: null == createdAtUtc
-          ? _value.createdAtUtc
+          ? _self.createdAtUtc
           : createdAtUtc // ignore: cast_nullable_to_non_nullable
               as DateTime,
       updatedAtUtc: null == updatedAtUtc
-          ? _value.updatedAtUtc
+          ? _self.updatedAtUtc
           : updatedAtUtc // ignore: cast_nullable_to_non_nullable
               as DateTime,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [PostSchedule].
+extension PostSchedulePatterns on PostSchedule {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_PostSchedule value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _PostSchedule() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_PostSchedule value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PostSchedule():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_PostSchedule value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PostSchedule() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            DateTime scheduledAtUtc,
+            String timezone,
+            Map<String, PlatformSchedule> perPlatform,
+            DateTime createdAtUtc,
+            DateTime updatedAtUtc)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _PostSchedule() when $default != null:
+        return $default(_that.scheduledAtUtc, _that.timezone, _that.perPlatform,
+            _that.createdAtUtc, _that.updatedAtUtc);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            DateTime scheduledAtUtc,
+            String timezone,
+            Map<String, PlatformSchedule> perPlatform,
+            DateTime createdAtUtc,
+            DateTime updatedAtUtc)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PostSchedule():
+        return $default(_that.scheduledAtUtc, _that.timezone, _that.perPlatform,
+            _that.createdAtUtc, _that.updatedAtUtc);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            DateTime scheduledAtUtc,
+            String timezone,
+            Map<String, PlatformSchedule> perPlatform,
+            DateTime createdAtUtc,
+            DateTime updatedAtUtc)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PostSchedule() when $default != null:
+        return $default(_that.scheduledAtUtc, _that.timezone, _that.perPlatform,
+            _that.createdAtUtc, _that.updatedAtUtc);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$PostScheduleImpl implements _PostSchedule {
-  const _$PostScheduleImpl(
+class _PostSchedule implements PostSchedule {
+  const _PostSchedule(
       {required this.scheduledAtUtc,
       required this.timezone,
       final Map<String, PlatformSchedule> perPlatform = const {},
       required this.createdAtUtc,
       required this.updatedAtUtc})
       : _perPlatform = perPlatform;
-
-  factory _$PostScheduleImpl.fromJson(Map<String, dynamic> json) =>
-      _$$PostScheduleImplFromJson(json);
+  factory _PostSchedule.fromJson(Map<String, dynamic> json) =>
+      _$PostScheduleFromJson(json);
 
   @override
   final DateTime scheduledAtUtc;
@@ -1372,16 +2260,26 @@ class _$PostScheduleImpl implements _PostSchedule {
   @override
   final DateTime updatedAtUtc;
 
+  /// Create a copy of PostSchedule
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'PostSchedule(scheduledAtUtc: $scheduledAtUtc, timezone: $timezone, perPlatform: $perPlatform, createdAtUtc: $createdAtUtc, updatedAtUtc: $updatedAtUtc)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$PostScheduleCopyWith<_PostSchedule> get copyWith =>
+      __$PostScheduleCopyWithImpl<_PostSchedule>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$PostScheduleToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$PostScheduleImpl &&
+            other is _PostSchedule &&
             (identical(other.scheduledAtUtc, scheduledAtUtc) ||
                 other.scheduledAtUtc == scheduledAtUtc) &&
             (identical(other.timezone, timezone) ||
@@ -1394,7 +2292,7 @@ class _$PostScheduleImpl implements _PostSchedule {
                 other.updatedAtUtc == updatedAtUtc));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType,
@@ -1404,200 +2302,386 @@ class _$PostScheduleImpl implements _PostSchedule {
       createdAtUtc,
       updatedAtUtc);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$PostScheduleImplCopyWith<_$PostScheduleImpl> get copyWith =>
-      __$$PostScheduleImplCopyWithImpl<_$PostScheduleImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$PostScheduleImplToJson(
-      this,
-    );
-  }
-}
-
-abstract class _PostSchedule implements PostSchedule {
-  const factory _PostSchedule(
-      {required final DateTime scheduledAtUtc,
-      required final String timezone,
-      final Map<String, PlatformSchedule> perPlatform,
-      required final DateTime createdAtUtc,
-      required final DateTime updatedAtUtc}) = _$PostScheduleImpl;
-
-  factory _PostSchedule.fromJson(Map<String, dynamic> json) =
-      _$PostScheduleImpl.fromJson;
-
-  @override
-  DateTime get scheduledAtUtc;
-  @override
-  String get timezone;
-  @override
-  Map<String, PlatformSchedule> get perPlatform;
-  @override
-  DateTime get createdAtUtc;
-  @override
-  DateTime get updatedAtUtc;
-  @override
-  @JsonKey(ignore: true)
-  _$$PostScheduleImplCopyWith<_$PostScheduleImpl> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-PlatformSchedule _$PlatformScheduleFromJson(Map<String, dynamic> json) {
-  return _PlatformSchedule.fromJson(json);
-}
-
-/// @nodoc
-mixin _$PlatformSchedule {
-  DateTime get scheduledAtUtc => throw _privateConstructorUsedError;
-  String? get timezone => throw _privateConstructorUsedError;
-
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $PlatformScheduleCopyWith<PlatformSchedule> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $PlatformScheduleCopyWith<$Res> {
-  factory $PlatformScheduleCopyWith(
-          PlatformSchedule value, $Res Function(PlatformSchedule) then) =
-      _$PlatformScheduleCopyWithImpl<$Res, PlatformSchedule>;
-  @useResult
-  $Res call({DateTime scheduledAtUtc, String? timezone});
-}
-
-/// @nodoc
-class _$PlatformScheduleCopyWithImpl<$Res, $Val extends PlatformSchedule>
-    implements $PlatformScheduleCopyWith<$Res> {
-  _$PlatformScheduleCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
-  @pragma('vm:prefer-inline')
-  @override
-  $Res call({
-    Object? scheduledAtUtc = null,
-    Object? timezone = freezed,
-  }) {
-    return _then(_value.copyWith(
-      scheduledAtUtc: null == scheduledAtUtc
-          ? _value.scheduledAtUtc
-          : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      timezone: freezed == timezone
-          ? _value.timezone
-          : timezone // ignore: cast_nullable_to_non_nullable
-              as String?,
-    ) as $Val);
+  String toString() {
+    return 'PostSchedule(scheduledAtUtc: $scheduledAtUtc, timezone: $timezone, perPlatform: $perPlatform, createdAtUtc: $createdAtUtc, updatedAtUtc: $updatedAtUtc)';
   }
 }
 
 /// @nodoc
-abstract class _$$PlatformScheduleImplCopyWith<$Res>
-    implements $PlatformScheduleCopyWith<$Res> {
-  factory _$$PlatformScheduleImplCopyWith(_$PlatformScheduleImpl value,
-          $Res Function(_$PlatformScheduleImpl) then) =
-      __$$PlatformScheduleImplCopyWithImpl<$Res>;
+abstract mixin class _$PostScheduleCopyWith<$Res>
+    implements $PostScheduleCopyWith<$Res> {
+  factory _$PostScheduleCopyWith(
+          _PostSchedule value, $Res Function(_PostSchedule) _then) =
+      __$PostScheduleCopyWithImpl;
   @override
   @useResult
-  $Res call({DateTime scheduledAtUtc, String? timezone});
+  $Res call(
+      {DateTime scheduledAtUtc,
+      String timezone,
+      Map<String, PlatformSchedule> perPlatform,
+      DateTime createdAtUtc,
+      DateTime updatedAtUtc});
 }
 
 /// @nodoc
-class __$$PlatformScheduleImplCopyWithImpl<$Res>
-    extends _$PlatformScheduleCopyWithImpl<$Res, _$PlatformScheduleImpl>
-    implements _$$PlatformScheduleImplCopyWith<$Res> {
-  __$$PlatformScheduleImplCopyWithImpl(_$PlatformScheduleImpl _value,
-      $Res Function(_$PlatformScheduleImpl) _then)
-      : super(_value, _then);
+class __$PostScheduleCopyWithImpl<$Res>
+    implements _$PostScheduleCopyWith<$Res> {
+  __$PostScheduleCopyWithImpl(this._self, this._then);
 
-  @pragma('vm:prefer-inline')
+  final _PostSchedule _self;
+  final $Res Function(_PostSchedule) _then;
+
+  /// Create a copy of PostSchedule
+  /// with the given fields replaced by the non-null parameter values.
   @override
+  @pragma('vm:prefer-inline')
   $Res call({
     Object? scheduledAtUtc = null,
-    Object? timezone = freezed,
+    Object? timezone = null,
+    Object? perPlatform = null,
+    Object? createdAtUtc = null,
+    Object? updatedAtUtc = null,
   }) {
-    return _then(_$PlatformScheduleImpl(
+    return _then(_PostSchedule(
       scheduledAtUtc: null == scheduledAtUtc
-          ? _value.scheduledAtUtc
+          ? _self.scheduledAtUtc
           : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
               as DateTime,
-      timezone: freezed == timezone
-          ? _value.timezone
+      timezone: null == timezone
+          ? _self.timezone
           : timezone // ignore: cast_nullable_to_non_nullable
-              as String?,
+              as String,
+      perPlatform: null == perPlatform
+          ? _self._perPlatform
+          : perPlatform // ignore: cast_nullable_to_non_nullable
+              as Map<String, PlatformSchedule>,
+      createdAtUtc: null == createdAtUtc
+          ? _self.createdAtUtc
+          : createdAtUtc // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      updatedAtUtc: null == updatedAtUtc
+          ? _self.updatedAtUtc
+          : updatedAtUtc // ignore: cast_nullable_to_non_nullable
+              as DateTime,
     ));
   }
 }
 
 /// @nodoc
-@JsonSerializable()
-class _$PlatformScheduleImpl implements _PlatformSchedule {
-  const _$PlatformScheduleImpl({required this.scheduledAtUtc, this.timezone});
+mixin _$PlatformSchedule {
+  DateTime get scheduledAtUtc;
+  String? get timezone;
 
-  factory _$PlatformScheduleImpl.fromJson(Map<String, dynamic> json) =>
-      _$$PlatformScheduleImplFromJson(json);
+  /// Create a copy of PlatformSchedule
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  $PlatformScheduleCopyWith<PlatformSchedule> get copyWith =>
+      _$PlatformScheduleCopyWithImpl<PlatformSchedule>(
+          this as PlatformSchedule, _$identity);
 
-  @override
-  final DateTime scheduledAtUtc;
-  @override
-  final String? timezone;
-
-  @override
-  String toString() {
-    return 'PlatformSchedule(scheduledAtUtc: $scheduledAtUtc, timezone: $timezone)';
-  }
+  /// Serializes this PlatformSchedule to a JSON map.
+  Map<String, dynamic> toJson();
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$PlatformScheduleImpl &&
+            other is PlatformSchedule &&
             (identical(other.scheduledAtUtc, scheduledAtUtc) ||
                 other.scheduledAtUtc == scheduledAtUtc) &&
             (identical(other.timezone, timezone) ||
                 other.timezone == timezone));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(runtimeType, scheduledAtUtc, timezone);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$PlatformScheduleImplCopyWith<_$PlatformScheduleImpl> get copyWith =>
-      __$$PlatformScheduleImplCopyWithImpl<_$PlatformScheduleImpl>(
-          this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$PlatformScheduleImplToJson(
-      this,
-    );
+  String toString() {
+    return 'PlatformSchedule(scheduledAtUtc: $scheduledAtUtc, timezone: $timezone)';
   }
 }
 
-abstract class _PlatformSchedule implements PlatformSchedule {
-  const factory _PlatformSchedule(
-      {required final DateTime scheduledAtUtc,
-      final String? timezone}) = _$PlatformScheduleImpl;
-
-  factory _PlatformSchedule.fromJson(Map<String, dynamic> json) =
-      _$PlatformScheduleImpl.fromJson;
-
-  @override
-  DateTime get scheduledAtUtc;
-  @override
-  String? get timezone;
-  @override
-  @JsonKey(ignore: true)
-  _$$PlatformScheduleImplCopyWith<_$PlatformScheduleImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+/// @nodoc
+abstract mixin class $PlatformScheduleCopyWith<$Res> {
+  factory $PlatformScheduleCopyWith(
+          PlatformSchedule value, $Res Function(PlatformSchedule) _then) =
+      _$PlatformScheduleCopyWithImpl;
+  @useResult
+  $Res call({DateTime scheduledAtUtc, String? timezone});
 }
+
+/// @nodoc
+class _$PlatformScheduleCopyWithImpl<$Res>
+    implements $PlatformScheduleCopyWith<$Res> {
+  _$PlatformScheduleCopyWithImpl(this._self, this._then);
+
+  final PlatformSchedule _self;
+  final $Res Function(PlatformSchedule) _then;
+
+  /// Create a copy of PlatformSchedule
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? scheduledAtUtc = null,
+    Object? timezone = freezed,
+  }) {
+    return _then(_self.copyWith(
+      scheduledAtUtc: null == scheduledAtUtc
+          ? _self.scheduledAtUtc
+          : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      timezone: freezed == timezone
+          ? _self.timezone
+          : timezone // ignore: cast_nullable_to_non_nullable
+              as String?,
+    ));
+  }
+}
+
+/// Adds pattern-matching-related methods to [PlatformSchedule].
+extension PlatformSchedulePatterns on PlatformSchedule {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_PlatformSchedule value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformSchedule() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_PlatformSchedule value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformSchedule():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_PlatformSchedule value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformSchedule() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(DateTime scheduledAtUtc, String? timezone)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformSchedule() when $default != null:
+        return $default(_that.scheduledAtUtc, _that.timezone);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(DateTime scheduledAtUtc, String? timezone) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformSchedule():
+        return $default(_that.scheduledAtUtc, _that.timezone);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(DateTime scheduledAtUtc, String? timezone)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _PlatformSchedule() when $default != null:
+        return $default(_that.scheduledAtUtc, _that.timezone);
+      case _:
+        return null;
+    }
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _PlatformSchedule implements PlatformSchedule {
+  const _PlatformSchedule({required this.scheduledAtUtc, this.timezone});
+  factory _PlatformSchedule.fromJson(Map<String, dynamic> json) =>
+      _$PlatformScheduleFromJson(json);
+
+  @override
+  final DateTime scheduledAtUtc;
+  @override
+  final String? timezone;
+
+  /// Create a copy of PlatformSchedule
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$PlatformScheduleCopyWith<_PlatformSchedule> get copyWith =>
+      __$PlatformScheduleCopyWithImpl<_PlatformSchedule>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$PlatformScheduleToJson(
+      this,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _PlatformSchedule &&
+            (identical(other.scheduledAtUtc, scheduledAtUtc) ||
+                other.scheduledAtUtc == scheduledAtUtc) &&
+            (identical(other.timezone, timezone) ||
+                other.timezone == timezone));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, scheduledAtUtc, timezone);
+
+  @override
+  String toString() {
+    return 'PlatformSchedule(scheduledAtUtc: $scheduledAtUtc, timezone: $timezone)';
+  }
+}
+
+/// @nodoc
+abstract mixin class _$PlatformScheduleCopyWith<$Res>
+    implements $PlatformScheduleCopyWith<$Res> {
+  factory _$PlatformScheduleCopyWith(
+          _PlatformSchedule value, $Res Function(_PlatformSchedule) _then) =
+      __$PlatformScheduleCopyWithImpl;
+  @override
+  @useResult
+  $Res call({DateTime scheduledAtUtc, String? timezone});
+}
+
+/// @nodoc
+class __$PlatformScheduleCopyWithImpl<$Res>
+    implements _$PlatformScheduleCopyWith<$Res> {
+  __$PlatformScheduleCopyWithImpl(this._self, this._then);
+
+  final _PlatformSchedule _self;
+  final $Res Function(_PlatformSchedule) _then;
+
+  /// Create a copy of PlatformSchedule
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? scheduledAtUtc = null,
+    Object? timezone = freezed,
+  }) {
+    return _then(_PlatformSchedule(
+      scheduledAtUtc: null == scheduledAtUtc
+          ? _self.scheduledAtUtc
+          : scheduledAtUtc // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      timezone: freezed == timezone
+          ? _self.timezone
+          : timezone // ignore: cast_nullable_to_non_nullable
+              as String?,
+    ));
+  }
+}
+
+// dart format on

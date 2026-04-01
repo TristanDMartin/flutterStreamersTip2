@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../utils/qr_code_generator.dart';
+import '../services/profile_link_service.dart';
 import '../models/home_video.dart';
 
 /// QR Code Dialog for Videos
@@ -167,7 +168,8 @@ class ProfileQRCodeDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Generate profile share URL
-    final profileUrl = shareUrl ?? 'https://streamerstip.com/profile/$username';
+    final profileUrl =
+        shareUrl ?? ProfileLinkService.webProfileUrlById(userId);
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -302,4 +304,3 @@ class ProfileQRCodeDialog extends StatelessWidget {
     );
   }
 }
-

@@ -1,4 +1,5 @@
 import 'calendar_event.dart';
+import 'user_count_fields.dart';
 import '../utils/data_parsing_utils.dart';
 
 class User {
@@ -47,8 +48,8 @@ class User {
       hashtags: parseStringList(data['hashtags']),
       aiSelf: data['aiSelf'] ?? '',
       postCount: parseInteger(data['postCount']),
-      followerCount: parseInteger(data['followerCount']),
-      followingCount: parseInteger(data['followingCount']),
+      followerCount: UserCountFields.readFollowersCount(data),
+      followingCount: UserCountFields.readFollowingCount(data),
       calendarEvents: (data['calendarEvents'] as List<dynamic>?)
               ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
               .toList() ??
@@ -72,8 +73,10 @@ class User {
       'hashtags': hashtags,
       'aiSelf': aiSelf,
       'postCount': postCount,
-      'followerCount': followerCount,
-      'followingCount': followingCount,
+      ...UserCountFields.writeCanonicalCounts(
+        followersCount: followerCount,
+        followingCount: followingCount,
+      ),
       'calendarEvents': calendarEvents.map((e) => e.toMap()).toList(),
       'privacy': privacy.toMap(),
       'pinnedVideoIds': pinnedVideoIds,

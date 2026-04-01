@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -322,9 +324,46 @@ class FollowsService {
     if (currentUser == null) {
       return Stream.value([]);
     }
-    return _firestore.collection('follows').snapshots().asyncMap((_) async {
-      return await getUsersForTab(tab);
-    });
+    final userId = currentUser.uid;
+    final s1 = _firestore
+        .collection('follows')
+        .where('followerUserId', isEqualTo: userId)
+        .snapshots()
+        .asyncMap((_) => getUsersForTab(tab));
+    final s2 = _firestore
+        .collection('follows')
+        .where('targetUserId', isEqualTo: userId)
+        .snapshots()
+        .asyncMap((_) => getUsersForTab(tab));
+    return _mergeStreams(s1, s2);
+  }
+
+  static Stream<T> _mergeStreams<T>(Stream<T> s1, Stream<T> s2) {
+    final controller = StreamController<T>.broadcast();
+    var completed = 0;
+    late StreamSubscription<T> sub1;
+    late StreamSubscription<T> sub2;
+    void onDone() {
+      completed++;
+      if (completed == 2) {
+        controller.close();
+      }
+    }
+    sub1 = s1.listen(
+      controller.add,
+      onError: controller.addError,
+      onDone: onDone,
+    );
+    sub2 = s2.listen(
+      controller.add,
+      onError: controller.addError,
+      onDone: onDone,
+    );
+    controller.onCancel = () async {
+      await sub1.cancel();
+      await sub2.cancel();
+    };
+    return controller.stream;
   }
 
   user_model.User _userFromDoc(

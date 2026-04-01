@@ -15,10 +15,6 @@ class VideoProcessingService {
 
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  // Video editing state
-  final Map<String, VideoEditState> _editStates = {};
-  final Map<String, List<VideoEditAction>> _editHistory = {};
-
   /// Get video duration in seconds
   Future<Duration> getVideoDuration(File videoFile) async {
     try {
@@ -91,78 +87,114 @@ class VideoProcessingService {
     }
   }
 
-  /// Trim video to specified start and end times
-  ///
-  /// **NOTE:** Video trimming is not yet implemented. FFmpeg integration required.
-  /// This method currently throws an UnimplementedError with instructions.
-  Future<File> trimVideo({
-    required File inputFile,
-    required Duration startTime,
-    required Duration endTime,
-    required String videoId,
-    Function(double progress)? onProgress,
-  }) async {
-    LoggingService.instance.warning(
-        'Video trimming attempted but not implemented. FFmpeg required.',
-        tag: 'VideoProcessingService');
-
-    // Clear error message for user
-    throw UnimplementedError(
-        'Video trimming is not yet available. This feature requires FFmpeg integration and will be available in a future update. For now, please use the full video length.');
+  /// Try generating thumbnail at specific timestamp. Returns null on failure.
+  Future<File?> _tryThumbnailAtTimeMs(
+    File videoFile,
+    int timeMs,
+    String videoId,
+    int maxWidth,
+    int maxHeight,
+  ) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final thumbnailFile =
+          File('${tempDir.path}/thumb_${videoId}_$timeMs.jpg');
+      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: videoFile.path,
+        thumbnailPath: thumbnailFile.path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+        timeMs: timeMs,
+        quality: 85,
+      );
+      if (thumbnailPath == null) return null;
+      final generatedFile = File(thumbnailPath);
+      if (!await generatedFile.exists()) return null;
+      final resized =
+          await _resizeAndCropThumbnail(generatedFile, maxWidth, maxHeight);
+      if (await resized.length() > 0) return resized;
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
-  /// Apply audio effects (volume, mute, etc.)
-  ///
-  /// **NOTE:** Audio effects are not yet implemented. FFmpeg integration required.
-  Future<File> applyAudioEffects({
-    required File inputFile,
-    required AudioEffects effects,
-    required String videoId,
-    Function(double progress)? onProgress,
-  }) async {
-    LoggingService.instance.warning(
-        'Audio effects attempted but not implemented. FFmpeg required.',
-        tag: 'VideoProcessingService');
-
-    throw UnimplementedError(
-        'Audio effects are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
+  /// Generate thumbnail with 4-method fallback cascade (website parity).
+  Future<File> generateThumbnailWithFallbacks(
+    File videoFile,
+    String videoId,
+  ) async {
+    const targetWidth = 720;
+    const targetHeight = 1280;
+    const fallbackWidth = 720;
+    const fallbackHeight = 1280;
+    Duration duration;
+    try {
+      duration = await getVideoDuration(videoFile);
+    } catch (_) {
+      duration = const Duration(seconds: 30);
+    }
+    final durationMs = duration.inMilliseconds;
+    final seekPrimary =
+        (durationMs * 0.1).clamp(0, 1000).toInt();
+    File? thumb;
+    thumb = await _tryThumbnailAtTimeMs(
+      videoFile, seekPrimary, videoId, targetWidth, targetHeight,
+    );
+    if (thumb != null) {
+      LoggingService.instance.info(
+        'Thumbnail: primary (${seekPrimary}ms)',
+        tag: 'VideoProcessingService',
+      );
+      return thumb;
+    }
+    for (final ms in [500, 1000, 2000]) {
+      if (ms > durationMs) continue;
+      thumb = await _tryThumbnailAtTimeMs(
+        videoFile, ms, videoId, targetWidth, targetHeight,
+      );
+      if (thumb != null) {
+        LoggingService.instance.info(
+          'Thumbnail: alternative (${ms}ms)',
+          tag: 'VideoProcessingService',
+        );
+        return thumb;
+      }
+    }
+    thumb = await _tryThumbnailAtTimeMs(
+      videoFile, 0, videoId, fallbackWidth, fallbackHeight,
+    );
+    if (thumb != null) {
+      LoggingService.instance.info(
+        'Thumbnail: fallback (0ms)',
+        tag: 'VideoProcessingService',
+      );
+      return thumb;
+    }
+    for (final ms in [0, 100, 500, 1000, 2000]) {
+      if (ms > durationMs) continue;
+      thumb = await _tryThumbnailAtTimeMs(
+        videoFile, ms, videoId, targetWidth, targetHeight,
+      );
+      if (thumb != null) {
+        LoggingService.instance.info(
+          'Thumbnail: aggressive (${ms}ms)',
+          tag: 'VideoProcessingService',
+        );
+        return thumb;
+      }
+    }
+    LoggingService.instance.info(
+      'Thumbnail: using placeholder',
+      tag: 'VideoProcessingService',
+    );
+    final tempDir = await getTemporaryDirectory();
+    final placeholderFile = File('${tempDir.path}/thumb_$videoId.jpg');
+    return _createFallbackThumbnail(videoId, placeholderFile);
   }
 
-  /// Apply visual effects and filters
-  ///
-  /// **NOTE:** Visual effects are not yet implemented. FFmpeg integration required.
-  Future<File> applyVisualEffects({
-    required File inputFile,
-    required List<VisualEffect> effects,
-    required String videoId,
-    Function(double progress)? onProgress,
-  }) async {
-    LoggingService.instance.warning(
-        'Visual effects attempted but not implemented. FFmpeg required.',
-        tag: 'VideoProcessingService');
-
-    throw UnimplementedError(
-        'Visual effects and filters are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
-  }
-
-  /// Add text overlay to video
-  ///
-  /// **NOTE:** Text overlays are not yet implemented. FFmpeg integration required.
-  Future<File> addTextOverlay({
-    required File inputFile,
-    required List<TextOverlay> textOverlays,
-    required String videoId,
-    Function(double progress)? onProgress,
-  }) async {
-    LoggingService.instance.warning(
-        'Text overlay attempted but not implemented. FFmpeg required.',
-        tag: 'VideoProcessingService');
-
-    throw UnimplementedError(
-        'Text overlays are not yet available. This feature requires FFmpeg integration and will be available in a future update.');
-  }
-
-  /// Generate thumbnail from video
+  /// Generate thumbnail from video (single timestamp, legacy).
   Future<File> generateThumbnail({
     required File videoFile,
     required Duration timestamp,
@@ -229,7 +261,7 @@ class VideoProcessingService {
             );
             final fileSize = await resized.length();
             LoggingService.instance.info(
-                '🎬 VideoProcessingService: Thumbnail generated successfully: ${resized.path} (${fileSize} bytes)',
+                '🎬 VideoProcessingService: Thumbnail generated successfully: ${resized.path} ($fileSize bytes)',
                 tag: 'VideoProcessingService');
 
             if (fileSize > 0) {
@@ -339,36 +371,6 @@ class VideoProcessingService {
     }
   }
 
-  /// Save video edit state
-  void saveEditState(String videoId, VideoEditState state) {
-    _editStates[videoId] = state;
-  }
-
-  /// Get video edit state
-  VideoEditState? getEditState(String videoId) {
-    return _editStates[videoId];
-  }
-
-  /// Add edit action to history
-  void addEditAction(String videoId, VideoEditAction action) {
-    _editHistory[videoId] ??= [];
-    _editHistory[videoId]!.add(action);
-  }
-
-  /// Undo last edit action
-  VideoEditAction? undoLastAction(String videoId) {
-    final history = _editHistory[videoId];
-    if (history != null && history.isNotEmpty) {
-      return history.removeLast();
-    }
-    return null;
-  }
-
-  /// Clear edit history
-  void clearEditHistory(String videoId) {
-    _editHistory[videoId]?.clear();
-  }
-
   /// Process video with all applied effects and generate thumbnail
   Future<VideoProcessingResult> processVideo({
     required File inputFile,
@@ -376,11 +378,8 @@ class VideoProcessingService {
     required String userId,
   }) async {
     try {
-      // Generate thumbnail
-      final thumbnail = await generateThumbnail(
-        videoFile: inputFile,
-        timestamp: const Duration(seconds: 1),
-        videoId: videoId,
+      final thumbnail = await generateThumbnailWithFallbacks(
+        inputFile, videoId,
       );
 
       // Upload thumbnail to Firebase Storage
@@ -429,121 +428,6 @@ class VideoProcessingService {
     }
   }
 }
-
-// Data models
-class VideoEditState {
-  final String videoId;
-  final File originalFile;
-  final Duration startTime;
-  final Duration endTime;
-  final AudioEffects audioEffects;
-  final List<VisualEffect> visualEffects;
-  final List<TextOverlay> textOverlays;
-  final bool isMuted;
-  final double volume;
-
-  VideoEditState({
-    required this.videoId,
-    required this.originalFile,
-    required this.startTime,
-    required this.endTime,
-    required this.audioEffects,
-    required this.visualEffects,
-    required this.textOverlays,
-    this.isMuted = false,
-    this.volume = 1.0,
-  });
-
-  VideoEditState copyWith({
-    Duration? startTime,
-    Duration? endTime,
-    AudioEffects? audioEffects,
-    List<VisualEffect>? visualEffects,
-    List<TextOverlay>? textOverlays,
-    bool? isMuted,
-    double? volume,
-  }) {
-    return VideoEditState(
-      videoId: videoId,
-      originalFile: originalFile,
-      startTime: startTime ?? this.startTime,
-      endTime: endTime ?? this.endTime,
-      audioEffects: audioEffects ?? this.audioEffects,
-      visualEffects: visualEffects ?? this.visualEffects,
-      textOverlays: textOverlays ?? this.textOverlays,
-      isMuted: isMuted ?? this.isMuted,
-      volume: volume ?? this.volume,
-    );
-  }
-}
-
-class VideoEditAction {
-  final String type;
-  final Map<String, dynamic> data;
-  final DateTime timestamp;
-
-  VideoEditAction({
-    required this.type,
-    required this.data,
-    required this.timestamp,
-  });
-}
-
-class AudioEffects {
-  final double volume;
-  final bool isMuted;
-  final double fadeIn;
-  final double fadeOut;
-  final String? audioTrack;
-
-  AudioEffects({
-    this.volume = 1.0,
-    this.isMuted = false,
-    this.fadeIn = 0.0,
-    this.fadeOut = 0.0,
-    this.audioTrack,
-  });
-}
-
-class VisualEffect {
-  final String type;
-  final Map<String, dynamic> parameters;
-  final Duration startTime;
-  final Duration endTime;
-
-  VisualEffect({
-    required this.type,
-    required this.parameters,
-    required this.startTime,
-    required this.endTime,
-  });
-}
-
-class TextOverlay {
-  final String text;
-  final double x;
-  final double y;
-  final String fontFamily;
-  final double fontSize;
-  final String color;
-  final Duration startTime;
-  final Duration endTime;
-  final TextAlignment alignment;
-
-  TextOverlay({
-    required this.text,
-    required this.x,
-    required this.y,
-    required this.fontFamily,
-    required this.fontSize,
-    required this.color,
-    required this.startTime,
-    required this.endTime,
-    this.alignment = TextAlignment.center,
-  });
-}
-
-enum TextAlignment { left, center, right }
 
 class VideoProcessingResult {
   final File videoFile;

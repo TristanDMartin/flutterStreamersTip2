@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:flutter/foundation.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/shared_draft.dart';
 import '../models/user.dart' as app_user;
+import '../models/user_count_fields.dart';
 import 'logging_service.dart';
 
 class InboxServiceOptimized {
@@ -170,26 +170,19 @@ class InboxServiceOptimized {
   /// Get user profile by ID
   Future<app_user.User?> getUserProfile(String userId) async {
     if (_userCache.containsKey(userId)) {
-      debugPrint('InboxService: Returning cached user profile for $userId');
       return _userCache[userId];
     }
 
     try {
-      debugPrint('InboxService: Fetching user profile for $userId from Firebase');
       final doc = await _firestore.collection('users').doc(userId).get();
       if (doc.exists) {
         final data = doc.data()!;
-        debugPrint('InboxService: User data found - displayName: ${data['displayName']}, username: ${data['username']}, avatarURL: ${data['avatarURL']}');
         final user = _mapUser(doc.id, data);
         _userCache[userId] = user;
-        debugPrint('InboxService: Mapped user - displayName: ${user.displayName}, username: ${user.username}, avatarURL: ${user.avatarURL}');
         return user;
-      } else {
-        debugPrint('InboxService: No user document found for $userId');
       }
       return null;
     } catch (e) {
-      debugPrint('InboxService: Error getting user profile for $userId: $e');
       LoggingService.instance.error('Error getting user profile: $e');
       return null;
     }
@@ -210,10 +203,12 @@ class InboxServiceOptimized {
           .doc(chatId)
           .collection('messages')
           .where('senderId', isNotEqualTo: currentUser.uid)
-          .where('readBy', arrayContains: currentUser.uid)
           .get();
 
-      final unreadCount = query.docs.length;
+      final unreadCount = query.docs.where((doc) {
+        final readBy = List<String>.from(doc.data()['readBy'] ?? const []);
+        return !readBy.contains(currentUser.uid);
+      }).length;
       _unreadCounts[chatId] = unreadCount;
       return unreadCount;
     } catch (e) {
@@ -237,6 +232,7 @@ class InboxServiceOptimized {
           .get();
 
       final batch = _firestore.batch();
+      var hasUpdates = false;
       for (final doc in query.docs) {
         final messageData = doc.data();
         final readBy = List<String>.from(messageData['readBy'] ?? []);
@@ -244,14 +240,43 @@ class InboxServiceOptimized {
         // Only update if user is not already in readBy
         if (!readBy.contains(currentUser.uid)) {
           batch.update(doc.reference, {
-            'readBy': FieldValue.arrayUnion([currentUser.uid])
+            'readBy': FieldValue.arrayUnion([currentUser.uid]),
+            'isRead': true,
           });
+          hasUpdates = true;
         }
       }
-      await batch.commit();
+
+      batch.set(
+        _firestore.collection('chats').doc(chatId),
+        {
+          'unreadCount_${currentUser.uid}': 0,
+          'lastReadTimestamp': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (hasUpdates || _chatCache.containsKey(chatId)) {
+        await batch.commit();
+      }
       _unreadCounts[chatId] = 0;
     } catch (e) {
       LoggingService.instance.error('Error marking as read: $e');
+    }
+  }
+
+  Future<void> markSharedDraftViewed(String sharedDraftId) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      await _firestore.collection('shared_drafts').doc(sharedDraftId).update({
+        'viewedBy': FieldValue.arrayUnion([currentUser.uid]),
+        'viewedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      LoggingService.instance.error('Error marking shared draft viewed: $e');
     }
   }
 
@@ -320,10 +345,7 @@ class InboxServiceOptimized {
   /// Mark chat as read
   Future<bool> markChatAsRead(String chatId) async {
     try {
-      await _firestore.collection('chats').doc(chatId).update({
-        'unreadCount': 0,
-        'lastReadTimestamp': FieldValue.serverTimestamp(),
-      });
+      await markAsRead(chatId);
       
       // Update cache
       if (_chatCache.containsKey(chatId)) {
@@ -446,6 +468,8 @@ class InboxServiceOptimized {
 
   /// Map Firestore document to SharedDraft model
   SharedDraft _mapSharedDraft(String id, Map<String, dynamic> data) {
+    final currentUser = _auth.currentUser;
+    final currentUserId = currentUser?.uid ?? '';
     // Handle both old format (receiverId) and new format (sharerId/recipients)
     final senderId = data['senderId'] ?? data['sharerId'] ?? '';
     final senderName = data['senderName'] ?? data['sharerUsername'] ?? '';
@@ -453,16 +477,19 @@ class InboxServiceOptimized {
     final receiverId = data['receiverId'] ?? '';
     final draftId = data['draftId'] ?? data['originalDraftId'] ?? '';
     final caption = data['caption'] ?? '';
-    final draftTitle = data['draftTitle'] ?? caption.isNotEmpty ? caption : 'Draft';
-    final draftThumbnailUrl = data['draftThumbnailUrl'] ?? data['thumbnailPath'] ?? '';
+    final draftTitle = ((data['draftTitle'] as String?)?.trim().isNotEmpty == true)
+        ? data['draftTitle'] as String
+        : (caption.isNotEmpty ? caption : 'Draft');
+    final draftThumbnailUrl =
+        data['draftThumbnailUrl'] ?? data['thumbnailUrl'] ?? data['thumbnailPath'] ?? '';
     final draftDuration = data['draftDuration'] ?? (data['metadata']?['duration'] ?? 0);
     final sharedAt = (data['sharedAt'] as Timestamp?)?.toDate() ?? 
                      (data['createdAt'] as Timestamp?)?.toDate() ?? 
                      DateTime.now();
-    final statusStr = data['status'] ?? 'pending';
-    final status = SharedDraftStatus.values.firstWhere(
-      (e) => e.name == statusStr,
-      orElse: () => SharedDraftStatus.pending,
+    final status = _deriveSharedDraftStatus(
+      data: data,
+      currentUserId: currentUserId,
+      receiverId: receiverId,
     );
 
     return SharedDraft(
@@ -482,6 +509,31 @@ class InboxServiceOptimized {
     );
   }
 
+  SharedDraftStatus _deriveSharedDraftStatus({
+    required Map<String, dynamic> data,
+    required String currentUserId,
+    required String receiverId,
+  }) {
+    final declinedBy =
+        List<String>.from(data['declinedBy'] as List<dynamic>? ?? const []);
+    final acceptedBy =
+        List<String>.from(data['acceptedBy'] as List<dynamic>? ?? const []);
+    final viewedBy =
+        List<String>.from(data['viewedBy'] as List<dynamic>? ?? const []);
+    final targetUserId = currentUserId == receiverId ? currentUserId : receiverId;
+
+    if (declinedBy.contains(targetUserId)) {
+      return SharedDraftStatus.declined;
+    }
+    if (viewedBy.contains(targetUserId) || data['viewedAt'] != null) {
+      return SharedDraftStatus.viewed;
+    }
+    if (acceptedBy.contains(targetUserId)) {
+      return SharedDraftStatus.delivered;
+    }
+    return SharedDraftStatus.pending;
+  }
+
   /// Map Firestore document to User model
   app_user.User _mapUser(String id, Map<String, dynamic> data) {
     return app_user.User(
@@ -494,8 +546,8 @@ class InboxServiceOptimized {
       hashtags: data['hashtags'] is List ? List<String>.from(data['hashtags']) : [],
       aiSelf: data['aiSelf'] ?? '',
       postCount: data['postCount'] ?? 0,
-      followerCount: data['followerCount'] ?? 0,
-      followingCount: data['followingCount'] ?? 0,
+      followerCount: UserCountFields.readFollowersCount(data),
+      followingCount: UserCountFields.readFollowingCount(data),
       calendarEvents: [],
     );
   }
@@ -526,20 +578,52 @@ class InboxServiceOptimized {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return Stream.value([]);
 
-    return _firestore
-        .collection('shared_drafts')
-        .where('receiverId', isEqualTo: currentUser.uid)
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snapshot) {
-      final drafts = <SharedDraft>[];
-      for (final doc in snapshot.docs) {
-        final draft = _mapSharedDraft(doc.id, doc.data());
-        _draftCache[doc.id] = draft;
-        drafts.add(draft);
+    late final StreamController<List<SharedDraft>> controller;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? receivedSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sentSub;
+
+    Future<void> emitDrafts() async {
+      try {
+        if (controller.isClosed) return;
+        controller.add(await getSharedDrafts());
+      } catch (e) {
+        if (!controller.isClosed) {
+          controller.addError(e);
+        }
       }
-      return drafts;
-    });
+    }
+
+    controller = StreamController<List<SharedDraft>>.broadcast(
+      onListen: () {
+        emitDrafts();
+
+        receivedSub = _firestore
+            .collection('shared_drafts')
+            .where('recipients', arrayContains: currentUser.uid)
+            .where('status', isEqualTo: 'shared')
+            .snapshots()
+            .listen(
+          (_) => emitDrafts(),
+          onError: controller.addError,
+        );
+
+        sentSub = _firestore
+            .collection('shared_drafts')
+            .where('sharerId', isEqualTo: currentUser.uid)
+            .where('status', isEqualTo: 'shared')
+            .snapshots()
+            .listen(
+          (_) => emitDrafts(),
+          onError: controller.addError,
+        );
+      },
+      onCancel: () async {
+        await receivedSub?.cancel();
+        await sentSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   /// Stream unread count for a specific chat
@@ -551,11 +635,13 @@ class InboxServiceOptimized {
         .collection('chats')
         .doc(chatId)
         .collection('messages')
-        .where('senderId', isNotEqualTo: currentUser.uid)
-        .where('readBy', arrayContains: currentUser.uid)
         .snapshots()
         .map((snapshot) {
-      final count = snapshot.docs.length;
+      final count = snapshot.docs.where((doc) {
+        final readBy = List<String>.from(doc.data()['readBy'] ?? const []);
+        final from = doc.data()['from'] as String? ?? '';
+        return from != currentUser.uid && !readBy.contains(currentUser.uid);
+      }).length;
       _unreadCounts[chatId] = count;
       return count;
     });

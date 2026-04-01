@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'saved_account.freezed.dart';
 part 'saved_account.g.dart';
 
 @freezed
-class SavedAccount with _$SavedAccount {
+sealed class SavedAccount with _$SavedAccount {
   const factory SavedAccount({
     required String id,
     required String userId,

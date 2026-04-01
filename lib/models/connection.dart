@@ -4,7 +4,7 @@ part 'connection.freezed.dart';
 part 'connection.g.dart';
 
 @freezed
-class Connection with _$Connection {
+sealed class Connection with _$Connection {
   const factory Connection({
     required String id,
     required String displayName,

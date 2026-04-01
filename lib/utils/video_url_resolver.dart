@@ -1,57 +1,190 @@
-String resolveVideoUrl(Map<String, dynamic> data) {
-  // If status exists, only allow ready/published videos to surface a URL.
+import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart';
+import '../services/device_capability_service.dart';
+
+/// Mobile must NEVER play original.mp4 (ExoPlayer OOM, codec errors).
+bool containsOriginalMp4(String url) =>
+    url.toLowerCase().contains('original.mp4');
+
+/// Convert raw GCS URLs to Firebase Storage API format so Storage rules apply.
+/// Raw storage.googleapis.com URLs bypass Firebase rules (use GCS IAM) and often 403.
+String toFirebaseStorageUrlIfNeeded(String url) {
+  if (url.isEmpty) return url;
+  const prefix = 'https://storage.googleapis.com/';
+  if (!url.startsWith(prefix)) return url;
+  final after = url.substring(prefix.length);
+  final slash = after.indexOf('/');
+  if (slash < 0) return url;
+  final bucket = after.substring(0, slash);
+  final path = after.substring(slash + 1);
+  if (path.isEmpty || !bucket.contains('firebasestorage')) return url;
+  final encoded = Uri.encodeComponent(path);
+  return 'https://firebasestorage.googleapis.com/v0/b/$bucket/o/$encoded?alt=media';
+}
+
+/// Resolve video URL with device-aware quality selection
+/// Prefers resolution based on device capabilities (720p for low memory, 1080p for high memory)
+Future<String> resolveVideoUrlWithQuality(
+  Map<String, dynamic> data, {
+  String? preferredResolution,
+}) async {
   final status = data['status'];
   if (status is String && status.isNotEmpty) {
-    // Allow both 'ready' and 'published' statuses
-    if (status != 'ready' && status != 'published') {
+    if (status != 'ready' &&
+        status != 'published' &&
+        status != 'processing' &&
+        status != 'active') {
       return '';
     }
   }
 
+  final playbackId = data['muxPlaybackId'] as String?;
+  if (playbackId != null && playbackId.trim().isNotEmpty) {
+    return 'https://stream.mux.com/${playbackId.trim()}.m3u8';
+  }
+
+  final renditions = data['renditions'];
+  if (renditions is Map<String, dynamic>) {
+    final mp4720 = renditions['mp4_720'];
+    final url720 = mp4720 is Map ? mp4720['url'] as String? : null;
+    if (url720 != null && url720.trim().isNotEmpty && !containsOriginalMp4(url720)) {
+      return _rejectOriginalOnMobile(url720.trim());
+    }
+    final mp41080 = renditions['mp4_1080'];
+    final url1080 = mp41080 is Map ? mp41080['url'] as String? : null;
+    if (url1080 != null && url1080.trim().isNotEmpty && !containsOriginalMp4(url1080)) {
+      return _rejectOriginalOnMobile(url1080.trim());
+    }
+  }
+
   final canonical = data['canonicalPlaybackUrl'];
-  if (canonical is String && canonical.trim().isNotEmpty) {
-    return canonical.trim();
+  if (canonical is String && canonical.trim().isNotEmpty && !containsOriginalMp4(canonical)) {
+    return _rejectOriginalOnMobile(canonical.trim());
+  }
+
+  final resolution = preferredResolution ??
+      await DeviceCapabilityService.instance.getRecommendedResolution();
+
+  final resolutionKey = 'mp4_${resolution}_url';
+  final preferredUrl = data[resolutionKey] as String?;
+  if (preferredUrl != null && preferredUrl.trim().isNotEmpty && !containsOriginalMp4(preferredUrl)) {
+    return _rejectOriginalOnMobile(preferredUrl.trim());
+  }
+
+  if (resolution == '720') {
+    final fallback480 = data['mp4_480_url'] as String?;
+    if (fallback480 != null && fallback480.trim().isNotEmpty && !containsOriginalMp4(fallback480)) {
+      return _rejectOriginalOnMobile(fallback480.trim());
+    }
+    final fallback1080 = data['mp4_1080_url'] as String?;
+    if (fallback1080 != null && fallback1080.trim().isNotEmpty && !containsOriginalMp4(fallback1080)) {
+      return _rejectOriginalOnMobile(fallback1080.trim());
+    }
+  }
+
+  return resolveVideoUrl(data);
+}
+
+String _rejectOriginalOnMobile(String url) {
+  if (!kIsWeb && containsOriginalMp4(url)) {
+    developer.log('FATAL: original.mp4 attempted on mobile - rejecting');
+    return '';
+  }
+  return toFirebaseStorageUrlIfNeeded(url);
+}
+
+/// Resolve video URL with standard priority (backward compatible).
+String resolveVideoUrl(Map<String, dynamic> data) {
+  final status = data['status'];
+  if (status is String && status.isNotEmpty) {
+    if (status != 'ready' &&
+        status != 'published' &&
+        status != 'processing' &&
+        status != 'active') {
+      return '';
+    }
+  }
+
+  final playbackId = data['muxPlaybackId'] as String?;
+  if (playbackId != null && playbackId.trim().isNotEmpty) {
+    return 'https://stream.mux.com/${playbackId.trim()}.m3u8';
+  }
+
+  final renditions = data['renditions'];
+  if (renditions is Map<String, dynamic>) {
+    final mp4720 = renditions['mp4_720'];
+    final url720 = mp4720 is Map ? mp4720['url'] as String? : null;
+    if (url720 != null && url720.trim().isNotEmpty && !containsOriginalMp4(url720)) {
+      return _rejectOriginalOnMobile(url720.trim());
+    }
+    final mp41080 = renditions['mp4_1080'];
+    final url1080 = mp41080 is Map ? mp41080['url'] as String? : null;
+    if (url1080 != null && url1080.trim().isNotEmpty && !containsOriginalMp4(url1080)) {
+      return _rejectOriginalOnMobile(url1080.trim());
+    }
+  }
+
+  final canonical = data['canonicalPlaybackUrl'];
+  if (canonical is String && canonical.trim().isNotEmpty && !containsOriginalMp4(canonical)) {
+    return _rejectOriginalOnMobile(canonical.trim());
   }
 
   const candidateKeys = [
+    'hlsUrl',
+    'hls_url',
     'mp4_1080_url',
     'mp4_720_url',
     'mp4_480_url',
     'mp4Url',
     'videoUrl',
     'videoURL',
-    'hlsUrl',
-    'hls_url',
+    'video_url',
   ];
 
   final rawCandidates = <String>[];
   for (final key in candidateKeys) {
     final value = data[key];
-    if (value is String && value.trim().isNotEmpty) {
+    if (value is String && value.trim().isNotEmpty && !containsOriginalMp4(value)) {
       rawCandidates.add(value.trim());
     }
   }
 
   bool looksLikeMp4(String url) => url.toLowerCase().contains('.mp4');
-  bool looksLikeHls(String url) => url.toLowerCase().contains('.m3u8');
+  bool looksLikeHls(String url) =>
+      url.toLowerCase().contains('.m3u8') ||
+      url.toLowerCase().contains('stream.mux.com');
 
-  final mp4 = rawCandidates.firstWhere(
-    looksLikeMp4,
-    orElse: () => '',
-  );
-  if (mp4.isNotEmpty) return mp4;
+  final hls = rawCandidates.firstWhere(looksLikeHls, orElse: () => '');
+  if (hls.isNotEmpty) return _rejectOriginalOnMobile(hls);
 
-  final hls = rawCandidates.firstWhere(
-    looksLikeHls,
-    orElse: () => '',
-  );
-  if (hls.isNotEmpty) return hls;
+  final mp4 = rawCandidates.firstWhere(looksLikeMp4, orElse: () => '');
+  if (mp4.isNotEmpty) return _rejectOriginalOnMobile(mp4);
 
   final videoMap = data['video'];
   if (videoMap is Map<String, dynamic>) {
     final nested = resolveVideoUrl(videoMap);
-    if (nested.isNotEmpty) return nested;
+    if (nested.isNotEmpty) return _rejectOriginalOnMobile(nested);
   }
 
-  return rawCandidates.isNotEmpty ? rawCandidates.first : '';
+  if (rawCandidates.isNotEmpty) return _rejectOriginalOnMobile(rawCandidates.first);
+  return '';
+}
+
+/// Canonical owner ID from video doc (single source of truth for filtering).
+/// Use this when building HomeVideo or filtering user videos.
+String? getOwnerId(Map<String, dynamic> data) {
+  const ownerKeys = [
+    'ownerId',
+    'userId',
+    'user_id',
+    'authorId',
+    'uid',
+    'creatorId',
+    'creator_id',
+  ];
+  for (final key in ownerKeys) {
+    final value = data[key];
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+  }
+  return null;
 }

@@ -6,8 +6,7 @@ part of 'platform.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$PlatformImpl _$$PlatformImplFromJson(Map<String, dynamic> json) =>
-    _$PlatformImpl(
+_Platform _$PlatformFromJson(Map<String, dynamic> json) => _Platform(
       id: json['id'] as String,
       type: $enumDecode(_$PlatformTypeEnumMap, json['type']),
       username: json['username'] as String,
@@ -15,8 +14,7 @@ _$PlatformImpl _$$PlatformImplFromJson(Map<String, dynamic> json) =>
       url: json['url'] as String?,
     );
 
-Map<String, dynamic> _$$PlatformImplToJson(_$PlatformImpl instance) =>
-    <String, dynamic>{
+Map<String, dynamic> _$PlatformToJson(_Platform instance) => <String, dynamic>{
       'id': instance.id,
       'type': _$PlatformTypeEnumMap[instance.type]!,
       'username': instance.username,

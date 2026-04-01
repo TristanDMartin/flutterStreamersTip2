@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../constants/app_colors.dart';
 import 'feed_dropdown_widget.dart';
 
 /// Feed selector widget for HomeView (single purple pill with dropdown + compass)
@@ -7,6 +8,7 @@ class FeedSelectorWidget extends StatefulWidget {
   final String activeTab;
   final VoidCallback onForYouTap;
   final VoidCallback onFollowingTap;
+  final VoidCallback onThreadsTap;
   final VoidCallback onDiscoverTap;
 
   const FeedSelectorWidget({
@@ -14,6 +16,7 @@ class FeedSelectorWidget extends StatefulWidget {
     required this.activeTab,
     required this.onForYouTap,
     required this.onFollowingTap,
+    required this.onThreadsTap,
     required this.onDiscoverTap,
   });
 
@@ -66,6 +69,14 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
               });
               widget.onFollowingTap();
             },
+            onThreadsTap: () {
+              debugPrint('🔘 FeedSelector: Threads tapped in overlay');
+              _removeOverlay();
+              setState(() {
+                _isDropdownOpen = false;
+              });
+              widget.onThreadsTap();
+            },
             onClose: () {
               _removeOverlay();
               setState(() {
@@ -111,17 +122,17 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A).withValues(alpha: 0.98),
-                  borderRadius: BorderRadius.circular(25),
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: const Color(0xFF9248D2).withValues(alpha: 0.8),
-                    width: 2.0,
+                    color: Colors.white.withValues(alpha: 0.12),
+                    width: 1.2,
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -131,9 +142,9 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                     Text(
                       widget.activeTab,
                       style: const TextStyle(
-                        color: Color(0xFF9248D2),
+                        color: Colors.white,
                         fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -141,7 +152,7 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                       _isDropdownOpen
                           ? Icons.keyboard_arrow_up
                           : Icons.keyboard_arrow_down,
-                      color: const Color(0xFF9248D2),
+                      color: AppColors.supportAccent,
                       size: 20,
                     ),
                   ],
@@ -155,12 +166,20 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                 HapticFeedback.lightImpact();
                 widget.onDiscoverTap();
               },
-              child: const Padding(
-                padding: EdgeInsets.all(8),
-                child: Icon(
+              child: Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: const Icon(
                   Icons.explore_outlined,
                   color: Colors.white,
-                  size: 24,
+                  size: 22,
                 ),
               ),
             ),

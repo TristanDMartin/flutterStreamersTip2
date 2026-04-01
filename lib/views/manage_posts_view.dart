@@ -1,9 +1,17 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/scheduled_post.dart';
+import '../routing/app_navigator.dart';
 import '../services/firestore_scheduled_post_service.dart';
 import '../services/scheduled_post_publisher_service.dart';
+import '../services/scheduled_post_service.dart';
+import '../services/video_analytics_service.dart';
 // import 'edit_post_view.dart'; // Removed - unused
 // import 'post_progress_view.dart'; // Removed - unused
 // import 'post_analytics_view.dart'; // Removed - unused
@@ -34,6 +42,8 @@ class ManagePostsView extends StatefulWidget {
 class _ManagePostsViewState extends State<ManagePostsView>
     with TickerProviderStateMixin {
   final FirestoreScheduledPostService _postService = FirestoreScheduledPostService();
+  final ScheduledPostService _scheduledPostService = ScheduledPostService();
+  final VideoAnalyticsService _videoAnalyticsService = VideoAnalyticsService();
   List<ScheduledPost> _posts = [];
   bool _isLoading = true;
   PostStatus? _filterStatus;
@@ -146,11 +156,13 @@ class _ManagePostsViewState extends State<ManagePostsView>
         posts.sort((a, b) => a.status.index.compareTo(b.status.index));
         break;
       case PostSortOption.platform:
-        posts.sort(
-            (a, b) => a.platforms.first.key.compareTo(b.platforms.first.key));
+        posts.sort((a, b) {
+          final aKey = a.platforms.isNotEmpty ? a.platforms.first.key : '';
+          final bKey = b.platforms.isNotEmpty ? b.platforms.first.key : '';
+          return aKey.compareTo(bKey);
+        });
         break;
       case PostSortOption.engagement:
-        // Mock engagement sorting - in real app, this would use analytics data
         posts.sort((a, b) =>
             b.analyticsHints['engagement']
                 ?.compareTo(a.analyticsHints['engagement'] ?? 0) ??
@@ -481,13 +493,26 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   Widget _buildPlatformStatuses(ScheduledPost post) {
-    return Row(
-      children: post.platforms
-          .map((platform) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _buildPlatformStatus(platform),
-              ))
-          .toList(),
+    if (post.platforms.isEmpty) {
+      return _buildActionChip('StreamersTip only', Icons.verified);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: post.platforms
+              .map((platform) => _buildPlatformStatus(platform))
+              .toList(),
+        ),
+        if (_failedPlatforms(post).isNotEmpty ||
+            _reauthPlatforms(post).isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _buildPlatformIssuesSummary(post),
+        ],
+      ],
     );
   }
 
@@ -525,17 +550,14 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   Widget _buildPostActions(ScheduledPost post) {
+    final failedPlatforms = _failedPlatforms(post);
+    final reauthPlatforms = _reauthPlatforms(post);
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           if (post.status == PostStatus.scheduled) ...[
-            _buildActionButton(
-              'Edit',
-              Icons.edit,
-              () => _editPost(post),
-            ),
-            const SizedBox(width: 8),
             _buildActionButton(
               'Publish Now',
               Icons.publish,
@@ -547,11 +569,19 @@ class _ManagePostsViewState extends State<ManagePostsView>
               Icons.cancel,
               () => _cancelPost(post),
             ),
-          ] else if (post.status == PostStatus.publishing) ...[
+            const SizedBox(width: 8),
             _buildActionButton(
-              'View Progress',
-              Icons.visibility,
-              () => _viewProgress(post),
+              'Progress',
+              Icons.insights,
+              () => _showPostProgress(post),
+            ),
+          ] else if (post.status == PostStatus.publishing) ...[
+            _buildActionChip('Publishing', Icons.schedule_send),
+            const SizedBox(width: 8),
+            _buildActionButton(
+              'Progress',
+              Icons.insights,
+              () => _showPostProgress(post),
             ),
           ] else if (post.status == PostStatus.published) ...[
             _buildActionButton(
@@ -562,22 +592,92 @@ class _ManagePostsViewState extends State<ManagePostsView>
             const SizedBox(width: 8),
             _buildActionButton(
               'Analytics',
-              Icons.analytics,
-              () => _viewAnalytics(post),
+              Icons.bar_chart,
+              () => _showPostAnalytics(post),
             ),
+            if (failedPlatforms.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              _buildActionButton(
+                'Retry Failed',
+                Icons.refresh,
+                () => _retryPost(post, platformKeys: failedPlatforms),
+              ),
+            ],
           ] else if (post.status == PostStatus.failed) ...[
             _buildActionButton(
-              'Retry',
+              failedPlatforms.isNotEmpty ? 'Retry Failed' : 'Retry',
               Icons.refresh,
-              () => _retryPost(post),
+              () => _retryPost(
+                post,
+                platformKeys: failedPlatforms.isNotEmpty ? failedPlatforms : null,
+              ),
             ),
             const SizedBox(width: 8),
             _buildActionButton(
-              'Fix Connection',
-              Icons.link,
-              () => _fixConnection(post),
+              'Progress',
+              Icons.insights,
+              () => _showPostProgress(post),
+            ),
+            if (reauthPlatforms.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              _buildActionButton(
+                'Reconnect',
+                Icons.link_off,
+                () => _openReconnectPlatforms(post),
+              ),
+            ] else ...[
+              const SizedBox(width: 8),
+              _buildActionButton(
+                'Analytics',
+                Icons.bar_chart,
+                () => _showPostAnalytics(post),
+              ),
+            ],
+          ] else if (post.status == PostStatus.canceled ||
+              post.status == PostStatus.draft) ...[
+            _buildActionButton(
+              'Progress',
+              Icons.insights,
+              () => _showPostProgress(post),
             ),
           ],
+          if (post.platforms.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            _buildActionButton(
+              'Details',
+              Icons.toc,
+              () => _showPlatformDetails(post),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionChip(String label, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.15),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white54),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
@@ -905,25 +1005,6 @@ class _ManagePostsViewState extends State<ManagePostsView>
     }
   }
 
-  void _editPost(ScheduledPost post) async {
-    HapticFeedback.lightImpact();
-    // final result = await Navigator.push<ScheduledPost>(
-    //   context,
-    //   MaterialPageRoute(
-    //     builder: (context) => EditPostView(post: post),
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Edit post feature coming soon!')),
-    );
-    final result = null;
-
-    if (result != null) {
-      _loadPosts();
-      _showSuccessSnackBar('Post updated successfully');
-    }
-  }
-
   void _publishNow(ScheduledPost post) async {
     try {
       await _postService.publishNow(post.id);
@@ -951,19 +1032,6 @@ class _ManagePostsViewState extends State<ManagePostsView>
     }
   }
 
-  void _viewProgress(ScheduledPost post) {
-    HapticFeedback.lightImpact();
-    // Navigator.push(
-    //   context,
-    //   MaterialPageRoute(
-    //     builder: (context) => PostProgressView(post: post),
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Post progress feature coming soon!')),
-    );
-  }
-
   void _viewPost(ScheduledPost post) async {
     HapticFeedback.lightImpact();
 
@@ -988,41 +1056,635 @@ class _ManagePostsViewState extends State<ManagePostsView>
     }
   }
 
-  void _viewAnalytics(ScheduledPost post) {
-    HapticFeedback.lightImpact();
-    // Navigator.push(
-    //   context,
-    //   MaterialPageRoute(
-    //     builder: (context) => PostAnalyticsView(post: post),
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Post analytics feature coming soon!')),
-    );
-  }
-
-  void _retryPost(ScheduledPost post) async {
+  void _retryPost(
+    ScheduledPost post, {
+    List<String>? platformKeys,
+  }) async {
     try {
-      await _postService.retryPost(post.id);
-      _showSuccessSnackBar('Post retry initiated');
+      if (post.status == PostStatus.published) {
+        await _postService.retryExternalPlatforms(
+          post.id,
+          platformKeys: platformKeys,
+        );
+      } else {
+        await _postService.retryPost(post.id, platformKeys: platformKeys);
+      }
+      if (platformKeys != null && platformKeys.isNotEmpty) {
+        _showSuccessSnackBar(
+          'Retry queued for ${platformKeys.map(_getPlatformNameFromString).join(', ')}',
+        );
+      } else {
+        _showSuccessSnackBar('Post retry initiated');
+      }
       _loadPosts();
     } catch (e) {
       _showErrorSnackBar('Failed to retry post: $e');
     }
   }
 
-  void _fixConnection(ScheduledPost post) {
-    HapticFeedback.lightImpact();
-    // Navigator.push(
-    //   context,
-    //   MaterialPageRoute(
-    //     builder: (context) => PlatformReconnectionView(post: post),
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Platform reconnection feature coming soon!')),
+  List<String> _failedPlatforms(ScheduledPost post) {
+    return post.platforms
+        .where((platform) => platform.status == PlatformStatus.failed)
+        .map((platform) => platform.key)
+        .toList();
+  }
+
+  List<String> _reauthPlatforms(ScheduledPost post) {
+    return post.platforms
+        .where((platform) => platform.status == PlatformStatus.needsReauth)
+        .map((platform) => platform.key)
+        .toList();
+  }
+
+  Widget _buildPlatformIssuesSummary(ScheduledPost post) {
+    final failed = _failedPlatforms(post);
+    final reauth = _reauthPlatforms(post);
+    final parts = <String>[];
+    if (failed.isNotEmpty) {
+      parts.add(
+        'Failed: ${failed.map(_getPlatformNameFromString).join(', ')}',
+      );
+    }
+    if (reauth.isNotEmpty) {
+      parts.add(
+        'Reconnect: ${reauth.map(_getPlatformNameFromString).join(', ')}',
+      );
+    }
+
+    return Text(
+      parts.join('  |  '),
+      style: const TextStyle(
+        color: Colors.white60,
+        fontSize: 11,
+      ),
     );
+  }
+
+  Future<void> _openReconnectPlatforms(ScheduledPost post) async {
+    final reauth = _reauthPlatforms(post);
+    if (reauth.isEmpty) {
+      _showInfoSnackBar('No reconnect actions needed for this post.');
+      return;
+    }
+
+    final reconnectUpdated = await AppNavigator.openLinkedPlatforms<bool>(
+      context,
+      initialPlatforms: reauth,
+    );
+    if (mounted) {
+      if (reconnectUpdated == true) {
+        _showSuccessSnackBar(
+          'Platform connections updated. Retry failed destinations when you are ready.',
+        );
+      }
+      _loadPosts();
+    }
+  }
+
+  void _showPostProgress(ScheduledPost post) {
+    final scheduledAt = post.schedule?.scheduledAtUtc;
+    final successfulCount = post.platforms
+        .where((platform) => platform.status == PlatformStatus.published)
+        .length;
+    final inFlightCount = post.platforms
+        .where((platform) => platform.status == PlatformStatus.publishing)
+        .length;
+    final failedCount = _failedPlatforms(post).length;
+    final reauthCount = _reauthPlatforms(post).length;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Publish Progress',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                post.caption.isEmpty ? 'Untitled post' : post.caption,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 16),
+              _buildProgressMetric(
+                'Current status',
+                _getStatusText(post.status),
+              ),
+              if (scheduledAt != null)
+                _buildProgressMetric(
+                  'Scheduled for',
+                  '${MaterialLocalizations.of(context).formatFullDate(scheduledAt)} '
+                  '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(scheduledAt))}',
+                ),
+              _buildProgressMetric(
+                'Destinations completed',
+                '$successfulCount of ${post.platforms.length}',
+              ),
+              if (inFlightCount > 0)
+                _buildProgressMetric('Currently publishing', '$inFlightCount'),
+              if (failedCount > 0)
+                _buildProgressMetric(
+                  'Needs retry',
+                  _failedPlatforms(post)
+                      .map(_getPlatformNameFromString)
+                      .join(', '),
+                ),
+              if (reauthCount > 0)
+                _buildProgressMetric(
+                  'Needs reconnect',
+                  _reauthPlatforms(post)
+                      .map(_getPlatformNameFromString)
+                      .join(', '),
+                ),
+              const SizedBox(height: 12),
+              const Text(
+                'Publishing Timeline',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 10),
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: _loadPublishingHistory(post),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: LinearProgressIndicator(),
+                    );
+                  }
+
+                  final history = snapshot.data ?? const [];
+                  if (history.isEmpty) {
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: Text(
+                        snapshot.hasError
+                            ? 'Detailed publishing history is not available from the backend for this post yet.'
+                            : 'No per-attempt publishing history is available for this post yet.',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: history
+                        .map((entry) => _buildHistoryEntry(entry))
+                        .toList(),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryEntry(Map<String, dynamic> entry) {
+    final status = entry['status']?.toString() ?? 'update';
+    final platform = entry['platform']?.toString();
+    final message =
+        entry['message']?.toString() ??
+        entry['detail']?.toString() ??
+        'Status updated';
+    final rawTimestamp = entry['timestamp'] ?? entry['createdAt'];
+    DateTime? timestamp;
+    if (rawTimestamp is String) {
+      timestamp = DateTime.tryParse(rawTimestamp);
+    } else if (rawTimestamp is int) {
+      timestamp = DateTime.fromMillisecondsSinceEpoch(rawTimestamp);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            margin: const EdgeInsets.only(top: 4),
+            decoration: BoxDecoration(
+              color: _historyStatusColor(status),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  platform == null || platform.isEmpty
+                      ? _historyStatusLabel(status)
+                      : '${_getPlatformNameFromString(platform)} • ${_historyStatusLabel(status)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+                if (timestamp != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '${MaterialLocalizations.of(context).formatShortDate(timestamp)} ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(timestamp))}',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _historyStatusColor(String rawStatus) {
+    switch (rawStatus.toLowerCase()) {
+      case 'published':
+      case 'success':
+      case 'completed':
+        return Colors.greenAccent;
+      case 'publishing':
+      case 'processing':
+      case 'queued':
+        return Colors.orangeAccent;
+      case 'failed':
+      case 'error':
+        return Colors.redAccent;
+      case 'needsreauth':
+      case 'needs_reauth':
+        return Colors.amberAccent;
+      default:
+        return Colors.white54;
+    }
+  }
+
+  String _historyStatusLabel(String rawStatus) {
+    switch (rawStatus.toLowerCase()) {
+      case 'needsreauth':
+      case 'needs_reauth':
+        return 'Needs Reconnect';
+      default:
+        if (rawStatus.isEmpty) {
+          return 'Update';
+        }
+        return '${rawStatus[0].toUpperCase()}${rawStatus.substring(1)}';
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadPublishingHistory(
+    ScheduledPost post,
+  ) async {
+    final localHistory =
+        (post.analyticsHints['publishingHistory'] as List<dynamic>? ?? const [])
+            .map((entry) => Map<String, dynamic>.from(entry as Map))
+            .toList();
+    try {
+      final remoteHistory = await _scheduledPostService.getPublishingHistory(post.id);
+      if (remoteHistory.isNotEmpty) {
+        return remoteHistory;
+      }
+      return localHistory;
+    } catch (_) {
+      return localHistory;
+    }
+  }
+
+  void _showPostAnalytics(ScheduledPost post) {
+    final successfulPlatforms = post.platforms
+        .where((platform) => platform.status == PlatformStatus.published)
+        .map((platform) => _getPlatformNameFromString(platform.key))
+        .toList();
+    final videoId = _resolveVideoId(post);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Post Analytics',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FutureBuilder<VideoAnalytics?>(
+              future: _loadVideoAnalytics(post),
+              builder: (context, snapshot) {
+                final analytics = snapshot.data;
+                final fallback = post.analyticsHints;
+                final views =
+                    analytics?.views ?? fallback['views'] ?? fallback['impressions'] ?? 0;
+                final likes = analytics?.likes ?? fallback['likes'] ?? 0;
+                final comments = analytics?.comments ?? fallback['comments'] ?? 0;
+                final shares = analytics?.shares ?? fallback['shares'] ?? 0;
+                final engagement = analytics?.engagementRate ?? fallback['engagement'] ?? 0;
+                final averageWatchTime =
+                    analytics?.averageWatchTime ?? fallback['averageWatchTime'] ?? 0;
+                final completionRate =
+                    analytics?.completionRate ?? fallback['completionRate'] ?? 0;
+                final uniqueViewers =
+                    analytics?.uniqueViewers ?? fallback['uniqueViewers'] ?? 0;
+                final audienceReach =
+                    analytics?.audienceReach ?? fallback['audienceReach'] ?? 0;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        videoId != null)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: LinearProgressIndicator(),
+                      ),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        _buildAnalyticsCard('Views', '$views'),
+                        _buildAnalyticsCard('Likes', '$likes'),
+                        _buildAnalyticsCard('Comments', '$comments'),
+                        _buildAnalyticsCard('Shares', '$shares'),
+                        _buildAnalyticsCard(
+                          'Engagement',
+                          _formatRate(engagement),
+                        ),
+                        _buildAnalyticsCard(
+                          'Avg Watch',
+                          _formatSeconds(averageWatchTime),
+                        ),
+                        _buildAnalyticsCard(
+                          'Completion',
+                          _formatRate(completionRate),
+                        ),
+                        _buildAnalyticsCard('Unique Viewers', '$uniqueViewers'),
+                        _buildAnalyticsCard('Reach', '$audienceReach'),
+                      ],
+                    ),
+                    if (snapshot.hasError)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          'Showing saved analytics hints because live analytics could not be loaded.',
+                          style: TextStyle(
+                            color: Colors.orangeAccent.withValues(alpha: 0.9),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Text(
+              successfulPlatforms.isEmpty
+                  ? 'No external destinations have completed yet.'
+                  : 'Published destinations: ${successfulPlatforms.join(', ')}',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPlatformDetails(ScheduledPost post) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Platform Status',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...post.platforms.map((platform) {
+              final status = platform.status ?? PlatformStatus.pending;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  _getPlatformIconFromString(platform.key),
+                  color: _getPlatformColorFromString(platform.key),
+                ),
+                title: Text(
+                  _getPlatformNameFromString(platform.key),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                subtitle: Text(
+                  platform.error?.isNotEmpty == true
+                      ? '${_getPlatformStatusText(status)}: ${platform.error}'
+                      : _getPlatformStatusText(status),
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                trailing: _buildInlinePlatformAction(post, platform),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget? _buildInlinePlatformAction(ScheduledPost post, PlatformConfig platform) {
+    final status = platform.status ?? PlatformStatus.pending;
+    if (status == PlatformStatus.failed) {
+      return TextButton(
+        onPressed: () {
+          Navigator.pop(context);
+          _retryPost(post, platformKeys: [platform.key]);
+        },
+        child: const Text('Retry'),
+      );
+    }
+    if (status == PlatformStatus.needsReauth) {
+      return TextButton(
+        onPressed: () {
+          Navigator.pop(context);
+          _openReconnectPlatforms(post);
+        },
+        child: const Text('Reconnect'),
+      );
+    }
+    return null;
+  }
+
+  Widget _buildProgressMetric(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalyticsCard(String label, String value) {
+    return Container(
+      width: 104,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white60,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String? _resolveVideoId(ScheduledPost post) {
+    final analytics = post.analyticsHints;
+    final directId = analytics['videoId'] as String?;
+    if (directId != null && directId.isNotEmpty) {
+      return directId;
+    }
+    final streamersTipId = analytics['streamerstipVideoId'] as String?;
+    if (streamersTipId != null && streamersTipId.isNotEmpty) {
+      return streamersTipId;
+    }
+    return null;
+  }
+
+  Future<VideoAnalytics?> _loadVideoAnalytics(ScheduledPost post) async {
+    final videoId = _resolveVideoId(post);
+    if (videoId == null) {
+      return null;
+    }
+    await _videoAnalyticsService.fetchAnalytics(videoId);
+    return _videoAnalyticsService.videoAnalytics[videoId];
+  }
+
+  String _formatRate(Object? value) {
+    final numericValue = switch (value) {
+      num v => v.toDouble(),
+      _ => 0.0,
+    };
+    if (numericValue <= 1) {
+      return '${(numericValue * 100).toStringAsFixed(1)}%';
+    }
+    return '${numericValue.toStringAsFixed(1)}%';
+  }
+
+  String _formatSeconds(Object? value) {
+    final seconds = switch (value) {
+      num v => v.toDouble(),
+      _ => 0.0,
+    };
+    return '${seconds.toStringAsFixed(1)}s';
   }
 
   Future<bool> _showConfirmDialog(String title, String message) async {
@@ -1103,6 +1765,14 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   void _showBulkActionDialog() {
+    final selectedPosts =
+        _posts.where((post) => _selectedPosts.contains(post.id)).toList();
+    final canPublish =
+        selectedPosts.isNotEmpty &&
+        selectedPosts.every((post) => post.status == PostStatus.scheduled);
+    final canCancel =
+        selectedPosts.any((post) => post.status == PostStatus.scheduled);
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
@@ -1123,10 +1793,18 @@ class _ManagePostsViewState extends State<ManagePostsView>
               ),
             ),
             const SizedBox(height: 16),
-            _buildBulkActionTile(
-                'Publish Now', Icons.publish, BulkAction.publish),
-            _buildBulkActionTile(
-                'Cancel Posts', Icons.cancel, BulkAction.cancel),
+            if (canPublish)
+              _buildBulkActionTile(
+                'Publish Now',
+                Icons.publish,
+                BulkAction.publish,
+              ),
+            if (canCancel)
+              _buildBulkActionTile(
+                'Cancel Posts',
+                Icons.cancel,
+                BulkAction.cancel,
+              ),
             _buildBulkActionTile(
                 'Delete Posts', Icons.delete, BulkAction.delete),
             _buildBulkActionTile(
@@ -1246,10 +1924,15 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   Future<void> _bulkExport(List<ScheduledPost> posts) async {
-    // Mock export functionality
-    _showInfoSnackBar('Exporting ${posts.length} posts...');
-    await Future.delayed(const Duration(seconds: 2));
-    _showSuccessSnackBar('Export completed successfully');
+    if (posts.isEmpty) {
+      _showInfoSnackBar('No posts selected for export.');
+      return;
+    }
+    await _exportPosts(
+      posts,
+      filePrefix: 'selected_posts_export',
+      successMessage: 'Exported ${posts.length} posts',
+    );
   }
 
   // Sorting
@@ -1370,9 +2053,51 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   void _exportAllPosts() async {
-    _showInfoSnackBar('Exporting all posts...');
-    await Future.delayed(const Duration(seconds: 2));
-    _showSuccessSnackBar('All posts exported successfully');
+    if (_posts.isEmpty) {
+      _showInfoSnackBar('No posts available to export.');
+      return;
+    }
+    await _exportPosts(
+      _posts,
+      filePrefix: 'all_posts_export',
+      successMessage: 'All posts exported successfully',
+    );
+  }
+
+  Future<void> _exportPosts(
+    List<ScheduledPost> posts, {
+    required String filePrefix,
+    required String successMessage,
+  }) async {
+    try {
+      _showInfoSnackBar('Preparing export...');
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File(
+        '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.json',
+      );
+      final payload = {
+        'exportedAt': DateTime.now().toIso8601String(),
+        'count': posts.length,
+        'posts': posts.map((post) => post.toJson()).toList(),
+      };
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(payload),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          text: 'StreamersTip posts export',
+        ),
+      );
+      _showSuccessSnackBar(successMessage);
+    } catch (e) {
+      _showErrorSnackBar('Failed to export posts: $e');
+    }
   }
 
   void _showRefreshSettingsDialog() {

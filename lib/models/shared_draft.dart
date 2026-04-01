@@ -4,7 +4,7 @@ part 'shared_draft.freezed.dart';
 part 'shared_draft.g.dart';
 
 @freezed
-class SharedDraft with _$SharedDraft {
+sealed class SharedDraft with _$SharedDraft {
   const factory SharedDraft({
     required String id,
     required String draftId,
@@ -31,4 +31,3 @@ enum SharedDraftStatus {
   viewed,
   declined,
 }
-

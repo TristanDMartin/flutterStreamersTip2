@@ -15,10 +15,11 @@ enum ActivityNotificationType {
   newVideo,
   milestone,
   liveStream,
+  adminBroadcast,
 }
 
 @freezed
-class ActivityNotification with _$ActivityNotification {
+sealed class ActivityNotification with _$ActivityNotification {
   const factory ActivityNotification({
     required String id,
     required ActivityNotificationType type,

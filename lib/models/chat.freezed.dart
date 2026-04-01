@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,128 +9,82 @@ part of 'chat.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-Chat _$ChatFromJson(Map<String, dynamic> json) {
-  return _Chat.fromJson(json);
-}
 
 /// @nodoc
 mixin _$Chat {
-  String? get id => throw _privateConstructorUsedError;
-  List<String> get participants => throw _privateConstructorUsedError;
-  String? get lastMessage => throw _privateConstructorUsedError;
+  String? get id;
+  List<String> get participants;
+  String? get lastMessage;
   @TimestampConverter()
-  DateTime get lastTimestamp => throw _privateConstructorUsedError;
-  String? get chatType =>
-      throw _privateConstructorUsedError; // 'direct' or 'group'
-  String? get groupName => throw _privateConstructorUsedError;
-  String? get groupAvatarURL => throw _privateConstructorUsedError;
-  List<String> get mutedBy => throw _privateConstructorUsedError;
-  List<String> get archivedBy => throw _privateConstructorUsedError;
-  Map<String, dynamic>? get metadata => throw _privateConstructorUsedError;
+  DateTime get lastTimestamp;
+  String? get chatType; // 'direct' or 'group'
+  String? get groupName;
+  String? get groupAvatarURL;
+  List<String> get mutedBy;
+  List<String> get archivedBy;
+  Map<String, dynamic>? get metadata;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $ChatCopyWith<Chat> get copyWith => throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $ChatCopyWith<$Res> {
-  factory $ChatCopyWith(Chat value, $Res Function(Chat) then) =
-      _$ChatCopyWithImpl<$Res, Chat>;
-  @useResult
-  $Res call(
-      {String? id,
-      List<String> participants,
-      String? lastMessage,
-      @TimestampConverter() DateTime lastTimestamp,
-      String? chatType,
-      String? groupName,
-      String? groupAvatarURL,
-      List<String> mutedBy,
-      List<String> archivedBy,
-      Map<String, dynamic>? metadata});
-}
-
-/// @nodoc
-class _$ChatCopyWithImpl<$Res, $Val extends Chat>
-    implements $ChatCopyWith<$Res> {
-  _$ChatCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of Chat
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $ChatCopyWith<Chat> get copyWith =>
+      _$ChatCopyWithImpl<Chat>(this as Chat, _$identity);
+
+  /// Serializes this Chat to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? id = freezed,
-    Object? participants = null,
-    Object? lastMessage = freezed,
-    Object? lastTimestamp = null,
-    Object? chatType = freezed,
-    Object? groupName = freezed,
-    Object? groupAvatarURL = freezed,
-    Object? mutedBy = null,
-    Object? archivedBy = null,
-    Object? metadata = freezed,
-  }) {
-    return _then(_value.copyWith(
-      id: freezed == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String?,
-      participants: null == participants
-          ? _value.participants
-          : participants // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      lastMessage: freezed == lastMessage
-          ? _value.lastMessage
-          : lastMessage // ignore: cast_nullable_to_non_nullable
-              as String?,
-      lastTimestamp: null == lastTimestamp
-          ? _value.lastTimestamp
-          : lastTimestamp // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      chatType: freezed == chatType
-          ? _value.chatType
-          : chatType // ignore: cast_nullable_to_non_nullable
-              as String?,
-      groupName: freezed == groupName
-          ? _value.groupName
-          : groupName // ignore: cast_nullable_to_non_nullable
-              as String?,
-      groupAvatarURL: freezed == groupAvatarURL
-          ? _value.groupAvatarURL
-          : groupAvatarURL // ignore: cast_nullable_to_non_nullable
-              as String?,
-      mutedBy: null == mutedBy
-          ? _value.mutedBy
-          : mutedBy // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      archivedBy: null == archivedBy
-          ? _value.archivedBy
-          : archivedBy // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      metadata: freezed == metadata
-          ? _value.metadata
-          : metadata // ignore: cast_nullable_to_non_nullable
-              as Map<String, dynamic>?,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is Chat &&
+            (identical(other.id, id) || other.id == id) &&
+            const DeepCollectionEquality()
+                .equals(other.participants, participants) &&
+            (identical(other.lastMessage, lastMessage) ||
+                other.lastMessage == lastMessage) &&
+            (identical(other.lastTimestamp, lastTimestamp) ||
+                other.lastTimestamp == lastTimestamp) &&
+            (identical(other.chatType, chatType) ||
+                other.chatType == chatType) &&
+            (identical(other.groupName, groupName) ||
+                other.groupName == groupName) &&
+            (identical(other.groupAvatarURL, groupAvatarURL) ||
+                other.groupAvatarURL == groupAvatarURL) &&
+            const DeepCollectionEquality().equals(other.mutedBy, mutedBy) &&
+            const DeepCollectionEquality()
+                .equals(other.archivedBy, archivedBy) &&
+            const DeepCollectionEquality().equals(other.metadata, metadata));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      const DeepCollectionEquality().hash(participants),
+      lastMessage,
+      lastTimestamp,
+      chatType,
+      groupName,
+      groupAvatarURL,
+      const DeepCollectionEquality().hash(mutedBy),
+      const DeepCollectionEquality().hash(archivedBy),
+      const DeepCollectionEquality().hash(metadata));
+
+  @override
+  String toString() {
+    return 'Chat(id: $id, participants: $participants, lastMessage: $lastMessage, lastTimestamp: $lastTimestamp, chatType: $chatType, groupName: $groupName, groupAvatarURL: $groupAvatarURL, mutedBy: $mutedBy, archivedBy: $archivedBy, metadata: $metadata)';
   }
 }
 
 /// @nodoc
-abstract class _$$ChatImplCopyWith<$Res> implements $ChatCopyWith<$Res> {
-  factory _$$ChatImplCopyWith(
-          _$ChatImpl value, $Res Function(_$ChatImpl) then) =
-      __$$ChatImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $ChatCopyWith<$Res> {
+  factory $ChatCopyWith(Chat value, $Res Function(Chat) _then) =
+      _$ChatCopyWithImpl;
   @useResult
   $Res call(
       {String? id,
@@ -146,12 +100,14 @@ abstract class _$$ChatImplCopyWith<$Res> implements $ChatCopyWith<$Res> {
 }
 
 /// @nodoc
-class __$$ChatImplCopyWithImpl<$Res>
-    extends _$ChatCopyWithImpl<$Res, _$ChatImpl>
-    implements _$$ChatImplCopyWith<$Res> {
-  __$$ChatImplCopyWithImpl(_$ChatImpl _value, $Res Function(_$ChatImpl) _then)
-      : super(_value, _then);
+class _$ChatCopyWithImpl<$Res> implements $ChatCopyWith<$Res> {
+  _$ChatCopyWithImpl(this._self, this._then);
 
+  final Chat _self;
+  final $Res Function(Chat) _then;
+
+  /// Create a copy of Chat
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -166,55 +122,271 @@ class __$$ChatImplCopyWithImpl<$Res>
     Object? archivedBy = null,
     Object? metadata = freezed,
   }) {
-    return _then(_$ChatImpl(
+    return _then(_self.copyWith(
       id: freezed == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String?,
       participants: null == participants
-          ? _value._participants
+          ? _self.participants
           : participants // ignore: cast_nullable_to_non_nullable
               as List<String>,
       lastMessage: freezed == lastMessage
-          ? _value.lastMessage
+          ? _self.lastMessage
           : lastMessage // ignore: cast_nullable_to_non_nullable
               as String?,
       lastTimestamp: null == lastTimestamp
-          ? _value.lastTimestamp
+          ? _self.lastTimestamp
           : lastTimestamp // ignore: cast_nullable_to_non_nullable
               as DateTime,
       chatType: freezed == chatType
-          ? _value.chatType
+          ? _self.chatType
           : chatType // ignore: cast_nullable_to_non_nullable
               as String?,
       groupName: freezed == groupName
-          ? _value.groupName
+          ? _self.groupName
           : groupName // ignore: cast_nullable_to_non_nullable
               as String?,
       groupAvatarURL: freezed == groupAvatarURL
-          ? _value.groupAvatarURL
+          ? _self.groupAvatarURL
           : groupAvatarURL // ignore: cast_nullable_to_non_nullable
               as String?,
       mutedBy: null == mutedBy
-          ? _value._mutedBy
+          ? _self.mutedBy
           : mutedBy // ignore: cast_nullable_to_non_nullable
               as List<String>,
       archivedBy: null == archivedBy
-          ? _value._archivedBy
+          ? _self.archivedBy
           : archivedBy // ignore: cast_nullable_to_non_nullable
               as List<String>,
       metadata: freezed == metadata
-          ? _value._metadata
+          ? _self.metadata
           : metadata // ignore: cast_nullable_to_non_nullable
               as Map<String, dynamic>?,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [Chat].
+extension ChatPatterns on Chat {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_Chat value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Chat() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_Chat value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Chat():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_Chat value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Chat() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String? id,
+            List<String> participants,
+            String? lastMessage,
+            @TimestampConverter() DateTime lastTimestamp,
+            String? chatType,
+            String? groupName,
+            String? groupAvatarURL,
+            List<String> mutedBy,
+            List<String> archivedBy,
+            Map<String, dynamic>? metadata)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Chat() when $default != null:
+        return $default(
+            _that.id,
+            _that.participants,
+            _that.lastMessage,
+            _that.lastTimestamp,
+            _that.chatType,
+            _that.groupName,
+            _that.groupAvatarURL,
+            _that.mutedBy,
+            _that.archivedBy,
+            _that.metadata);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String? id,
+            List<String> participants,
+            String? lastMessage,
+            @TimestampConverter() DateTime lastTimestamp,
+            String? chatType,
+            String? groupName,
+            String? groupAvatarURL,
+            List<String> mutedBy,
+            List<String> archivedBy,
+            Map<String, dynamic>? metadata)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Chat():
+        return $default(
+            _that.id,
+            _that.participants,
+            _that.lastMessage,
+            _that.lastTimestamp,
+            _that.chatType,
+            _that.groupName,
+            _that.groupAvatarURL,
+            _that.mutedBy,
+            _that.archivedBy,
+            _that.metadata);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String? id,
+            List<String> participants,
+            String? lastMessage,
+            @TimestampConverter() DateTime lastTimestamp,
+            String? chatType,
+            String? groupName,
+            String? groupAvatarURL,
+            List<String> mutedBy,
+            List<String> archivedBy,
+            Map<String, dynamic>? metadata)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Chat() when $default != null:
+        return $default(
+            _that.id,
+            _that.participants,
+            _that.lastMessage,
+            _that.lastTimestamp,
+            _that.chatType,
+            _that.groupName,
+            _that.groupAvatarURL,
+            _that.mutedBy,
+            _that.archivedBy,
+            _that.metadata);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$ChatImpl implements _Chat {
-  const _$ChatImpl(
+class _Chat implements Chat {
+  const _Chat(
       {this.id,
       required final List<String> participants,
       this.lastMessage,
@@ -229,9 +401,7 @@ class _$ChatImpl implements _Chat {
         _mutedBy = mutedBy,
         _archivedBy = archivedBy,
         _metadata = metadata;
-
-  factory _$ChatImpl.fromJson(Map<String, dynamic> json) =>
-      _$$ChatImplFromJson(json);
+  factory _Chat.fromJson(Map<String, dynamic> json) => _$ChatFromJson(json);
 
   @override
   final String? id;
@@ -283,16 +453,26 @@ class _$ChatImpl implements _Chat {
     return EqualUnmodifiableMapView(value);
   }
 
+  /// Create a copy of Chat
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'Chat(id: $id, participants: $participants, lastMessage: $lastMessage, lastTimestamp: $lastTimestamp, chatType: $chatType, groupName: $groupName, groupAvatarURL: $groupAvatarURL, mutedBy: $mutedBy, archivedBy: $archivedBy, metadata: $metadata)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$ChatCopyWith<_Chat> get copyWith =>
+      __$ChatCopyWithImpl<_Chat>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$ChatToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$ChatImpl &&
+            other is _Chat &&
             (identical(other.id, id) || other.id == id) &&
             const DeepCollectionEquality()
                 .equals(other._participants, _participants) &&
@@ -312,7 +492,7 @@ class _$ChatImpl implements _Chat {
             const DeepCollectionEquality().equals(other._metadata, _metadata));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType,
@@ -327,58 +507,97 @@ class _$ChatImpl implements _Chat {
       const DeepCollectionEquality().hash(_archivedBy),
       const DeepCollectionEquality().hash(_metadata));
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$ChatImplCopyWith<_$ChatImpl> get copyWith =>
-      __$$ChatImplCopyWithImpl<_$ChatImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$ChatImplToJson(
-      this,
-    );
+  String toString() {
+    return 'Chat(id: $id, participants: $participants, lastMessage: $lastMessage, lastTimestamp: $lastTimestamp, chatType: $chatType, groupName: $groupName, groupAvatarURL: $groupAvatarURL, mutedBy: $mutedBy, archivedBy: $archivedBy, metadata: $metadata)';
   }
 }
 
-abstract class _Chat implements Chat {
-  const factory _Chat(
-      {final String? id,
-      required final List<String> participants,
-      final String? lastMessage,
-      @TimestampConverter() required final DateTime lastTimestamp,
-      final String? chatType,
-      final String? groupName,
-      final String? groupAvatarURL,
-      final List<String> mutedBy,
-      final List<String> archivedBy,
-      final Map<String, dynamic>? metadata}) = _$ChatImpl;
-
-  factory _Chat.fromJson(Map<String, dynamic> json) = _$ChatImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$ChatCopyWith<$Res> implements $ChatCopyWith<$Res> {
+  factory _$ChatCopyWith(_Chat value, $Res Function(_Chat) _then) =
+      __$ChatCopyWithImpl;
   @override
-  String? get id;
-  @override
-  List<String> get participants;
-  @override
-  String? get lastMessage;
-  @override
-  @TimestampConverter()
-  DateTime get lastTimestamp;
-  @override
-  String? get chatType;
-  @override // 'direct' or 'group'
-  String? get groupName;
-  @override
-  String? get groupAvatarURL;
-  @override
-  List<String> get mutedBy;
-  @override
-  List<String> get archivedBy;
-  @override
-  Map<String, dynamic>? get metadata;
-  @override
-  @JsonKey(ignore: true)
-  _$$ChatImplCopyWith<_$ChatImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String? id,
+      List<String> participants,
+      String? lastMessage,
+      @TimestampConverter() DateTime lastTimestamp,
+      String? chatType,
+      String? groupName,
+      String? groupAvatarURL,
+      List<String> mutedBy,
+      List<String> archivedBy,
+      Map<String, dynamic>? metadata});
 }
+
+/// @nodoc
+class __$ChatCopyWithImpl<$Res> implements _$ChatCopyWith<$Res> {
+  __$ChatCopyWithImpl(this._self, this._then);
+
+  final _Chat _self;
+  final $Res Function(_Chat) _then;
+
+  /// Create a copy of Chat
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = freezed,
+    Object? participants = null,
+    Object? lastMessage = freezed,
+    Object? lastTimestamp = null,
+    Object? chatType = freezed,
+    Object? groupName = freezed,
+    Object? groupAvatarURL = freezed,
+    Object? mutedBy = null,
+    Object? archivedBy = null,
+    Object? metadata = freezed,
+  }) {
+    return _then(_Chat(
+      id: freezed == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String?,
+      participants: null == participants
+          ? _self._participants
+          : participants // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      lastMessage: freezed == lastMessage
+          ? _self.lastMessage
+          : lastMessage // ignore: cast_nullable_to_non_nullable
+              as String?,
+      lastTimestamp: null == lastTimestamp
+          ? _self.lastTimestamp
+          : lastTimestamp // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      chatType: freezed == chatType
+          ? _self.chatType
+          : chatType // ignore: cast_nullable_to_non_nullable
+              as String?,
+      groupName: freezed == groupName
+          ? _self.groupName
+          : groupName // ignore: cast_nullable_to_non_nullable
+              as String?,
+      groupAvatarURL: freezed == groupAvatarURL
+          ? _self.groupAvatarURL
+          : groupAvatarURL // ignore: cast_nullable_to_non_nullable
+              as String?,
+      mutedBy: null == mutedBy
+          ? _self._mutedBy
+          : mutedBy // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      archivedBy: null == archivedBy
+          ? _self._archivedBy
+          : archivedBy // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      metadata: freezed == metadata
+          ? _self._metadata
+          : metadata // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>?,
+    ));
+  }
+}
+
+// dart format on

@@ -6,41 +6,41 @@ part of 'auth_models.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$AuthResponseImpl _$$AuthResponseImplFromJson(Map<String, dynamic> json) =>
-    _$AuthResponseImpl(
+_AuthResponse _$AuthResponseFromJson(Map<String, dynamic> json) =>
+    _AuthResponse(
       user:
           const UserConverter().fromJson(json['user'] as Map<String, dynamic>),
       token: json['token'] as String,
       refreshToken: json['refreshToken'] as String?,
     );
 
-Map<String, dynamic> _$$AuthResponseImplToJson(_$AuthResponseImpl instance) =>
+Map<String, dynamic> _$AuthResponseToJson(_AuthResponse instance) =>
     <String, dynamic>{
       'user': const UserConverter().toJson(instance.user),
       'token': instance.token,
       'refreshToken': instance.refreshToken,
     };
 
-_$LoginRequestImpl _$$LoginRequestImplFromJson(Map<String, dynamic> json) =>
-    _$LoginRequestImpl(
+_LoginRequest _$LoginRequestFromJson(Map<String, dynamic> json) =>
+    _LoginRequest(
       email: json['email'] as String,
       password: json['password'] as String,
     );
 
-Map<String, dynamic> _$$LoginRequestImplToJson(_$LoginRequestImpl instance) =>
+Map<String, dynamic> _$LoginRequestToJson(_LoginRequest instance) =>
     <String, dynamic>{
       'email': instance.email,
       'password': instance.password,
     };
 
-_$SignupRequestImpl _$$SignupRequestImplFromJson(Map<String, dynamic> json) =>
-    _$SignupRequestImpl(
+_SignupRequest _$SignupRequestFromJson(Map<String, dynamic> json) =>
+    _SignupRequest(
       username: json['username'] as String,
       email: json['email'] as String,
       password: json['password'] as String,
     );
 
-Map<String, dynamic> _$$SignupRequestImplToJson(_$SignupRequestImpl instance) =>
+Map<String, dynamic> _$SignupRequestToJson(_SignupRequest instance) =>
     <String, dynamic>{
       'username': instance.username,
       'email': instance.email,

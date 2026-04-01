@@ -4,13 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../services/robust_auth_service.dart';
 import '../services/calendar_cleanup_service.dart';
-import '../services/scheduled_post_publisher_service.dart';
 import '../widgets/auth_modal_view.dart';
 import '../pages/main_tab_view.dart';
 
 /// App startup wrapper that handles authentication flow
 class AppStartupWrapper extends ConsumerStatefulWidget {
-  const AppStartupWrapper({super.key});
+  const AppStartupWrapper({
+    super.key,
+    this.initialTabIndex = 0,
+  });
+
+  final int initialTabIndex;
 
   @override
   ConsumerState<AppStartupWrapper> createState() => _AppStartupWrapperState();
@@ -66,20 +70,6 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     }
   }
 
-  /// Start scheduled post publisher service for logged-in user
-  void _startScheduledPostPublisher() {
-    final authService = ref.read(robustAuthServiceProvider);
-    final currentUser = authService.currentUser;
-
-    if (currentUser != null) {
-      // Start the scheduled post publisher service (checks every minute)
-      ScheduledPostPublisherService().startPeriodicCheck(
-        interval: const Duration(minutes: 1),
-      );
-      debugPrint('✅ App startup: Scheduled post publisher started');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     // Watch auth service to rebuild when state changes
@@ -127,9 +117,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
       debugPrint('🏠 AppStartupWrapper: Returning MainTabView');
       // Run calendar cleanup in background
       _runCalendarCleanup();
-      // Start scheduled post publisher service
-      _startScheduledPostPublisher();
-      return const MainTabView();
+      return MainTabView(initialTabIndex: widget.initialTabIndex);
     }
 
     // Show auth modal if not logged in
@@ -155,7 +143,7 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
                   color: Colors.transparent,
                 ),
                 child: Center(
-                  child: Container(
+                  child: SizedBox(
                     width: 140,
                     height: 140,
                     child: Image.asset(

@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import '../services/admin_service.dart';
 
 class AdminMonitoringPanel extends StatefulWidget {
   const AdminMonitoringPanel({super.key});
@@ -59,14 +60,14 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
   bool _isSearching = false;
   bool _maintenanceMode = false;
   Map<String, bool> _featureFlags = {};
+  bool _isAuthorized = false;
+  bool _isCheckingAuthorization = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 11, vsync: this);
-    _startMonitoring();
-    _loadSystemSettings();
-    _loadFeatureFlags();
+    _initializeAdminAccess();
   }
 
   @override
@@ -93,6 +94,27 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
     _monitorUserReports();
     _monitorErrors();
     _fetchStats();
+  }
+
+  Future<void> _initializeAdminAccess() async {
+    final isAdmin = await AdminService.instance.isCurrentUserAdmin();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isAuthorized = isAdmin;
+      _isCheckingAuthorization = false;
+    });
+
+    if (!isAdmin) {
+      _addLog('🚫 Unauthorized admin access blocked');
+      return;
+    }
+
+    _startMonitoring();
+    _loadSystemSettings();
+    _loadFeatureFlags();
   }
 
   void _addLog(String message) {
@@ -512,6 +534,46 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
 
   @override
   Widget build(BuildContext context) {
+    if (_isCheckingAuthorization) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (!_isAuthorized) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1A1A1A),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: const Text(
+            'Admin Access',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'You do not have permission to view admin tools.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -1342,7 +1404,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
               style: const TextStyle(color: Colors.white54),
             ),
             value: _maintenanceMode,
-            activeThumbColor: const Color(0xFF9248D2),
+            activeColor: const Color(0xFF9248D2),
             onChanged: (value) => _toggleMaintenanceMode(value),
           ),
           const SizedBox(height: 24),
@@ -1361,7 +1423,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                   style: const TextStyle(color: Colors.white),
                 ),
                 value: entry.value,
-                activeThumbColor: const Color(0xFF9248D2),
+                activeColor: const Color(0xFF9248D2),
                 onChanged: (value) => _toggleFeatureFlag(entry.key, value),
               )),
           const SizedBox(height: 16),
@@ -1942,9 +2004,9 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
       width: fullWidth ? double.infinity : null,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2047,7 +2109,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: typeColor.withOpacity(0.2),
+                    color: typeColor.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -2064,7 +2126,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.2),
+                      color: Colors.red.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
@@ -2082,7 +2144,7 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.2),
+                      color: Colors.green.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
@@ -2920,9 +2982,11 @@ class _AdminMonitoringPanelState extends State<AdminMonitoringPanel>
       await file.writeAsString(csv);
 
       if (mounted) {
-        await Share.shareXFiles(
-          [XFile(file.path)],
-          text: 'Analytics Export',
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(file.path)],
+            text: 'Analytics Export',
+          ),
         );
         _addLog('✅ Analytics exported successfully');
         if (mounted) {

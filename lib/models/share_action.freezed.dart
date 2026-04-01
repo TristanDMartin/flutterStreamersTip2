@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,96 +9,60 @@ part of 'share_action.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-ShareAction _$ShareActionFromJson(Map<String, dynamic> json) {
-  return _ShareAction.fromJson(json);
-}
 
 /// @nodoc
 mixin _$ShareAction {
-  String get id => throw _privateConstructorUsedError;
-  String get name => throw _privateConstructorUsedError;
-  String get iconName => throw _privateConstructorUsedError;
+  String get id;
+  String get name;
+  String get iconName;
   @ColorConverter()
-  Color get iconColor => throw _privateConstructorUsedError;
+  Color get iconColor;
   @ColorConverter()
-  Color get backgroundColor => throw _privateConstructorUsedError;
+  Color get backgroundColor;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $ShareActionCopyWith<ShareAction> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $ShareActionCopyWith<$Res> {
-  factory $ShareActionCopyWith(
-          ShareAction value, $Res Function(ShareAction) then) =
-      _$ShareActionCopyWithImpl<$Res, ShareAction>;
-  @useResult
-  $Res call(
-      {String id,
-      String name,
-      String iconName,
-      @ColorConverter() Color iconColor,
-      @ColorConverter() Color backgroundColor});
-}
-
-/// @nodoc
-class _$ShareActionCopyWithImpl<$Res, $Val extends ShareAction>
-    implements $ShareActionCopyWith<$Res> {
-  _$ShareActionCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of ShareAction
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $ShareActionCopyWith<ShareAction> get copyWith =>
+      _$ShareActionCopyWithImpl<ShareAction>(this as ShareAction, _$identity);
+
+  /// Serializes this ShareAction to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? id = null,
-    Object? name = null,
-    Object? iconName = null,
-    Object? iconColor = null,
-    Object? backgroundColor = null,
-  }) {
-    return _then(_value.copyWith(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      name: null == name
-          ? _value.name
-          : name // ignore: cast_nullable_to_non_nullable
-              as String,
-      iconName: null == iconName
-          ? _value.iconName
-          : iconName // ignore: cast_nullable_to_non_nullable
-              as String,
-      iconColor: null == iconColor
-          ? _value.iconColor
-          : iconColor // ignore: cast_nullable_to_non_nullable
-              as Color,
-      backgroundColor: null == backgroundColor
-          ? _value.backgroundColor
-          : backgroundColor // ignore: cast_nullable_to_non_nullable
-              as Color,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is ShareAction &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.name, name) || other.name == name) &&
+            (identical(other.iconName, iconName) ||
+                other.iconName == iconName) &&
+            (identical(other.iconColor, iconColor) ||
+                other.iconColor == iconColor) &&
+            (identical(other.backgroundColor, backgroundColor) ||
+                other.backgroundColor == backgroundColor));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode =>
+      Object.hash(runtimeType, id, name, iconName, iconColor, backgroundColor);
+
+  @override
+  String toString() {
+    return 'ShareAction(id: $id, name: $name, iconName: $iconName, iconColor: $iconColor, backgroundColor: $backgroundColor)';
   }
 }
 
 /// @nodoc
-abstract class _$$ShareActionImplCopyWith<$Res>
-    implements $ShareActionCopyWith<$Res> {
-  factory _$$ShareActionImplCopyWith(
-          _$ShareActionImpl value, $Res Function(_$ShareActionImpl) then) =
-      __$$ShareActionImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $ShareActionCopyWith<$Res> {
+  factory $ShareActionCopyWith(
+          ShareAction value, $Res Function(ShareAction) _then) =
+      _$ShareActionCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -109,13 +73,14 @@ abstract class _$$ShareActionImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$ShareActionImplCopyWithImpl<$Res>
-    extends _$ShareActionCopyWithImpl<$Res, _$ShareActionImpl>
-    implements _$$ShareActionImplCopyWith<$Res> {
-  __$$ShareActionImplCopyWithImpl(
-      _$ShareActionImpl _value, $Res Function(_$ShareActionImpl) _then)
-      : super(_value, _then);
+class _$ShareActionCopyWithImpl<$Res> implements $ShareActionCopyWith<$Res> {
+  _$ShareActionCopyWithImpl(this._self, this._then);
 
+  final ShareAction _self;
+  final $Res Function(ShareAction) _then;
+
+  /// Create a copy of ShareAction
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -125,43 +90,216 @@ class __$$ShareActionImplCopyWithImpl<$Res>
     Object? iconColor = null,
     Object? backgroundColor = null,
   }) {
-    return _then(_$ShareActionImpl(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       name: null == name
-          ? _value.name
+          ? _self.name
           : name // ignore: cast_nullable_to_non_nullable
               as String,
       iconName: null == iconName
-          ? _value.iconName
+          ? _self.iconName
           : iconName // ignore: cast_nullable_to_non_nullable
               as String,
       iconColor: null == iconColor
-          ? _value.iconColor
+          ? _self.iconColor
           : iconColor // ignore: cast_nullable_to_non_nullable
               as Color,
       backgroundColor: null == backgroundColor
-          ? _value.backgroundColor
+          ? _self.backgroundColor
           : backgroundColor // ignore: cast_nullable_to_non_nullable
               as Color,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [ShareAction].
+extension ShareActionPatterns on ShareAction {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_ShareAction value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ShareAction() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_ShareAction value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareAction():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_ShareAction value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareAction() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String id,
+            String name,
+            String iconName,
+            @ColorConverter() Color iconColor,
+            @ColorConverter() Color backgroundColor)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ShareAction() when $default != null:
+        return $default(_that.id, _that.name, _that.iconName, _that.iconColor,
+            _that.backgroundColor);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String id,
+            String name,
+            String iconName,
+            @ColorConverter() Color iconColor,
+            @ColorConverter() Color backgroundColor)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareAction():
+        return $default(_that.id, _that.name, _that.iconName, _that.iconColor,
+            _that.backgroundColor);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String id,
+            String name,
+            String iconName,
+            @ColorConverter() Color iconColor,
+            @ColorConverter() Color backgroundColor)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareAction() when $default != null:
+        return $default(_that.id, _that.name, _that.iconName, _that.iconColor,
+            _that.backgroundColor);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$ShareActionImpl with DiagnosticableTreeMixin implements _ShareAction {
-  const _$ShareActionImpl(
+class _ShareAction implements ShareAction {
+  const _ShareAction(
       {required this.id,
       required this.name,
       required this.iconName,
       @ColorConverter() required this.iconColor,
       @ColorConverter() required this.backgroundColor});
-
-  factory _$ShareActionImpl.fromJson(Map<String, dynamic> json) =>
-      _$$ShareActionImplFromJson(json);
+  factory _ShareAction.fromJson(Map<String, dynamic> json) =>
+      _$ShareActionFromJson(json);
 
   @override
   final String id;
@@ -176,28 +314,26 @@ class _$ShareActionImpl with DiagnosticableTreeMixin implements _ShareAction {
   @ColorConverter()
   final Color backgroundColor;
 
+  /// Create a copy of ShareAction
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'ShareAction(id: $id, name: $name, iconName: $iconName, iconColor: $iconColor, backgroundColor: $backgroundColor)';
-  }
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$ShareActionCopyWith<_ShareAction> get copyWith =>
+      __$ShareActionCopyWithImpl<_ShareAction>(this, _$identity);
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
-    properties
-      ..add(DiagnosticsProperty('type', 'ShareAction'))
-      ..add(DiagnosticsProperty('id', id))
-      ..add(DiagnosticsProperty('name', name))
-      ..add(DiagnosticsProperty('iconName', iconName))
-      ..add(DiagnosticsProperty('iconColor', iconColor))
-      ..add(DiagnosticsProperty('backgroundColor', backgroundColor));
+  Map<String, dynamic> toJson() {
+    return _$ShareActionToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$ShareActionImpl &&
+            other is _ShareAction &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.name, name) || other.name == name) &&
             (identical(other.iconName, iconName) ||
@@ -208,51 +344,74 @@ class _$ShareActionImpl with DiagnosticableTreeMixin implements _ShareAction {
                 other.backgroundColor == backgroundColor));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode =>
       Object.hash(runtimeType, id, name, iconName, iconColor, backgroundColor);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$ShareActionImplCopyWith<_$ShareActionImpl> get copyWith =>
-      __$$ShareActionImplCopyWithImpl<_$ShareActionImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$ShareActionImplToJson(
-      this,
-    );
+  String toString() {
+    return 'ShareAction(id: $id, name: $name, iconName: $iconName, iconColor: $iconColor, backgroundColor: $backgroundColor)';
   }
 }
 
-abstract class _ShareAction implements ShareAction {
-  const factory _ShareAction(
-          {required final String id,
-          required final String name,
-          required final String iconName,
-          @ColorConverter() required final Color iconColor,
-          @ColorConverter() required final Color backgroundColor}) =
-      _$ShareActionImpl;
-
-  factory _ShareAction.fromJson(Map<String, dynamic> json) =
-      _$ShareActionImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$ShareActionCopyWith<$Res>
+    implements $ShareActionCopyWith<$Res> {
+  factory _$ShareActionCopyWith(
+          _ShareAction value, $Res Function(_ShareAction) _then) =
+      __$ShareActionCopyWithImpl;
   @override
-  String get id;
-  @override
-  String get name;
-  @override
-  String get iconName;
-  @override
-  @ColorConverter()
-  Color get iconColor;
-  @override
-  @ColorConverter()
-  Color get backgroundColor;
-  @override
-  @JsonKey(ignore: true)
-  _$$ShareActionImplCopyWith<_$ShareActionImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String id,
+      String name,
+      String iconName,
+      @ColorConverter() Color iconColor,
+      @ColorConverter() Color backgroundColor});
 }
+
+/// @nodoc
+class __$ShareActionCopyWithImpl<$Res> implements _$ShareActionCopyWith<$Res> {
+  __$ShareActionCopyWithImpl(this._self, this._then);
+
+  final _ShareAction _self;
+  final $Res Function(_ShareAction) _then;
+
+  /// Create a copy of ShareAction
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = null,
+    Object? name = null,
+    Object? iconName = null,
+    Object? iconColor = null,
+    Object? backgroundColor = null,
+  }) {
+    return _then(_ShareAction(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      name: null == name
+          ? _self.name
+          : name // ignore: cast_nullable_to_non_nullable
+              as String,
+      iconName: null == iconName
+          ? _self.iconName
+          : iconName // ignore: cast_nullable_to_non_nullable
+              as String,
+      iconColor: null == iconColor
+          ? _self.iconColor
+          : iconColor // ignore: cast_nullable_to_non_nullable
+              as Color,
+      backgroundColor: null == backgroundColor
+          ? _self.backgroundColor
+          : backgroundColor // ignore: cast_nullable_to_non_nullable
+              as Color,
+    ));
+  }
+}
+
+// dart format on

@@ -662,6 +662,10 @@ class EnhancedAlgorithmService {
         totalVideosWatched: watchHistorySnapshot.docs.length,
       );
     } catch (e) {
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return UserPreferenceCache.empty(userId);
+      }
       log('❌ Enhanced Algorithm: Error loading user cache: $e');
       return UserPreferenceCache.empty(userId);
     }

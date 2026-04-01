@@ -5,7 +5,7 @@ part 'video_thumbnails.freezed.dart';
 
 /// Model for video thumbnails with multiple sizes and metadata
 @freezed
-class VideoThumbnails with _$VideoThumbnails {
+sealed class VideoThumbnails with _$VideoThumbnails {
   const factory VideoThumbnails({
     /// Thumbnail URLs by width (e.g., {360: "url1", 540: "url2", 720: "url3"})
     @Default({}) Map<int, String> urls,

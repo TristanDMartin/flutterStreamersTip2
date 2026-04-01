@@ -1,8 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../models/home_video.dart';
+import '../models/user_count_fields.dart';
+import '../models/user.dart' as app_user;
+import '../routing/app_routes.dart';
+import '../utils/video_url_resolver.dart';
+import '../widgets/player_screen.dart';
+import 'profile_link_service.dart';
 import 'logging_service.dart';
 
 class DeepLinkingService {
@@ -11,7 +17,7 @@ class DeepLinkingService {
   DeepLinkingService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
 
   /// Initialize deep linking
   void initialize() {
@@ -35,6 +41,8 @@ class DeepLinkingService {
         await _handleInviteLink(path, queryParams, context);
       } else if (path.startsWith('/user/')) {
         await _handleUserLink(path, queryParams, context);
+      } else if (path.startsWith('/profile/')) {
+        await _handleProfileLink(path, queryParams, context);
       } else if (path.startsWith('/video/')) {
         await _handleVideoLink(path, queryParams, context);
       } else if (path.startsWith('/hashtag/')) {
@@ -69,7 +77,7 @@ class DeepLinkingService {
 
         // Navigate to login with invite code
         if (context.mounted) {
-          context.go('/login?invite=$inviteCode');
+          _replaceWithNamedRoute(context, AppRoutes.auth);
         }
         return;
       }
@@ -81,10 +89,10 @@ class DeepLinkingService {
         if (success) {
           _showDeepLinkSuccess(
               context, 'Welcome! You\'ve joined with an invite code.');
-          context.go('/home');
+          _replaceWithNamedRoute(context, AppRoutes.home);
         } else {
           _showDeepLinkError(context, 'Invalid or expired invite code');
-          context.go('/home');
+          _replaceWithNamedRoute(context, AppRoutes.home);
         }
       }
     } catch (e, stackTrace) {
@@ -116,10 +124,18 @@ class DeepLinkingService {
         throw Exception('User not found');
       }
 
-      final userId = userQuery.docs.first.id;
+      final userDoc = userQuery.docs.first;
+      final userId = userDoc.id;
+      final user = _buildUser(userDoc.data(), userId);
 
       if (context.mounted) {
-        context.go('/profile/$userId');
+        Navigator.of(context).pushNamed(
+          AppRoutes.profile,
+          arguments: ProfileRouteArgs(
+            user: user,
+            isCurrentUser: _auth.currentUser?.uid == userId,
+          ),
+        );
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error handling user link',
@@ -145,14 +161,60 @@ class DeepLinkingService {
         throw Exception('Video not found');
       }
 
+      final homeVideo = _buildHomeVideo(videoDoc.data()!, videoId);
+
       if (context.mounted) {
-        context.go('/video/$videoId');
+        Navigator.of(context).pushNamed(
+          AppRoutes.player,
+          arguments: PlayerRouteArgs(
+            mode: PlayerMode.homeFeed,
+            initialIndex: 0,
+            videoIds: [videoId],
+            videos: [homeVideo],
+          ),
+        );
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error handling video link',
           tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
       if (context.mounted) {
         _showDeepLinkError(context, 'Video not found');
+      }
+    }
+  }
+
+  Future<void> _handleProfileLink(String path, Map<String, String> queryParams,
+      BuildContext context) async {
+    try {
+      final identifier = path.split('/profile/')[1];
+      if (identifier.isEmpty) {
+        throw Exception('Invalid profile identifier');
+      }
+
+      if (identifier.length >= 20) {
+        final userDoc = await _firestore.collection('users').doc(identifier).get();
+        if (!userDoc.exists) {
+          throw Exception('User not found');
+        }
+        final user = _buildUser(userDoc.data()!, userDoc.id);
+        if (context.mounted) {
+          Navigator.of(context).pushNamed(
+            AppRoutes.profile,
+            arguments: ProfileRouteArgs(
+              user: user,
+              isCurrentUser: _auth.currentUser?.uid == userDoc.id,
+            ),
+          );
+        }
+        return;
+      }
+
+      await _handleUserLink('/user/$identifier', queryParams, context);
+    } catch (e, stackTrace) {
+      LoggingService.instance.error('Error handling profile link',
+          tag: 'DeepLinkingService', error: e, stackTrace: stackTrace);
+      if (context.mounted) {
+        _showDeepLinkError(context, 'Profile not found');
       }
     }
   }
@@ -167,7 +229,7 @@ class DeepLinkingService {
       }
 
       if (context.mounted) {
-        context.go('/discover?hashtag=${Uri.encodeComponent(hashtag)}');
+        Navigator.of(context).pushNamed(AppRoutes.discover);
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error handling hashtag link',
@@ -320,8 +382,11 @@ class DeepLinkingService {
   }
 
   /// Generate deep link for user profile
-  String generateUserLink(String username) {
-    return 'https://streamerstip.app/user/$username';
+  String generateUserLink(String userIdOrUsername) {
+    if (userIdOrUsername.length >= 20) {
+      return ProfileLinkService.webProfileUrlById(userIdOrUsername);
+    }
+    return ProfileLinkService.webProfileUrlByUsername(userIdOrUsername);
   }
 
   /// Generate deep link for video
@@ -332,5 +397,47 @@ class DeepLinkingService {
   /// Generate deep link for hashtag
   String generateHashtagLink(String hashtag) {
     return 'https://streamerstip.app/hashtag/${Uri.encodeComponent(hashtag)}';
+  }
+
+  void _replaceWithNamedRoute(BuildContext context, String routeName) {
+    Navigator.of(context).pushNamedAndRemoveUntil(routeName, (route) => false);
+  }
+
+  app_user.User _buildUser(Map<String, dynamic> data, String userId) {
+    return app_user.User.fromMap({
+      ...data,
+      'id': userId,
+      'uid': userId,
+    });
+  }
+
+  HomeVideo _buildHomeVideo(Map<String, dynamic> data, String videoId) {
+    final followerCount = UserCountFields.readFollowersCount(data);
+    final followingCount = UserCountFields.readFollowingCount(data);
+    return HomeVideo(
+      id: videoId,
+      creator: _buildUser({
+        'id': data['userId'] ?? '',
+        'uid': data['userId'] ?? '',
+        'displayName': data['displayName'] ?? 'Unknown',
+        'username': data['username'] ?? 'unknown',
+        'avatarURL': data['userAvatarUrl'] ?? data['avatarURL'],
+        'bio': data['bio'] ?? '',
+        'onlineStatus': data['onlineStatus'] ?? 'offline',
+        'hashtags': data['hashtags'] ?? const <String>[],
+        'followerCount': followerCount,
+        'followersCount': followerCount,
+        'followingCount': followingCount,
+        'postCount': data['postCount'] ?? 0,
+      }, data['userId'] ?? ''),
+      videoURL: resolveVideoUrl(data),
+      thumbnailURL: data['thumbnailUrl'] ?? data['thumbnailURL'],
+      likes: data['likeCount'] ?? 0,
+      comments: data['commentCount'] ?? 0,
+      views: data['viewCount'] ?? 0,
+      caption: data['caption'] ?? '',
+      categoryId: data['category'] ?? 'general',
+      createdAt: data['timestamp'] as Timestamp?,
+    );
   }
 }

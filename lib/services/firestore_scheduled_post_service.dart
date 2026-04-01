@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:developer' as developer;
 import '../models/scheduled_post.dart';
 import 'post_counter_service.dart';
+import 'cross_post_service.dart';
 
 /// Firestore-based service for managing scheduled posts
 class FirestoreScheduledPostService {
@@ -26,6 +27,7 @@ class FirestoreScheduledPostService {
     required bool allowComments,
     required PostSchedule schedule,
     required Map<String, dynamic> metadata,
+    List<PlatformConfig> platforms = const [],
   }) async {
     try {
       final currentUser = _auth.currentUser;
@@ -69,6 +71,26 @@ class FirestoreScheduledPostService {
         'privacy': privacy,
         'allowComments': allowComments,
         'schedule': scheduleData,
+        'platforms': platforms
+            .map(
+              (platform) => {
+                'key': platform.key,
+                'enabled': platform.enabled,
+                'payload': platform.payload,
+                'status': platform.status?.name,
+                'error': platform.error,
+                'scheduledAtUtc': platform.scheduledAtUtc == null
+                    ? null
+                    : Timestamp.fromDate(platform.scheduledAtUtc!),
+              },
+            )
+            .toList(),
+        'history': [
+          _historyEntry(
+            status: PostStatus.scheduled.name,
+            message: 'Post scheduled for publishing.',
+          ),
+        ],
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'metadata': metadata,
@@ -85,6 +107,113 @@ class FirestoreScheduledPostService {
       return scheduledPostId;
     } catch (e) {
       developer.log('❌ Error saving scheduled post: $e',
+          name: 'FirestoreScheduledPostService');
+      rethrow;
+    }
+  }
+
+  Future<String?> saveImmediatePublishFollowUp({
+    required String videoId,
+    String? videoUrl,
+    String? thumbnailUrl,
+    required String caption,
+    required List<String> hashtags,
+    required String category,
+    required String privacy,
+    required bool allowComments,
+    required Map<String, dynamic> metadata,
+    required List<CrossPostRequest> crossPostRequests,
+    required List<CrossPostResult> crossPostResults,
+  }) async {
+    try {
+      if (crossPostRequests.isEmpty) {
+        return null;
+      }
+
+      final resultByPlatform = <String, CrossPostResult>{
+        for (final result in crossPostResults)
+          result.platformName.toLowerCase(): result,
+      };
+      final hasRecoverableIssue = crossPostRequests.any((request) {
+        final result = resultByPlatform[request.platformName.toLowerCase()];
+        return result == null || !result.isSuccess;
+      });
+      if (!hasRecoverableIssue) {
+        return null;
+      }
+
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final postId = 'publish_followup_${DateTime.now().millisecondsSinceEpoch}';
+      final postData = {
+        'id': postId,
+        'authorId': currentUser.uid,
+        'status': PostStatus.published.name,
+        'caption': caption,
+        'tags': hashtags,
+        'visibility': _privacyToPostVisibility(privacy).name,
+        'videoId': videoId,
+        'videoUrl': videoUrl,
+        'thumbnailUrl': thumbnailUrl,
+        'category': category,
+        'privacy': privacy,
+        'allowComments': allowComments,
+        'platforms': crossPostRequests.map((request) {
+          final normalizedPlatform = request.platformName.toLowerCase();
+          final result = resultByPlatform[normalizedPlatform];
+          final status = _platformStatusFromResult(result);
+          return {
+            'key': normalizedPlatform,
+            'enabled': true,
+            'payload': {
+              'caption': request.caption,
+            },
+            'status': status.name,
+            'error': result?.errorMessage,
+            'scheduledAtUtc': request.scheduleAt == null
+                ? null
+                : Timestamp.fromDate(request.scheduleAt!),
+          };
+        }).toList(),
+        'history': [
+          _historyEntry(
+            status: PostStatus.published.name,
+            message:
+                'StreamersTip publish succeeded. Follow-up record saved for external recovery.',
+          ),
+          ...crossPostRequests.map((request) {
+            final normalizedPlatform = request.platformName.toLowerCase();
+            final result = resultByPlatform[normalizedPlatform];
+            final status = _platformStatusFromResult(result);
+            return _historyEntry(
+              status: status.name,
+              platform: normalizedPlatform,
+              message: result?.isSuccess == true
+                  ? 'Cross-post completed successfully.'
+                  : result?.errorMessage ??
+                      'Cross-post needs follow-up before it can complete.',
+            );
+          }),
+        ],
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'metadata': {
+          ...metadata,
+          'publishOrigin': 'immediate_follow_up',
+          'requiresCreatorAttention': true,
+          'streamerstipVideoId': videoId,
+        },
+      };
+
+      await _firestore.collection('scheduled_posts').doc(postId).set(postData);
+      developer.log('✅ Immediate publish follow-up saved: $postId',
+          name: 'FirestoreScheduledPostService');
+      return postId;
+    } catch (e) {
+      developer.log('❌ Error saving immediate publish follow-up: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -107,28 +236,31 @@ class FirestoreScheduledPostService {
 
       // Load all posts for the user first (without orderBy to avoid index issues)
       // Then sort and filter client-side
+      const int defaultLimit = 100;
+      final int effectiveLimit = (limit ?? defaultLimit) * 2;
+
       Query query = _firestore
           .collection('scheduled_posts')
-          .where('authorId', isEqualTo: currentUser.uid);
+          .where('authorId', isEqualTo: currentUser.uid)
+          .limit(effectiveLimit);
 
       QuerySnapshot snapshot;
       try {
-        // Try to order by createdAt (has index) if no status filter
         if (status == null) {
           query = query.orderBy('createdAt', descending: true);
         }
-        if (limit != null) {
-          query = query.limit(
-              limit * 2); // Get more to account for client-side filtering
-        }
         snapshot = await query.get();
       } catch (e) {
-        // If orderBy fails, just get all documents
+        if (e.toString().contains('permission-denied') ||
+            e.toString().contains('PERMISSION_DENIED')) {
+          return [];
+        }
         developer.log('⚠️ Could not order by createdAt, loading all: $e',
             name: 'FirestoreScheduledPostService');
         Query fallbackQuery = _firestore
             .collection('scheduled_posts')
-            .where('authorId', isEqualTo: currentUser.uid);
+            .where('authorId', isEqualTo: currentUser.uid)
+            .limit(effectiveLimit);
         snapshot = await fallbackQuery.get();
       }
       developer.log(
@@ -161,10 +293,9 @@ class FirestoreScheduledPostService {
 
       // Client-side filtering for platform and searchQuery
       if (platform != null) {
-        // Note: Since we're not storing platforms in Firestore yet,
-        // this filter won't do anything for now
-        // posts = posts.where((post) =>
-        //   post.platforms.any((p) => p.key == platform.name)).toList();
+        posts = posts
+            .where((post) => post.platforms.any((p) => p.key == platform.name))
+            .toList();
       }
 
       if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -181,6 +312,10 @@ class FirestoreScheduledPostService {
           name: 'FirestoreScheduledPostService');
       return posts;
     } catch (e, stackTrace) {
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return [];
+      }
       developer.log('❌ Error loading scheduled posts: $e\n$stackTrace',
           name: 'FirestoreScheduledPostService');
       return [];
@@ -190,7 +325,9 @@ class FirestoreScheduledPostService {
   /// Update scheduled post status
   Future<void> updateScheduledPostStatus(
     String scheduledPostId,
-    PostStatus status,
+    PostStatus status, {
+    String? historyMessage,
+  }
   ) async {
     try {
       await _firestore
@@ -203,6 +340,12 @@ class FirestoreScheduledPostService {
       developer.log(
           '✅ Updated scheduled post status: $scheduledPostId -> $status',
           name: 'FirestoreScheduledPostService');
+      await _appendHistoryEntries(scheduledPostId, [
+        _historyEntry(
+          status: status.name,
+          message: historyMessage ?? _defaultPostHistoryMessage(status),
+        ),
+      ]);
     } catch (e) {
       developer.log('❌ Error updating scheduled post status: $e',
           name: 'FirestoreScheduledPostService');
@@ -248,9 +391,26 @@ class FirestoreScheduledPostService {
       if (videoId == null) {
         throw Exception('Scheduled post has no videoId');
       }
+      final platforms = _mapPlatforms(data);
+      final enabledPlatformKeys = platforms
+          .where((platform) => platform.enabled)
+          .map((platform) => platform.key)
+          .toList();
 
       // Update status to publishing
-      await updateScheduledPostStatus(scheduledPostId, PostStatus.publishing);
+      await updateScheduledPostStatus(
+        scheduledPostId,
+        PostStatus.publishing,
+        historyMessage: 'Publishing started.',
+      );
+      if (enabledPlatformKeys.isNotEmpty) {
+        await updatePlatformStatuses(
+          scheduledPostId,
+          platformKeys: enabledPlatformKeys,
+          status: PlatformStatus.publishing,
+          clearErrors: true,
+        );
+      }
 
       // Get the video document
       final videoDoc = await _firestore.collection('videos').doc(videoId).get();
@@ -273,13 +433,14 @@ class FirestoreScheduledPostService {
       if (!hasCreatorId) {
         await _firestore.collection('videos').doc(videoId).update({
           'creatorId': userId,
+          'creator_id': userId,
         });
       }
 
-      // Update video status to published and ensure all required fields are set
       final updateData = <String, dynamic>{
         'status': 'published',
-        'creatorId': userId, // Ensure creatorId is set (for profile queries)
+        'creatorId': userId,
+        'creator_id': userId,
         'updatedAt': FieldValue.serverTimestamp(),
         'scheduledAtUtc': FieldValue.delete(),
       };
@@ -303,6 +464,26 @@ class FirestoreScheduledPostService {
       // Add to feeds using the same logic as VideoUploadService
       await _addToFeeds(videoId, privacy, userId, category: category);
 
+      if (enabledPlatformKeys.isNotEmpty) {
+        final crossPostResults = await CrossPostService.instance.publishToAll(
+          requests: platforms
+              .where((platform) => platform.enabled)
+              .map(
+                (platform) => CrossPostRequest(
+                  platformName: platform.key,
+                  caption: (platform.payload?['caption'] as String?) ??
+                      (data['caption'] as String? ?? ''),
+                  videoId: videoId,
+                ),
+              )
+              .toList(),
+        );
+        await applyCrossPostResults(
+          scheduledPostId,
+          crossPostResults,
+        );
+      }
+
       // Update PostCounterService
       try {
         final postCounterService = PostCounterService();
@@ -313,7 +494,11 @@ class FirestoreScheduledPostService {
       }
 
       // Update scheduled post status to published
-      await updateScheduledPostStatus(scheduledPostId, PostStatus.published);
+      await updateScheduledPostStatus(
+        scheduledPostId,
+        PostStatus.published,
+        historyMessage: 'Publishing completed.',
+      );
 
       // Get the updated post
       final updatedDoc = await _firestore
@@ -332,7 +517,20 @@ class FirestoreScheduledPostService {
           name: 'FirestoreScheduledPostService');
       // Mark as failed
       try {
-        await updateScheduledPostStatus(scheduledPostId, PostStatus.failed);
+        await updateScheduledPostStatus(
+          scheduledPostId,
+          PostStatus.failed,
+          historyMessage: 'Publishing failed before all destinations completed.',
+        );
+        await updatePlatformStatuses(
+          scheduledPostId,
+          status: PlatformStatus.failed,
+          clearErrors: false,
+          platformKeys: null,
+          errorMessage:
+              'StreamersTip publish failed; external publish was not attempted.',
+          onlyEnabledPlatforms: true,
+        );
       } catch (_) {
         // Ignore error updating status
       }
@@ -340,10 +538,119 @@ class FirestoreScheduledPostService {
     }
   }
 
+  Future<void> updatePlatformStatuses(
+    String scheduledPostId, {
+    required PlatformStatus status,
+    List<String>? platformKeys,
+    bool clearErrors = false,
+    String? errorMessage,
+    bool onlyEnabledPlatforms = false,
+  }) async {
+    final doc = await _firestore.collection('scheduled_posts').doc(scheduledPostId).get();
+    if (!doc.exists) {
+      throw Exception('Scheduled post not found');
+    }
+
+    final data = doc.data() as Map<String, dynamic>;
+    final rawPlatforms = (data['platforms'] as List<dynamic>? ?? const []);
+    final historyEntries = <Map<String, dynamic>>[];
+    final updatedPlatforms = rawPlatforms.map((rawPlatform) {
+      final platform = Map<String, dynamic>.from(
+        rawPlatform as Map<String, dynamic>,
+      );
+      final key = platform['key'] as String?;
+      final enabled = platform['enabled'] as bool? ?? true;
+      final matchesKey = platformKeys == null ||
+          (key != null && platformKeys.contains(key));
+      if ((!onlyEnabledPlatforms || enabled) && matchesKey) {
+        platform['status'] = status.name;
+        if (clearErrors) {
+          platform['error'] = null;
+        } else if (errorMessage != null) {
+          platform['error'] = errorMessage;
+        }
+        if (key != null && key.isNotEmpty) {
+          historyEntries.add(
+            _historyEntry(
+              status: status.name,
+              platform: key,
+              message: errorMessage ?? _defaultPlatformHistoryMessage(status),
+            ),
+          );
+        }
+      }
+      return platform;
+    }).toList();
+
+    await _firestore.collection('scheduled_posts').doc(scheduledPostId).update({
+      'platforms': updatedPlatforms,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    await _appendHistoryEntries(scheduledPostId, historyEntries);
+  }
+
+  Future<void> applyCrossPostResults(
+    String scheduledPostId,
+    List<CrossPostResult> results,
+  ) async {
+    if (results.isEmpty) return;
+
+    final doc = await _firestore.collection('scheduled_posts').doc(scheduledPostId).get();
+    if (!doc.exists) {
+      throw Exception('Scheduled post not found');
+    }
+
+    final data = doc.data() as Map<String, dynamic>;
+    final rawPlatforms = (data['platforms'] as List<dynamic>? ?? const []);
+    final resultByPlatform = {
+      for (final result in results) result.platformName.toLowerCase(): result,
+    };
+    final historyEntries = <Map<String, dynamic>>[];
+
+    final updatedPlatforms = rawPlatforms.map((rawPlatform) {
+      final platform = Map<String, dynamic>.from(
+        rawPlatform as Map<String, dynamic>,
+      );
+      final key = (platform['key'] as String? ?? '').toLowerCase();
+      final result = resultByPlatform[key];
+      if (result != null) {
+        if (result.isSuccess) {
+          platform['status'] = PlatformStatus.published.name;
+          platform['error'] = null;
+        } else {
+          platform['status'] = _isReauthError(result.errorMessage)
+              ? PlatformStatus.needsReauth.name
+              : PlatformStatus.failed.name;
+          platform['error'] = result.errorMessage ?? 'Cross-post failed';
+        }
+        historyEntries.add(
+          _historyEntry(
+            status: platform['status'] as String? ?? PlatformStatus.failed.name,
+            platform: key,
+            message: result.isSuccess
+                ? 'Cross-post completed successfully.'
+                : result.errorMessage ?? 'Cross-post failed.',
+          ),
+        );
+      }
+      return platform;
+    }).toList();
+
+    await _firestore.collection('scheduled_posts').doc(scheduledPostId).update({
+      'platforms': updatedPlatforms,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    await _appendHistoryEntries(scheduledPostId, historyEntries);
+  }
+
   /// Cancel a scheduled post
   Future<ScheduledPost> cancelPost(String scheduledPostId) async {
     try {
-      await updateScheduledPostStatus(scheduledPostId, PostStatus.canceled);
+      await updateScheduledPostStatus(
+        scheduledPostId,
+        PostStatus.canceled,
+        historyMessage: 'Scheduled post was canceled.',
+      );
 
       // Get the updated post
       final doc = await _firestore
@@ -369,11 +676,11 @@ class FirestoreScheduledPostService {
   }
 
   /// Retry a failed scheduled post
-  Future<ScheduledPost> retryPost(String scheduledPostId) async {
+  Future<ScheduledPost> retryPost(
+    String scheduledPostId, {
+    List<String>? platformKeys,
+  }) async {
     try {
-      await updateScheduledPostStatus(scheduledPostId, PostStatus.scheduled);
-
-      // Get the updated post
       final doc = await _firestore
           .collection('scheduled_posts')
           .doc(scheduledPostId)
@@ -383,7 +690,49 @@ class FirestoreScheduledPostService {
       }
 
       final data = doc.data() as Map<String, dynamic>;
-      final post = _mapToScheduledPost(doc.id, data);
+      final rawPlatforms = (data['platforms'] as List<dynamic>? ?? const []);
+      final updatedPlatforms = rawPlatforms.map((rawPlatform) {
+        final platform = Map<String, dynamic>.from(
+          rawPlatform as Map<String, dynamic>,
+        );
+        final key = platform['key'] as String?;
+        final status = platform['status'] as String?;
+        final matchesRequestedPlatform = platformKeys == null ||
+            (key != null && platformKeys.contains(key));
+        if (matchesRequestedPlatform &&
+            (status == PlatformStatus.failed.name ||
+                status == PlatformStatus.needsReauth.name)) {
+          platform['status'] = PlatformStatus.pending.name;
+          platform['error'] = null;
+        }
+        return platform;
+      }).toList();
+
+      await _firestore.collection('scheduled_posts').doc(scheduledPostId).update({
+        'status': PostStatus.scheduled.name,
+        'platforms': updatedPlatforms,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await _appendHistoryEntries(scheduledPostId, [
+        _historyEntry(
+          status: PostStatus.scheduled.name,
+          message: platformKeys == null || platformKeys.isEmpty
+              ? 'Post retry queued.'
+              : 'Retry queued for ${platformKeys.join(', ')}.',
+        ),
+      ]);
+
+      // Get the updated post
+      final refreshedDoc = await _firestore
+          .collection('scheduled_posts')
+          .doc(scheduledPostId)
+          .get();
+      if (!refreshedDoc.exists) {
+        throw Exception('Scheduled post not found');
+      }
+
+      final refreshedData = refreshedDoc.data() as Map<String, dynamic>;
+      final post = _mapToScheduledPost(refreshedDoc.id, refreshedData);
 
       developer.log('✅ Retried scheduled post: $scheduledPostId',
           name: 'FirestoreScheduledPostService');
@@ -391,6 +740,93 @@ class FirestoreScheduledPostService {
       return post;
     } catch (e) {
       developer.log('❌ Error retrying scheduled post: $e',
+          name: 'FirestoreScheduledPostService');
+      rethrow;
+    }
+  }
+
+  Future<ScheduledPost> retryExternalPlatforms(
+    String scheduledPostId, {
+    List<String>? platformKeys,
+  }) async {
+    try {
+      final doc = await _firestore
+          .collection('scheduled_posts')
+          .doc(scheduledPostId)
+          .get();
+      if (!doc.exists) {
+        throw Exception('Scheduled post not found');
+      }
+
+      final data = doc.data() as Map<String, dynamic>;
+      final videoId = data['videoId'] as String?;
+      if (videoId == null || videoId.isEmpty) {
+        throw Exception('Missing video ID for retry');
+      }
+
+      final caption = data['caption'] as String? ?? '';
+      final platforms = _mapPlatforms(data);
+      final targets = platforms.where((platform) {
+        final matchesRequestedPlatform = platformKeys == null ||
+            platformKeys.contains(platform.key);
+        final status = platform.status;
+        return platform.enabled &&
+            matchesRequestedPlatform &&
+            (status == PlatformStatus.failed ||
+                status == PlatformStatus.needsReauth);
+      }).toList();
+
+      if (targets.isEmpty) {
+        return _mapToScheduledPost(doc.id, data);
+      }
+
+      final targetKeys = targets.map((platform) => platform.key).toList();
+      await updatePlatformStatuses(
+        scheduledPostId,
+        status: PlatformStatus.publishing,
+        platformKeys: targetKeys,
+        clearErrors: true,
+      );
+
+      final results = await CrossPostService.instance.publishToAll(
+        requests: targets
+            .map(
+              (platform) => CrossPostRequest(
+                platformName: platform.key,
+                caption: platform.payload?['caption'] as String? ?? caption,
+                videoId: videoId,
+                scheduleAt: platform.scheduledAtUtc,
+              ),
+            )
+            .toList(),
+      );
+
+      await applyCrossPostResults(scheduledPostId, results);
+      await _firestore.collection('scheduled_posts').doc(scheduledPostId).update({
+        'status': PostStatus.published.name,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await _appendHistoryEntries(scheduledPostId, [
+        _historyEntry(
+          status: PostStatus.published.name,
+          message: 'External publish retry completed.',
+        ),
+      ]);
+
+      final refreshedDoc = await _firestore
+          .collection('scheduled_posts')
+          .doc(scheduledPostId)
+          .get();
+      if (!refreshedDoc.exists) {
+        throw Exception('Scheduled post not found');
+      }
+
+      return _mapToScheduledPost(
+        refreshedDoc.id,
+        refreshedDoc.data() as Map<String, dynamic>,
+      );
+    } catch (e) {
+      developer.log('❌ Error retrying external platforms: $e',
           name: 'FirestoreScheduledPostService');
       rethrow;
     }
@@ -652,8 +1088,7 @@ class FirestoreScheduledPostService {
       ));
     }
 
-    // Convert platform configs
-    final platforms = <PlatformConfig>[];
+    final platforms = _mapPlatforms(data);
 
     return ScheduledPost(
       id: id,
@@ -671,9 +1106,122 @@ class FirestoreScheduledPostService {
       media: media,
       platforms: platforms,
       schedule: schedule,
-      analyticsHints: Map<String, dynamic>.from(data['metadata'] ?? {}),
+      analyticsHints: {
+        ...Map<String, dynamic>.from(data['metadata'] ?? {}),
+        if (data['videoId'] != null) 'videoId': data['videoId'],
+        if (data['status'] != null) 'postStatus': data['status'],
+        'publishingHistory': (data['history'] as List<dynamic>? ?? const [])
+            .map((entry) => Map<String, dynamic>.from(entry as Map))
+            .toList(),
+      },
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
+  }
+
+  List<PlatformConfig> _mapPlatforms(Map<String, dynamic> data) {
+    final platforms = <PlatformConfig>[];
+    final rawPlatforms = data['platforms'] as List<dynamic>? ?? const [];
+    for (final rawPlatform in rawPlatforms) {
+      final platformData = Map<String, dynamic>.from(
+        rawPlatform as Map<String, dynamic>,
+      );
+      platforms.add(
+        PlatformConfig(
+          key: platformData['key'] as String? ?? '',
+          enabled: platformData['enabled'] as bool? ?? true,
+          payload: platformData['payload'] as Map<String, dynamic>?,
+          status: PlatformStatus.values.firstWhere(
+            (status) => status.name == platformData['status'],
+            orElse: () => PlatformStatus.pending,
+          ),
+          error: platformData['error'] as String?,
+          scheduledAtUtc: platformData['scheduledAtUtc'] is Timestamp
+              ? (platformData['scheduledAtUtc'] as Timestamp).toDate()
+              : null,
+        ),
+      );
+    }
+    return platforms;
+  }
+
+  bool _isReauthError(String? message) {
+    if (message == null) return false;
+    final normalized = message.toLowerCase();
+    return normalized.contains('401') ||
+        normalized.contains('403') ||
+        normalized.contains('auth') ||
+        normalized.contains('token') ||
+        normalized.contains('reauth');
+  }
+
+  PlatformStatus _platformStatusFromResult(CrossPostResult? result) {
+    if (result == null) {
+      return PlatformStatus.failed;
+    }
+    if (result.isSuccess) {
+      return PlatformStatus.published;
+    }
+    return _isReauthError(result.errorMessage)
+        ? PlatformStatus.needsReauth
+        : PlatformStatus.failed;
+  }
+
+  Future<void> _appendHistoryEntries(
+    String scheduledPostId,
+    List<Map<String, dynamic>> entries,
+  ) async {
+    if (entries.isEmpty) return;
+    await _firestore.collection('scheduled_posts').doc(scheduledPostId).update({
+      'history': FieldValue.arrayUnion(entries),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Map<String, dynamic> _historyEntry({
+    required String status,
+    required String message,
+    String? platform,
+  }) {
+    return {
+      'status': status,
+      if (platform != null) 'platform': platform,
+      'message': message,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+  }
+
+  String _defaultPostHistoryMessage(PostStatus status) {
+    switch (status) {
+      case PostStatus.scheduled:
+        return 'Post is scheduled.';
+      case PostStatus.publishing:
+        return 'Publishing started.';
+      case PostStatus.published:
+        return 'Publishing completed.';
+      case PostStatus.failed:
+        return 'Publishing failed.';
+      case PostStatus.canceled:
+        return 'Post canceled.';
+      case PostStatus.draft:
+        return 'Post saved as draft.';
+    }
+  }
+
+  String _defaultPlatformHistoryMessage(PlatformStatus status) {
+    switch (status) {
+      case PlatformStatus.pending:
+        return 'Destination queued.';
+      case PlatformStatus.publishing:
+        return 'Destination publish started.';
+      case PlatformStatus.published:
+        return 'Destination publish succeeded.';
+      case PlatformStatus.failed:
+        return 'Destination publish failed.';
+      case PlatformStatus.needsReauth:
+        return 'Destination requires reconnect.';
+      case PlatformStatus.canceled:
+        return 'Destination publish canceled.';
+    }
   }
 }

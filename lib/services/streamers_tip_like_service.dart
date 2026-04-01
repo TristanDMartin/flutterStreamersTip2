@@ -157,10 +157,14 @@ class StreamersTipLikeService extends ChangeNotifier {
 
       if (videoDoc.exists) {
         final data = videoDoc.data()!;
-        final likeCount = (data['likeCount'] ?? 0) as int;
+        final serverLikeCount = _readLikeCount(data);
 
         // Always update/create state (not just when currentState exists)
         final currentState = _localCache[videoId];
+        final likeCount = _coerceServerLikeCount(
+          serverLikeCount: serverLikeCount,
+          currentState: currentState,
+        );
         final updatedState = currentState != null
             ? currentState.copyWith(
                 likeCount: likeCount,
@@ -617,8 +621,11 @@ class StreamersTipLikeService extends ChangeNotifier {
         final future = videoDocRef.get().then((snapshot) {
           if (snapshot.exists) {
             final data = snapshot.data()!;
-            final likeCount = (data['likeCount'] ?? 0) as int;
             final currentState = _localCache[videoId];
+            final likeCount = _coerceServerLikeCount(
+              serverLikeCount: _readLikeCount(data),
+              currentState: currentState,
+            );
 
             if (currentState != null) {
               final updatedState = currentState.copyWith(
@@ -655,6 +662,24 @@ class StreamersTipLikeService extends ChangeNotifier {
     // Analytics tracking
     debugPrint(
         '📊 StreamersTipLikeService: like_tap - video: $videoId, source: $source');
+  }
+
+  int _readLikeCount(Map<String, dynamic> data) {
+    final dynamic rawLikeCount =
+        data['likes'] ?? data['likeCount'] ?? data['likesCount'];
+    return rawLikeCount is num ? rawLikeCount.toInt() : 0;
+  }
+
+  int _coerceServerLikeCount({
+    required int serverLikeCount,
+    required LikeState? currentState,
+  }) {
+    if (serverLikeCount > 0) return serverLikeCount;
+    if (currentState?.isLiked == true) {
+      final optimisticCount = currentState?.likeCount ?? 0;
+      return optimisticCount > 0 ? optimisticCount : 1;
+    }
+    return 0;
   }
 
   /// Dispose resources

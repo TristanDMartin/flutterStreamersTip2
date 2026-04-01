@@ -7,7 +7,7 @@ part 'share_payload.g.dart';
 ///
 /// Preloaded when video becomes active to ensure instant modal open
 @freezed
-class SharePayload with _$SharePayload {
+sealed class SharePayload with _$SharePayload {
   const factory SharePayload({
     required String videoId,
     required ShareLinks links,
@@ -23,7 +23,7 @@ class SharePayload with _$SharePayload {
 
 /// Share links for different platforms
 @freezed
-class ShareLinks with _$ShareLinks {
+sealed class ShareLinks with _$ShareLinks {
   const factory ShareLinks({
     required String webShareUrl,
     String? deepLink,
@@ -37,7 +37,7 @@ class ShareLinks with _$ShareLinks {
 
 /// Share permissions for the video
 @freezed
-class SharePermissions with _$SharePermissions {
+sealed class SharePermissions with _$SharePermissions {
   const factory SharePermissions({
     @Default(true) bool canShare,
     @Default(true) bool canDownload,
@@ -53,7 +53,7 @@ class SharePermissions with _$SharePermissions {
 
 /// Metadata for share content
 @freezed
-class ShareMetadata with _$ShareMetadata {
+sealed class ShareMetadata with _$ShareMetadata {
   const factory ShareMetadata({
     required String creatorUsername,
     required String creatorDisplayName,

@@ -201,7 +201,7 @@ class UnifiedMediaService {
         await thumbnailDir.create(recursive: true);
       }
 
-      final fileName = size != null ? '${videoId}_$size.jpg' : '${videoId}.jpg';
+      final fileName = size != null ? '${videoId}_$size.jpg' : '$videoId.jpg';
       final thumbnailFile = File('${thumbnailDir.path}/$fileName');
 
       // For now, create a simple placeholder

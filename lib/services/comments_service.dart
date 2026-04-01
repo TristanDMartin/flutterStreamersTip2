@@ -5,6 +5,16 @@ import '../models/comment.dart';
 import '../models/user.dart' as app_user;
 import 'event_trigger_service.dart';
 
+class VideoCommentsSnapshot {
+  final List<Comment> comments;
+  final Map<String, String> linkedThreadIds;
+
+  const VideoCommentsSnapshot({
+    required this.comments,
+    required this.linkedThreadIds,
+  });
+}
+
 class CommentsService {
   static final CommentsService _instance = CommentsService._internal();
   factory CommentsService() => _instance;
@@ -33,7 +43,12 @@ class CommentsService {
           .collection('comments')
           .get();
 
-      final actualCount = commentsSnapshot.docs.length;
+      final actualCount = commentsSnapshot.docs.where((doc) {
+        final data = doc.data();
+        final parentCommentId = (data['parentCommentId'] as String?)?.trim();
+        final deleted = data['deleted'] as bool? ?? false;
+        return (parentCommentId == null || parentCommentId.isEmpty) && !deleted;
+      }).length;
 
       // Update the video document's comments field
       await _firestore.collection('videos').doc(videoId).update({
@@ -47,21 +62,146 @@ class CommentsService {
     }
   }
 
+  CollectionReference<Map<String, dynamic>> _commentsCollection(String videoId) {
+    return _firestore.collection('videos').doc(videoId).collection('comments');
+  }
+
+  Future<VideoCommentsSnapshot> _buildCommentsSnapshotFromDocs({
+    required String videoId,
+    required Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  }) async {
+    final currentUserId = _auth.currentUser?.uid;
+    final topLevelDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    final repliesByParent = <String, List<Comment>>{};
+    final linkedThreadIds = <String, String>{};
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final parentCommentId = (data['parentCommentId'] as String?)?.trim();
+      if (parentCommentId != null && parentCommentId.isNotEmpty) {
+        final reply = _commentFromData(
+          id: doc.id,
+          data: data,
+          currentUserId: currentUserId,
+        );
+        repliesByParent.putIfAbsent(parentCommentId, () => <Comment>[]).add(reply);
+        continue;
+      }
+
+      final linkedThreadId = (data['linkedThreadId'] as String?)?.trim();
+      if (linkedThreadId != null && linkedThreadId.isNotEmpty) {
+        linkedThreadIds[doc.id] = linkedThreadId;
+      }
+      topLevelDocs.add(doc);
+    }
+
+    for (final entry in repliesByParent.entries) {
+      entry.value.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    }
+
+    final comments = topLevelDocs.map((doc) {
+      final data = doc.data();
+      final firstClassReplies = repliesByParent[doc.id];
+      final legacyReplies = _legacyRepliesFromData(
+        data,
+        currentUserId: currentUserId,
+      );
+
+      return _commentFromData(
+        id: doc.id,
+        data: data,
+        currentUserId: currentUserId,
+        replies: (firstClassReplies != null && firstClassReplies.isNotEmpty)
+            ? firstClassReplies
+            : legacyReplies,
+      );
+    }).toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    return VideoCommentsSnapshot(
+      comments: comments,
+      linkedThreadIds: linkedThreadIds,
+    );
+  }
+
+  Comment _commentFromData({
+    required String id,
+    required Map<String, dynamic> data,
+    required String? currentUserId,
+    List<Comment>? replies,
+  }) {
+    final likedBy = (data['likedBy'] as List<dynamic>?)?.cast<String>() ?? const [];
+    final likeCount = (data['likeCount'] as num?)?.toInt() ??
+        (data['likes'] as num?)?.toInt() ??
+        likedBy.length;
+    final deleted = data['deleted'] as bool? ?? false;
+    final rawTimestamp = data['timestamp'] ?? data['createdAt'];
+    final timestamp = rawTimestamp is Timestamp
+        ? rawTimestamp.toDate()
+        : DateTime.now();
+
+    return Comment(
+      id: id,
+      user: app_user.User.fromMap(
+        (data['user'] ?? data['author']) as Map<String, dynamic>,
+      ),
+      text: deleted ? '[deleted]' : (data['text'] ?? data['content'] ?? '') as String,
+      timestamp: timestamp,
+      likeCount: likeCount,
+      isLiked: currentUserId != null && likedBy.contains(currentUserId),
+      replies: replies,
+    );
+  }
+
+  List<Comment> _legacyRepliesFromData(
+    Map<String, dynamic> data, {
+    required String? currentUserId,
+  }) {
+    final hasCanonicalReplyContract = data.containsKey('replyCount') ||
+        data.containsKey('parentCommentId') ||
+        data.containsKey('deleted') ||
+        data.containsKey('likedBy');
+    if (hasCanonicalReplyContract) {
+      return const <Comment>[];
+    }
+
+    final rawReplies = (data['replies'] as List<dynamic>?) ?? const [];
+    return rawReplies
+        .whereType<Map<String, dynamic>>()
+        .map((reply) => _commentFromData(
+              id: (reply['id'] as String?)?.isNotEmpty == true
+                  ? reply['id'] as String
+                  : 'legacy-reply-${reply['timestamp'] ?? reply.hashCode}',
+              data: reply,
+              currentUserId: currentUserId,
+              replies: const [],
+            ))
+        .toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  }
+
+  Stream<VideoCommentsSnapshot> watchCommentsForVideo(String videoId) {
+    return _commentsCollection(videoId)
+        .orderBy('timestamp', descending: true)
+        .limit(200)
+        .snapshots()
+        .asyncMap((snapshot) => _buildCommentsSnapshotFromDocs(
+              videoId: videoId,
+              docs: snapshot.docs,
+            ));
+  }
+
   /// Fetch comments for a video
   Future<List<Comment>> fetchCommentsForVideo(String videoId) async {
     try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) {
+      if (_auth.currentUser == null) {
         // print('User not authenticated, returning mock data');
         return CommentMockData.mockData();
       }
 
-      final snapshot = await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .collection('comments')
+      final snapshot = await _commentsCollection(videoId)
           .orderBy('timestamp', descending: true)
-          .limit(50)
+          .limit(200)
           .get();
 
       if (snapshot.docs.isEmpty) {
@@ -69,20 +209,11 @@ class CommentsService {
         return CommentMockData.mockData();
       }
 
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return Comment(
-          id: doc.id,
-          user: app_user.User.fromMap(data['user']),
-          text: data['text'] ?? '',
-          timestamp: (data['timestamp'] as Timestamp).toDate(),
-          likeCount: data['likeCount'] ?? 0,
-          isLiked: data['isLiked'] ?? false,
-          replies: (data['replies'] as List<dynamic>?)
-              ?.map((reply) => Comment.fromJson(reply))
-              .toList(),
-        );
-      }).toList();
+      final commentsSnapshot = await _buildCommentsSnapshotFromDocs(
+        videoId: videoId,
+        docs: snapshot.docs,
+      );
+      return commentsSnapshot.comments;
     } catch (e) {
       // print('Error fetching comments: $e');
       // Return mock data as fallback for better UX
@@ -113,11 +244,12 @@ class CommentsService {
         replies: [],
       );
 
-      final docRef = await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .collection('comments')
-          .add(comment.toJson());
+      final docRef = await _commentsCollection(videoId).add({
+        ...comment.toJson(),
+        'parentCommentId': null,
+        'likedBy': const <String>[],
+        'replyCount': 0,
+      });
 
       final commentWithId = comment.copyWith(id: docRef.id);
 
@@ -160,18 +292,33 @@ class CommentsService {
         replies: [],
       );
 
-      final parentRef = _firestore
-          .collection('videos')
-          .doc(videoId)
-          .collection('comments')
-          .doc(parentId);
+      final parentRef = _commentsCollection(videoId).doc(parentId);
+      final replyRef = _commentsCollection(videoId).doc();
 
-      await parentRef.update({
-        'replies': FieldValue.arrayUnion([reply.toJson()]),
+      await _firestore.runTransaction((transaction) async {
+        final parentDoc = await transaction.get(parentRef);
+        if (!parentDoc.exists) {
+          throw Exception('Parent comment not found');
+        }
+        final parentData = parentDoc.data();
+        final parentDeleted = parentData?['deleted'] as bool? ?? false;
+        if (parentDeleted) {
+          throw Exception('Cannot reply to a deleted comment');
+        }
+
+        transaction.set(replyRef, {
+          ...reply.toJson(),
+          'parentCommentId': parentId,
+          'likedBy': const <String>[],
+          'replyCount': 0,
+        });
+
+        transaction.update(parentRef, {
+          'replyCount': FieldValue.increment(1),
+        });
       });
 
-      return reply.copyWith(
-          id: 'reply-${DateTime.now().millisecondsSinceEpoch}');
+      return reply.copyWith(id: replyRef.id);
     } catch (e) {
       // print('Error adding reply: $e');
       // Provide more specific error messages
@@ -195,22 +342,25 @@ class CommentsService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return false;
 
-      final commentRef = _firestore
-          .collection('videos')
-          .doc(videoId)
-          .collection('comments')
-          .doc(commentId);
+      final commentRef = _commentsCollection(videoId).doc(commentId);
 
       final doc = await commentRef.get();
       if (!doc.exists) return false;
 
       final data = doc.data()!;
-      final isLiked = data['isLiked'] ?? false;
-      final likeCount = data['likeCount'] ?? 0;
+      final likedBy = List<String>.from(data['likedBy'] ?? const []);
+      final isLiked = likedBy.contains(currentUser.uid);
+
+      if (isLiked) {
+        likedBy.remove(currentUser.uid);
+      } else {
+        likedBy.add(currentUser.uid);
+      }
 
       await commentRef.update({
-        'isLiked': !isLiked,
-        'likeCount': isLiked ? likeCount - 1 : likeCount + 1,
+        'likedBy': likedBy,
+        'likeCount': likedBy.length,
+        'isLiked': false,
       });
 
       return true;
@@ -242,6 +392,8 @@ class CommentsService {
 
       final commentData = commentDoc.data()!;
       final commentAuthorId = commentData['user']?['id'];
+      final parentCommentId = (commentData['parentCommentId'] as String?)?.trim();
+      final alreadyDeleted = commentData['deleted'] as bool? ?? false;
 
       // Check if current user can delete this comment
       bool canDelete = false;
@@ -260,18 +412,38 @@ class CommentsService {
         throw CommentError.unauthorized;
       }
 
-      // Delete the comment
-      await _firestore
-          .collection('videos')
-          .doc(videoId)
-          .collection('comments')
-          .doc(commentId)
-          .delete();
+      if (alreadyDeleted) {
+        return true;
+      }
 
-      // Trigger comment delete event to decrement counter
-      await _eventTriggerService?.triggerCommentDeleteEvent(
-        videoId: videoId,
-      );
+      await _firestore.runTransaction((transaction) async {
+        transaction.update(commentDoc.reference, {
+          'deleted': true,
+          'text': '[deleted]',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        if (parentCommentId != null && parentCommentId.isNotEmpty) {
+          final parentRef = _commentsCollection(videoId).doc(parentCommentId);
+          final parentDoc = await transaction.get(parentRef);
+          if (parentDoc.exists) {
+            final parentData = parentDoc.data();
+            final currentReplyCount =
+                (parentData?['replyCount'] as num?)?.toInt() ?? 0;
+            transaction.update(parentRef, {
+              'replyCount': currentReplyCount > 0 ? currentReplyCount - 1 : 0,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
+        }
+      });
+
+      // Only top-level comments affect the video-level comment counter.
+      if (parentCommentId == null || parentCommentId.isEmpty) {
+        await _eventTriggerService?.triggerCommentDeleteEvent(
+          videoId: videoId,
+        );
+      }
 
       return true;
     } catch (e) {
@@ -280,6 +452,45 @@ class CommentsService {
       }
       // print('Error deleting comment: $e');
       return false;
+    }
+  }
+
+  /// Link comment to thread (updates Firestore directly, doesn't modify Comment model)
+  Future<bool> linkCommentToThread({
+    required String videoId,
+    required String commentId,
+    required String threadId,
+  }) async {
+    try {
+      await _firestore
+          .collection('videos')
+          .doc(videoId)
+          .collection('comments')
+          .doc(commentId)
+          .update({'linkedThreadId': threadId});
+      debugPrint('✅ Comment $commentId linked to thread $threadId');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error linking comment to thread: $e');
+      return false;
+    }
+  }
+
+  /// Get linked thread ID for a comment (queries Firestore directly)
+  /// This avoids needing to modify the Comment freezed model
+  Future<String?> getLinkedThreadId(String videoId, String commentId) async {
+    try {
+      final doc = await _firestore
+          .collection('videos')
+          .doc(videoId)
+          .collection('comments')
+          .doc(commentId)
+          .get();
+      if (!doc.exists) return null;
+      return doc.data()?['linkedThreadId'] as String?;
+    } catch (e) {
+      debugPrint('❌ Error getting linked thread ID: $e');
+      return null;
     }
   }
 

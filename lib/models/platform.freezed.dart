@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,93 +9,56 @@ part of 'platform.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-Platform _$PlatformFromJson(Map<String, dynamic> json) {
-  return _Platform.fromJson(json);
-}
 
 /// @nodoc
 mixin _$Platform {
-  String get id => throw _privateConstructorUsedError;
-  PlatformType get type => throw _privateConstructorUsedError;
-  String get username => throw _privateConstructorUsedError;
-  int get followers => throw _privateConstructorUsedError;
-  String? get url => throw _privateConstructorUsedError;
+  String get id;
+  PlatformType get type;
+  String get username;
+  int get followers;
+  String? get url;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $PlatformCopyWith<Platform> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $PlatformCopyWith<$Res> {
-  factory $PlatformCopyWith(Platform value, $Res Function(Platform) then) =
-      _$PlatformCopyWithImpl<$Res, Platform>;
-  @useResult
-  $Res call(
-      {String id,
-      PlatformType type,
-      String username,
-      int followers,
-      String? url});
-}
-
-/// @nodoc
-class _$PlatformCopyWithImpl<$Res, $Val extends Platform>
-    implements $PlatformCopyWith<$Res> {
-  _$PlatformCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of Platform
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $PlatformCopyWith<Platform> get copyWith =>
+      _$PlatformCopyWithImpl<Platform>(this as Platform, _$identity);
+
+  /// Serializes this Platform to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? id = null,
-    Object? type = null,
-    Object? username = null,
-    Object? followers = null,
-    Object? url = freezed,
-  }) {
-    return _then(_value.copyWith(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      type: null == type
-          ? _value.type
-          : type // ignore: cast_nullable_to_non_nullable
-              as PlatformType,
-      username: null == username
-          ? _value.username
-          : username // ignore: cast_nullable_to_non_nullable
-              as String,
-      followers: null == followers
-          ? _value.followers
-          : followers // ignore: cast_nullable_to_non_nullable
-              as int,
-      url: freezed == url
-          ? _value.url
-          : url // ignore: cast_nullable_to_non_nullable
-              as String?,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is Platform &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.type, type) || other.type == type) &&
+            (identical(other.username, username) ||
+                other.username == username) &&
+            (identical(other.followers, followers) ||
+                other.followers == followers) &&
+            (identical(other.url, url) || other.url == url));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode =>
+      Object.hash(runtimeType, id, type, username, followers, url);
+
+  @override
+  String toString() {
+    return 'Platform(id: $id, type: $type, username: $username, followers: $followers, url: $url)';
   }
 }
 
 /// @nodoc
-abstract class _$$PlatformImplCopyWith<$Res>
-    implements $PlatformCopyWith<$Res> {
-  factory _$$PlatformImplCopyWith(
-          _$PlatformImpl value, $Res Function(_$PlatformImpl) then) =
-      __$$PlatformImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $PlatformCopyWith<$Res> {
+  factory $PlatformCopyWith(Platform value, $Res Function(Platform) _then) =
+      _$PlatformCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -106,13 +69,14 @@ abstract class _$$PlatformImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$PlatformImplCopyWithImpl<$Res>
-    extends _$PlatformCopyWithImpl<$Res, _$PlatformImpl>
-    implements _$$PlatformImplCopyWith<$Res> {
-  __$$PlatformImplCopyWithImpl(
-      _$PlatformImpl _value, $Res Function(_$PlatformImpl) _then)
-      : super(_value, _then);
+class _$PlatformCopyWithImpl<$Res> implements $PlatformCopyWith<$Res> {
+  _$PlatformCopyWithImpl(this._self, this._then);
 
+  final Platform _self;
+  final $Res Function(Platform) _then;
+
+  /// Create a copy of Platform
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -122,43 +86,204 @@ class __$$PlatformImplCopyWithImpl<$Res>
     Object? followers = null,
     Object? url = freezed,
   }) {
-    return _then(_$PlatformImpl(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       type: null == type
-          ? _value.type
+          ? _self.type
           : type // ignore: cast_nullable_to_non_nullable
               as PlatformType,
       username: null == username
-          ? _value.username
+          ? _self.username
           : username // ignore: cast_nullable_to_non_nullable
               as String,
       followers: null == followers
-          ? _value.followers
+          ? _self.followers
           : followers // ignore: cast_nullable_to_non_nullable
               as int,
       url: freezed == url
-          ? _value.url
+          ? _self.url
           : url // ignore: cast_nullable_to_non_nullable
               as String?,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [Platform].
+extension PlatformPatterns on Platform {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_Platform value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Platform() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_Platform value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Platform():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_Platform value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Platform() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(String id, PlatformType type, String username,
+            int followers, String? url)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Platform() when $default != null:
+        return $default(
+            _that.id, _that.type, _that.username, _that.followers, _that.url);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(String id, PlatformType type, String username,
+            int followers, String? url)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Platform():
+        return $default(
+            _that.id, _that.type, _that.username, _that.followers, _that.url);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(String id, PlatformType type, String username,
+            int followers, String? url)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Platform() when $default != null:
+        return $default(
+            _that.id, _that.type, _that.username, _that.followers, _that.url);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$PlatformImpl implements _Platform {
-  const _$PlatformImpl(
+class _Platform implements Platform {
+  const _Platform(
       {required this.id,
       required this.type,
       required this.username,
       this.followers = 0,
       this.url});
-
-  factory _$PlatformImpl.fromJson(Map<String, dynamic> json) =>
-      _$$PlatformImplFromJson(json);
+  factory _Platform.fromJson(Map<String, dynamic> json) =>
+      _$PlatformFromJson(json);
 
   @override
   final String id;
@@ -172,16 +297,26 @@ class _$PlatformImpl implements _Platform {
   @override
   final String? url;
 
+  /// Create a copy of Platform
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'Platform(id: $id, type: $type, username: $username, followers: $followers, url: $url)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$PlatformCopyWith<_Platform> get copyWith =>
+      __$PlatformCopyWithImpl<_Platform>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$PlatformToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$PlatformImpl &&
+            other is _Platform &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.type, type) || other.type == type) &&
             (identical(other.username, username) ||
@@ -191,48 +326,73 @@ class _$PlatformImpl implements _Platform {
             (identical(other.url, url) || other.url == url));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode =>
       Object.hash(runtimeType, id, type, username, followers, url);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$PlatformImplCopyWith<_$PlatformImpl> get copyWith =>
-      __$$PlatformImplCopyWithImpl<_$PlatformImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$PlatformImplToJson(
-      this,
-    );
+  String toString() {
+    return 'Platform(id: $id, type: $type, username: $username, followers: $followers, url: $url)';
   }
 }
 
-abstract class _Platform implements Platform {
-  const factory _Platform(
-      {required final String id,
-      required final PlatformType type,
-      required final String username,
-      final int followers,
-      final String? url}) = _$PlatformImpl;
-
-  factory _Platform.fromJson(Map<String, dynamic> json) =
-      _$PlatformImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$PlatformCopyWith<$Res>
+    implements $PlatformCopyWith<$Res> {
+  factory _$PlatformCopyWith(_Platform value, $Res Function(_Platform) _then) =
+      __$PlatformCopyWithImpl;
   @override
-  String get id;
-  @override
-  PlatformType get type;
-  @override
-  String get username;
-  @override
-  int get followers;
-  @override
-  String? get url;
-  @override
-  @JsonKey(ignore: true)
-  _$$PlatformImplCopyWith<_$PlatformImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String id,
+      PlatformType type,
+      String username,
+      int followers,
+      String? url});
 }
+
+/// @nodoc
+class __$PlatformCopyWithImpl<$Res> implements _$PlatformCopyWith<$Res> {
+  __$PlatformCopyWithImpl(this._self, this._then);
+
+  final _Platform _self;
+  final $Res Function(_Platform) _then;
+
+  /// Create a copy of Platform
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = null,
+    Object? type = null,
+    Object? username = null,
+    Object? followers = null,
+    Object? url = freezed,
+  }) {
+    return _then(_Platform(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      type: null == type
+          ? _self.type
+          : type // ignore: cast_nullable_to_non_nullable
+              as PlatformType,
+      username: null == username
+          ? _self.username
+          : username // ignore: cast_nullable_to_non_nullable
+              as String,
+      followers: null == followers
+          ? _self.followers
+          : followers // ignore: cast_nullable_to_non_nullable
+              as int,
+      url: freezed == url
+          ? _self.url
+          : url // ignore: cast_nullable_to_non_nullable
+              as String?,
+    ));
+  }
+}
+
+// dart format on

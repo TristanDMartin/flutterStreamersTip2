@@ -1,7 +1,11 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'local_draft_service.dart';
 import 'chat_service.dart';
 
@@ -19,6 +23,7 @@ class DraftSharingService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
   final LocalDraftService _localDraftService = LocalDraftService();
   final ChatService _chatService = ChatService.shared;
 
@@ -88,20 +93,41 @@ class DraftSharingService {
         return false;
       }
 
-      // 2. Create shared draft document in Firestore (only with verified recipients)
+      // 2. Persist the draft media to a canonical storage path before sharing.
+      final persistedAssets = await _persistDraftAssets(
+        ownerId: currentUser.uid,
+        draftId: draftId,
+        draft: draft,
+      );
+
+      if (persistedAssets['videoUrl']?.isNotEmpty != true) {
+        debugPrint('❌ Failed to persist shared draft media');
+        return false;
+      }
+
+      // 3. Create shared draft document in Firestore (only with verified recipients)
       final sharedDraftId = _generateSharedDraftId();
       if (sharedDraftId.isEmpty) {
         debugPrint('❌ Failed to generate shared draft ID');
         return false;
       }
 
+      final duration = _resolveDraftDuration(draft);
+      final persistedThumbnailUrl = persistedAssets['thumbnailUrl'] ?? '';
+
       final sharedDraftData = {
         'id': sharedDraftId,
+        'canonicalDraftId': draftId,
         'originalDraftId': draftId,
         'sharerId': currentUser.uid,
         'sharerUsername': currentUser.displayName ?? 'Unknown',
         'sharerAvatarUrl': currentUser.photoURL ?? '',
         'recipients': verifiedConnectionIds, // Use verified recipients only
+        'draftTitle': (draft['caption'] as String?)?.trim().isNotEmpty == true
+            ? draft['caption']
+            : 'Untitled Draft',
+        'draftThumbnailUrl': persistedThumbnailUrl,
+        'draftDuration': duration,
         'caption': draft['caption'],
         'hashtags': draft['hashtags'],
         'category': draft['category'],
@@ -112,21 +138,36 @@ class DraftSharingService {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'metadata': draft['metadata'],
-        // Note: Video file is not uploaded to Firestore, only metadata
-        // Recipients will need to request the actual video file
+        'videoUrl': persistedAssets['videoUrl'],
+        'thumbnailUrl': persistedThumbnailUrl,
+        'videoStoragePath': persistedAssets['videoStoragePath'],
+        'thumbnailStoragePath': persistedAssets['thumbnailStoragePath'],
+        'assetSource': 'firebase_storage',
+        'assetPersistedAt': FieldValue.serverTimestamp(),
       };
 
-      // 3. Save shared draft to Firestore
+      // 4. Save shared draft to Firestore
       await _firestore
           .collection('shared_drafts')
           .doc(sharedDraftId)
           .set(sharedDraftData);
 
-      // 4. Update local draft to mark as shared
+      // 5. Update local draft to mark as shared
       await _localDraftService.shareDraftWithConnections(
           draftId, verifiedConnectionIds);
+      await _localDraftService.updateDraftFields(draftId, {
+        'sharedDraftId': sharedDraftId,
+        'canonicalDraftId': draftId,
+        'videoUrl': persistedAssets['videoUrl'],
+        'thumbnailUrl': persistedThumbnailUrl,
+        'metadata': {
+          'videoStoragePath': persistedAssets['videoStoragePath'],
+          'thumbnailStoragePath': persistedAssets['thumbnailStoragePath'],
+          'assetSource': 'firebase_storage',
+        },
+      });
 
-      // 5. Create chat conversations and send draft messages for each verified recipient
+      // 6. Create chat conversations and send draft messages for each verified recipient
       final failedRecipients = <String>[];
       for (final recipientId in verifiedConnectionIds) {
         try {
@@ -134,6 +175,7 @@ class DraftSharingService {
             sharedDraftId: sharedDraftId,
             recipientId: recipientId,
             draft: draft,
+            persistedAssets: persistedAssets,
             message: message,
           );
         } catch (e) {
@@ -147,7 +189,7 @@ class DraftSharingService {
         // Don't fail the entire operation if some chats fail, but log it
       }
 
-      // 6. Create notification entries for each verified recipient
+      // 7. Create notification entries for each verified recipient
       await _createShareNotifications(sharedDraftId, verifiedConnectionIds, message);
 
       debugPrint('✅ Draft shared successfully with ${verifiedConnectionIds.length} verified connections');
@@ -268,9 +310,8 @@ class DraftSharingService {
 
       // 3. Request video file from sharer
       final videoFile = await _requestVideoFileFromSharer(
-        sharedDraftId,
-        sharedDraftData['originalDraftId'],
-        sharedDraftData['sharerId'],
+        sharedDraftId: sharedDraftId,
+        sharedDraftData: sharedDraftData,
       );
 
       if (videoFile == null) {
@@ -290,6 +331,9 @@ class DraftSharingService {
           'sharedFrom': sharedDraftData['sharerId'],
           'sharedDraftId': sharedDraftId,
           'originalDraftId': sharedDraftData['originalDraftId'],
+          'canonicalDraftId': sharedDraftData['canonicalDraftId'],
+          'videoUrl': sharedDraftData['videoUrl'],
+          'thumbnailUrl': sharedDraftData['thumbnailUrl'],
           'acceptedAt': DateTime.now().toIso8601String(),
         },
       );
@@ -345,23 +389,35 @@ class DraftSharingService {
   }
 
   /// Request video file from sharer
-  Future<File?> _requestVideoFileFromSharer(
-    String sharedDraftId,
-    String originalDraftId,
-    String sharerId,
-  ) async {
+  Future<File?> _requestVideoFileFromSharer({
+    required String sharedDraftId,
+    required Map<String, dynamic> sharedDraftData,
+  }) async {
     try {
-      debugPrint('📤 Requesting video file from sharer: $sharerId');
+      final videoUrl = sharedDraftData['videoUrl'] as String?;
+      if (videoUrl == null || videoUrl.isEmpty) {
+        debugPrint('⚠️ Shared draft is missing a canonical video URL');
+        return null;
+      }
 
-      // Video file transfer implementation
-      // This would involve:
-      // 1. Direct peer-to-peer transfer
-      // 2. Temporary upload to Firebase Storage
-      // 3. Real-time file sharing
+      debugPrint('📥 Downloading shared draft video from canonical storage');
 
-      // Currently not implemented - would require additional infrastructure
-      debugPrint('⚠️ Video file transfer not implemented yet');
-      return null;
+      final response = await http.get(Uri.parse(videoUrl));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        debugPrint('❌ Failed to download shared draft video: ${response.statusCode}');
+        return null;
+      }
+
+      final tempDir = await getTemporaryDirectory();
+      final extension = path.extension(Uri.parse(videoUrl).path).isNotEmpty
+          ? path.extension(Uri.parse(videoUrl).path)
+          : '.mp4';
+      final localFile = File(
+        path.join(tempDir.path, '${sharedDraftId}_accepted$extension'),
+      );
+
+      await localFile.writeAsBytes(response.bodyBytes, flush: true);
+      return localFile;
     } catch (e) {
       debugPrint('❌ Error requesting video file: $e');
       return null;
@@ -427,6 +483,7 @@ class DraftSharingService {
     required String sharedDraftId,
     required String recipientId,
     required Map<String, dynamic> draft,
+    required Map<String, String> persistedAssets,
     String? message,
   }) async {
     try {
@@ -460,10 +517,13 @@ class DraftSharingService {
         'text': message ?? 'Check out this draft and share your feedback!',
         'draftId': sharedDraftId,
         'originalDraftId': originalDraftId,
+        'canonicalDraftId': draft['id'] ?? '',
         'caption': draft['caption'] ?? '',
         'hashtags': draft['hashtags'] ?? [],
-        'thumbnailPath': draft['thumbnailPath'] ?? '',
-        'videoPath': draft['videoPath'] ?? '',
+        'thumbnailUrl': persistedAssets['thumbnailUrl'] ?? '',
+        'videoUrl': persistedAssets['videoUrl'] ?? '',
+        'videoStoragePath': persistedAssets['videoStoragePath'] ?? '',
+        'thumbnailStoragePath': persistedAssets['thumbnailStoragePath'] ?? '',
         'timestamp': FieldValue.serverTimestamp(),
         'read': false,
         'isRead': false,
@@ -495,6 +555,86 @@ class DraftSharingService {
       // Re-throw to allow caller to handle
       rethrow;
     }
+  }
+
+  Future<Map<String, dynamic>> getSharedDraftById(String sharedDraftId) async {
+    try {
+      final doc =
+          await _firestore.collection('shared_drafts').doc(sharedDraftId).get();
+      if (!doc.exists || doc.data() == null) {
+        return <String, dynamic>{};
+      }
+      return {
+        'id': doc.id,
+        ...doc.data()!,
+      };
+    } catch (e) {
+      debugPrint('❌ Error loading shared draft by ID: $e');
+      return <String, dynamic>{};
+    }
+  }
+
+  Future<Map<String, String>> _persistDraftAssets({
+    required String ownerId,
+    required String draftId,
+    required Map<String, dynamic> draft,
+  }) async {
+    final videoPath = draft['videoPath'] as String?;
+    if (videoPath == null || videoPath.isEmpty) {
+      debugPrint('❌ Draft is missing a local video path');
+      return const <String, String>{};
+    }
+
+    final videoFile = File(videoPath);
+    if (!await videoFile.exists()) {
+      debugPrint('❌ Draft video file does not exist: $videoPath');
+      return const <String, String>{};
+    }
+
+    final videoExtension = path.extension(videoPath).isNotEmpty
+        ? path.extension(videoPath)
+        : '.mp4';
+    final videoStoragePath =
+        'draft_assets/$ownerId/$draftId/video$videoExtension';
+    final videoRef = _storage.ref().child(videoStoragePath);
+    final videoSnapshot = await videoRef.putFile(videoFile);
+    final videoUrl = await videoSnapshot.ref.getDownloadURL();
+
+    String thumbnailUrl = '';
+    String thumbnailStoragePath = '';
+    final thumbnailPath = draft['thumbnailPath'] as String?;
+    if (thumbnailPath != null && thumbnailPath.isNotEmpty) {
+      final thumbnailFile = File(thumbnailPath);
+      if (await thumbnailFile.exists()) {
+        final thumbnailExtension = path.extension(thumbnailPath).isNotEmpty
+            ? path.extension(thumbnailPath)
+            : '.jpg';
+        thumbnailStoragePath =
+            'draft_assets/$ownerId/$draftId/thumbnail$thumbnailExtension';
+        final thumbnailRef = _storage.ref().child(thumbnailStoragePath);
+        final thumbnailSnapshot = await thumbnailRef.putFile(thumbnailFile);
+        thumbnailUrl = await thumbnailSnapshot.ref.getDownloadURL();
+      }
+    }
+
+    return <String, String>{
+      'videoUrl': videoUrl,
+      'thumbnailUrl': thumbnailUrl,
+      'videoStoragePath': videoStoragePath,
+      'thumbnailStoragePath': thumbnailStoragePath,
+    };
+  }
+
+  int _resolveDraftDuration(Map<String, dynamic> draft) {
+    final metadata = draft['metadata'];
+    final duration = metadata is Map<String, dynamic> ? metadata['duration'] : null;
+    if (duration is int) {
+      return duration;
+    }
+    if (duration is num) {
+      return duration.round();
+    }
+    return 0;
   }
 
   String _generateSharedDraftId() {

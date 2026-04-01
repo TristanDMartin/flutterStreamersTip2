@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../widgets/streamer_card_view.dart';
 import '../models/user.dart';
+import 'profile_link_service.dart';
 import 'unified_avatar_service.dart' as nav;
 // import 'package:firebase_auth/firebase_auth.dart' as fa; // Not used here
 
@@ -21,15 +22,15 @@ class URLHandlerService extends ChangeNotifier {
   URLHandlerService._internal();
 
   void handleURL(String url) {
-    // print("🔗 URLHandlerService handling URL: $url");
+    final normalizedUrl = ProfileLinkService.normalizeIncomingProfileLink(url);
     // cspell:ignore streamerstip
-    if (!url.startsWith("streamerstip://")) {
+    if (!normalizedUrl.startsWith("streamerstip://")) {
       // print("❌ Not a streamerstip URL: $url");
       return;
     }
 
-    _pendingURL = url;
-    _processURL(url);
+    _pendingURL = normalizedUrl;
+    _processURL(normalizedUrl);
   }
 
   void _processURL(String url) {
@@ -65,9 +66,8 @@ class URLHandlerService extends ChangeNotifier {
 
       case "profile":
         if (pathComponents.length > 1) {
-          final username = pathComponents[1];
-          // print("👤 Processing profile for username: $username");
-          _handleProfile(username);
+          final identifier = pathComponents[1];
+          _handleProfile(identifier);
         } else {
           // print("❌ Missing username in profile URL");
           _isProcessingURL = false;
@@ -96,10 +96,14 @@ class URLHandlerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _handleProfile(String username) async {
+  Future<void> _handleProfile(String identifier) async {
     try {
-      final streamerCard = await _loadUserByUsername(username);
-      // print("✅ URLHandlerService: Loaded streamer card for username: $username");
+      StreamerCard streamerCard;
+      if (identifier.length >= 20) {
+        streamerCard = await _loadUserForStreamerCard(identifier);
+      } else {
+        streamerCard = await _loadUserByUsername(identifier);
+      }
 
       // Navigate to the streamer card view
       await _navigateToStreamerCard(streamerCard);
@@ -170,10 +174,6 @@ class URLHandlerService extends ChangeNotifier {
             userId: user.id,
             currentUserId: null,
             onDismiss: () => Navigator.of(context).pop(),
-            onFollow: (userId) async {},
-            onMessage: (userId) {},
-            onNavigateToTab: (tabName) {},
-            onShare: (userId) {},
           ),
           fullscreenDialog: true,
         ),

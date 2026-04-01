@@ -34,7 +34,12 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
       });
       return;
     }
-
+    if (kDebugMode) {
+      try {
+        final token = await user.getIdToken(true);
+        debugPrint('🔑 Firebase ID Token (for Mux Worker test): $token');
+      } catch (_) {}
+    }
     try {
       final doc = await _firestore.collection('users').doc(user.uid).get();
       if (mounted && doc.exists) {
@@ -59,13 +64,15 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
 
     if (savedAccounts.isEmpty || savedAccounts.length == 1) {
       debugPrint('⚠️ Only one account, triggering Add Account instead');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add another account to enable switching'),
-          backgroundColor: Colors.blue,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Add another account to enable switching'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
       _addAccount();
       return;
     }
@@ -179,16 +186,17 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
       ),
     );
 
-    if (confirm == true && mounted) {
+    if (confirm == true) {
       await firebase_auth.FirebaseAuth.instance.signOut();
-      Navigator.of(context).pop();
-
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (context) => const TikTokAccountSwitcherModal(),
-      );
+      if (mounted) {
+        Navigator.of(context).pop();
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => const TikTokAccountSwitcherModal(),
+        );
+      }
     }
   }
 

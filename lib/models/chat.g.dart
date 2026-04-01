@@ -6,7 +6,7 @@ part of 'chat.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$ChatImpl _$$ChatImplFromJson(Map<String, dynamic> json) => _$ChatImpl(
+_Chat _$ChatFromJson(Map<String, dynamic> json) => _Chat(
       id: json['id'] as String?,
       participants: (json['participants'] as List<dynamic>)
           .map((e) => e as String)
@@ -27,8 +27,7 @@ _$ChatImpl _$$ChatImplFromJson(Map<String, dynamic> json) => _$ChatImpl(
       metadata: json['metadata'] as Map<String, dynamic>?,
     );
 
-Map<String, dynamic> _$$ChatImplToJson(_$ChatImpl instance) =>
-    <String, dynamic>{
+Map<String, dynamic> _$ChatToJson(_Chat instance) => <String, dynamic>{
       'id': instance.id,
       'participants': instance.participants,
       'lastMessage': instance.lastMessage,

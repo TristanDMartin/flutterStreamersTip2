@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'creator_stats_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -246,6 +247,10 @@ class TikTokLikeService extends ChangeNotifier {
       }
 
       await batch.commit();
+      await CreatorStatsSyncService().syncLikeToCreator(
+        videoId: operation.videoId,
+        delta: operation.action == LikeAction.like ? 1 : -1,
+      );
 
       // Update local state to remove loading
       final currentState = getLikeState(operation.videoId);

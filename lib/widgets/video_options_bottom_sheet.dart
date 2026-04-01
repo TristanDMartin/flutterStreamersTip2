@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,18 +15,13 @@ enum VideoOption {
   editCaption,
   pinToProfile,
   unpinFromProfile,
-  addToSeries,
-  analytics,
   copyLink,
   share,
   delete,
-  promote,
   addToFavorites,
   removeFromFavorites,
   notInterested,
   report,
-  remix,
-  moderatorTools,
 }
 
 class VideoOptionsBottomSheet extends ConsumerStatefulWidget {
@@ -37,12 +31,12 @@ class VideoOptionsBottomSheet extends ConsumerStatefulWidget {
   final VoidCallback? onVideoUpdated;
 
   const VideoOptionsBottomSheet({
-    Key? key,
+    super.key,
     required this.video,
     required this.currentUser,
     this.onVideoDeleted,
     this.onVideoUpdated,
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<VideoOptionsBottomSheet> createState() =>
@@ -66,14 +60,9 @@ class _VideoOptionsBottomSheetState
       } else {
         options.add(VideoOption.pinToProfile);
       }
-      options.add(VideoOption.addToSeries);
-      options.add(VideoOption.analytics);
       options.add(VideoOption.copyLink);
       options.add(VideoOption.share);
       options.add(VideoOption.delete);
-      if (widget.currentUser.role == 'creator') {
-        options.add(VideoOption.promote);
-      }
     } else {
       if (widget.video.allowSave) {
         options.add(VideoOption.saveVideo);
@@ -87,12 +76,6 @@ class _VideoOptionsBottomSheetState
       options.add(VideoOption.report);
       options.add(VideoOption.copyLink);
       options.add(VideoOption.share);
-      if (widget.video.allowRemix) {
-        options.add(VideoOption.remix);
-      }
-    }
-    if (widget.currentUser.role == 'moderator') {
-      options.add(VideoOption.moderatorTools);
     }
     return options;
   }
@@ -109,18 +92,12 @@ class _VideoOptionsBottomSheetState
         return Icons.push_pin_outlined;
       case VideoOption.unpinFromProfile:
         return Icons.push_pin;
-      case VideoOption.addToSeries:
-        return Icons.playlist_add_outlined;
-      case VideoOption.analytics:
-        return Icons.analytics_outlined;
       case VideoOption.copyLink:
         return Icons.link_outlined;
       case VideoOption.share:
         return Icons.share_outlined;
       case VideoOption.delete:
         return Icons.delete_outline;
-      case VideoOption.promote:
-        return Icons.campaign_outlined;
       case VideoOption.addToFavorites:
         return Icons.favorite_border;
       case VideoOption.removeFromFavorites:
@@ -129,10 +106,6 @@ class _VideoOptionsBottomSheetState
         return Icons.not_interested_outlined;
       case VideoOption.report:
         return Icons.flag_outlined;
-      case VideoOption.remix:
-        return Icons.movie_creation_outlined;
-      case VideoOption.moderatorTools:
-        return Icons.admin_panel_settings_outlined;
     }
   }
 
@@ -148,18 +121,12 @@ class _VideoOptionsBottomSheetState
         return 'Pin to profile';
       case VideoOption.unpinFromProfile:
         return 'Unpin from profile';
-      case VideoOption.addToSeries:
-        return 'Add to Series';
-      case VideoOption.analytics:
-        return 'Analytics';
       case VideoOption.copyLink:
         return 'Copy link';
       case VideoOption.share:
         return 'Share';
       case VideoOption.delete:
         return 'Delete';
-      case VideoOption.promote:
-        return 'Promote';
       case VideoOption.addToFavorites:
         return 'Add to Favorites';
       case VideoOption.removeFromFavorites:
@@ -168,10 +135,6 @@ class _VideoOptionsBottomSheetState
         return 'Not interested';
       case VideoOption.report:
         return 'Report';
-      case VideoOption.remix:
-        return 'Remix / Stitch';
-      case VideoOption.moderatorTools:
-        return 'Moderator tools';
     }
   }
 
@@ -195,12 +158,6 @@ class _VideoOptionsBottomSheetState
       case VideoOption.unpinFromProfile:
         await _handlePinToggle();
         break;
-      case VideoOption.addToSeries:
-        await _handleAddToSeries();
-        break;
-      case VideoOption.analytics:
-        await _handleAnalytics();
-        break;
       case VideoOption.copyLink:
         await _handleCopyLink();
         break;
@@ -209,9 +166,6 @@ class _VideoOptionsBottomSheetState
         break;
       case VideoOption.delete:
         await _handleDelete();
-        break;
-      case VideoOption.promote:
-        await _handlePromote();
         break;
       case VideoOption.addToFavorites:
       case VideoOption.removeFromFavorites:
@@ -222,12 +176,6 @@ class _VideoOptionsBottomSheetState
         break;
       case VideoOption.report:
         await _handleReport();
-        break;
-      case VideoOption.remix:
-        await _handleRemix();
-        break;
-      case VideoOption.moderatorTools:
-        await _handleModeratorTools();
         break;
     }
   }
@@ -347,24 +295,6 @@ class _VideoOptionsBottomSheetState
     }
   }
 
-  Future<void> _handleAddToSeries() async {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Series feature coming soon')),
-      );
-    }
-  }
-
-  Future<void> _handleAnalytics() async {
-    Navigator.of(context).pop();
-    // Navigate to InsightsView
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Analytics feature coming soon')),
-      );
-    }
-  }
-
   Future<void> _handleCopyLink() async {
     try {
       final videoActionsService = ref.read(videoActionsServiceProvider);
@@ -444,14 +374,6 @@ class _VideoOptionsBottomSheetState
     }
   }
 
-  Future<void> _handlePromote() async {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Promote feature coming soon')),
-      );
-    }
-  }
-
   Future<void> _handleFavoritesToggle() async {
     setState(() => _isProcessing = true);
     try {
@@ -521,22 +443,6 @@ class _VideoOptionsBottomSheetState
     }
   }
 
-  Future<void> _handleRemix() async {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Remix feature coming soon')),
-      );
-    }
-  }
-
-  Future<void> _handleModeratorTools() async {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Moderator tools coming soon')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final options = _buildMenuOptions();
@@ -600,8 +506,7 @@ class _VideoOptionsBottomSheetState
 class _PrivacyDialog extends StatefulWidget {
   final String currentPrivacy;
 
-  const _PrivacyDialog({Key? key, required this.currentPrivacy})
-      : super(key: key);
+  const _PrivacyDialog({required this.currentPrivacy});
 
   @override
   State<_PrivacyDialog> createState() => _PrivacyDialogState();
@@ -620,43 +525,33 @@ class _PrivacyDialogState extends State<_PrivacyDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Privacy'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          RadioListTile<String>(
-            title: const Text('Public'),
-            subtitle: const Text('Anyone can see this video'),
-            value: 'public',
-            groupValue: _selectedPrivacy,
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => _selectedPrivacy = value);
-              }
-            },
-          ),
-          RadioListTile<String>(
-            title: const Text('Followers'),
-            subtitle: const Text('Only your followers can see this video'),
-            value: 'followers',
-            groupValue: _selectedPrivacy,
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => _selectedPrivacy = value);
-              }
-            },
-          ),
-          RadioListTile<String>(
-            title: const Text('Private'),
-            subtitle: const Text('Only you can see this video'),
-            value: 'private',
-            groupValue: _selectedPrivacy,
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => _selectedPrivacy = value);
-              }
-            },
-          ),
-        ],
+      content: RadioGroup<String>(
+        groupValue: _selectedPrivacy,
+        onChanged: (String? value) {
+          if (value != null) {
+            setState(() => _selectedPrivacy = value);
+          }
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<String>(
+              title: const Text('Public'),
+              subtitle: const Text('Anyone can see this video'),
+              value: 'public',
+            ),
+            RadioListTile<String>(
+              title: const Text('Followers'),
+              subtitle: const Text('Only your followers can see this video'),
+              value: 'followers',
+            ),
+            RadioListTile<String>(
+              title: const Text('Private'),
+              subtitle: const Text('Only you can see this video'),
+              value: 'private',
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -678,11 +573,10 @@ class _EditCaptionDialog extends StatefulWidget {
   final List<String> currentTags;
 
   const _EditCaptionDialog({
-    Key? key,
     required this.videoId,
     required this.currentCaption,
     required this.currentTags,
-  }) : super(key: key);
+  });
 
   @override
   State<_EditCaptionDialog> createState() => _EditCaptionDialogState();
@@ -707,6 +601,15 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
   }
 
   Future<void> _loadTaggedUsers() async {
+    if (firebase_auth.FirebaseAuth.instance.currentUser == null) {
+      if (mounted) {
+        setState(() {
+          _taggedUsers = [];
+          _isLoadingTaggedUsers = false;
+        });
+      }
+      return;
+    }
     try {
       final tagsSnapshot = await FirebaseFirestore.instance
           .collection('tags')
@@ -752,6 +655,16 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
         });
       }
     } catch (e) {
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        if (mounted) {
+          setState(() {
+            _taggedUsers = [];
+            _isLoadingTaggedUsers = false;
+          });
+        }
+        return;
+      }
       debugPrint('❌ Error loading tagged users: $e');
       if (mounted) {
         setState(() {
@@ -863,7 +776,7 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
 }
 
 class _ReportDialog extends StatefulWidget {
-  const _ReportDialog({Key? key}) : super(key: key);
+  const _ReportDialog();
 
   @override
   State<_ReportDialog> createState() => _ReportDialogState();
@@ -885,20 +798,22 @@ class _ReportDialogState extends State<_ReportDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Report Video'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: _reasons
-            .map(
-              (reason) => RadioListTile<String>(
-                title: Text(reason),
-                value: reason,
-                groupValue: _selectedReason,
-                onChanged: (value) {
-                  setState(() => _selectedReason = value);
-                },
-              ),
-            )
-            .toList(),
+      content: RadioGroup<String>(
+        groupValue: _selectedReason,
+        onChanged: (String? value) {
+          setState(() => _selectedReason = value);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _reasons
+              .map(
+                (reason) => RadioListTile<String>(
+                  title: Text(reason),
+                  value: reason,
+                ),
+              )
+              .toList(),
+        ),
       ),
       actions: [
         TextButton(

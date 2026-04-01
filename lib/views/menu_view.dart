@@ -5,9 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'settings_view.dart';
 import '../pages/bookmark_view.dart';
 import '../widgets/account_management_menu.dart';
-import '../widgets/insights_view.dart';
 import 'manage_posts_view.dart';
 import 'contact_support_view.dart';
+import '../constants/app_colors.dart';
+import 'upgrade_view.dart';
 
 class MenuView extends ConsumerStatefulWidget {
   const MenuView({super.key});
@@ -49,61 +50,101 @@ class _MenuViewState extends ConsumerState<MenuView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header with close button
-                _buildHeader(context),
-
-                const SizedBox(height: 24),
-
-                // Profile Section
-                _buildProfileSection(context),
-
-                const SizedBox(height: 32),
-
-                // Menu Grid
-                _buildMenuGrid(context),
-              ],
-            ),
+      backgroundColor: AppColors.supportBackground,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTopSurface(context),
+              const SizedBox(height: 28),
+              _buildMenuSectionHeader(),
+              const SizedBox(height: 14),
+              _buildMenuGrid(context),
+            ],
           ),
         ),
       ),
     );
   }
 
+  Widget _buildTopSurface(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.14),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeader(context),
+          const SizedBox(height: 18),
+          _buildProfileSection(context),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHeader(BuildContext context) {
+    final now = TimeOfDay.now();
+    final formattedHour = now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod;
+    final formattedMinute = now.minute.toString().padLeft(2, '0');
+    final period = now.period == DayPeriod.am ? 'AM' : 'PM';
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Time display (placeholder)
-        const Text(
-          '10:45',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Menu',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                height: 1.0,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$formattedHour:$formattedMinute $period',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.68),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.0,
+              ),
+            ),
+          ],
         ),
-        // Close button
-        IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.close,
-            color: Colors.white,
-            size: 24,
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+          child: IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(
+              Icons.close,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
         ),
       ],
@@ -119,29 +160,77 @@ class _MenuViewState extends ConsumerState<MenuView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Profile Avatar with Gradient Ring (matching ProfileView)
-        _buildAvatarWithGradientRing(avatarURL),
-
-        const SizedBox(height: 16),
-
-        // User Info
-        Text(
-          displayName,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '@$username',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 16,
-          ),
+        Row(
+          children: [
+            _buildAvatarWithGradientRing(avatarURL),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '@$username',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Quick access to your account, saved content, and settings.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.64),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _buildMenuSectionHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Quick Access',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              height: 1.0,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Everything you need from one calm place.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.66),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -208,32 +297,25 @@ class _MenuViewState extends ConsumerState<MenuView> {
       children: [
         _buildMenuCard(
           context,
-          icon: Icons.star_outline,
-          title: 'Rate App',
-          subtitle: 'Rate us 5-stars',
-          onTap: () => _navigateToPage(context, 'Rate App'),
-          isPrimary: true,
-        ),
-        _buildMenuCard(
-          context,
           icon: Icons.support_agent,
           title: 'Contact Support',
           subtitle: 'Get help & support',
-          onTap: () => _navigateToPage(context, 'Contact Support'),
+          onTap: () => _navigateToPage(context, const ContactSupportView()),
         ),
         _buildMenuCard(
           context,
-          icon: Icons.favorite_outline,
-          title: 'Try Premium',
-          subtitle: 'Try premium features',
-          onTap: () => _navigateToPage(context, 'Try Premium'),
+          icon: Icons.workspace_premium_rounded,
+          title: 'Upgrade',
+          subtitle: 'View tiers & subscribe',
+          isPrimary: true,
+          onTap: () => _navigateToPage(context, const UpgradeView()),
         ),
         _buildMenuCard(
           context,
           icon: Icons.bookmark,
           title: 'Bookmarks',
           subtitle: 'Saved content',
-          onTap: () => _navigateToPage(context, 'Bookmarks'),
+          onTap: () => _navigateToPage(context, const BookmarkView()),
         ),
         _buildMenuCard(
           context,
@@ -241,13 +323,6 @@ class _MenuViewState extends ConsumerState<MenuView> {
           title: 'Scheduled',
           subtitle: 'Manage posts',
           onTap: () => _navigateToManagePosts(context),
-        ),
-        _buildMenuCard(
-          context,
-          icon: Icons.insights,
-          title: 'Insights',
-          subtitle: 'Performance data',
-          onTap: () => _navigateToPage(context, 'Insights'),
         ),
         _buildMenuCard(
           context,
@@ -280,51 +355,91 @@ class _MenuViewState extends ConsumerState<MenuView> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isPrimary
-              ? const Color(0xFF9248D2) // Purple for primary card
-              : Colors.white.withValues(
-                  alpha: 0.1), // Semi-transparent white for other cards
-          borderRadius: BorderRadius.circular(16),
+          gradient: isPrimary
+              ? const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: isPrimary ? null : Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withValues(alpha: isPrimary ? 0.22 : 0.12),
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
+              color: Colors.black.withValues(alpha: 0.14),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(
-              icon,
-              color: Colors.white,
-              size: 32,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: isPrimary ? 0.18 : 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                ),
+              ),
+              child: Icon(
+                icon,
                 color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+                size: 26,
               ),
-              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.8),
-                fontSize: 12,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.78),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.25,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Text(
+                      'Open',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.82),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white.withValues(alpha: 0.82),
+                      size: 14,
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
@@ -332,27 +447,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  void _navigateToPage(BuildContext context, String pageName) {
-    Widget page;
-
-    switch (pageName) {
-      case 'Bookmarks':
-        page = const BookmarkView();
-        break;
-      case 'Insights':
-        page = const InsightsView(
-          videoId: 'general-insights',
-          videoTitle: 'General Insights',
-        );
-        break;
-      case 'Contact Support':
-        page = const ContactSupportView();
-        break;
-      default:
-        page = _PlaceholderPage(title: pageName);
-        break;
-    }
-
+  void _navigateToPage(BuildContext context, Widget page) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => page,
@@ -382,106 +477,59 @@ class _MenuViewState extends ConsumerState<MenuView> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        decoration: BoxDecoration(
+          color: AppColors.supportBackground,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.1),
           ),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Handle bar
             Center(
               child: Container(
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
+                  color: Colors.white.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(999),
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-
-            // Title
+            const SizedBox(height: 20),
             const Text(
               'Account Management',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 24,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w900,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Manage your account settings and sign out',
+              'Manage your account settings and sign out from one place.',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 16,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 24),
-
-            // Account Management Menu
-            const AccountManagementMenu(),
-
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Placeholder page for existing functionality
-class _PlaceholderPage extends StatelessWidget {
-  final String title;
-
-  const _PlaceholderPage({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0E1220),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0E1220),
-        title: Text(
-          title,
-          style: const TextStyle(color: Colors.white),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.construction,
-              color: Colors.white.withValues(alpha: 0.5),
-              size: 64,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.1),
+                ),
               ),
+              child: const AccountManagementMenu(),
             ),
             const SizedBox(height: 8),
-            Text(
-              'This page will be implemented here',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 16,
-              ),
-            ),
           ],
         ),
       ),

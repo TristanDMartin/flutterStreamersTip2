@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import '../constants/app_colors.dart';
 
 class ContactSupportView extends StatefulWidget {
   const ContactSupportView({super.key});
@@ -116,9 +117,9 @@ class _ContactSupportViewState extends State<ContactSupportView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1C135D),
+      backgroundColor: AppColors.supportBackground,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF6137EB),
+        backgroundColor: AppColors.supportTopSurface,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -141,7 +142,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
+                    colors: AppColors.supportAccentGradient,
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -195,7 +196,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                   ),
                 ),
                 child: DropdownButtonFormField<String>(
-                  value: _selectedCategory,
+                  initialValue: _selectedCategory,
                   decoration: const InputDecoration(
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(
@@ -204,7 +205,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                     ),
                   ),
                   style: const TextStyle(color: Colors.white),
-                  dropdownColor: const Color(0xFF6137EB),
+                  dropdownColor: AppColors.supportTopSurface,
                   items: _categories.map((String category) {
                     return DropdownMenuItem<String>(
                       value: category,
@@ -255,7 +256,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: const BorderSide(
-                      color: Color(0xFF9248D2),
+                      color: AppColors.supportAccent,
                       width: 2,
                     ),
                   ),
@@ -308,7 +309,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: const BorderSide(
-                      color: Color(0xFF9248D2),
+                      color: AppColors.supportAccent,
                       width: 2,
                     ),
                   ),
@@ -332,7 +333,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submitTicket,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF9248D2),
+                  backgroundColor: AppColors.supportAccent,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

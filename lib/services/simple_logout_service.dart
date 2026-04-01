@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'robust_auth_service.dart';
-import '../widgets/auth_modal_view.dart';
 
 /// Simple logout service that handles all the complexity internally
 class SimpleLogoutService {
@@ -34,14 +33,7 @@ class SimpleLogoutService {
       // Use the stored navigator context instead of checking context.mounted
       debugPrint('🔄 Navigating to login screen using stored navigator...');
       
-      // Go directly to AuthModalView - no delays, no launch screen, no initialization
-      // This is how TikTok/Instagram do it - instant logout to login screen
-      navigator.pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => const AuthModalView(),
-        ),
-        (route) => false,
-      );
+      navigator.pushNamedAndRemoveUntil('/auth', (route) => false);
       
       debugPrint('✅ Instant logout completed - user sees login screen immediately');
       return true;

@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,101 +9,62 @@ part of 'connection.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-Connection _$ConnectionFromJson(Map<String, dynamic> json) {
-  return _Connection.fromJson(json);
-}
 
 /// @nodoc
 mixin _$Connection {
-  String get id => throw _privateConstructorUsedError;
-  String get displayName => throw _privateConstructorUsedError;
-  String get username => throw _privateConstructorUsedError;
-  String get avatarUrl => throw _privateConstructorUsedError;
-  bool get isOnline => throw _privateConstructorUsedError;
-  DateTime get lastSeen => throw _privateConstructorUsedError;
+  String get id;
+  String get displayName;
+  String get username;
+  String get avatarUrl;
+  bool get isOnline;
+  DateTime get lastSeen;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $ConnectionCopyWith<Connection> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $ConnectionCopyWith<$Res> {
-  factory $ConnectionCopyWith(
-          Connection value, $Res Function(Connection) then) =
-      _$ConnectionCopyWithImpl<$Res, Connection>;
-  @useResult
-  $Res call(
-      {String id,
-      String displayName,
-      String username,
-      String avatarUrl,
-      bool isOnline,
-      DateTime lastSeen});
-}
-
-/// @nodoc
-class _$ConnectionCopyWithImpl<$Res, $Val extends Connection>
-    implements $ConnectionCopyWith<$Res> {
-  _$ConnectionCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of Connection
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $ConnectionCopyWith<Connection> get copyWith =>
+      _$ConnectionCopyWithImpl<Connection>(this as Connection, _$identity);
+
+  /// Serializes this Connection to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? id = null,
-    Object? displayName = null,
-    Object? username = null,
-    Object? avatarUrl = null,
-    Object? isOnline = null,
-    Object? lastSeen = null,
-  }) {
-    return _then(_value.copyWith(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      displayName: null == displayName
-          ? _value.displayName
-          : displayName // ignore: cast_nullable_to_non_nullable
-              as String,
-      username: null == username
-          ? _value.username
-          : username // ignore: cast_nullable_to_non_nullable
-              as String,
-      avatarUrl: null == avatarUrl
-          ? _value.avatarUrl
-          : avatarUrl // ignore: cast_nullable_to_non_nullable
-              as String,
-      isOnline: null == isOnline
-          ? _value.isOnline
-          : isOnline // ignore: cast_nullable_to_non_nullable
-              as bool,
-      lastSeen: null == lastSeen
-          ? _value.lastSeen
-          : lastSeen // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is Connection &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.displayName, displayName) ||
+                other.displayName == displayName) &&
+            (identical(other.username, username) ||
+                other.username == username) &&
+            (identical(other.avatarUrl, avatarUrl) ||
+                other.avatarUrl == avatarUrl) &&
+            (identical(other.isOnline, isOnline) ||
+                other.isOnline == isOnline) &&
+            (identical(other.lastSeen, lastSeen) ||
+                other.lastSeen == lastSeen));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType, id, displayName, username, avatarUrl, isOnline, lastSeen);
+
+  @override
+  String toString() {
+    return 'Connection(id: $id, displayName: $displayName, username: $username, avatarUrl: $avatarUrl, isOnline: $isOnline, lastSeen: $lastSeen)';
   }
 }
 
 /// @nodoc
-abstract class _$$ConnectionImplCopyWith<$Res>
-    implements $ConnectionCopyWith<$Res> {
-  factory _$$ConnectionImplCopyWith(
-          _$ConnectionImpl value, $Res Function(_$ConnectionImpl) then) =
-      __$$ConnectionImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $ConnectionCopyWith<$Res> {
+  factory $ConnectionCopyWith(
+          Connection value, $Res Function(Connection) _then) =
+      _$ConnectionCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -115,13 +76,14 @@ abstract class _$$ConnectionImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$ConnectionImplCopyWithImpl<$Res>
-    extends _$ConnectionCopyWithImpl<$Res, _$ConnectionImpl>
-    implements _$$ConnectionImplCopyWith<$Res> {
-  __$$ConnectionImplCopyWithImpl(
-      _$ConnectionImpl _value, $Res Function(_$ConnectionImpl) _then)
-      : super(_value, _then);
+class _$ConnectionCopyWithImpl<$Res> implements $ConnectionCopyWith<$Res> {
+  _$ConnectionCopyWithImpl(this._self, this._then);
 
+  final Connection _self;
+  final $Res Function(Connection) _then;
+
+  /// Create a copy of Connection
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -132,48 +94,209 @@ class __$$ConnectionImplCopyWithImpl<$Res>
     Object? isOnline = null,
     Object? lastSeen = null,
   }) {
-    return _then(_$ConnectionImpl(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       displayName: null == displayName
-          ? _value.displayName
+          ? _self.displayName
           : displayName // ignore: cast_nullable_to_non_nullable
               as String,
       username: null == username
-          ? _value.username
+          ? _self.username
           : username // ignore: cast_nullable_to_non_nullable
               as String,
       avatarUrl: null == avatarUrl
-          ? _value.avatarUrl
+          ? _self.avatarUrl
           : avatarUrl // ignore: cast_nullable_to_non_nullable
               as String,
       isOnline: null == isOnline
-          ? _value.isOnline
+          ? _self.isOnline
           : isOnline // ignore: cast_nullable_to_non_nullable
               as bool,
       lastSeen: null == lastSeen
-          ? _value.lastSeen
+          ? _self.lastSeen
           : lastSeen // ignore: cast_nullable_to_non_nullable
               as DateTime,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [Connection].
+extension ConnectionPatterns on Connection {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_Connection value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Connection() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_Connection value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Connection():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_Connection value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Connection() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(String id, String displayName, String username,
+            String avatarUrl, bool isOnline, DateTime lastSeen)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _Connection() when $default != null:
+        return $default(_that.id, _that.displayName, _that.username,
+            _that.avatarUrl, _that.isOnline, _that.lastSeen);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(String id, String displayName, String username,
+            String avatarUrl, bool isOnline, DateTime lastSeen)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Connection():
+        return $default(_that.id, _that.displayName, _that.username,
+            _that.avatarUrl, _that.isOnline, _that.lastSeen);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(String id, String displayName, String username,
+            String avatarUrl, bool isOnline, DateTime lastSeen)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _Connection() when $default != null:
+        return $default(_that.id, _that.displayName, _that.username,
+            _that.avatarUrl, _that.isOnline, _that.lastSeen);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$ConnectionImpl implements _Connection {
-  const _$ConnectionImpl(
+class _Connection implements Connection {
+  const _Connection(
       {required this.id,
       required this.displayName,
       required this.username,
       required this.avatarUrl,
       required this.isOnline,
       required this.lastSeen});
-
-  factory _$ConnectionImpl.fromJson(Map<String, dynamic> json) =>
-      _$$ConnectionImplFromJson(json);
+  factory _Connection.fromJson(Map<String, dynamic> json) =>
+      _$ConnectionFromJson(json);
 
   @override
   final String id;
@@ -188,16 +311,26 @@ class _$ConnectionImpl implements _Connection {
   @override
   final DateTime lastSeen;
 
+  /// Create a copy of Connection
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'Connection(id: $id, displayName: $displayName, username: $username, avatarUrl: $avatarUrl, isOnline: $isOnline, lastSeen: $lastSeen)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$ConnectionCopyWith<_Connection> get copyWith =>
+      __$ConnectionCopyWithImpl<_Connection>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$ConnectionToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$ConnectionImpl &&
+            other is _Connection &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.displayName, displayName) ||
                 other.displayName == displayName) &&
@@ -211,51 +344,80 @@ class _$ConnectionImpl implements _Connection {
                 other.lastSeen == lastSeen));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType, id, displayName, username, avatarUrl, isOnline, lastSeen);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$ConnectionImplCopyWith<_$ConnectionImpl> get copyWith =>
-      __$$ConnectionImplCopyWithImpl<_$ConnectionImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$ConnectionImplToJson(
-      this,
-    );
+  String toString() {
+    return 'Connection(id: $id, displayName: $displayName, username: $username, avatarUrl: $avatarUrl, isOnline: $isOnline, lastSeen: $lastSeen)';
   }
 }
 
-abstract class _Connection implements Connection {
-  const factory _Connection(
-      {required final String id,
-      required final String displayName,
-      required final String username,
-      required final String avatarUrl,
-      required final bool isOnline,
-      required final DateTime lastSeen}) = _$ConnectionImpl;
-
-  factory _Connection.fromJson(Map<String, dynamic> json) =
-      _$ConnectionImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$ConnectionCopyWith<$Res>
+    implements $ConnectionCopyWith<$Res> {
+  factory _$ConnectionCopyWith(
+          _Connection value, $Res Function(_Connection) _then) =
+      __$ConnectionCopyWithImpl;
   @override
-  String get id;
-  @override
-  String get displayName;
-  @override
-  String get username;
-  @override
-  String get avatarUrl;
-  @override
-  bool get isOnline;
-  @override
-  DateTime get lastSeen;
-  @override
-  @JsonKey(ignore: true)
-  _$$ConnectionImplCopyWith<_$ConnectionImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String id,
+      String displayName,
+      String username,
+      String avatarUrl,
+      bool isOnline,
+      DateTime lastSeen});
 }
+
+/// @nodoc
+class __$ConnectionCopyWithImpl<$Res> implements _$ConnectionCopyWith<$Res> {
+  __$ConnectionCopyWithImpl(this._self, this._then);
+
+  final _Connection _self;
+  final $Res Function(_Connection) _then;
+
+  /// Create a copy of Connection
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = null,
+    Object? displayName = null,
+    Object? username = null,
+    Object? avatarUrl = null,
+    Object? isOnline = null,
+    Object? lastSeen = null,
+  }) {
+    return _then(_Connection(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      displayName: null == displayName
+          ? _self.displayName
+          : displayName // ignore: cast_nullable_to_non_nullable
+              as String,
+      username: null == username
+          ? _self.username
+          : username // ignore: cast_nullable_to_non_nullable
+              as String,
+      avatarUrl: null == avatarUrl
+          ? _self.avatarUrl
+          : avatarUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      isOnline: null == isOnline
+          ? _self.isOnline
+          : isOnline // ignore: cast_nullable_to_non_nullable
+              as bool,
+      lastSeen: null == lastSeen
+          ? _self.lastSeen
+          : lastSeen // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+    ));
+  }
+}
+
+// dart format on

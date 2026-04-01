@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import 'package:giphy_picker/giphy_picker.dart'; // cspell:ignore giphy
 import 'package:cached_network_image/cached_network_image.dart';
-import 'dart:io';
 import 'dart:async';
 import '../models/chat.dart';
 import '../models/message.dart';
@@ -14,6 +13,7 @@ import '../providers/unread_messages_provider.dart';
 import '../config/giphy_config.dart'; // cspell:ignore giphy
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
+import '../services/draft_sharing_service.dart';
 import '../services/report_service.dart';
 import '../services/user_blocking_service.dart';
 import '../services/notification_navigation_service.dart';
@@ -64,9 +64,13 @@ class _ChatViewState extends ConsumerState<ChatView>
   // Add stream subscription for user data
   StreamSubscription<DocumentSnapshot>? _otherUserSubscription;
   StreamSubscription<DocumentSnapshot>? _currentUserSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _presenceSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _chatSubscription;
 
   // Keyboard visibility tracking
   bool _isKeyboardVisible = false;
+  bool _otherUserIsTyping = false;
 
   @override
   void initState() {
@@ -197,33 +201,34 @@ class _ChatViewState extends ConsumerState<ChatView>
 
   void _sendDraftVideo(Map<String, dynamic> draft) async {
     try {
-      final videoPath = draft['videoPath'] as String?;
-      if (videoPath == null || videoPath.isEmpty) {
-        _showErrorSnackBar('Draft video file not found');
+      final draftId = draft['id'] as String?;
+      if (draftId == null || draftId.isEmpty) {
+        _showErrorSnackBar('Draft is missing its ID');
         return;
       }
 
-      final videoFile = File(videoPath);
-      if (!videoFile.existsSync()) {
-        _showErrorSnackBar('Draft video file is missing');
+      if (widget.otherUserId.isEmpty) {
+        _showErrorSnackBar('Unable to find the person to share with');
         return;
       }
 
-      // Create a temporary message with the draft caption
       final caption = draft['caption']?.isNotEmpty == true
           ? draft['caption']
           : 'Untitled Draft';
+      final draftSharingService = DraftSharingService();
 
-      // For now, we'll send the caption as a text message
-      // In a full implementation, you'd upload the video file and send the video URL
-      // We'll use the existing send method by setting the text in the input field
-      _textController.text = caption;
+      final success = await draftSharingService.shareDraftWithConnections(
+        draftId: draftId,
+        connectionIds: [widget.otherUserId],
+        message: 'Check out this draft and share your feedback!',
+      );
 
-      // Trigger the send action
-      final chatNotifier = ref.read(chatProvider(widget.chat).notifier);
-      await chatNotifier.send();
+      if (!success) {
+        _showErrorSnackBar('Failed to send draft');
+        return;
+      }
 
-      _showSuccessSnackBar('Draft sent successfully!');
+      _showSuccessSnackBar('$caption shared for feedback');
     } catch (e) {
       _showErrorSnackBar('Failed to send draft: ${e.toString()}');
     }
@@ -321,11 +326,47 @@ class _ChatViewState extends ConsumerState<ChatView>
             _otherUserDisplayName = data['displayName'] ?? 'User';
             _otherUserUsername = data['username'] ?? 'user';
             _otherUserAvatarURL = data['avatarURL'];
-            _otherUserIsOnline = data['onlineStatus'] == 'online';
           });
         }
       }, onError: (error) {
         debugPrint('ChatView: Error loading other user data: $error');
+      });
+
+      _presenceSubscription?.cancel();
+      _presenceSubscription = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_otherUserId)
+          .collection('presence')
+          .doc('status')
+          .snapshots()
+          .listen((snapshot) {
+        if (!mounted) return;
+        final data = snapshot.data();
+        setState(() {
+          _otherUserIsOnline = (data?['status'] ?? 'offline') == 'online';
+        });
+      }, onError: (error) {
+        debugPrint('ChatView: Error loading other user presence: $error');
+      });
+
+      _chatSubscription?.cancel();
+      _chatSubscription = FirebaseFirestore.instance
+          .collection('chats')
+          .doc(widget.chat.id)
+          .snapshots()
+          .listen((snapshot) {
+        if (!mounted || !snapshot.exists) return;
+        final data = snapshot.data();
+        final typingBy =
+            Map<String, dynamic>.from(data?['typingBy'] ?? const {});
+        final isTyping = typingBy[_otherUserId] == true;
+        if (_otherUserIsTyping != isTyping) {
+          setState(() {
+            _otherUserIsTyping = isTyping;
+          });
+        }
+      }, onError: (error) {
+        debugPrint('ChatView: Error loading typing state: $error');
       });
     }
   }
@@ -337,6 +378,10 @@ class _ChatViewState extends ConsumerState<ChatView>
     _textController.dispose();
     _otherUserSubscription?.cancel();
     _currentUserSubscription?.cancel();
+    _presenceSubscription?.cancel();
+    _chatSubscription?.cancel();
+    final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
+    unawaited(chatNotifier.setTyping(false));
     super.dispose();
   }
 
@@ -498,9 +543,13 @@ class _ChatViewState extends ConsumerState<ChatView>
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        '@${_otherUserUsername.isNotEmpty ? _otherUserUsername : 'user'}',
+                        _otherUserIsTyping
+                            ? 'typing...'
+                            : '@${_otherUserUsername.isNotEmpty ? _otherUserUsername : 'user'}',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.6),
+                          color: _otherUserIsTyping
+                              ? const Color(0xFF00D4AA)
+                              : Colors.white.withValues(alpha: 0.6),
                           fontSize: 14,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -1336,9 +1385,7 @@ class _ChatViewState extends ConsumerState<ChatView>
   }
 
   Widget _buildMessageStatus(Message message) {
-    // For now, we'll show a simple sent indicator
-    // In a real app, you'd check readBy array and recipients
-    final isRead = message.readBy.length > 1; // More than just the sender
+    final isRead = message.recipients.any(message.readBy.contains);
 
     return Icon(
       isRead ? Icons.done_all : Icons.done,
@@ -1462,26 +1509,6 @@ class _ChatViewState extends ConsumerState<ChatView>
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Test message button (temporary for demonstration)
-                  GestureDetector(
-                    onTap: () => _sendTestMessage(),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.8),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.text_fields,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
                   // GIF picker button
                   GestureDetector(
                     onTap: _isPickingGif ? null : () => _showGiphyPicker(),
@@ -1568,28 +1595,6 @@ class _ChatViewState extends ConsumerState<ChatView>
         );
       },
     );
-  }
-
-  void _sendTestMessage() async {
-    // Send a test message to demonstrate text wrapping
-    final testMessage =
-        "This is a very long test message to demonstrate that the text wrapping is working correctly in the message bubbles. The text should now wrap properly within the bubble instead of being compressed or squished. This message contains multiple sentences and should show how the text flows naturally within the message bubble container. The ConstrainedBox and proper text alignment should ensure that long messages display beautifully just like the other user's messages.";
-
-    final chatNotifier = ref.read(chatNotifierProvider(widget.chat).notifier);
-
-    // Set the composed text and send
-    chatNotifier.updateComposedText(testMessage);
-    await chatNotifier.send();
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Test message sent to demonstrate text wrapping!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
   }
 
   Future<void> _showGiphyPicker() async {

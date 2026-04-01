@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/chat.dart' as app_chat;
+import '../models/user.dart' as app_user;
+import '../services/chat_service.dart';
+import '../services/inbox_service_optimized.dart';
+import 'chat_view.dart';
 import 'choose_person_view.dart';
-// import 'invite_friends_view.dart'; // Removed - unused
-// import 'start_group_view.dart'; // Removed - unused
-// import 'draft_selection_view.dart'; // Removed - unused
 
 class NewMessageView extends ConsumerStatefulWidget {
   const NewMessageView({super.key});
@@ -14,12 +16,82 @@ class NewMessageView extends ConsumerStatefulWidget {
 
 class _NewMessageViewState extends ConsumerState<NewMessageView> {
   final TextEditingController _searchController = TextEditingController();
+  final ChatService _chatService = ChatService.shared;
+  final InboxServiceOptimized _inboxService = InboxServiceOptimized();
   String _searchQuery = '';
+  List<app_chat.Chat> _recentChats = [];
+  final Map<String, app_user.User> _chatUsers = {};
+  bool _isLoadingRecentChats = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecentChats();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRecentChats() async {
+    setState(() {
+      _isLoadingRecentChats = true;
+    });
+
+    try {
+      final chats = await _chatService.getUserChats();
+      final currentUserId = _inboxService.auth.currentUser?.uid;
+      final userMap = <String, app_user.User>{};
+
+      for (final chat in chats) {
+        final otherUserId = chat.participants.firstWhere(
+          (id) => id != currentUserId,
+          orElse: () => '',
+        );
+        if (otherUserId.isEmpty) continue;
+
+        final profile = await _inboxService.getUserProfile(otherUserId);
+        if (profile != null) {
+          userMap[chat.id ?? otherUserId] = profile;
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _recentChats = chats;
+        _chatUsers
+          ..clear()
+          ..addAll(userMap);
+        _isLoadingRecentChats = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _recentChats = [];
+        _chatUsers.clear();
+        _isLoadingRecentChats = false;
+      });
+    }
+  }
+
+  List<app_chat.Chat> get _filteredRecentChats {
+    if (_searchQuery.trim().isEmpty) {
+      return _recentChats;
+    }
+
+    final lowerQuery = _searchQuery.toLowerCase();
+    return _recentChats.where((chat) {
+      final chatId = chat.id ?? '';
+      final otherUser = _chatUsers[chatId];
+      final displayName = otherUser?.displayName.toLowerCase() ?? '';
+      final username = otherUser?.username.toLowerCase() ?? '';
+      final lastMessage = (chat.lastMessage ?? '').toLowerCase();
+      return displayName.contains(lowerQuery) ||
+          username.contains(lowerQuery) ||
+          lastMessage.contains(lowerQuery);
+    }).toList();
   }
 
   @override
@@ -162,36 +234,6 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
             subtitle: 'Start a direct message with a connection',
             onTap: () => _navigateToChoosePerson(),
           ),
-          
-          const SizedBox(height: 12),
-          
-          // Invite (send connection requests)
-          _buildActionCard(
-            icon: Icons.person_add,
-            title: 'Invite',
-            subtitle: 'Send connection requests to friends',
-            onTap: () => _navigateToInviteFriends(),
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Send Draft
-          _buildActionCard(
-            icon: Icons.drafts,
-            title: 'Send Draft',
-            subtitle: 'Share a draft video with your connections',
-            onTap: () => _navigateToDraftSelection(),
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Group Chat (multi-select, then create)
-          _buildActionCard(
-            icon: Icons.group,
-            title: 'Group Chat',
-            subtitle: 'Create a group message with multiple connections',
-            onTap: () => _navigateToStartGroup(),
-          ),
         ],
       ),
     );
@@ -273,8 +315,13 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
   }
 
   Widget _buildRecentChats() {
-    // This would show recent chats if implemented
-    // For now, show a placeholder
+    if (_isLoadingRecentChats) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    final chats = _filteredRecentChats;
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -290,17 +337,107 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: Center(
-              child: Text(
-                'No recent chats',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha:0.7),
-                  fontSize: 16,
-                ),
-              ),
-            ),
+            child: chats.isEmpty
+                ? Center(
+                    child: Text(
+                      _searchQuery.isEmpty
+                          ? 'No recent chats yet'
+                          : 'No chats match your search',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 16,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: chats.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final chat = chats[index];
+                      final otherUser = _chatUsers[chat.id ?? ''];
+                      return _buildRecentChatTile(chat, otherUser);
+                    },
+                  ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildRecentChatTile(
+    app_chat.Chat chat,
+    app_user.User? otherUser,
+  ) {
+    final displayName = otherUser?.displayName ?? 'Conversation';
+    final username = otherUser?.username ?? '';
+    final avatarUrl = otherUser?.avatarURL;
+
+    return GestureDetector(
+      onTap: () => _openRecentChat(chat, otherUser),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: Colors.white.withValues(alpha: 0.08),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: Colors.white.withValues(alpha: 0.12),
+              backgroundImage:
+                  avatarUrl != null && avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+              child: avatarUrl == null || avatarUrl.isEmpty
+                  ? const Icon(Icons.person, color: Colors.white)
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (username.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '@$username',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Text(
+                    (chat.lastMessage ?? '').isEmpty
+                        ? 'Start the conversation'
+                        : chat.lastMessage!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: Colors.white.withValues(alpha: 0.5),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -314,39 +451,34 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
     );
   }
 
-  void _navigateToInviteFriends() {
-    // Navigator.of(context).push(
-    //   MaterialPageRoute(
-    //     builder: (context) => const InviteFriendsView(),
-    //     fullscreenDialog: true,
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Invite friends feature coming soon!')),
+  void _openRecentChat(app_chat.Chat chat, app_user.User? otherUser) {
+    final currentUserId = _inboxService.auth.currentUser?.uid;
+    final otherUserId = chat.participants.firstWhere(
+      (id) => id != currentUserId,
+      orElse: () => '',
+    );
+
+    if (otherUserId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to open this conversation'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ChatView(
+          chat: chat,
+          otherUserId: otherUserId,
+          otherUserName: otherUser?.displayName ?? 'Conversation',
+          otherUserAvatarURL: otherUser?.avatarURL,
+          otherUserIsOnline: (otherUser?.onlineStatus ?? 'offline') == 'online',
+        ),
+      ),
     );
   }
 
-  void _navigateToStartGroup() {
-    // Navigator.of(context).push(
-    //   MaterialPageRoute(
-    //     builder: (context) => const StartGroupView(),
-    //     fullscreenDialog: true,
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Start group feature coming soon!')),
-    );
-  }
-
-  void _navigateToDraftSelection() {
-    // Navigator.of(context).push(
-    //   MaterialPageRoute(
-    //     builder: (context) => const DraftSelectionView(),
-    //     fullscreenDialog: true,
-    //   ),
-    // );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Draft selection feature coming soon!')),
-    );
-  }
 }

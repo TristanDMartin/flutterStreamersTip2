@@ -9,6 +9,7 @@ import '../providers/service_providers.dart';
 import '../services/logging_service.dart';
 import '../services/analytics_service.dart';
 import '../services/error_handler_service.dart';
+import '../services/profile_link_service.dart';
 import 'brand_icons.dart';
 import 'video_qr_code_dialog.dart';
 
@@ -30,8 +31,7 @@ class StreamerShareSheet extends ConsumerWidget {
   bool get _isValidUserId => userId.isNotEmpty && userId.length > 3;
   String get _sanitizedUserId =>
       userId.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
-  String get _profileUrl =>
-      'https://streamerstip.app/profile/$_sanitizedUserId';
+  String get _profileUrl => ProfileLinkService.webProfileUrlById(_sanitizedUserId);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -152,8 +152,8 @@ class StreamerShareSheet extends ConsumerWidget {
   }
 
   Widget _buildSendToCarousel(BuildContext context, WidgetRef ref) {
-    final relationshipService = ref.watch(relationshipServiceProvider);
-    final connections = relationshipService.connections;
+    final relationshipState = ref.watch(relationshipServiceProvider);
+    final connections = relationshipState.connections;
 
     // If no connections, don't show the carousel
     if (connections.isEmpty) {

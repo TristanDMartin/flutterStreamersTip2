@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'qr_scanner_view.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../constants/app_colors.dart';
+import '../services/profile_link_service.dart';
+import '../services/url_handler_service.dart';
 // Removed qr_flutter to avoid missing dependency for now
 
 class ShareProfileView extends StatefulWidget {
@@ -22,6 +26,32 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   String? _shareURL;
   bool _isLoadingQR = true;
 
+  String _buildProfileUrl() {
+    final userId = (widget.user['id'] ?? '').toString().trim();
+    if (userId.isNotEmpty) {
+      return ProfileLinkService.webProfileUrlById(userId);
+    }
+
+    final username = (widget.user['username'] ?? '').toString().trim();
+    if (username.isNotEmpty) {
+      return ProfileLinkService.webProfileUrlByUsername(username);
+    }
+
+    return ProfileLinkService.webBaseUrl;
+  }
+
+  String _buildShareText() {
+    final displayName = (widget.user['displayName'] ?? '').toString().trim();
+    final username = (widget.user['username'] ?? '').toString().trim();
+    final profileLabel = displayName.isNotEmpty
+        ? displayName
+        : username.isNotEmpty
+            ? '@$username'
+            : 'this creator';
+    final link = _shareURL ?? _buildProfileUrl();
+    return 'Check out $profileLabel on StreamersTip!\n$link';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -29,9 +59,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   }
 
   void _generateQRCode() {
-    // Generate profile URL
-    // cspell:ignore streamerstip streamercard
-    final profileURL = "streamerstip://streamercard/${widget.user['id']}";
+    final profileURL = _buildProfileUrl();
     setState(() {
       _shareURL = profileURL;
       _isLoadingQR = false;
@@ -39,8 +67,18 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   }
 
   void _handleScannedCode(String code) {
+    final normalized = ProfileLinkService.normalizeIncomingProfileLink(code);
+    if (!normalized.startsWith(ProfileLinkService.appScheme)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That QR code is not a StreamersTip profile link.')),
+      );
+      return;
+    }
+
+    URLHandlerService.shared.handleURL(normalized);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Scanned: $code')),
+      const SnackBar(content: Text('Opening profile...')),
     );
   }
 
@@ -54,44 +92,100 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     }
   }
 
+  Future<void> _shareProfile() async {
+    final shareURL = _shareURL;
+    if (shareURL == null) return;
+
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: _buildShareText(),
+          subject: 'StreamersTip profile',
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the share sheet right now.')),
+      );
+    }
+  }
+
   void _showShareOptions() {
     if (_shareURL != null) {
-      // Simple share options without using ShareSheetView (which is for videos)
       showModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
         builder: (context) {
           return Container(
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+            decoration: BoxDecoration(
+              color: AppColors.supportBackground.withValues(alpha: 0.98),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.24),
+                  blurRadius: 28,
+                  offset: const Offset(0, -10),
+                ),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Share Profile',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.24),
+                    borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                const SizedBox(height: 20),
-                ListTile(
-                  leading: const Icon(Icons.link),
-                  title: const Text('Copy Link'),
+                const SizedBox(height: 18),
+                Column(
+                  children: [
+                    const Text(
+                      'Share Profile',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Choose how you want to send this profile.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.68),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                _buildShareOptionTile(
+                  icon: Icons.link_rounded,
+                  title: 'Copy Link',
+                  subtitle: 'Grab the profile URL for messages or posts',
                   onTap: () {
                     _copyProfileLink();
                     Navigator.of(context).pop();
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.share),
-                  title: const Text('Share'),
+                const SizedBox(height: 12),
+                _buildShareOptionTile(
+                  icon: Icons.share_rounded,
+                  title: 'Share Link',
+                  subtitle: 'Open the native share sheet',
                   onTap: () {
-                    // Use system share
                     Navigator.of(context).pop();
+                    _shareProfile();
                   },
                 ),
               ],
@@ -102,20 +196,81 @@ class _ShareProfileViewState extends State<ShareProfileView> {
     }
   }
 
+  Widget _buildShareOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.66),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: Colors.white.withValues(alpha: 0.72),
+              size: 15,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF6137EB), // Purple
-              Color(0xFF1C135D), // Dark purple
-            ],
-          ),
-        ),
+        color: AppColors.supportBackground,
         child: SafeArea(
           child: Column(
             children: [
@@ -272,73 +427,138 @@ class _ShareProfileViewState extends State<ShareProfileView> {
       children: [
         if (_isLoadingQR)
           Container(
-            width: 250,
-            height: 250,
+            width: 320,
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 1,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
-            child: const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    color: Colors.grey,
-                    strokeWidth: 3,
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: Center(
+                child: Container(
+                  width: 248,
+                  height: 248,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Loading QR Code...',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 12,
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          color: Colors.grey,
+                          strokeWidth: 3,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Loading QR Code...',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           )
         else if (_shareURL != null)
           Container(
-            width: 300,
-            height: 300,
-            padding: const EdgeInsets.all(12),
+            width: 320,
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 1,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: QrImageView(
-                data: _shareURL!,
-                version: QrVersions.auto,
-                backgroundColor: Colors.white,
-                gapless: false,
-              ),
+            child: Column(
+              children: [
+                Center(
+                  child: Container(
+                    width: 248,
+                    height: 248,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: QrImageView(
+                        data: _shareURL!,
+                        version: QrVersions.auto,
+                        backgroundColor: Colors.white,
+                        gapless: false,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Scan to open this profile',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Share it in person or drop the link below.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           ),
-        const SizedBox(height: 20),
-        Text(
-          'Share this QR code with others to connect',
-          style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 16,
-              fontWeight: FontWeight.w600),
-          textAlign: TextAlign.center,
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            'Share this QR code with others to connect',
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.76),
+                fontSize: 15,
+                fontWeight: FontWeight.w600),
+            textAlign: TextAlign.center,
+          ),
         ),
       ],
     );
@@ -351,19 +571,19 @@ class _ShareProfileViewState extends State<ShareProfileView> {
           child: GestureDetector(
             onTap: _copyProfileLink,
             child: Container(
-              height: 48,
+              height: 52,
               decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(24),
-                gradient: const LinearGradient(
-                  colors: [Color(0x66FFFFFF), Color(0x33FFFFFF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  width: 1,
                 ),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.link, color: Colors.white, size: 20),
+                  Icon(Icons.link_rounded, color: Colors.white, size: 20),
                   SizedBox(width: 8),
                   Text('Copy link',
                       style: TextStyle(
@@ -380,19 +600,30 @@ class _ShareProfileViewState extends State<ShareProfileView> {
           child: GestureDetector(
             onTap: _showShareOptions,
             child: Container(
-              height: 48,
+              height: 52,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
                 gradient: const LinearGradient(
-                  colors: [Color(0x66FFFFFF), Color(0x33FFFFFF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
                 ),
+                border: Border.all(
+                  color: Colors.white24,
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.supportAccent.withValues(alpha: 0.22),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.share, color: Colors.white, size: 20),
+                  Icon(Icons.share_rounded, color: Colors.white, size: 20),
                   SizedBox(width: 8),
                   Text('Share link',
                       style: TextStyle(

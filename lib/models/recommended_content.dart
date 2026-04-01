@@ -4,7 +4,7 @@ part 'recommended_content.freezed.dart';
 part 'recommended_content.g.dart';
 
 @freezed
-class RecommendedContent with _$RecommendedContent {
+sealed class RecommendedContent with _$RecommendedContent {
   const factory RecommendedContent({
     required String id,
     required String title,

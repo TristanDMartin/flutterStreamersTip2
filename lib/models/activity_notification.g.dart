@@ -6,9 +6,9 @@ part of 'activity_notification.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$ActivityNotificationImpl _$$ActivityNotificationImplFromJson(
+_ActivityNotification _$ActivityNotificationFromJson(
         Map<String, dynamic> json) =>
-    _$ActivityNotificationImpl(
+    _ActivityNotification(
       id: json['id'] as String,
       type: $enumDecode(_$ActivityNotificationTypeEnumMap, json['type']),
       user:
@@ -24,8 +24,8 @@ _$ActivityNotificationImpl _$$ActivityNotificationImplFromJson(
       parentCommentId: json['parentCommentId'] as String?,
     );
 
-Map<String, dynamic> _$$ActivityNotificationImplToJson(
-        _$ActivityNotificationImpl instance) =>
+Map<String, dynamic> _$ActivityNotificationToJson(
+        _ActivityNotification instance) =>
     <String, dynamic>{
       'id': instance.id,
       'type': _$ActivityNotificationTypeEnumMap[instance.type]!,
@@ -51,4 +51,5 @@ const _$ActivityNotificationTypeEnumMap = {
   ActivityNotificationType.newVideo: 'newVideo',
   ActivityNotificationType.milestone: 'milestone',
   ActivityNotificationType.liveStream: 'liveStream',
+  ActivityNotificationType.adminBroadcast: 'adminBroadcast',
 };

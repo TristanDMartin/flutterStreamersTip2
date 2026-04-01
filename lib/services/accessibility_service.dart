@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -68,7 +70,8 @@ class AccessibilityService {
   void announce(String message, {bool assertiveness = false}) {
     try {
       if (_isScreenReaderEnabled) {
-        SemanticsService.announce(
+        SemanticsService.sendAnnouncement(
+          ui.PlatformDispatcher.instance.views.first,
           message,
           TextDirection.ltr,
         );

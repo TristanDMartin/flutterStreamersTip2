@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/shared_draft.dart';
 import '../models/user.dart' as app_user;
+import '../models/user_count_fields.dart';
 import 'logging_service.dart';
 
 class OfflineInboxService {
@@ -190,8 +191,8 @@ class OfflineInboxService {
         hashtags: List<String>.from(userData['hashtags']),
         aiSelf: userData['aiSelf'],
         postCount: userData['postCount'],
-        followerCount: userData['followerCount'],
-        followingCount: userData['followingCount'],
+        followerCount: UserCountFields.readFollowersCount(userData),
+        followingCount: UserCountFields.readFollowingCount(userData),
       )));
     } catch (e) {
       LoggingService.instance.error('Error getting cached user profiles: $e');

@@ -7,7 +7,7 @@ part 'chat.freezed.dart';
 part 'chat.g.dart';
 
 @freezed
-class Chat with _$Chat {
+sealed class Chat with _$Chat {
   const factory Chat({
     String? id,
     required List<String> participants,

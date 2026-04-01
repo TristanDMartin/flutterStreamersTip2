@@ -6,9 +6,8 @@ part of 'recommended_content.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$RecommendedContentImpl _$$RecommendedContentImplFromJson(
-        Map<String, dynamic> json) =>
-    _$RecommendedContentImpl(
+_RecommendedContent _$RecommendedContentFromJson(Map<String, dynamic> json) =>
+    _RecommendedContent(
       id: json['id'] as String,
       title: json['title'] as String,
       creator: json['creator'] as String,
@@ -19,8 +18,7 @@ _$RecommendedContentImpl _$$RecommendedContentImplFromJson(
       url: json['url'] as String?,
     );
 
-Map<String, dynamic> _$$RecommendedContentImplToJson(
-        _$RecommendedContentImpl instance) =>
+Map<String, dynamic> _$RecommendedContentToJson(_RecommendedContent instance) =>
     <String, dynamic>{
       'id': instance.id,
       'title': instance.title,

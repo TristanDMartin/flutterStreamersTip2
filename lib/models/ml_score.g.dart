@@ -6,14 +6,12 @@ part of 'ml_score.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$MLScoreImpl _$$MLScoreImplFromJson(Map<String, dynamic> json) =>
-    _$MLScoreImpl(
+_MLScore _$MLScoreFromJson(Map<String, dynamic> json) => _MLScore(
       value: (json['value'] as num).toDouble(),
       type: json['type'] as String,
     );
 
-Map<String, dynamic> _$$MLScoreImplToJson(_$MLScoreImpl instance) =>
-    <String, dynamic>{
+Map<String, dynamic> _$MLScoreToJson(_MLScore instance) => <String, dynamic>{
       'value': instance.value,
       'type': instance.type,
     };

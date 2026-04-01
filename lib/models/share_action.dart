@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:flutter/material.dart';
 import 'json_converters.dart';
@@ -7,7 +6,7 @@ part 'share_action.freezed.dart';
 part 'share_action.g.dart';
 
 @freezed
-class ShareAction with _$ShareAction {
+sealed class ShareAction with _$ShareAction {
   const factory ShareAction({
     required String id,
     required String name,

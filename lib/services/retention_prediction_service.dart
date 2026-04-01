@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// Retention prediction service - Predicts user return probability
-/// Implements session, daily, and weekly retention scoring
+/// user_retention_profiles and engagement require auth and own userId.
 class RetentionPredictionService {
   static RetentionPredictionService? _instance;
   static RetentionPredictionService get instance =>
@@ -12,6 +13,7 @@ class RetentionPredictionService {
   RetentionPredictionService._();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   /// Predict if user will watch next video (session retention)
   Future<double> predictNextVideoWatch(String userId) async {
@@ -165,8 +167,12 @@ class RetentionPredictionService {
     }
   }
 
-  /// Get user retention profile
+  /// Get user retention profile (rules: read only if request.auth.uid == userId).
   Future<UserRetentionProfile> _getUserRetentionProfile(String userId) async {
+    final currentUid = _auth.currentUser?.uid;
+    if (currentUid == null || currentUid != userId) {
+      return UserRetentionProfile.createDefault(userId);
+    }
     try {
       final doc = await _firestore
           .collection('user_retention_profiles')
@@ -179,14 +185,26 @@ class RetentionPredictionService {
         return UserRetentionProfile.createDefault(userId);
       }
     } catch (e) {
-      log('❌ Error getting retention profile: $e');
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return UserRetentionProfile.createDefault(userId);
+      }
+      log('⚠️ Error getting retention profile: $e');
       return UserRetentionProfile.createDefault(userId);
     }
   }
 
-  /// Get recent engagement data
+  /// Get recent engagement data (requires auth; only for current user in rules).
   Future<RecentEngagement> _getRecentEngagement(String userId,
       {required int hours}) async {
+    final currentUid = _auth.currentUser?.uid;
+    if (currentUid == null || currentUid != userId) {
+      return RecentEngagement(
+        videosWatched: 0,
+        engagementActions: 0,
+        avgWatchPercentage: 0.0,
+      );
+    }
     try {
       final cutoff = DateTime.now().subtract(Duration(hours: hours));
 
@@ -205,7 +223,6 @@ class RetentionPredictionService {
         totalWatchPercentage +=
             (data['averageWatchPercentage'] ?? 0.0) as double;
 
-        // Count significant actions
         if ((data['completions'] ?? 0) > 0) engagementActions++;
       }
 
@@ -218,6 +235,14 @@ class RetentionPredictionService {
         avgWatchPercentage: avgWatchPercentage,
       );
     } catch (e) {
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return RecentEngagement(
+          videosWatched: 0,
+          engagementActions: 0,
+          avgWatchPercentage: 0.0,
+        );
+      }
       log('❌ Error getting recent engagement: $e');
       return RecentEngagement(
         videosWatched: 0,

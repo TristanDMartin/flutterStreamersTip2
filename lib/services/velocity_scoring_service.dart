@@ -196,6 +196,10 @@ class VelocityScoringService {
 
       return score;
     } catch (e) {
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        return 0.0;
+      }
       log('❌ Error calculating time-to-first-action: $e');
       return 0.0;
     }

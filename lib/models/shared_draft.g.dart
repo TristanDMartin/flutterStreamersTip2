@@ -6,8 +6,7 @@ part of 'shared_draft.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$SharedDraftImpl _$$SharedDraftImplFromJson(Map<String, dynamic> json) =>
-    _$SharedDraftImpl(
+_SharedDraft _$SharedDraftFromJson(Map<String, dynamic> json) => _SharedDraft(
       id: json['id'] as String,
       draftId: json['draftId'] as String,
       senderId: json['senderId'] as String,
@@ -25,7 +24,7 @@ _$SharedDraftImpl _$$SharedDraftImplFromJson(Map<String, dynamic> json) =>
           : DateTime.parse(json['viewedAt'] as String),
     );
 
-Map<String, dynamic> _$$SharedDraftImplToJson(_$SharedDraftImpl instance) =>
+Map<String, dynamic> _$SharedDraftToJson(_SharedDraft instance) =>
     <String, dynamic>{
       'id': instance.id,
       'draftId': instance.draftId,

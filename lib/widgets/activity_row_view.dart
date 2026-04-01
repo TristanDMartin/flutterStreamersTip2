@@ -6,13 +6,12 @@ import '../models/user.dart';
 import '../widgets/optimized_image.dart';
 import '../services/auth_service.dart';
 import '../services/follows_service.dart';
-// import '../services/relationship_service.dart'; // Temporarily commented out
+import '../providers/follow_refresh_provider.dart';
 
 class ActivityRowView extends ConsumerStatefulWidget {
   final ActivityNotification notification;
   final ValueChanged<User> onProfileTap;
   final ValueChanged<ActivityNotification> onPostTap;
-  final ValueChanged<User>? onFollowAction;
   final ValueChanged<ActivityNotification>? onCardTap;
 
   const ActivityRowView({
@@ -20,7 +19,6 @@ class ActivityRowView extends ConsumerStatefulWidget {
     required this.notification,
     required this.onProfileTap,
     required this.onPostTap,
-    this.onFollowAction,
     this.onCardTap,
   });
 
@@ -489,11 +487,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       return GestureDetector(
         onTap: () {
           HapticFeedback.lightImpact();
-          if (widget.onFollowAction != null) {
-            widget.onFollowAction!(widget.notification.user);
-          } else {
-            _handleFollowAction(isFollowing, isMutualFollow);
-          }
+          _handleFollowAction(isFollowing, isMutualFollow);
         },
         child: AbsorbPointer(
           child: Container(
@@ -541,9 +535,10 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                     ),
                   )
                 : Text(
-                    isMutualFollow
-                        ? 'Connected'
-                        : (isFollowing ? 'Following' : 'Follow back'),
+                    _getFollowButtonText(
+                      isFollowing: isFollowing,
+                      isMutualFollow: isMutualFollow,
+                    ),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
@@ -602,6 +597,12 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         } else {
           return 'is live now! 🔴';
         }
+      case ActivityNotificationType.adminBroadcast:
+        if (widget.notification.commentText != null) {
+          return widget.notification.commentText!;
+        } else {
+          return 'Admin announcement';
+        }
     }
   }
 
@@ -640,6 +641,8 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         return const Color(0xFFFFC107); // Amber/Gold
       case ActivityNotificationType.liveStream:
         return const Color(0xFFF44336); // Red (live)
+      case ActivityNotificationType.adminBroadcast:
+        return const Color(0xFF607D8B); // Blue grey
     }
   }
 
@@ -653,6 +656,19 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     }
   }
 
+  String _getFollowButtonText({
+    required bool isFollowing,
+    required bool isMutualFollow,
+  }) {
+    if (isMutualFollow) {
+      return 'Connected';
+    }
+    if (isFollowing) {
+      return 'Following';
+    }
+    return 'Follow';
+  }
+
   void _handleFollowAction(bool isFollowing, bool isMutualFollow) async {
     try {
       setState(() {
@@ -660,7 +676,6 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       });
 
       bool success;
-      final action = isFollowing ? 'Unfollowed' : 'Followed';
 
       if (isFollowing) {
         // Unfollow the user
@@ -685,10 +700,20 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         }
       }
 
+      if (success) {
+        ref.read(followRefreshProvider.notifier).state++;
+      }
+
       if (mounted) {
+        final username = widget.notification.user.username;
+        final message = success
+            ? (isFollowing
+                ? 'Unfollowed @$username'
+                : (isMutualFollow ? 'Stayed connected with @$username' : 'Following @$username'))
+            : 'Unable to update follow status for @$username';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('$action @${widget.notification.user.username}'),
+            content: Text(message),
             backgroundColor:
                 success ? Colors.green.shade700 : Colors.red.shade700,
             duration: const Duration(seconds: 2),

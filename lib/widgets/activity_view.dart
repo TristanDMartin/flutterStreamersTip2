@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,13 +6,10 @@ import '../providers/activity_provider.dart';
 import '../providers/home_provider.dart' as hp;
 import '../services/auth_service.dart';
 import '../services/notification_navigation_service.dart';
-import '../services/follows_service.dart';
+import '../routing/app_navigator.dart';
 import '../widgets/activity_row_view.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
-import '../widgets/streamer_card_view.dart';
-import '../widgets/cleanup_mock_notifications_button.dart';
-import 'discover_view.dart';
 // import '../widgets/post_detail_view.dart'; // Removed - unused
 import 'instant_response_button.dart';
 
@@ -42,16 +38,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   bool _isLoadingMore = false;
   final ScrollController _scrollController = ScrollController();
   bool _isInitialized = false;
-
-  // Common gradient used throughout the view
-  static const LinearGradient _backgroundGradient = LinearGradient(
-    colors: [
-      Color(0xFF6137EB), // Purple (matches ProfileView)
-      Color(0xFF1C135D), // Dark purple (matches ProfileView)
-    ],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
 
   // Common button gradient used throughout the view
   static const LinearGradient _buttonGradient = LinearGradient(
@@ -157,25 +143,14 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           '🔍 ActivityView: ${state.grouped.length} sections, ${filteredGrouped.length} filtered');
     }
 
-    return WillPopScope(
-      onWillPop: () async {
-        debugPrint(
-            '🔄 ActivityView: Popped - letting parent view control playback');
-        // ✅ FIX: Don't resume video here - let the view we're returning to control playback
-        // This prevents audio bleeding when returning to DiscoverView or other non-HomeView pages
-        // MainTabView will handle video resume when user actually navigates back to HomeView
-        return true;
-      },
+    return PopScope(
+      canPop: true,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Stack(
           children: [
-            Container(
-              decoration: const BoxDecoration(
-                gradient: _backgroundGradient,
-              ),
-              child: SafeArea(
-                child: Column(
+            SafeArea(
+              child: Column(
                   children: [
                     _buildHeader(state),
                     _buildFilterChips(),
@@ -197,10 +172,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     ),
                   ],
                 ),
-              ),
             ),
-            // Temporary cleanup button (remove after cleaning)
-            if (kDebugMode) const CleanupMockNotificationsButton(),
           ],
         ),
       ),
@@ -209,14 +181,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   Widget _buildLoadingScaffold() {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: _backgroundGradient,
-        ),
-        child: const Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          ),
+      body: const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
         ),
       ),
     );
@@ -224,11 +191,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   Widget _buildSignInRequiredScaffold() {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: _backgroundGradient,
-        ),
-        child: const Center(
+      body: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -257,7 +220,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
             ],
           ),
         ),
-      ),
     );
   }
 
@@ -389,51 +351,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                   ),
                 ),
               const SizedBox(width: 8),
-              // Test notifications button (for development)
-              if (kDebugMode)
-                GestureDetector(
-                  onTap: _handleCreateTestNotifications,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.orange.withValues(alpha: 0.4),
-                        width: 1,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.science,
-                      color: Colors.orange,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              const SizedBox(width: 8),
-              // Simulate comment button (for development)
-              if (kDebugMode)
-                GestureDetector(
-                  onTap: _handleSimulateComment,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.green.withValues(alpha: 0.4),
-                        width: 1,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.comment,
-                      color: Colors.green,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              const SizedBox(width: 8),
-              // Refresh button (no background)
               GestureDetector(
                 onTap: _handleRefresh,
                 child: Container(
@@ -462,7 +379,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   Widget _buildFilterChips() {
     return Container(
-      height: 50,
+      height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
@@ -478,48 +395,37 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                 _selectedFilter = filter;
               });
             },
-            child: Container(
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                gradient: isSelected
-                    ? const LinearGradient(
-                        colors: [
-                          Color(0xFF9248D2), // Primary purple
-                          Color(0xFF7768DF), // Secondary purple
-                          Color(0xFF1670DE), // Blue
-                          Color(0xFF3C8BD6), // Lighter blue
-                          Color(0xFF4897D2), // Lightest blue
-                        ],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      )
-                    : null,
-                color: isSelected ? null : Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(25),
-                border: Border.all(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.4)
-                      : Colors.white.withValues(alpha: 0.2),
-                  width: 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 28),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: isSelected
+                    ? ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [
+                            Color(0xFF9248D2),
+                            Color(0xFF1670DE),
+                          ],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ).createShader(bounds),
+                        child: Text(
+                          filter,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ]
-                    : null,
-              ),
-              child: Text(
-                filter,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                ),
+                      )
+                    : Text(
+                        filter,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
               ),
             ),
           );
@@ -756,11 +662,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     child: GestureDetector(
                       onTap: () {
                         HapticFeedback.lightImpact();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const DiscoverView(),
-                          ),
-                        );
+                        AppNavigator.openDiscover(context);
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -927,7 +829,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     notification: notification,
                     onProfileTap: (user) => _handleProfileTap(user),
                     onPostTap: _handlePostTap,
-                    onFollowAction: _handleFollowAction,
                     onCardTap: _handleNotificationTap,
                   ),
                 ),
@@ -1056,49 +957,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     }
   }
 
-  void _handleCreateTestNotifications() {
-    HapticFeedback.lightImpact();
-    final notifier = ref.read(activityProvider.notifier);
-    final auth = ref.read(authServiceProvider);
-    final userId = auth.currentUser?.id;
-
-    if (userId != null) {
-      notifier.createRealisticTestNotifications(userId);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Test notifications created! Check your activity feed.'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  void _handleSimulateComment() {
-    HapticFeedback.lightImpact();
-    final notifier = ref.read(activityProvider.notifier);
-    final auth = ref.read(authServiceProvider);
-    final userId = auth.currentUser?.id;
-
-    if (userId != null) {
-      // Use a test commenter ID - you can change this to a real user ID
-      const testCommenterId = 'test_commenter_123';
-      const testVideoId = 'test_video_456';
-
-      notifier.simulateCommentNotification(
-          userId, testCommenterId, testVideoId);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Comment notification simulated! Check your activity feed.'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
   bool _hasUnreadNotifications(
       Map<String, List<ActivityNotification>> grouped) {
     for (final notifications in grouped.values) {
@@ -1131,33 +989,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         '👆 ActivityView: Profile tap - userId: ${user.id}, username: ${user.username}');
 
     // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => StreamerCardView(
-          userId: user.id,
-          currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
-          onDismiss: () => Navigator.of(context).pop(),
-          onFollow: (userId) async {
-            // Handle follow action
-            HapticFeedback.lightImpact();
-            // TODO: Implement follow logic
-          },
-          onMessage: (userId) {
-            // Handle message action
-            HapticFeedback.lightImpact();
-            // TODO: Navigate to chat
-          },
-          onNavigateToTab: (tabName) {
-            // Handle tab navigation
-            HapticFeedback.lightImpact();
-          },
-          onShare: (userId) {
-            // Handle share action
-            HapticFeedback.lightImpact();
-          },
-        ),
-        fullscreenDialog: true,
-      ),
+    AppNavigator.openStreamerCard(
+      context,
+      userId: user.id,
+      currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+      onDismiss: () => Navigator.of(context).pop(),
     );
   }
 
@@ -1217,6 +1053,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         }
         break;
       case ActivityNotificationType.liveStream:
+      case ActivityNotificationType.adminBroadcast:
         _handleProfileTap(notification.user);
         break;
     }
@@ -1230,80 +1067,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       // Trigger badge animation for visual feedback
       _badgeController.reset();
       _badgeController.forward();
-    }
-  }
-
-  void _handleFollowAction(User user) async {
-    HapticFeedback.lightImpact();
-
-    try {
-      // Optimistic UI feedback - show loading
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text('Following @${user.username}...'),
-            ],
-          ),
-          backgroundColor: const Color(0xFF9248D2),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-
-      // Call FollowsService to follow the user
-      final followsService = FollowsService();
-      final success = await followsService.followUser(user.id);
-
-      if (success) {
-        if (!mounted) return;
-
-        // Show success feedback
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                Text('Now following @${user.username}'),
-              ],
-            ),
-            backgroundColor: Colors.green.shade700,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      } else {
-        if (!mounted) return;
-
-        // Show error feedback
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Unable to follow. Please try again.'),
-            backgroundColor: Colors.red.shade700,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ ActivityView: Error following user: $e');
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('An error occurred. Please try again.'),
-          backgroundColor: Colors.red.shade700,
-          duration: const Duration(seconds: 2),
-        ),
-      );
     }
   }
 

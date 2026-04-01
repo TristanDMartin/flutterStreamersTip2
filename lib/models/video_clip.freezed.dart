@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,144 +9,85 @@ part of 'video_clip.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
 
 /// @nodoc
 mixin _$VideoClip {
-  String get id => throw _privateConstructorUsedError;
-  String get title => throw _privateConstructorUsedError;
-  String get videoURL => throw _privateConstructorUsedError;
-  String? get thumbnailURL => throw _privateConstructorUsedError;
-  int get views => throw _privateConstructorUsedError;
-  int get likes => throw _privateConstructorUsedError;
-  int get comments => throw _privateConstructorUsedError;
-  String get categoryId => throw _privateConstructorUsedError;
-  String get description => throw _privateConstructorUsedError;
-  String get creator => throw _privateConstructorUsedError;
-  double get duration => throw _privateConstructorUsedError;
-  List<String> get tags => throw _privateConstructorUsedError;
-  double get score => throw _privateConstructorUsedError;
+  String get id;
+  String get title;
+  String get videoURL;
+  String? get thumbnailURL;
+  int get views;
+  int get likes;
+  int get comments;
+  String get categoryId;
+  String get description;
+  String get creator;
+  double get duration;
+  List<String> get tags;
+  double get score;
 
-  @JsonKey(ignore: true)
-  $VideoClipCopyWith<VideoClip> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $VideoClipCopyWith<$Res> {
-  factory $VideoClipCopyWith(VideoClip value, $Res Function(VideoClip) then) =
-      _$VideoClipCopyWithImpl<$Res, VideoClip>;
-  @useResult
-  $Res call(
-      {String id,
-      String title,
-      String videoURL,
-      String? thumbnailURL,
-      int views,
-      int likes,
-      int comments,
-      String categoryId,
-      String description,
-      String creator,
-      double duration,
-      List<String> tags,
-      double score});
-}
-
-/// @nodoc
-class _$VideoClipCopyWithImpl<$Res, $Val extends VideoClip>
-    implements $VideoClipCopyWith<$Res> {
-  _$VideoClipCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of VideoClip
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $VideoClipCopyWith<VideoClip> get copyWith =>
+      _$VideoClipCopyWithImpl<VideoClip>(this as VideoClip, _$identity);
+
   @override
-  $Res call({
-    Object? id = null,
-    Object? title = null,
-    Object? videoURL = null,
-    Object? thumbnailURL = freezed,
-    Object? views = null,
-    Object? likes = null,
-    Object? comments = null,
-    Object? categoryId = null,
-    Object? description = null,
-    Object? creator = null,
-    Object? duration = null,
-    Object? tags = null,
-    Object? score = null,
-  }) {
-    return _then(_value.copyWith(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      title: null == title
-          ? _value.title
-          : title // ignore: cast_nullable_to_non_nullable
-              as String,
-      videoURL: null == videoURL
-          ? _value.videoURL
-          : videoURL // ignore: cast_nullable_to_non_nullable
-              as String,
-      thumbnailURL: freezed == thumbnailURL
-          ? _value.thumbnailURL
-          : thumbnailURL // ignore: cast_nullable_to_non_nullable
-              as String?,
-      views: null == views
-          ? _value.views
-          : views // ignore: cast_nullable_to_non_nullable
-              as int,
-      likes: null == likes
-          ? _value.likes
-          : likes // ignore: cast_nullable_to_non_nullable
-              as int,
-      comments: null == comments
-          ? _value.comments
-          : comments // ignore: cast_nullable_to_non_nullable
-              as int,
-      categoryId: null == categoryId
-          ? _value.categoryId
-          : categoryId // ignore: cast_nullable_to_non_nullable
-              as String,
-      description: null == description
-          ? _value.description
-          : description // ignore: cast_nullable_to_non_nullable
-              as String,
-      creator: null == creator
-          ? _value.creator
-          : creator // ignore: cast_nullable_to_non_nullable
-              as String,
-      duration: null == duration
-          ? _value.duration
-          : duration // ignore: cast_nullable_to_non_nullable
-              as double,
-      tags: null == tags
-          ? _value.tags
-          : tags // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      score: null == score
-          ? _value.score
-          : score // ignore: cast_nullable_to_non_nullable
-              as double,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is VideoClip &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.title, title) || other.title == title) &&
+            (identical(other.videoURL, videoURL) ||
+                other.videoURL == videoURL) &&
+            (identical(other.thumbnailURL, thumbnailURL) ||
+                other.thumbnailURL == thumbnailURL) &&
+            (identical(other.views, views) || other.views == views) &&
+            (identical(other.likes, likes) || other.likes == likes) &&
+            (identical(other.comments, comments) ||
+                other.comments == comments) &&
+            (identical(other.categoryId, categoryId) ||
+                other.categoryId == categoryId) &&
+            (identical(other.description, description) ||
+                other.description == description) &&
+            (identical(other.creator, creator) || other.creator == creator) &&
+            (identical(other.duration, duration) ||
+                other.duration == duration) &&
+            const DeepCollectionEquality().equals(other.tags, tags) &&
+            (identical(other.score, score) || other.score == score));
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      title,
+      videoURL,
+      thumbnailURL,
+      views,
+      likes,
+      comments,
+      categoryId,
+      description,
+      creator,
+      duration,
+      const DeepCollectionEquality().hash(tags),
+      score);
+
+  @override
+  String toString() {
+    return 'VideoClip(id: $id, title: $title, videoURL: $videoURL, thumbnailURL: $thumbnailURL, views: $views, likes: $likes, comments: $comments, categoryId: $categoryId, description: $description, creator: $creator, duration: $duration, tags: $tags, score: $score)';
   }
 }
 
 /// @nodoc
-abstract class _$$VideoClipImplCopyWith<$Res>
-    implements $VideoClipCopyWith<$Res> {
-  factory _$$VideoClipImplCopyWith(
-          _$VideoClipImpl value, $Res Function(_$VideoClipImpl) then) =
-      __$$VideoClipImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $VideoClipCopyWith<$Res> {
+  factory $VideoClipCopyWith(VideoClip value, $Res Function(VideoClip) _then) =
+      _$VideoClipCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -165,13 +106,14 @@ abstract class _$$VideoClipImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$VideoClipImplCopyWithImpl<$Res>
-    extends _$VideoClipCopyWithImpl<$Res, _$VideoClipImpl>
-    implements _$$VideoClipImplCopyWith<$Res> {
-  __$$VideoClipImplCopyWithImpl(
-      _$VideoClipImpl _value, $Res Function(_$VideoClipImpl) _then)
-      : super(_value, _then);
+class _$VideoClipCopyWithImpl<$Res> implements $VideoClipCopyWith<$Res> {
+  _$VideoClipCopyWithImpl(this._self, this._then);
 
+  final VideoClip _self;
+  final $Res Function(VideoClip) _then;
+
+  /// Create a copy of VideoClip
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -189,67 +131,301 @@ class __$$VideoClipImplCopyWithImpl<$Res>
     Object? tags = null,
     Object? score = null,
   }) {
-    return _then(_$VideoClipImpl(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       title: null == title
-          ? _value.title
+          ? _self.title
           : title // ignore: cast_nullable_to_non_nullable
               as String,
       videoURL: null == videoURL
-          ? _value.videoURL
+          ? _self.videoURL
           : videoURL // ignore: cast_nullable_to_non_nullable
               as String,
       thumbnailURL: freezed == thumbnailURL
-          ? _value.thumbnailURL
+          ? _self.thumbnailURL
           : thumbnailURL // ignore: cast_nullable_to_non_nullable
               as String?,
       views: null == views
-          ? _value.views
+          ? _self.views
           : views // ignore: cast_nullable_to_non_nullable
               as int,
       likes: null == likes
-          ? _value.likes
+          ? _self.likes
           : likes // ignore: cast_nullable_to_non_nullable
               as int,
       comments: null == comments
-          ? _value.comments
+          ? _self.comments
           : comments // ignore: cast_nullable_to_non_nullable
               as int,
       categoryId: null == categoryId
-          ? _value.categoryId
+          ? _self.categoryId
           : categoryId // ignore: cast_nullable_to_non_nullable
               as String,
       description: null == description
-          ? _value.description
+          ? _self.description
           : description // ignore: cast_nullable_to_non_nullable
               as String,
       creator: null == creator
-          ? _value.creator
+          ? _self.creator
           : creator // ignore: cast_nullable_to_non_nullable
               as String,
       duration: null == duration
-          ? _value.duration
+          ? _self.duration
           : duration // ignore: cast_nullable_to_non_nullable
               as double,
       tags: null == tags
-          ? _value._tags
+          ? _self.tags
           : tags // ignore: cast_nullable_to_non_nullable
               as List<String>,
       score: null == score
-          ? _value.score
+          ? _self.score
           : score // ignore: cast_nullable_to_non_nullable
               as double,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [VideoClip].
+extension VideoClipPatterns on VideoClip {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_VideoClip value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _VideoClip() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_VideoClip value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _VideoClip():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_VideoClip value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _VideoClip() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String id,
+            String title,
+            String videoURL,
+            String? thumbnailURL,
+            int views,
+            int likes,
+            int comments,
+            String categoryId,
+            String description,
+            String creator,
+            double duration,
+            List<String> tags,
+            double score)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _VideoClip() when $default != null:
+        return $default(
+            _that.id,
+            _that.title,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.views,
+            _that.likes,
+            _that.comments,
+            _that.categoryId,
+            _that.description,
+            _that.creator,
+            _that.duration,
+            _that.tags,
+            _that.score);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String id,
+            String title,
+            String videoURL,
+            String? thumbnailURL,
+            int views,
+            int likes,
+            int comments,
+            String categoryId,
+            String description,
+            String creator,
+            double duration,
+            List<String> tags,
+            double score)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _VideoClip():
+        return $default(
+            _that.id,
+            _that.title,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.views,
+            _that.likes,
+            _that.comments,
+            _that.categoryId,
+            _that.description,
+            _that.creator,
+            _that.duration,
+            _that.tags,
+            _that.score);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String id,
+            String title,
+            String videoURL,
+            String? thumbnailURL,
+            int views,
+            int likes,
+            int comments,
+            String categoryId,
+            String description,
+            String creator,
+            double duration,
+            List<String> tags,
+            double score)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _VideoClip() when $default != null:
+        return $default(
+            _that.id,
+            _that.title,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.views,
+            _that.likes,
+            _that.comments,
+            _that.categoryId,
+            _that.description,
+            _that.creator,
+            _that.duration,
+            _that.tags,
+            _that.score);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 
-class _$VideoClipImpl implements _VideoClip {
-  const _$VideoClipImpl(
+class _VideoClip implements VideoClip {
+  const _VideoClip(
       {required this.id,
       required this.title,
       required this.videoURL,
@@ -306,16 +482,19 @@ class _$VideoClipImpl implements _VideoClip {
   @JsonKey()
   final double score;
 
+  /// Create a copy of VideoClip
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'VideoClip(id: $id, title: $title, videoURL: $videoURL, thumbnailURL: $thumbnailURL, views: $views, likes: $likes, comments: $comments, categoryId: $categoryId, description: $description, creator: $creator, duration: $duration, tags: $tags, score: $score)';
-  }
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$VideoClipCopyWith<_VideoClip> get copyWith =>
+      __$VideoClipCopyWithImpl<_VideoClip>(this, _$identity);
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$VideoClipImpl &&
+            other is _VideoClip &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.title, title) || other.title == title) &&
             (identical(other.videoURL, videoURL) ||
@@ -354,57 +533,117 @@ class _$VideoClipImpl implements _VideoClip {
       const DeepCollectionEquality().hash(_tags),
       score);
 
-  @JsonKey(ignore: true)
+  @override
+  String toString() {
+    return 'VideoClip(id: $id, title: $title, videoURL: $videoURL, thumbnailURL: $thumbnailURL, views: $views, likes: $likes, comments: $comments, categoryId: $categoryId, description: $description, creator: $creator, duration: $duration, tags: $tags, score: $score)';
+  }
+}
+
+/// @nodoc
+abstract mixin class _$VideoClipCopyWith<$Res>
+    implements $VideoClipCopyWith<$Res> {
+  factory _$VideoClipCopyWith(
+          _VideoClip value, $Res Function(_VideoClip) _then) =
+      __$VideoClipCopyWithImpl;
+  @override
+  @useResult
+  $Res call(
+      {String id,
+      String title,
+      String videoURL,
+      String? thumbnailURL,
+      int views,
+      int likes,
+      int comments,
+      String categoryId,
+      String description,
+      String creator,
+      double duration,
+      List<String> tags,
+      double score});
+}
+
+/// @nodoc
+class __$VideoClipCopyWithImpl<$Res> implements _$VideoClipCopyWith<$Res> {
+  __$VideoClipCopyWithImpl(this._self, this._then);
+
+  final _VideoClip _self;
+  final $Res Function(_VideoClip) _then;
+
+  /// Create a copy of VideoClip
+  /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
-  _$$VideoClipImplCopyWith<_$VideoClipImpl> get copyWith =>
-      __$$VideoClipImplCopyWithImpl<_$VideoClipImpl>(this, _$identity);
+  $Res call({
+    Object? id = null,
+    Object? title = null,
+    Object? videoURL = null,
+    Object? thumbnailURL = freezed,
+    Object? views = null,
+    Object? likes = null,
+    Object? comments = null,
+    Object? categoryId = null,
+    Object? description = null,
+    Object? creator = null,
+    Object? duration = null,
+    Object? tags = null,
+    Object? score = null,
+  }) {
+    return _then(_VideoClip(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      title: null == title
+          ? _self.title
+          : title // ignore: cast_nullable_to_non_nullable
+              as String,
+      videoURL: null == videoURL
+          ? _self.videoURL
+          : videoURL // ignore: cast_nullable_to_non_nullable
+              as String,
+      thumbnailURL: freezed == thumbnailURL
+          ? _self.thumbnailURL
+          : thumbnailURL // ignore: cast_nullable_to_non_nullable
+              as String?,
+      views: null == views
+          ? _self.views
+          : views // ignore: cast_nullable_to_non_nullable
+              as int,
+      likes: null == likes
+          ? _self.likes
+          : likes // ignore: cast_nullable_to_non_nullable
+              as int,
+      comments: null == comments
+          ? _self.comments
+          : comments // ignore: cast_nullable_to_non_nullable
+              as int,
+      categoryId: null == categoryId
+          ? _self.categoryId
+          : categoryId // ignore: cast_nullable_to_non_nullable
+              as String,
+      description: null == description
+          ? _self.description
+          : description // ignore: cast_nullable_to_non_nullable
+              as String,
+      creator: null == creator
+          ? _self.creator
+          : creator // ignore: cast_nullable_to_non_nullable
+              as String,
+      duration: null == duration
+          ? _self.duration
+          : duration // ignore: cast_nullable_to_non_nullable
+              as double,
+      tags: null == tags
+          ? _self._tags
+          : tags // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      score: null == score
+          ? _self.score
+          : score // ignore: cast_nullable_to_non_nullable
+              as double,
+    ));
+  }
 }
 
-abstract class _VideoClip implements VideoClip {
-  const factory _VideoClip(
-      {required final String id,
-      required final String title,
-      required final String videoURL,
-      final String? thumbnailURL,
-      final int views,
-      final int likes,
-      final int comments,
-      final String categoryId,
-      final String description,
-      required final String creator,
-      final double duration,
-      final List<String> tags,
-      final double score}) = _$VideoClipImpl;
-
-  @override
-  String get id;
-  @override
-  String get title;
-  @override
-  String get videoURL;
-  @override
-  String? get thumbnailURL;
-  @override
-  int get views;
-  @override
-  int get likes;
-  @override
-  int get comments;
-  @override
-  String get categoryId;
-  @override
-  String get description;
-  @override
-  String get creator;
-  @override
-  double get duration;
-  @override
-  List<String> get tags;
-  @override
-  double get score;
-  @override
-  @JsonKey(ignore: true)
-  _$$VideoClipImplCopyWith<_$VideoClipImpl> get copyWith =>
-      throw _privateConstructorUsedError;
-}
+// dart format on

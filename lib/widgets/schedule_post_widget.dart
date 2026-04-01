@@ -109,7 +109,6 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
               _updateSchedule();
             },
             activeColor: const Color(0xFF9248D2),
-            inactiveThumbColor: Colors.white,
             inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
           ),
         ],

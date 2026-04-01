@@ -6,7 +6,7 @@ import 'video_thumbnails.dart';
 part 'home_video.freezed.dart';
 
 @freezed
-class HomeVideo with _$HomeVideo {
+sealed class HomeVideo with _$HomeVideo {
   const factory HomeVideo({
     required String id,
     required User creator,

@@ -152,23 +152,34 @@ class UnifiedBookmarkService extends ChangeNotifier {
     required bool isBookmarking,
   }) async {
     try {
-      // Simplified approach: Just update the favorites subcollection
-      // This is more reliable and doesn't require the liked_videos array
       final userDocRef = _firestore.collection('users').doc(userId);
       final favoriteDocRef = userDocRef.collection('favorites').doc(videoId);
+      final videoDocRef = _firestore.collection('videos').doc(videoId);
+      final batch = _firestore.batch();
 
       if (isBookmarking) {
-        // Add bookmark
-        await favoriteDocRef.set({
+        batch.set(favoriteDocRef, {
           'videoId': videoId,
           'timestamp': FieldValue.serverTimestamp(),
+          'source': 'mobile',
         });
+        batch.set(videoDocRef, {
+          'favorites': FieldValue.increment(1),
+          'favoriteCount': FieldValue.increment(1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
         debugPrint('✅ UnifiedBookmarkService: Bookmark added for $videoId');
       } else {
-        // Remove bookmark
-        await favoriteDocRef.delete();
+        batch.delete(favoriteDocRef);
+        batch.set(videoDocRef, {
+          'favorites': FieldValue.increment(-1),
+          'favoriteCount': FieldValue.increment(-1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
         debugPrint('✅ UnifiedBookmarkService: Bookmark removed for $videoId');
       }
+
+      await batch.commit();
 
       return BookmarkResult.success(isBookmarking);
     } catch (e) {

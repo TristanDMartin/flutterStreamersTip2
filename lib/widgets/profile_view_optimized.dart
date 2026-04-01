@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import '../models/user.dart' as app_user;
 import '../models/user_status.dart';
+import '../providers/follow_refresh_provider.dart';
 import '../providers/status_provider.dart';
 import '../services/profile_update_service.dart';
 import '../services/post_counter_service.dart';
@@ -14,10 +14,10 @@ import 'edit_profile_view.dart';
 import 'share_profile_view.dart';
 import 'profile_back_view.dart';
 import 'profile_video_feed_view.dart';
-import 'streamer_card_view.dart';
+import '../routing/app_navigator.dart';
 import '../services/unified_avatar_service.dart';
-import '../services/global_playback_manager.dart';
-import '../constants/playback_owners.dart';
+import 'user_stats_row.dart';
+import '../constants/app_colors.dart';
 
 class ProfileViewOptimized extends ConsumerStatefulWidget {
   final app_user.User user;
@@ -37,19 +37,12 @@ class ProfileViewOptimized extends ConsumerStatefulWidget {
 class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     with TickerProviderStateMixin {
   late AnimationController _segmentedController;
+  late AnimationController _contentTransitionController;
+  late Animation<double> _contentFadeAnimation;
+  late Animation<Offset> _contentSlideAnimation;
 
-  // Stats tracking (nullable to distinguish "not loaded" from "zero")
-  int? _followersCount;
-  int? _followingCount;
-  int? _postsCount;
-  bool _isLoadingStats =
-      false; // 🔴 FIX #2: Prevent multiple simultaneous loads
   bool _isDisposed = false; // 🔴 FIX #2: Track disposal state
 
-  // Stream subscriptions for stats
-  StreamSubscription<QuerySnapshot>? _followersSubscription;
-  StreamSubscription<QuerySnapshot>? _followingSubscription;
-  StreamSubscription<int>? _postsSubscription;
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
   int _selectedTabIndex = 0; // 0: Video, 1: Favorites, 2: Tagged
@@ -76,6 +69,24 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
+    _contentTransitionController = AnimationController(
+      duration: const Duration(milliseconds: 240),
+      vsync: this,
+    );
+    _contentFadeAnimation = CurvedAnimation(
+      parent: _contentTransitionController,
+      curve: Curves.easeOutCubic,
+    );
+    _contentSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.03),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _contentTransitionController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    _contentTransitionController.value = 1.0;
     _flipController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -92,14 +103,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     // Listen for profile updates
     _profileUpdateService?.addProfileViewListener(_onProfileUpdated);
 
-    // 🎯 SINGLE ACTIVE OWNER: Set ProfileViewOptimized as active owner
-    // Note: ProfileViewOptimized only shows thumbnails via ProfileVideoFeedView
-    // Actual video playback happens in PlayerScreen when user taps thumbnails
-    // setActiveOwner already handles pausing/muting non-active owners
-    GlobalPlaybackManager.instance.setActiveOwner(PlaybackOwners.profile);
-
-    // Load stats - this sets up real-time listeners including post count
-    _loadStats();
+    // 🎯 SINGLE ACTIVE OWNER:
+    // Active owner is set centrally (AppNavigationObserver) based on route changes.
 
     // Auto-reconcile post count if needed (silent background fix with 5-min cooldown)
     // This ensures accuracy while allowing real-time updates to work
@@ -114,11 +119,6 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
       // New user -> reset cache and stats
       _cachedUserData = null;
       _userDataDirty = true;
-      _followersCount = null;
-      _followingCount = null;
-      _postsCount = null;
-
-      _loadStats();
     }
   }
 
@@ -133,12 +133,8 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
 
     _profileUpdateService?.removeProfileViewListener(_onProfileUpdated);
     _segmentedController.dispose();
+    _contentTransitionController.dispose();
     _flipController.dispose();
-
-    // 🔴 FIX #2: Cancel stats subscriptions asynchronously
-    _followersSubscription?.cancel();
-    _followingSubscription?.cancel();
-    _postsSubscription?.cancel();
 
     super.dispose();
   }
@@ -217,92 +213,6 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         debugPrint(
             '❌ PROFILE: Error auto-reconciling post count for user ${widget.user.id}: $e');
       }
-    }
-  }
-
-  // 🔴 FIX #2: Properly managed stats loading with async cleanup
-  Future<void> _loadStats() async {
-    if (widget.user.id.isEmpty || _isLoadingStats || _isDisposed) {
-      return;
-    }
-
-    _isLoadingStats = true;
-
-    try {
-      // Cancel existing subscriptions and wait for cleanup
-      await _postsSubscription?.cancel();
-      await _followersSubscription?.cancel();
-      await _followingSubscription?.cancel();
-
-      _postsSubscription = null;
-      _followersSubscription = null;
-      _followingSubscription = null;
-
-      // Small delay to ensure cleanup
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Load posts count using PostCounterService for real-time updates
-      final postCounterService = PostCounterService();
-      _postsSubscription =
-          postCounterService.watchPostCount(widget.user.id).listen(
-        (postCount) {
-          if (mounted && !_isDisposed) {
-            setState(() {
-              _postsCount = postCount;
-            });
-          }
-        },
-        onError: (error) {
-          if (kDebugMode) {
-            debugPrint('❌ ProfileView: Error watching post count: $error');
-          }
-        },
-        cancelOnError: false, // Don't auto-cancel on error
-      );
-
-      // Load followers count from new follows collection
-      _followersSubscription = FirebaseFirestore.instance
-          .collection('follows')
-          .where('followedId', isEqualTo: widget.user.id)
-          .snapshots()
-          .listen(
-        (snapshot) {
-          if (mounted && !_isDisposed) {
-            setState(() {
-              _followersCount = snapshot.docs.length;
-            });
-          }
-        },
-        onError: (error) {
-          if (kDebugMode) {
-            debugPrint('❌ ProfileView: Error watching followers: $error');
-          }
-        },
-        cancelOnError: false,
-      );
-
-      // Load following count from new follows collection
-      _followingSubscription = FirebaseFirestore.instance
-          .collection('follows')
-          .where('followerId', isEqualTo: widget.user.id)
-          .snapshots()
-          .listen(
-        (snapshot) {
-          if (mounted && !_isDisposed) {
-            setState(() {
-              _followingCount = snapshot.docs.length;
-            });
-          }
-        },
-        onError: (error) {
-          if (kDebugMode) {
-            debugPrint('❌ ProfileView: Error watching following: $error');
-          }
-        },
-        cancelOnError: false,
-      );
-    } finally {
-      _isLoadingStats = false;
     }
   }
 
@@ -399,39 +309,11 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
         // print('ProfileView: Navigating to StreamerCardView');
       }
 
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          settings: const RouteSettings(name: '/streamer_card'),
-          builder: (context) => StreamerCardView(
-            userId: widget.user.id,
-            currentUserId: _profileUpdateService?.currentUser?.uid,
-            onDismiss: () => Navigator.of(context).pop(),
-            onFollow: (userId) {
-              // Handle follow action
-              HapticFeedback.lightImpact();
-              if (kDebugMode) {
-                // print('ProfileView: Follow action triggered for user: $userId');
-              }
-              // Follow functionality - placeholder for future implementation
-            },
-            onMessage: (userId) {
-              // Handle message action
-              HapticFeedback.lightImpact();
-              if (kDebugMode) {
-                // print('ProfileView: Message action triggered for user: $userId');
-              }
-              // Message functionality - placeholder for future implementation
-            },
-            onShare: (userId) {
-              // Handle share action
-              HapticFeedback.lightImpact();
-              if (kDebugMode) {
-                // print('ProfileView: Share action triggered for user: $userId');
-              }
-              // Share functionality - placeholder for future implementation
-            },
-          ),
-        ),
+      AppNavigator.openStreamerCard(
+        context,
+        userId: widget.user.id,
+        currentUserId: _profileUpdateService?.currentUser?.uid,
+        onDismiss: () => Navigator.of(context).pop(),
       );
     } catch (e) {
       if (kDebugMode) {
@@ -531,6 +413,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   void _onTabSelected(int index) {
+    if (_selectedTabIndex == index) return;
     HapticFeedback.lightImpact();
     setState(() {
       _selectedTabIndex = index;
@@ -538,29 +421,25 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     _segmentedController.forward().then((_) {
       _segmentedController.reset();
     });
+    _contentTransitionController.forward(from: 0);
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(followRefreshProvider, (previous, next) {
+      if (previous == next || !mounted) return;
+      setState(() {
+        _userDataDirty = true;
+      });
+    });
+
     // 🔴 FIX #5: Cache user data at top of build method
     final userData = _getCurrentUserData();
-
-    // Ensure stats are loaded when widget builds (only once)
-    if (_followersCount == null ||
-        _followingCount == null ||
-        _postsCount == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_isLoadingStats) {
-          // debugPrint('🔧 ProfileView: Widget built, calling _loadStats()');
-          _loadStats();
-        }
-      });
-    }
 
     // debugPrint('🔧 ProfileView: Building ProfileViewOptimized for user: ${widget.user.id}');
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.supportBackground,
       extendBody: true,
       extendBodyBehindAppBar:
           true, // FIXED: Extend behind status bar for full gradient
@@ -590,16 +469,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     return Container(
       width: double.infinity,
       height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF6633CC), // Purple (matches NetworkView)
-            Color(0xFF1A1A4D), // Dark blue (matches NetworkView)
-          ],
-        ),
-      ),
+      color: AppColors.supportBackground,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         extendBodyBehindAppBar:
@@ -630,19 +500,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
                 color: Colors.white,
                 size: 24,
               ),
-              onPressed: () {
-                if (kDebugMode) {
-                  // print('ProfileView: Card button onPressed called');
-                }
-                // Show immediate feedback
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Opening StreamerCard...'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-                _openStreamerCard();
-              },
+              onPressed: _openStreamerCard,
             ),
             IconButton(
               icon: Icon(
@@ -690,14 +548,61 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     return Column(
       children: [
         _buildAvatarWithGradientRing(userData),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         _buildNameAndHandle(userData),
-        const SizedBox(height: 24),
-        _buildStatsRow(),
-        const SizedBox(height: 24),
-        // Post count fix is handled by the simple button below in stats row
-        _buildPrimaryButtonsRow(userData),
+        const SizedBox(height: 22),
+        _buildHeaderSystemCard(userData),
       ],
+    );
+  }
+
+  Widget _buildHeaderSystemCard(Map<String, dynamic> userData) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.14),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          UserStatsRow(
+            userId: widget.user.id,
+            spacing: 28,
+            valueTextStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              height: 1.0,
+            ),
+            labelTextStyle: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.0,
+            ),
+          ),
+          if (widget.isCurrentUser) ...[
+            const SizedBox(height: 18),
+            Container(
+              height: 1,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+            const SizedBox(height: 18),
+            _buildPrimaryButtonsRow(userData),
+          ],
+        ],
+      ),
     );
   }
 
@@ -819,141 +724,99 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
     );
   }
 
-  Widget _buildStatsRow() {
-    // Show loading indicator if stats haven't loaded yet
-    if (_followersCount == null ||
-        _followingCount == null ||
-        _postsCount == null) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildStatItem('Posts', '...'),
-          const SizedBox(width: 54),
-          _buildStatItem('Followers', '...'),
-          const SizedBox(width: 54),
-          _buildStatItem('Following', '...'),
-        ],
-      );
-    }
-
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildStatItem('Posts', _postsCount.toString()),
-            const SizedBox(width: 54),
-            _buildStatItem('Followers', _followersCount.toString()),
-            const SizedBox(width: 54),
-            _buildStatItem('Following', _followingCount.toString()),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatItem(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w900,
-            height: 1.0,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            height: 1.0,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildPrimaryButtonsRow(Map<String, dynamic> userData) {
     if (!widget.isCurrentUser) {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildGradientPillButton(
-              text: 'Edit Profile',
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => EditProfileView(
-                      user: userData,
-                      onUserUpdated: (updatedUser) {
-                        // Profile update is handled by ProfileUpdateService
-                        // The service will automatically trigger a rebuild
-                        HapticFeedback.lightImpact();
-                      },
-                    ),
+    return Row(
+      children: [
+        Expanded(
+          child: _buildHeaderActionButton(
+            text: 'Edit Profile',
+            icon: Icons.edit_outlined,
+            isPrimary: true,
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => EditProfileView(
+                    user: userData,
+                    onUserUpdated: (updatedUser) {
+                      HapticFeedback.lightImpact();
+                    },
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _buildGradientPillButton(
-              text: 'Share Profile',
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => ShareProfileView(
-                      user: userData,
-                      dismiss: () => Navigator.of(context).pop(),
-                    ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildHeaderActionButton(
+            text: 'Share Profile',
+            icon: Icons.ios_share_rounded,
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => ShareProfileView(
+                    user: userData,
+                    dismiss: () => Navigator.of(context).pop(),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildGradientPillButton({
+  Widget _buildHeaderActionButton({
     required String text,
+    required IconData icon,
     required VoidCallback onPressed,
+    bool isPrimary = false,
   }) {
     return GestureDetector(
       onTap: onPressed,
       child: Container(
-        height: 48,
+        height: 50,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
+          gradient: isPrimary
+              ? const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                )
+              : null,
+          color: isPrimary ? null : Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: isPrimary
+                ? Colors.white.withValues(alpha: 0.10)
+                : Colors.white.withValues(alpha: 0.14),
           ),
-          borderRadius: BorderRadius.circular(24),
         ),
-        child: Center(
-          child: Text(
-            text,
-            style: const TextStyle(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
               color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              size: 18,
             ),
-          ),
+            const SizedBox(width: 8),
+            Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1022,16 +885,25 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   }
 
   Widget _buildContentArea() {
-    switch (_selectedTabIndex) {
-      case 0:
-        return _buildVideoContent();
-      case 1:
-        return _buildFavoritesContent();
-      case 2:
-        return _buildTaggedContent();
-      default:
-        return _buildVideoContent();
-    }
+    return FadeTransition(
+      opacity: _contentFadeAnimation,
+      child: SlideTransition(
+        position: _contentSlideAnimation,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: IndexedStack(
+            index: _selectedTabIndex,
+            children: [
+              _buildVideoContent(),
+              _buildFavoritesContent(),
+              _buildTaggedContent(),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildVideoContent() {

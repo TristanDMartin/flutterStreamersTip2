@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
+import '../models/user_count_fields.dart';
 import '../models/network_models.dart';
 import '../models/user.dart';
 
@@ -117,8 +118,8 @@ class AdvancedNetworkService extends ChangeNotifier {
           mutualConnections: [],
           hashtags: [],
           bio: data['bio'],
-          followerCount: data['followerCount'] ?? 0,
-          followingCount: data['followingCount'] ?? 0,
+          followerCount: UserCountFields.readFollowersCount(data),
+          followingCount: UserCountFields.readFollowingCount(data),
           postCount: data['postCount'] ?? 0,
         ));
       }
@@ -139,8 +140,8 @@ class AdvancedNetworkService extends ChangeNotifier {
           mutualConnections: [],
           hashtags: [],
           bio: data['bio'],
-          followerCount: data['followerCount'] ?? 0,
-          followingCount: data['followingCount'] ?? 0,
+          followerCount: UserCountFields.readFollowersCount(data),
+          followingCount: UserCountFields.readFollowingCount(data),
           postCount: data['postCount'] ?? 0,
         ));
       }

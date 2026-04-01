@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:equatable/equatable.dart';
+import 'user_count_fields.dart';
 import '../utils/data_parsing_utils.dart';
 
 /// User Model - Complete implementation matching SwiftUI User class
@@ -59,8 +60,8 @@ class User extends Equatable {
           ?.map((s) => SocialLink.fromMap(s as Map<String, dynamic>))
           .toList() ?? [],
       postCount: parseInteger(data['postCount']),
-      followerCount: parseInteger(data['followerCount']),
-      followingCount: parseInteger(data['followingCount']),
+      followerCount: UserCountFields.readFollowersCount(data),
+      followingCount: UserCountFields.readFollowingCount(data),
       calendarEvents: (data['calendarEvents'] as List<dynamic>?)
           ?.map((e) => CalendarEvent.fromMap(e as Map<String, dynamic>))
           .toList() ?? [],
@@ -81,8 +82,10 @@ class User extends Equatable {
       'aiSelf': aiSelf,
       'socialLinks': socialLinks.map((s) => s.toMap()).toList(),
       'postCount': postCount,
-      'followerCount': followerCount,
-      'followingCount': followingCount,
+      ...UserCountFields.writeCanonicalCounts(
+        followersCount: followerCount,
+        followingCount: followingCount,
+      ),
       'calendarEvents': calendarEvents.map((e) => e.toMap()).toList(),
     };
   }

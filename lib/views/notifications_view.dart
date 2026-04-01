@@ -392,7 +392,7 @@ class _NotificationsViewState extends ConsumerState<NotificationsView> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF9248D2),
+            activeThumbColor: const Color(0xFF9248D2),
           ),
         ],
       ),

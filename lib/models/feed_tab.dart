@@ -5,7 +5,10 @@ enum FeedTab {
   forYou,
 
   /// Following feed - shows videos from users the current user follows
-  following
+  following,
+
+  /// Threads feed - shows forum-style discussion threads
+  threads
 }
 
 /// Extension to provide consistent string representations
@@ -16,6 +19,8 @@ extension FeedTabExtension on FeedTab {
         return 'For You';
       case FeedTab.following:
         return 'Following';
+      case FeedTab.threads:
+        return 'Threads';
     }
   }
 
@@ -25,6 +30,8 @@ extension FeedTabExtension on FeedTab {
         return 'home/forYou';
       case FeedTab.following:
         return 'home/following';
+      case FeedTab.threads:
+        return 'home/threads';
     }
   }
 }

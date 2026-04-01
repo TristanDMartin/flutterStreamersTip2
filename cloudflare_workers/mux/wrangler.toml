@@ -1,0 +1,32 @@
+name = "streamerstip-mux-api"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+FIREBASE_PROJECT_ID = "streamerstip-6cfdb"
+
+workers_dev = true
+
+# Custom domain: uncomment when streamerstip.com is in Cloudflare (add site, then DNS CNAME api → @)
+# [[routes]]
+# pattern = "api.streamerstip.com/*"
+# zone_name = "streamerstip.com"
+
+# Rate limit /mux/direct-upload (10/hr per uid, 30/hr per IP)
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "300b7e88c97a41a594e5d5c50d59fb38"
+
+# R2 for avatars and chat media
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "streamerstip-media"
+
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# MUX_TOKEN_ID
+# MUX_TOKEN_SECRET
+# MUX_WEBHOOK_SECRET
+# MUX_BACKFILL_SECRET - for /mux/backfill-assets (pick a random string)
+# MEDIA_PUBLIC_BASE_URL - R2 public URL e.g. https://pub-xxx.r2.dev/streamerstip-media
+# FIREBASE_SERVICE_ACCOUNT_JSON - full service account JSON string
+# FIREBASE_WEB_API_KEY - Firebase Web API Key (Project Settings > General) for token verification

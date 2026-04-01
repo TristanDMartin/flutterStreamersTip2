@@ -6,7 +6,7 @@ part 'profile_video.freezed.dart';
 /// Model for videos in a user's profile/upload history
 /// Used specifically for insights and profile video feeds
 @freezed
-class ProfileVideo with _$ProfileVideo {
+sealed class ProfileVideo with _$ProfileVideo {
   const factory ProfileVideo({
     required String id,
     required User creator,

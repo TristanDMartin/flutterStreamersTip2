@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'creator_stats_sync_service.dart';
 import 'production_logging_service.dart';
 import 'video_analytics_aggregation_service.dart';
 
@@ -40,12 +41,10 @@ class UnifiedAnalyticsService {
         'watchTime': watchTime?.inSeconds,
         'platform': defaultTargetPlatform.name,
       });
-
-      // Update video view count
-      await _firestore.collection('videos').doc(videoId).update({
+      await _firestore.collection('video_analytics').doc(videoId).set({
         'views': FieldValue.increment(1),
-      });
-
+        'lastViewedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       _logger.info('Video view tracked successfully',
           tag: 'UnifiedAnalyticsService');
 
@@ -81,6 +80,10 @@ class UnifiedAnalyticsService {
       await _firestore.collection('videos').doc(videoId).update({
         'likes': FieldValue.increment(isLiked ? 1 : -1),
       });
+      await CreatorStatsSyncService().syncLikeToCreator(
+        videoId: videoId,
+        delta: isLiked ? 1 : -1,
+      );
 
       _logger.info('Video like tracked successfully',
           tag: 'UnifiedAnalyticsService');

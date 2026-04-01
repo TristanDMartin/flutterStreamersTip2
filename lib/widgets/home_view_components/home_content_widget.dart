@@ -6,10 +6,11 @@ import '../../models/home_video.dart';
 import '../../providers/home_provider.dart' as hp;
 import '../../models/feed_tab.dart';
 import '../../services/global_playback_manager.dart';
+import '../../constants/app_colors.dart';
 import 'feed_selector_widget.dart';
 import 'video_page_view_widget.dart';
-import 'following_feed_grid_widget.dart';
 import 'loading_state_widget.dart';
+import '../../widgets/threads/threads_list_view.dart';
 
 /// Main content widget for HomeView (combines all components)
 class HomeContentWidget extends ConsumerStatefulWidget {
@@ -52,7 +53,15 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     log('🔄 HomeContent: Pull-to-refresh triggered for $activeTab feed at index 0');
     try {
       final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
-      final feedTab = activeTab == 'For You' ? FeedTab.forYou : FeedTab.following;
+      final feedTab = switch (activeTab) {
+        'For You' => FeedTab.forYou,
+        'Following' => FeedTab.following,
+        _ => FeedTab.threads,
+      };
+
+      if (feedTab == FeedTab.threads) {
+        return;
+      }
       
       // Refresh feed - this will get newest videos from Firestore (newest first)
       await homeProviderNotifier.refreshFeedByTab(feedTab);
@@ -80,27 +89,39 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
   @override
   Widget build(BuildContext context) {
     final homeState = ref.watch(hp.homeProvider);
+    final activeFeed = switch (widget.activeTab) {
+      'For You' => FeedTab.forYou,
+      'Following' => FeedTab.following,
+      _ => FeedTab.threads,
+    };
 
     // Get videos based on active tab
-    final videos = widget.activeTab == 'For You'
-        ? homeState.forYouVideos
-        : homeState.followingVideos;
+    final videos = switch (activeFeed) {
+      FeedTab.forYou => homeState.forYouVideos,
+      FeedTab.following => homeState.followingVideos,
+      FeedTab.threads => const <HomeVideo>[],
+    };
 
-    final isLoading = widget.activeTab == 'For You'
-        ? homeState.isLoading
-        : (homeState.followingSlice?.isLoading ?? false);
+    final isLoading = switch (activeFeed) {
+      FeedTab.forYou => homeState.isLoading,
+      FeedTab.following => homeState.followingSlice?.isLoading ?? false,
+      FeedTab.threads => false,
+    };
 
-    final hasError = widget.activeTab == 'For You'
-        ? (homeState.error != null && homeState.error!.isNotEmpty)
-        : (homeState.followingSlice?.error != null);
+    final hasError = switch (activeFeed) {
+      FeedTab.forYou => homeState.error != null && homeState.error!.isNotEmpty,
+      FeedTab.following =>
+        homeState.followingSlice?.error != null &&
+        homeState.followingSlice!.error!.isNotEmpty,
+      FeedTab.threads => false,
+    };
 
     // 🔍 DIAGNOSTIC: Log video count for debugging
     if (kDebugMode) {
-      debugPrint('📊 HomeContent: Building - videos: ${videos.length}, isLoading: $isLoading, activeTab: ${widget.activeTab}');
+      debugPrint(
+          '📊 HomeContent[$activeFeed]: videos=${videos.length}, isLoading=$isLoading, hasError=$hasError');
       if (videos.isEmpty && !isLoading) {
-        debugPrint('⚠️ HomeContent: ⚠️⚠️⚠️ NO VIDEOS AVAILABLE! ⚠️⚠️⚠️');
-        debugPrint('   Check console for "SKIPPING" messages from VideoService');
-        debugPrint('   Check Firestore for videos with status="published" and privacy="Everyone"');
+        debugPrint('⚠️ HomeContent[$activeFeed]: no items available');
       }
     }
 
@@ -110,6 +131,22 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
         Positioned.fill(
           child: _buildVideoContent(videos, isLoading, hasError),
         ),
+
+        if (activeFeed == FeedTab.forYou &&
+            hasError &&
+            videos.isNotEmpty)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 68,
+            left: 16,
+            right: 16,
+            child: _buildInlineFeedStatus(
+              message: homeState.error ?? 'Connection is unstable.',
+              onRetry: () {
+                final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
+                homeProviderNotifier.retryLoadVideos();
+              },
+            ),
+          ),
 
         // Header overlay on top of video
         Positioned(
@@ -127,6 +164,10 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
               debugPrint(
                   '🔘 HomeContent: Following tapped, calling onTabChange');
               widget.onTabChange('Following');
+            },
+            onThreadsTap: () {
+              log('🔘 HomeContent: Threads tapped, current tab: ${widget.activeTab}');
+              widget.onTabChange('Threads');
             },
             onDiscoverTap: widget.onDiscoverTap,
           ),
@@ -151,13 +192,15 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF9248D2),
+                  gradient: const LinearGradient(
+                    colors: AppColors.supportAccentGradient,
+                  ),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                      color: AppColors.primary.withValues(alpha: 0.34),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -175,43 +218,77 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
 
   Widget _buildVideoContent(
       List<HomeVideo> videos, bool isLoading, bool hasError) {
-    // 🔥 RedNote-style: Following feed uses grid, For You uses vertical feed
-    if (widget.activeTab == 'Following') {
-      return FollowingFeedGridWidget(
-        videos: videos,
-        isLoading: isLoading,
-        hasError: hasError,
-        errorMessage: hasError ? (ref.read(hp.homeProvider).error ?? 'Failed to load videos. Please try again.') : null,
-        onRefresh: () => _handlePullToRefresh(widget.activeTab),
-        onVideoTap: (video, index) {
-          // Open video in PlayerScreen
-          widget.onVideoTap(video);
-        },
-      );
+    final homeState = ref.read(hp.homeProvider);
+    final activeFeed = switch (widget.activeTab) {
+      'For You' => FeedTab.forYou,
+      'Following' => FeedTab.following,
+      _ => FeedTab.threads,
+    };
+    final String? followingErrorMessage = homeState.followingSlice?.error;
+    final String? followingEmptyMessage = homeState.followingSlice?.emptyMessage;
+
+    // Threads tab: Show threads list view
+    if (widget.activeTab == 'Threads') {
+      return const ThreadsListView();
     }
 
-    // For You feed: Use vertical scrolling feed (TikTok-style)
     if (hasError) {
-      final homeState = ref.read(hp.homeProvider);
+      if (activeFeed == FeedTab.forYou && videos.isNotEmpty) {
+        return VideoPageViewWidget(
+          videos: videos,
+          currentIndex: widget.currentIndex,
+          tabId: activeFeed.tabId,
+          onPageChanged: (index) {
+            widget.onPageChanged(index);
+            if (mounted) {
+              setState(() {
+                _showScrollToTop = index > 2;
+              });
+            }
+          },
+          onVideoTap: widget.onVideoTap,
+          onLeftSwipe: widget.onLeftSwipe,
+          onRightSwipe: widget.onRightSwipe,
+          onControllerReady: (callback) {
+            _scrollCallback = callback;
+            if (widget.onScrollControllerReady != null) {
+              widget.onScrollControllerReady!(callback);
+            }
+          },
+          onRefresh: () => _handlePullToRefresh(widget.activeTab),
+        );
+      }
       return ErrorStateWidget(
-        message: homeState.error ?? 'Failed to load videos. Please try again.',
+        message: activeFeed == FeedTab.following
+            ? (followingErrorMessage ??
+                'Failed to load Following feed. Please try again.')
+            : (homeState.error ?? 'Failed to load videos. Please try again.'),
         onRetry: () {
-          log('🔄 HomeContent: Retrying video load');
+          log('🔄 HomeContent: Retrying ${activeFeed.displayName} feed');
           final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
-          homeProviderNotifier.retryLoadVideos();
+          if (activeFeed == FeedTab.forYou) {
+            homeProviderNotifier.retryLoadVideos();
+            return;
+          }
+          _handlePullToRefresh(widget.activeTab);
         },
       );
     }
 
     if (isLoading && videos.isEmpty) {
-      return const LoadingStateWidget(
-        message: 'Loading videos...',
+      return LoadingStateWidget(
+        message: activeFeed == FeedTab.following
+            ? 'Loading your Following feed...'
+            : 'Loading videos...',
       );
     }
 
     if (videos.isEmpty) {
-      return const LoadingStateWidget(
-        message: 'No videos available',
+      return LoadingStateWidget(
+        message: activeFeed == FeedTab.following
+            ? (followingEmptyMessage ??
+                'Your Following feed is waiting for fresh posts.')
+            : 'No videos available',
         showProgress: false,
       );
     }
@@ -219,7 +296,7 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     return VideoPageViewWidget(
       videos: videos,
       currentIndex: widget.currentIndex,
-      tabId: widget.activeTab == 'For You' ? 'home/forYou' : 'home/following',
+      tabId: activeFeed.tabId,
       onPageChanged: (index) {
         widget.onPageChanged(index);
         // Show scroll-to-top button when scrolled past first video
@@ -240,9 +317,75 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           widget.onScrollControllerReady!(callback);
         }
       },
-      onRefresh: widget.currentIndex == 0 
-          ? () => _handlePullToRefresh(widget.activeTab)
-          : null,
+      onRefresh: () => _handlePullToRefresh(widget.activeTab),
+    );
+  }
+
+  Widget _buildInlineFeedStatus({
+    required String message,
+    required VoidCallback onRetry,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.36),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.12),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.wifi_off_rounded,
+            color: Colors.white.withValues(alpha: 0.92),
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: onRetry,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.supportAccent.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: AppColors.supportAccent.withValues(alpha: 0.55),
+                ),
+              ),
+              child: const Text(
+                'Retry',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

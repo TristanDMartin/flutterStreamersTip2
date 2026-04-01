@@ -3,54 +3,42 @@ rules_version = '2';
 // Firebase Storage Rules
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow authenticated users to upload and read avatar images
-    match /avatars/{allPaths=**} {
-      // Allow any authenticated user to upload avatars
-      allow write: if request.auth != null;
-      
-      // Allow any authenticated user to read avatar images
+    match /avatars/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if true;
+    }
+
+    match /draft_assets/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
       allow read: if request.auth != null;
     }
     
-    // Allow authenticated users to upload and read other user content
     match /users/{userId}/{allPaths=**} {
-      // Allow any authenticated user to upload content
-      allow write: if request.auth != null;
-      
-      // Allow any authenticated user to read user content
-      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Allow authenticated users to upload and read general content
     match /content/{allPaths=**} {
-      // Allow any authenticated user to upload content
       allow write: if request.auth != null;
-      
-      // Allow any authenticated user to read content
       allow read: if request.auth != null;
     }
     
-    // Allow authenticated users to upload and read video thumbnails
     match /thumbnails/{allPaths=**} {
-      // Allow any authenticated user to upload thumbnails
       allow write: if request.auth != null;
-      
-      // Allow any authenticated user to read thumbnails
-      allow read: if request.auth != null;
+      allow read: if true;
     }
     
-    // Allow authenticated users to upload and read video content
-    match /videos/{allPaths=**} {
-      // Allow any authenticated user to upload videos
-      allow write: if request.auth != null;
-      
-      // Allow any authenticated user to read videos
-      allow read: if request.auth != null;
+    match /videos/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if true;
     }
-    
-    // Allow authenticated users to upload and read any other content
-    match /{allPaths=**} {
+
+    match /chats/{chatId}/{allPaths=**} {
       allow read, write: if request.auth != null;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

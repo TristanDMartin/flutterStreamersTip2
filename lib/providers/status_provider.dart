@@ -1,7 +1,10 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
+import 'dart:developer';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:async';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/user_status.dart';
 
 // Provider for current user's status (read-only stream)
@@ -150,6 +153,9 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _presenceSub;
+
   void _initializeStatus() {
     final user = _auth.currentUser;
     if (user == null) {
@@ -163,9 +169,11 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
 
     // print('✅ StatusNotifier: Initializing status for user ${user.uid}');
 
-    // ✅ DUAL LISTENING: Listen to BOTH locations for perfect website/app sync
+    _userDocSub?.cancel();
+    _presenceSub?.cancel();
+
     // LOCATION 1: Listen to main user document (where website writes)
-    _firestore.collection('users').doc(user.uid).snapshots().listen(
+    _userDocSub = _firestore.collection('users').doc(user.uid).snapshots().listen(
       (snapshot) {
         if (snapshot.exists && snapshot.data() != null) {
           final data = snapshot.data()!;
@@ -181,7 +189,7 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
                 lastSeen: lastSeen?.toDate(),
                 lastActive: lastSeen?.toDate(),
               );
-              print('🌐 Website → App: Status updated to ${status.value}');
+              log('🌐 Website → App: Status updated to ${status.value}');
               state = AsyncValue.data(presence);
             } catch (e) {
               // print('❌ Error parsing status from main document: $e');
@@ -192,7 +200,7 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
     );
 
     // LOCATION 2: Listen to presence subcollection (where app writes)
-    _firestore
+    _presenceSub = _firestore
         .collection('users')
         .doc(user.uid)
         .collection('presence')
@@ -215,7 +223,7 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
 
         try {
           final presence = UserPresence.fromMap(snapshot.data()!);
-          print('📱 App: Status updated to ${presence.status.value}');
+          log('📱 App: Status updated to ${presence.status.value}');
           state = AsyncValue.data(presence);
         } catch (e) {
           // print('❌ StatusNotifier: Error parsing status data: $e');
@@ -408,6 +416,13 @@ class StatusNotifier extends StateNotifier<AsyncValue<UserPresence>> {
     } catch (error) {
       // print('❌ Error updating last active: $error');
     }
+  }
+
+  @override
+  void dispose() {
+    _userDocSub?.cancel();
+    _presenceSub?.cancel();
+    super.dispose();
   }
 }
 

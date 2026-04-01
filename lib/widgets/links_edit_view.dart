@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'brand_icons.dart';
+import '../constants/app_colors.dart';
 
 class LinksEditView extends StatefulWidget {
   final List<Map<String, dynamic>> platforms;
@@ -19,6 +20,7 @@ class LinksEditView extends StatefulWidget {
 
 class _LinksEditViewState extends State<LinksEditView> {
   late List<PlatformLink> _platformLinks;
+  final Set<String> _expandedPlatformTypes = <String>{};
   
   // Allowed platform types matching your design system
   static const List<String> _allowedPlatforms = [
@@ -49,6 +51,14 @@ class _LinksEditViewState extends State<LinksEditView> {
         url: existing?['url'] ?? '',
       );
     }).toList();
+
+    _expandedPlatformTypes
+      ..clear()
+      ..addAll(
+        _platformLinks
+            .where((link) => !link.isLinked)
+            .map((link) => link.type),
+      );
   }
 
   void _saveLinks() {
@@ -81,50 +91,83 @@ class _LinksEditViewState extends State<LinksEditView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        leading: IconButton(
-          onPressed: widget.onBack ?? () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-        ),
-        title: const Text(
-          'Edit links',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: _saveLinks,
-            child: const Text(
-              'Save',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: AppColors.supportBackground,
+      body: SafeArea(
         child: Column(
           children: [
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
-                borderRadius: BorderRadius.circular(10),
+            _buildHeader(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                      child: Text(
+                        'Connect your platforms',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.68),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    for (int i = 0; i < _platformLinks.length; i++) ...[
+                      _buildPlatformLinkRow(_platformLinks[i], i),
+                      if (i < _platformLinks.length - 1)
+                        const SizedBox(height: 12),
+                    ],
+                  ],
+                ),
               ),
-              child: Column(
-                children: [
-                  for (int i = 0; i < _platformLinks.length; i++)
-                    _buildPlatformLinkRow(_platformLinks[i], i),
-                ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: widget.onBack ?? () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+            ),
+            const Expanded(
+              child: Text(
+                'Edit links',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _saveLinks,
+              child: const Text(
+                'Save',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -134,79 +177,168 @@ class _LinksEditViewState extends State<LinksEditView> {
   }
 
   Widget _buildPlatformLinkRow(PlatformLink link, int index) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Platform header
-              Row(
-                children: [
-                  _buildPlatformIcon(link.type),
-                  const SizedBox(width: 12),
-                  Text(
-                    _getPlatformDisplayName(link.type),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+    final isExpanded =
+        !link.isLinked || _expandedPlatformTypes.contains(link.type);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.12),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: link.isLinked
+                ? () {
+                    setState(() {
+                      if (isExpanded) {
+                        _expandedPlatformTypes.remove(link.type);
+                      } else {
+                        _expandedPlatformTypes.add(link.type);
+                      }
+                    });
+                  }
+                : null,
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: _buildPlatformIcon(link.type),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getPlatformDisplayName(link.type),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        link.isLinked
+                            ? (link.username.isNotEmpty
+                                ? '@${link.username}'
+                                : link.url)
+                            : 'Add a username and direct profile link',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.62),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (link.isLinked) ...[
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: AppColors.supportAccentGradient,
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'Linked',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: Colors.white.withValues(alpha: 0.72),
+                  ),
                 ],
-              ),
-              
-              const SizedBox(height: 12),
-              
-              // Username field
-              _buildInputField(
-                label: 'Username:',
-                value: link.username,
-                hintText: 'Enter username',
-                onChanged: (value) {
-                  setState(() {
-                    link.username = value;
-                  });
-                },
-                onClear: () {
-                  setState(() {
-                    link.username = '';
-                  });
-                },
-              ),
-              
-              const SizedBox(height: 12),
-              
-              // URL field
-              _buildInputField(
-                label: 'URL:',
-                value: link.url,
-                hintText: 'Enter URL',
-                keyboardType: TextInputType.url,
-                onChanged: (value) {
-                  setState(() {
-                    link.url = value;
-                  });
-                },
-                onClear: () {
-                  setState(() {
-                    link.url = '';
-                  });
-                },
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        
-        // Divider (except for last item)
-        if (index < _platformLinks.length - 1)
-          Container(
-            height: 1,
-            color: const Color(0xFF2C2C2E),
-            margin: const EdgeInsets.only(left: 52),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeInOutCubic,
+            child: isExpanded
+                ? Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      _buildInputField(
+                        label: 'Username',
+                        value: link.username,
+                        hintText: 'Enter username',
+                        onChanged: (value) {
+                          setState(() {
+                            link.username = value;
+                            if (link.isLinked) {
+                              _expandedPlatformTypes.add(link.type);
+                            }
+                          });
+                        },
+                        onClear: () {
+                          setState(() {
+                            link.username = '';
+                            if (!link.isLinked) {
+                              _expandedPlatformTypes.add(link.type);
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _buildInputField(
+                        label: 'URL',
+                        value: link.url,
+                        hintText: 'Enter URL',
+                        keyboardType: TextInputType.url,
+                        onChanged: (value) {
+                          setState(() {
+                            link.url = value;
+                            if (link.isLinked) {
+                              _expandedPlatformTypes.add(link.type);
+                            }
+                          });
+                        },
+                        onClear: () {
+                          setState(() {
+                            link.url = '';
+                            if (!link.isLinked) {
+                              _expandedPlatformTypes.add(link.type);
+                            }
+                          });
+                        },
+                      ),
+                    ],
+                  )
+                : const SizedBox.shrink(),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -219,18 +351,24 @@ class _LinksEditViewState extends State<LinksEditView> {
     TextInputType keyboardType = TextInputType.text,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF121212),
-        borderRadius: BorderRadius.circular(8),
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.10),
+          width: 1,
+        ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.grey,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.64),
               fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(width: 8),
@@ -241,10 +379,16 @@ class _LinksEditViewState extends State<LinksEditView> {
               onChanged: onChanged,
               keyboardType: keyboardType,
               textCapitalization: TextCapitalization.none,
-              style: const TextStyle(color: Colors.white),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
               decoration: InputDecoration(
                 hintText: hintText,
-                hintStyle: const TextStyle(color: Colors.grey),
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.35),
+                ),
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
               ),
@@ -310,4 +454,6 @@ class PlatformLink {
     required this.username,
     required this.url,
   });
+
+  bool get isLinked => username.trim().isNotEmpty || url.trim().isNotEmpty;
 }

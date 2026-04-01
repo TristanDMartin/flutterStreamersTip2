@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamers_tip/views/network_view.dart';
 
@@ -7,8 +8,10 @@ void main() {
 
     testWidgets('NetworkView displays correctly', (WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: NetworkView(),
+        const ProviderScope(
+          child: MaterialApp(
+            home: NetworkView(),
+          ),
         ),
       );
 
@@ -20,8 +23,10 @@ void main() {
 
     testWidgets('Tab switching works correctly', (WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: NetworkView(),
+        const ProviderScope(
+          child: MaterialApp(
+            home: NetworkView(),
+          ),
         ),
       );
 
@@ -35,29 +40,34 @@ void main() {
 
     testWidgets('Empty state displays correctly', (WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: NetworkView(),
+        const ProviderScope(
+          child: MaterialApp(
+            home: NetworkView(),
+          ),
         ),
       );
 
       // Should show empty state when no data
       expect(find.text('No connections yet'), findsOneWidget);
-      expect(find.text('Connect with other streamers to see them here'), findsOneWidget);
+      expect(find.text('Follow back people who follow you to connect.'),
+          findsOneWidget);
+      expect(find.text('Refresh'), findsOneWidget);
     });
 
-    testWidgets('Discover Streamers button works', (WidgetTester tester) async {
+    testWidgets('Empty state refresh action is present',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: NetworkView(),
+        const ProviderScope(
+          child: MaterialApp(
+            home: NetworkView(),
+          ),
         ),
       );
 
-      // Tap on Discover Streamers button
-      await tester.tap(find.text('Discover Streamers'));
+      await tester.tap(find.text('Refresh'));
       await tester.pump();
 
-      // Verify navigation occurred (this would need proper navigation setup in real test)
-      expect(find.text('Discover Streamers'), findsOneWidget);
+      expect(find.text('Refresh'), findsOneWidget);
     });
   });
 

@@ -5,7 +5,7 @@ import '../services/favorites_service.dart';
 part 'favorites_provider.freezed.dart';
 
 @freezed
-class FavoritesState with _$FavoritesState {
+sealed class FavoritesState with _$FavoritesState {
   const factory FavoritesState({
     @Default({}) Set<String> favorites,
     @Default(FavoritesSyncStatus.synced) FavoritesSyncStatus syncStatus,

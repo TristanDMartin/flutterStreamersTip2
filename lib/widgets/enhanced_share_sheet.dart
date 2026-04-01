@@ -1,5 +1,4 @@
 import 'dart:developer';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/home_video.dart';
@@ -127,7 +126,9 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       animation: _fadeAnimation,
       builder: (context, child) {
         return Container(
-          color: Colors.black.withOpacity(0.5 * _fadeAnimation.value),
+          color: Colors.black.withValues(
+            alpha: 0.5 * _fadeAnimation.value,
+          ),
           child: SlideTransition(
             position: _slideAnimation,
             child: Container(
@@ -205,7 +206,7 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
       height: 4,
       margin: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3),
+        color: Colors.white.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(2),
       ),
     );
@@ -256,10 +257,10 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -296,27 +297,35 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
   }
 
   Widget _buildActionButtons() {
+    final actionButtons = <Widget>[
+      _buildActionButton(
+        icon: Icons.qr_code,
+        label: 'QR Code',
+        onTap: _handleQRCode,
+      ),
+      _buildActionButton(
+        icon: Icons.report_outlined,
+        label: 'Report',
+        onTap: _handleReport,
+      ),
+    ];
+
+    if (widget.onFavorite != null) {
+      actionButtons.insert(
+        1,
+        _buildActionButton(
+          icon: Icons.favorite_border,
+          label: 'Favorite',
+          onTap: _handleFavorite,
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildActionButton(
-            icon: Icons.qr_code,
-            label: 'QR Code',
-            onTap: () => _handleQRCode(),
-          ),
-          _buildActionButton(
-            icon: Icons.favorite_border,
-            label: 'Favorite',
-            onTap: () => _handleFavorite(),
-          ),
-          _buildActionButton(
-            icon: Icons.report_outlined,
-            label: 'Report',
-            onTap: () => _handleReport(),
-          ),
-        ],
+        children: actionButtons,
       ),
     );
   }
@@ -335,10 +344,10 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
             width: 55,
             height: 55,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(27.5),
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -362,7 +371,7 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
     return Container(
       height: 1,
       margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-      color: Colors.white.withOpacity(0.2),
+      color: Colors.white.withValues(alpha: 0.2),
     );
   }
 
@@ -404,6 +413,7 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
   }
 
   void _handleFavorite() {
+    if (widget.onFavorite == null) return;
     widget.onFavorite?.call(widget.video.id, widget.video.creator.id);
     _showSuccessSnackBar('Added to favorites');
   }
@@ -461,7 +471,7 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
             height: 4,
             margin: const EdgeInsets.only(top: 12, bottom: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -492,7 +502,9 @@ class _EnhancedShareSheetState extends State<EnhancedShareSheet>
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                  side: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.2),
+                ),
                 ),
               ),
               child: const Text(

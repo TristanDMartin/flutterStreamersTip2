@@ -6,8 +6,7 @@ part of 'connection.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$ConnectionImpl _$$ConnectionImplFromJson(Map<String, dynamic> json) =>
-    _$ConnectionImpl(
+_Connection _$ConnectionFromJson(Map<String, dynamic> json) => _Connection(
       id: json['id'] as String,
       displayName: json['displayName'] as String,
       username: json['username'] as String,
@@ -16,7 +15,7 @@ _$ConnectionImpl _$$ConnectionImplFromJson(Map<String, dynamic> json) =>
       lastSeen: DateTime.parse(json['lastSeen'] as String),
     );
 
-Map<String, dynamic> _$$ConnectionImplToJson(_$ConnectionImpl instance) =>
+Map<String, dynamic> _$ConnectionToJson(_Connection instance) =>
     <String, dynamic>{
       'id': instance.id,
       'displayName': instance.displayName,

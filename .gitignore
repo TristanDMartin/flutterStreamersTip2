@@ -49,3 +49,11 @@ app.*.map.json
 
 # PDF files
 *.pdf
+
+# FVM Version Cache
+.fvm/
+
+# Cloud Functions secrets (never commit)
+cloud_functions/.env
+cloud_functions/.env.*
+!.env.example

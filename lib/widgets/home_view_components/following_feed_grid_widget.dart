@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
 import 'dart:developer';
 import '../../models/home_video.dart';
 import '../../widgets/player_screen.dart';
-import 'loading_state_widget.dart';
+import '../../constants/app_colors.dart';
 
 /// RedNote-style grid feed for Following tab
 /// 2-column masonry layout with video cards
@@ -13,6 +13,7 @@ class FollowingFeedGridWidget extends ConsumerStatefulWidget {
   final bool isLoading;
   final bool hasError;
   final String? errorMessage;
+  final String? emptyMessage;
   final VoidCallback? onRefresh;
   final Function(HomeVideo, int)? onVideoTap;
 
@@ -22,6 +23,7 @@ class FollowingFeedGridWidget extends ConsumerStatefulWidget {
     required this.isLoading,
     required this.hasError,
     this.errorMessage,
+    this.emptyMessage,
     this.onRefresh,
     this.onVideoTap,
   });
@@ -82,22 +84,35 @@ class _FollowingFeedGridWidgetState
   @override
   Widget build(BuildContext context) {
     if (widget.hasError) {
-      return ErrorStateWidget(
-        message: widget.errorMessage ?? 'Failed to load videos. Please try again.',
-        onRetry: widget.onRefresh ?? () {},
+      return _buildFollowingStatusCard(
+        icon: Icons.cloud_off_outlined,
+        title: 'Following Needs A Refresh',
+        message:
+            widget.errorMessage ?? 'We could not load videos from your circle right now.',
+        showProgress: false,
+        actionLabel: 'Try Again',
+        onAction: widget.onRefresh,
       );
     }
 
     if (widget.isLoading && widget.videos.isEmpty) {
-      return const LoadingStateWidget(
-        message: 'Loading videos...',
+      return _buildFollowingStatusCard(
+        icon: Icons.people_outline,
+        title: 'Gathering Your Following Feed',
+        message: 'Looking for fresh videos from creators you follow.',
+        showProgress: true,
       );
     }
 
     if (widget.videos.isEmpty) {
-      return const LoadingStateWidget(
-        message: 'No videos available',
+      return _buildFollowingStatusCard(
+        icon: Icons.groups_2_outlined,
+        title: 'Your Circle Is Quiet Right Now',
+        message: widget.emptyMessage ??
+            'When creators you follow post public videos, they will show up here.',
         showProgress: false,
+        actionLabel: widget.onRefresh != null ? 'Refresh Feed' : null,
+        onAction: widget.onRefresh,
       );
     }
 
@@ -304,6 +319,118 @@ class _FollowingFeedGridWidgetState
     );
   }
 
+  Widget _buildFollowingStatusCard({
+    required IconData icon,
+    required String title,
+    required String message,
+    required bool showProgress,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF111111),
+            Color(0xFF0A0A0A),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primary.withValues(alpha: 0.9),
+                        AppColors.secondary.withValues(alpha: 0.9),
+                      ],
+                    ),
+                  ),
+                  child: showProgress
+                      ? const Padding(
+                          padding: EdgeInsets.all(18),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Icon(icon, color: Colors.white, size: 32),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (actionLabel != null && onAction != null) ...[
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: onAction,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: Text(actionLabel),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildThumbnail(HomeVideo video) {
     final thumbnailUrl = video.thumbnailURL ?? '';
     
@@ -390,4 +517,3 @@ class _FollowingFeedGridWidgetState
     }
   }
 }
-

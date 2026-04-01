@@ -6,8 +6,8 @@ part of 'share_payload.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$SharePayloadImpl _$$SharePayloadImplFromJson(Map<String, dynamic> json) =>
-    _$SharePayloadImpl(
+_SharePayload _$SharePayloadFromJson(Map<String, dynamic> json) =>
+    _SharePayload(
       videoId: json['videoId'] as String,
       links: ShareLinks.fromJson(json['links'] as Map<String, dynamic>),
       permissions: SharePermissions.fromJson(
@@ -22,7 +22,7 @@ _$SharePayloadImpl _$$SharePayloadImplFromJson(Map<String, dynamic> json) =>
               const {},
     );
 
-Map<String, dynamic> _$$SharePayloadImplToJson(_$SharePayloadImpl instance) =>
+Map<String, dynamic> _$SharePayloadToJson(_SharePayload instance) =>
     <String, dynamic>{
       'videoId': instance.videoId,
       'links': instance.links,
@@ -32,15 +32,14 @@ Map<String, dynamic> _$$SharePayloadImplToJson(_$SharePayloadImpl instance) =>
       'platformUsageRanking': instance.platformUsageRanking,
     };
 
-_$ShareLinksImpl _$$ShareLinksImplFromJson(Map<String, dynamic> json) =>
-    _$ShareLinksImpl(
+_ShareLinks _$ShareLinksFromJson(Map<String, dynamic> json) => _ShareLinks(
       webShareUrl: json['webShareUrl'] as String,
       deepLink: json['deepLink'] as String?,
       downloadUrl: json['downloadUrl'] as String?,
       embedCode: json['embedCode'] as String?,
     );
 
-Map<String, dynamic> _$$ShareLinksImplToJson(_$ShareLinksImpl instance) =>
+Map<String, dynamic> _$ShareLinksToJson(_ShareLinks instance) =>
     <String, dynamic>{
       'webShareUrl': instance.webShareUrl,
       'deepLink': instance.deepLink,
@@ -48,9 +47,8 @@ Map<String, dynamic> _$$ShareLinksImplToJson(_$ShareLinksImpl instance) =>
       'embedCode': instance.embedCode,
     };
 
-_$SharePermissionsImpl _$$SharePermissionsImplFromJson(
-        Map<String, dynamic> json) =>
-    _$SharePermissionsImpl(
+_SharePermissions _$SharePermissionsFromJson(Map<String, dynamic> json) =>
+    _SharePermissions(
       canShare: json['canShare'] as bool? ?? true,
       canDownload: json['canDownload'] as bool? ?? true,
       canDuet: json['canDuet'] as bool? ?? true,
@@ -59,8 +57,7 @@ _$SharePermissionsImpl _$$SharePermissionsImplFromJson(
       restrictionReason: json['restrictionReason'] as String?,
     );
 
-Map<String, dynamic> _$$SharePermissionsImplToJson(
-        _$SharePermissionsImpl instance) =>
+Map<String, dynamic> _$SharePermissionsToJson(_SharePermissions instance) =>
     <String, dynamic>{
       'canShare': instance.canShare,
       'canDownload': instance.canDownload,
@@ -70,8 +67,8 @@ Map<String, dynamic> _$$SharePermissionsImplToJson(
       'restrictionReason': instance.restrictionReason,
     };
 
-_$ShareMetadataImpl _$$ShareMetadataImplFromJson(Map<String, dynamic> json) =>
-    _$ShareMetadataImpl(
+_ShareMetadata _$ShareMetadataFromJson(Map<String, dynamic> json) =>
+    _ShareMetadata(
       creatorUsername: json['creatorUsername'] as String,
       creatorDisplayName: json['creatorDisplayName'] as String,
       caption: json['caption'] as String?,
@@ -85,7 +82,7 @@ _$ShareMetadataImpl _$$ShareMetadataImplFromJson(Map<String, dynamic> json) =>
           : DateTime.parse(json['createdAt'] as String),
     );
 
-Map<String, dynamic> _$$ShareMetadataImplToJson(_$ShareMetadataImpl instance) =>
+Map<String, dynamic> _$ShareMetadataToJson(_ShareMetadata instance) =>
     <String, dynamic>{
       'creatorUsername': instance.creatorUsername,
       'creatorDisplayName': instance.creatorDisplayName,

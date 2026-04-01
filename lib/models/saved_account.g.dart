@@ -6,8 +6,8 @@ part of 'saved_account.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$SavedAccountImpl _$$SavedAccountImplFromJson(Map<String, dynamic> json) =>
-    _$SavedAccountImpl(
+_SavedAccount _$SavedAccountFromJson(Map<String, dynamic> json) =>
+    _SavedAccount(
       id: json['id'] as String,
       userId: json['userId'] as String,
       username: json['username'] as String,
@@ -17,7 +17,7 @@ _$SavedAccountImpl _$$SavedAccountImplFromJson(Map<String, dynamic> json) =>
       lastLoginDate: DateTime.parse(json['lastLoginDate'] as String),
     );
 
-Map<String, dynamic> _$$SavedAccountImplToJson(_$SavedAccountImpl instance) =>
+Map<String, dynamic> _$SavedAccountToJson(_SavedAccount instance) =>
     <String, dynamic>{
       'id': instance.id,
       'userId': instance.userId,

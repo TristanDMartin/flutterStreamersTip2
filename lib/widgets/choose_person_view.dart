@@ -196,12 +196,8 @@ class _ChoosePersonViewState extends ConsumerState<ChoosePersonView> {
                 orElse: () => widget.selectedDraft!,
               );
 
-              // Add draft metadata to shared draft
-              sharedDraft['videoPath'] = widget.selectedDraft!['videoPath'];
-              sharedDraft['thumbnailPath'] =
-                  widget.selectedDraft!['thumbnailPath'];
-
               // Navigate to draft feedback view
+              if (!mounted) return;
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(
                   builder: (context) => DraftFeedbackView(

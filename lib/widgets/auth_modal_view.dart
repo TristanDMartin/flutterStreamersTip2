@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
+import '../services/pending_auth_redirect_service.dart';
 import 'email_login_view.dart';
 import 'signup_view.dart';
 // import '../views/terms_of_service_view.dart'; // Removed - unused
@@ -65,10 +66,11 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     ref.listen(robustAuthServiceProvider, (previous, next) {
       // Check if user is now logged in
       if (next.isLoggedIn && mounted) {
-        // User is authenticated, the AppStartupWrapper will handle navigation
-        // No need to manually navigate here since the parent widget will rebuild
-        debugPrint(
-            "✅ User authenticated, AppStartupWrapper will handle navigation");
+        debugPrint("✅ User authenticated, resolving post-auth destination");
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          PendingAuthRedirectService.instance.consumeOrGoHome(context);
+        });
       }
     });
 

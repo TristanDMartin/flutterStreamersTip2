@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,54 +9,123 @@ part of 'home_video.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
 
 /// @nodoc
 mixin _$HomeVideo {
-  String get id => throw _privateConstructorUsedError;
-  User get creator => throw _privateConstructorUsedError;
-  String get videoURL => throw _privateConstructorUsedError;
-  String? get thumbnailURL =>
-      throw _privateConstructorUsedError; // Legacy field for backward compatibility
-  VideoThumbnails? get thumbnails =>
-      throw _privateConstructorUsedError; // New multi-size thumbnail support
-  int get likes => throw _privateConstructorUsedError;
-  int get comments => throw _privateConstructorUsedError;
-  int get views => throw _privateConstructorUsedError;
-  String get caption => throw _privateConstructorUsedError;
-  bool get isLiked => throw _privateConstructorUsedError;
-  bool get isFavorited => throw _privateConstructorUsedError;
-  bool get isDraft => throw _privateConstructorUsedError;
-  double get mlScore => throw _privateConstructorUsedError;
-  String get categoryId => throw _privateConstructorUsedError;
-  double? get duration =>
-      throw _privateConstructorUsedError; // Video duration in seconds
-  Timestamp? get createdAt =>
-      throw _privateConstructorUsedError; // For sorting by upload date
-  bool get allowSave =>
-      throw _privateConstructorUsedError; // Can viewers save/download
-  bool get allowRemix =>
-      throw _privateConstructorUsedError; // Can viewers remix/duet/stitch
-  String get visibility =>
-      throw _privateConstructorUsedError; // public, followers, private
-  String get status =>
-      throw _privateConstructorUsedError; // draft, processing, published, blocked, deleted
-  bool get isPinned => throw _privateConstructorUsedError; // Pinned to profile
-  List<String> get tags => throw _privateConstructorUsedError; // Video tags
-  List<String> get playlistIds => throw _privateConstructorUsedError;
+  String get id;
+  User get creator;
+  String get videoURL;
+  String? get thumbnailURL; // Legacy field for backward compatibility
+  VideoThumbnails? get thumbnails; // New multi-size thumbnail support
+  int get likes;
+  int get comments;
+  int get views;
+  String get caption;
+  bool get isLiked;
+  bool get isFavorited;
+  bool get isDraft;
+  double get mlScore;
+  String get categoryId;
+  double? get duration; // Video duration in seconds
+  Timestamp? get createdAt; // For sorting by upload date
+  bool get allowSave; // Can viewers save/download
+  bool get allowRemix; // Can viewers remix/duet/stitch
+  String get visibility; // public, followers, private
+  String get status; // draft, processing, published, blocked, deleted
+  bool get isPinned; // Pinned to profile
+  List<String> get tags; // Video tags
+  List<String> get playlistIds;
 
-  @JsonKey(ignore: true)
+  /// Create a copy of HomeVideo
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
   $HomeVideoCopyWith<HomeVideo> get copyWith =>
-      throw _privateConstructorUsedError;
+      _$HomeVideoCopyWithImpl<HomeVideo>(this as HomeVideo, _$identity);
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is HomeVideo &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.creator, creator) || other.creator == creator) &&
+            (identical(other.videoURL, videoURL) ||
+                other.videoURL == videoURL) &&
+            (identical(other.thumbnailURL, thumbnailURL) ||
+                other.thumbnailURL == thumbnailURL) &&
+            (identical(other.thumbnails, thumbnails) ||
+                other.thumbnails == thumbnails) &&
+            (identical(other.likes, likes) || other.likes == likes) &&
+            (identical(other.comments, comments) ||
+                other.comments == comments) &&
+            (identical(other.views, views) || other.views == views) &&
+            (identical(other.caption, caption) || other.caption == caption) &&
+            (identical(other.isLiked, isLiked) || other.isLiked == isLiked) &&
+            (identical(other.isFavorited, isFavorited) ||
+                other.isFavorited == isFavorited) &&
+            (identical(other.isDraft, isDraft) || other.isDraft == isDraft) &&
+            (identical(other.mlScore, mlScore) || other.mlScore == mlScore) &&
+            (identical(other.categoryId, categoryId) ||
+                other.categoryId == categoryId) &&
+            (identical(other.duration, duration) ||
+                other.duration == duration) &&
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt) &&
+            (identical(other.allowSave, allowSave) ||
+                other.allowSave == allowSave) &&
+            (identical(other.allowRemix, allowRemix) ||
+                other.allowRemix == allowRemix) &&
+            (identical(other.visibility, visibility) ||
+                other.visibility == visibility) &&
+            (identical(other.status, status) || other.status == status) &&
+            (identical(other.isPinned, isPinned) ||
+                other.isPinned == isPinned) &&
+            const DeepCollectionEquality().equals(other.tags, tags) &&
+            const DeepCollectionEquality()
+                .equals(other.playlistIds, playlistIds));
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+        runtimeType,
+        id,
+        creator,
+        videoURL,
+        thumbnailURL,
+        thumbnails,
+        likes,
+        comments,
+        views,
+        caption,
+        isLiked,
+        isFavorited,
+        isDraft,
+        mlScore,
+        categoryId,
+        duration,
+        createdAt,
+        allowSave,
+        allowRemix,
+        visibility,
+        status,
+        isPinned,
+        const DeepCollectionEquality().hash(tags),
+        const DeepCollectionEquality().hash(playlistIds)
+      ]);
+
+  @override
+  String toString() {
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
+  }
 }
 
 /// @nodoc
-abstract class $HomeVideoCopyWith<$Res> {
-  factory $HomeVideoCopyWith(HomeVideo value, $Res Function(HomeVideo) then) =
-      _$HomeVideoCopyWithImpl<$Res, HomeVideo>;
+abstract mixin class $HomeVideoCopyWith<$Res> {
+  factory $HomeVideoCopyWith(HomeVideo value, $Res Function(HomeVideo) _then) =
+      _$HomeVideoCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -87,15 +156,14 @@ abstract class $HomeVideoCopyWith<$Res> {
 }
 
 /// @nodoc
-class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
-    implements $HomeVideoCopyWith<$Res> {
-  _$HomeVideoCopyWithImpl(this._value, this._then);
+class _$HomeVideoCopyWithImpl<$Res> implements $HomeVideoCopyWith<$Res> {
+  _$HomeVideoCopyWithImpl(this._self, this._then);
 
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
+  final HomeVideo _self;
+  final $Res Function(HomeVideo) _then;
 
+  /// Create a copy of HomeVideo
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -123,288 +191,415 @@ class _$HomeVideoCopyWithImpl<$Res, $Val extends HomeVideo>
     Object? tags = null,
     Object? playlistIds = null,
   }) {
-    return _then(_value.copyWith(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       creator: null == creator
-          ? _value.creator
+          ? _self.creator
           : creator // ignore: cast_nullable_to_non_nullable
               as User,
       videoURL: null == videoURL
-          ? _value.videoURL
+          ? _self.videoURL
           : videoURL // ignore: cast_nullable_to_non_nullable
               as String,
       thumbnailURL: freezed == thumbnailURL
-          ? _value.thumbnailURL
+          ? _self.thumbnailURL
           : thumbnailURL // ignore: cast_nullable_to_non_nullable
               as String?,
       thumbnails: freezed == thumbnails
-          ? _value.thumbnails
+          ? _self.thumbnails
           : thumbnails // ignore: cast_nullable_to_non_nullable
               as VideoThumbnails?,
       likes: null == likes
-          ? _value.likes
+          ? _self.likes
           : likes // ignore: cast_nullable_to_non_nullable
               as int,
       comments: null == comments
-          ? _value.comments
+          ? _self.comments
           : comments // ignore: cast_nullable_to_non_nullable
               as int,
       views: null == views
-          ? _value.views
+          ? _self.views
           : views // ignore: cast_nullable_to_non_nullable
               as int,
       caption: null == caption
-          ? _value.caption
+          ? _self.caption
           : caption // ignore: cast_nullable_to_non_nullable
               as String,
       isLiked: null == isLiked
-          ? _value.isLiked
+          ? _self.isLiked
           : isLiked // ignore: cast_nullable_to_non_nullable
               as bool,
       isFavorited: null == isFavorited
-          ? _value.isFavorited
+          ? _self.isFavorited
           : isFavorited // ignore: cast_nullable_to_non_nullable
               as bool,
       isDraft: null == isDraft
-          ? _value.isDraft
+          ? _self.isDraft
           : isDraft // ignore: cast_nullable_to_non_nullable
               as bool,
       mlScore: null == mlScore
-          ? _value.mlScore
+          ? _self.mlScore
           : mlScore // ignore: cast_nullable_to_non_nullable
               as double,
       categoryId: null == categoryId
-          ? _value.categoryId
+          ? _self.categoryId
           : categoryId // ignore: cast_nullable_to_non_nullable
               as String,
       duration: freezed == duration
-          ? _value.duration
+          ? _self.duration
           : duration // ignore: cast_nullable_to_non_nullable
               as double?,
       createdAt: freezed == createdAt
-          ? _value.createdAt
+          ? _self.createdAt
           : createdAt // ignore: cast_nullable_to_non_nullable
               as Timestamp?,
       allowSave: null == allowSave
-          ? _value.allowSave
+          ? _self.allowSave
           : allowSave // ignore: cast_nullable_to_non_nullable
               as bool,
       allowRemix: null == allowRemix
-          ? _value.allowRemix
+          ? _self.allowRemix
           : allowRemix // ignore: cast_nullable_to_non_nullable
               as bool,
       visibility: null == visibility
-          ? _value.visibility
+          ? _self.visibility
           : visibility // ignore: cast_nullable_to_non_nullable
               as String,
       status: null == status
-          ? _value.status
+          ? _self.status
           : status // ignore: cast_nullable_to_non_nullable
               as String,
       isPinned: null == isPinned
-          ? _value.isPinned
+          ? _self.isPinned
           : isPinned // ignore: cast_nullable_to_non_nullable
               as bool,
       tags: null == tags
-          ? _value.tags
+          ? _self.tags
           : tags // ignore: cast_nullable_to_non_nullable
               as List<String>,
       playlistIds: null == playlistIds
-          ? _value.playlistIds
-          : playlistIds // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-    ) as $Val);
-  }
-
-  @override
-  @pragma('vm:prefer-inline')
-  $VideoThumbnailsCopyWith<$Res>? get thumbnails {
-    if (_value.thumbnails == null) {
-      return null;
-    }
-
-    return $VideoThumbnailsCopyWith<$Res>(_value.thumbnails!, (value) {
-      return _then(_value.copyWith(thumbnails: value) as $Val);
-    });
-  }
-}
-
-/// @nodoc
-abstract class _$$HomeVideoImplCopyWith<$Res>
-    implements $HomeVideoCopyWith<$Res> {
-  factory _$$HomeVideoImplCopyWith(
-          _$HomeVideoImpl value, $Res Function(_$HomeVideoImpl) then) =
-      __$$HomeVideoImplCopyWithImpl<$Res>;
-  @override
-  @useResult
-  $Res call(
-      {String id,
-      User creator,
-      String videoURL,
-      String? thumbnailURL,
-      VideoThumbnails? thumbnails,
-      int likes,
-      int comments,
-      int views,
-      String caption,
-      bool isLiked,
-      bool isFavorited,
-      bool isDraft,
-      double mlScore,
-      String categoryId,
-      double? duration,
-      Timestamp? createdAt,
-      bool allowSave,
-      bool allowRemix,
-      String visibility,
-      String status,
-      bool isPinned,
-      List<String> tags,
-      List<String> playlistIds});
-
-  @override
-  $VideoThumbnailsCopyWith<$Res>? get thumbnails;
-}
-
-/// @nodoc
-class __$$HomeVideoImplCopyWithImpl<$Res>
-    extends _$HomeVideoCopyWithImpl<$Res, _$HomeVideoImpl>
-    implements _$$HomeVideoImplCopyWith<$Res> {
-  __$$HomeVideoImplCopyWithImpl(
-      _$HomeVideoImpl _value, $Res Function(_$HomeVideoImpl) _then)
-      : super(_value, _then);
-
-  @pragma('vm:prefer-inline')
-  @override
-  $Res call({
-    Object? id = null,
-    Object? creator = null,
-    Object? videoURL = null,
-    Object? thumbnailURL = freezed,
-    Object? thumbnails = freezed,
-    Object? likes = null,
-    Object? comments = null,
-    Object? views = null,
-    Object? caption = null,
-    Object? isLiked = null,
-    Object? isFavorited = null,
-    Object? isDraft = null,
-    Object? mlScore = null,
-    Object? categoryId = null,
-    Object? duration = freezed,
-    Object? createdAt = freezed,
-    Object? allowSave = null,
-    Object? allowRemix = null,
-    Object? visibility = null,
-    Object? status = null,
-    Object? isPinned = null,
-    Object? tags = null,
-    Object? playlistIds = null,
-  }) {
-    return _then(_$HomeVideoImpl(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      creator: null == creator
-          ? _value.creator
-          : creator // ignore: cast_nullable_to_non_nullable
-              as User,
-      videoURL: null == videoURL
-          ? _value.videoURL
-          : videoURL // ignore: cast_nullable_to_non_nullable
-              as String,
-      thumbnailURL: freezed == thumbnailURL
-          ? _value.thumbnailURL
-          : thumbnailURL // ignore: cast_nullable_to_non_nullable
-              as String?,
-      thumbnails: freezed == thumbnails
-          ? _value.thumbnails
-          : thumbnails // ignore: cast_nullable_to_non_nullable
-              as VideoThumbnails?,
-      likes: null == likes
-          ? _value.likes
-          : likes // ignore: cast_nullable_to_non_nullable
-              as int,
-      comments: null == comments
-          ? _value.comments
-          : comments // ignore: cast_nullable_to_non_nullable
-              as int,
-      views: null == views
-          ? _value.views
-          : views // ignore: cast_nullable_to_non_nullable
-              as int,
-      caption: null == caption
-          ? _value.caption
-          : caption // ignore: cast_nullable_to_non_nullable
-              as String,
-      isLiked: null == isLiked
-          ? _value.isLiked
-          : isLiked // ignore: cast_nullable_to_non_nullable
-              as bool,
-      isFavorited: null == isFavorited
-          ? _value.isFavorited
-          : isFavorited // ignore: cast_nullable_to_non_nullable
-              as bool,
-      isDraft: null == isDraft
-          ? _value.isDraft
-          : isDraft // ignore: cast_nullable_to_non_nullable
-              as bool,
-      mlScore: null == mlScore
-          ? _value.mlScore
-          : mlScore // ignore: cast_nullable_to_non_nullable
-              as double,
-      categoryId: null == categoryId
-          ? _value.categoryId
-          : categoryId // ignore: cast_nullable_to_non_nullable
-              as String,
-      duration: freezed == duration
-          ? _value.duration
-          : duration // ignore: cast_nullable_to_non_nullable
-              as double?,
-      createdAt: freezed == createdAt
-          ? _value.createdAt
-          : createdAt // ignore: cast_nullable_to_non_nullable
-              as Timestamp?,
-      allowSave: null == allowSave
-          ? _value.allowSave
-          : allowSave // ignore: cast_nullable_to_non_nullable
-              as bool,
-      allowRemix: null == allowRemix
-          ? _value.allowRemix
-          : allowRemix // ignore: cast_nullable_to_non_nullable
-              as bool,
-      visibility: null == visibility
-          ? _value.visibility
-          : visibility // ignore: cast_nullable_to_non_nullable
-              as String,
-      status: null == status
-          ? _value.status
-          : status // ignore: cast_nullable_to_non_nullable
-              as String,
-      isPinned: null == isPinned
-          ? _value.isPinned
-          : isPinned // ignore: cast_nullable_to_non_nullable
-              as bool,
-      tags: null == tags
-          ? _value._tags
-          : tags // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      playlistIds: null == playlistIds
-          ? _value._playlistIds
+          ? _self.playlistIds
           : playlistIds // ignore: cast_nullable_to_non_nullable
               as List<String>,
     ));
   }
+
+  /// Create a copy of HomeVideo
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $VideoThumbnailsCopyWith<$Res>? get thumbnails {
+    if (_self.thumbnails == null) {
+      return null;
+    }
+
+    return $VideoThumbnailsCopyWith<$Res>(_self.thumbnails!, (value) {
+      return _then(_self.copyWith(thumbnails: value));
+    });
+  }
+}
+
+/// Adds pattern-matching-related methods to [HomeVideo].
+extension HomeVideoPatterns on HomeVideo {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_HomeVideo value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _HomeVideo() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_HomeVideo value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _HomeVideo():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_HomeVideo value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _HomeVideo() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String id,
+            User creator,
+            String videoURL,
+            String? thumbnailURL,
+            VideoThumbnails? thumbnails,
+            int likes,
+            int comments,
+            int views,
+            String caption,
+            bool isLiked,
+            bool isFavorited,
+            bool isDraft,
+            double mlScore,
+            String categoryId,
+            double? duration,
+            Timestamp? createdAt,
+            bool allowSave,
+            bool allowRemix,
+            String visibility,
+            String status,
+            bool isPinned,
+            List<String> tags,
+            List<String> playlistIds)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _HomeVideo() when $default != null:
+        return $default(
+            _that.id,
+            _that.creator,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.thumbnails,
+            _that.likes,
+            _that.comments,
+            _that.views,
+            _that.caption,
+            _that.isLiked,
+            _that.isFavorited,
+            _that.isDraft,
+            _that.mlScore,
+            _that.categoryId,
+            _that.duration,
+            _that.createdAt,
+            _that.allowSave,
+            _that.allowRemix,
+            _that.visibility,
+            _that.status,
+            _that.isPinned,
+            _that.tags,
+            _that.playlistIds);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String id,
+            User creator,
+            String videoURL,
+            String? thumbnailURL,
+            VideoThumbnails? thumbnails,
+            int likes,
+            int comments,
+            int views,
+            String caption,
+            bool isLiked,
+            bool isFavorited,
+            bool isDraft,
+            double mlScore,
+            String categoryId,
+            double? duration,
+            Timestamp? createdAt,
+            bool allowSave,
+            bool allowRemix,
+            String visibility,
+            String status,
+            bool isPinned,
+            List<String> tags,
+            List<String> playlistIds)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _HomeVideo():
+        return $default(
+            _that.id,
+            _that.creator,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.thumbnails,
+            _that.likes,
+            _that.comments,
+            _that.views,
+            _that.caption,
+            _that.isLiked,
+            _that.isFavorited,
+            _that.isDraft,
+            _that.mlScore,
+            _that.categoryId,
+            _that.duration,
+            _that.createdAt,
+            _that.allowSave,
+            _that.allowRemix,
+            _that.visibility,
+            _that.status,
+            _that.isPinned,
+            _that.tags,
+            _that.playlistIds);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String id,
+            User creator,
+            String videoURL,
+            String? thumbnailURL,
+            VideoThumbnails? thumbnails,
+            int likes,
+            int comments,
+            int views,
+            String caption,
+            bool isLiked,
+            bool isFavorited,
+            bool isDraft,
+            double mlScore,
+            String categoryId,
+            double? duration,
+            Timestamp? createdAt,
+            bool allowSave,
+            bool allowRemix,
+            String visibility,
+            String status,
+            bool isPinned,
+            List<String> tags,
+            List<String> playlistIds)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _HomeVideo() when $default != null:
+        return $default(
+            _that.id,
+            _that.creator,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.thumbnails,
+            _that.likes,
+            _that.comments,
+            _that.views,
+            _that.caption,
+            _that.isLiked,
+            _that.isFavorited,
+            _that.isDraft,
+            _that.mlScore,
+            _that.categoryId,
+            _that.duration,
+            _that.createdAt,
+            _that.allowSave,
+            _that.allowRemix,
+            _that.visibility,
+            _that.status,
+            _that.isPinned,
+            _that.tags,
+            _that.playlistIds);
+      case _:
+        return null;
+    }
+  }
 }
 
 /// @nodoc
 
-class _$HomeVideoImpl implements _HomeVideo {
-  const _$HomeVideoImpl(
+class _HomeVideo implements HomeVideo {
+  const _HomeVideo(
       {required this.id,
       required this.creator,
       required this.videoURL,
@@ -518,16 +713,19 @@ class _$HomeVideoImpl implements _HomeVideo {
     return EqualUnmodifiableListView(_playlistIds);
   }
 
+  /// Create a copy of HomeVideo
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
-  }
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$HomeVideoCopyWith<_HomeVideo> get copyWith =>
+      __$HomeVideoCopyWithImpl<_HomeVideo>(this, _$identity);
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$HomeVideoImpl &&
+            other is _HomeVideo &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.creator, creator) || other.creator == creator) &&
             (identical(other.videoURL, videoURL) ||
@@ -594,87 +792,194 @@ class _$HomeVideoImpl implements _HomeVideo {
         const DeepCollectionEquality().hash(_playlistIds)
       ]);
 
-  @JsonKey(ignore: true)
+  @override
+  String toString() {
+    return 'HomeVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, thumbnails: $thumbnails, likes: $likes, comments: $comments, views: $views, caption: $caption, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId, duration: $duration, createdAt: $createdAt, allowSave: $allowSave, allowRemix: $allowRemix, visibility: $visibility, status: $status, isPinned: $isPinned, tags: $tags, playlistIds: $playlistIds)';
+  }
+}
+
+/// @nodoc
+abstract mixin class _$HomeVideoCopyWith<$Res>
+    implements $HomeVideoCopyWith<$Res> {
+  factory _$HomeVideoCopyWith(
+          _HomeVideo value, $Res Function(_HomeVideo) _then) =
+      __$HomeVideoCopyWithImpl;
+  @override
+  @useResult
+  $Res call(
+      {String id,
+      User creator,
+      String videoURL,
+      String? thumbnailURL,
+      VideoThumbnails? thumbnails,
+      int likes,
+      int comments,
+      int views,
+      String caption,
+      bool isLiked,
+      bool isFavorited,
+      bool isDraft,
+      double mlScore,
+      String categoryId,
+      double? duration,
+      Timestamp? createdAt,
+      bool allowSave,
+      bool allowRemix,
+      String visibility,
+      String status,
+      bool isPinned,
+      List<String> tags,
+      List<String> playlistIds});
+
+  @override
+  $VideoThumbnailsCopyWith<$Res>? get thumbnails;
+}
+
+/// @nodoc
+class __$HomeVideoCopyWithImpl<$Res> implements _$HomeVideoCopyWith<$Res> {
+  __$HomeVideoCopyWithImpl(this._self, this._then);
+
+  final _HomeVideo _self;
+  final $Res Function(_HomeVideo) _then;
+
+  /// Create a copy of HomeVideo
+  /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
-  _$$HomeVideoImplCopyWith<_$HomeVideoImpl> get copyWith =>
-      __$$HomeVideoImplCopyWithImpl<_$HomeVideoImpl>(this, _$identity);
+  $Res call({
+    Object? id = null,
+    Object? creator = null,
+    Object? videoURL = null,
+    Object? thumbnailURL = freezed,
+    Object? thumbnails = freezed,
+    Object? likes = null,
+    Object? comments = null,
+    Object? views = null,
+    Object? caption = null,
+    Object? isLiked = null,
+    Object? isFavorited = null,
+    Object? isDraft = null,
+    Object? mlScore = null,
+    Object? categoryId = null,
+    Object? duration = freezed,
+    Object? createdAt = freezed,
+    Object? allowSave = null,
+    Object? allowRemix = null,
+    Object? visibility = null,
+    Object? status = null,
+    Object? isPinned = null,
+    Object? tags = null,
+    Object? playlistIds = null,
+  }) {
+    return _then(_HomeVideo(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      creator: null == creator
+          ? _self.creator
+          : creator // ignore: cast_nullable_to_non_nullable
+              as User,
+      videoURL: null == videoURL
+          ? _self.videoURL
+          : videoURL // ignore: cast_nullable_to_non_nullable
+              as String,
+      thumbnailURL: freezed == thumbnailURL
+          ? _self.thumbnailURL
+          : thumbnailURL // ignore: cast_nullable_to_non_nullable
+              as String?,
+      thumbnails: freezed == thumbnails
+          ? _self.thumbnails
+          : thumbnails // ignore: cast_nullable_to_non_nullable
+              as VideoThumbnails?,
+      likes: null == likes
+          ? _self.likes
+          : likes // ignore: cast_nullable_to_non_nullable
+              as int,
+      comments: null == comments
+          ? _self.comments
+          : comments // ignore: cast_nullable_to_non_nullable
+              as int,
+      views: null == views
+          ? _self.views
+          : views // ignore: cast_nullable_to_non_nullable
+              as int,
+      caption: null == caption
+          ? _self.caption
+          : caption // ignore: cast_nullable_to_non_nullable
+              as String,
+      isLiked: null == isLiked
+          ? _self.isLiked
+          : isLiked // ignore: cast_nullable_to_non_nullable
+              as bool,
+      isFavorited: null == isFavorited
+          ? _self.isFavorited
+          : isFavorited // ignore: cast_nullable_to_non_nullable
+              as bool,
+      isDraft: null == isDraft
+          ? _self.isDraft
+          : isDraft // ignore: cast_nullable_to_non_nullable
+              as bool,
+      mlScore: null == mlScore
+          ? _self.mlScore
+          : mlScore // ignore: cast_nullable_to_non_nullable
+              as double,
+      categoryId: null == categoryId
+          ? _self.categoryId
+          : categoryId // ignore: cast_nullable_to_non_nullable
+              as String,
+      duration: freezed == duration
+          ? _self.duration
+          : duration // ignore: cast_nullable_to_non_nullable
+              as double?,
+      createdAt: freezed == createdAt
+          ? _self.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as Timestamp?,
+      allowSave: null == allowSave
+          ? _self.allowSave
+          : allowSave // ignore: cast_nullable_to_non_nullable
+              as bool,
+      allowRemix: null == allowRemix
+          ? _self.allowRemix
+          : allowRemix // ignore: cast_nullable_to_non_nullable
+              as bool,
+      visibility: null == visibility
+          ? _self.visibility
+          : visibility // ignore: cast_nullable_to_non_nullable
+              as String,
+      status: null == status
+          ? _self.status
+          : status // ignore: cast_nullable_to_non_nullable
+              as String,
+      isPinned: null == isPinned
+          ? _self.isPinned
+          : isPinned // ignore: cast_nullable_to_non_nullable
+              as bool,
+      tags: null == tags
+          ? _self._tags
+          : tags // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      playlistIds: null == playlistIds
+          ? _self._playlistIds
+          : playlistIds // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+    ));
+  }
+
+  /// Create a copy of HomeVideo
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $VideoThumbnailsCopyWith<$Res>? get thumbnails {
+    if (_self.thumbnails == null) {
+      return null;
+    }
+
+    return $VideoThumbnailsCopyWith<$Res>(_self.thumbnails!, (value) {
+      return _then(_self.copyWith(thumbnails: value));
+    });
+  }
 }
 
-abstract class _HomeVideo implements HomeVideo {
-  const factory _HomeVideo(
-      {required final String id,
-      required final User creator,
-      required final String videoURL,
-      final String? thumbnailURL,
-      final VideoThumbnails? thumbnails,
-      final int likes,
-      final int comments,
-      final int views,
-      final String caption,
-      final bool isLiked,
-      final bool isFavorited,
-      final bool isDraft,
-      final double mlScore,
-      final String categoryId,
-      final double? duration,
-      final Timestamp? createdAt,
-      final bool allowSave,
-      final bool allowRemix,
-      final String visibility,
-      final String status,
-      final bool isPinned,
-      final List<String> tags,
-      final List<String> playlistIds}) = _$HomeVideoImpl;
-
-  @override
-  String get id;
-  @override
-  User get creator;
-  @override
-  String get videoURL;
-  @override
-  String? get thumbnailURL;
-  @override // Legacy field for backward compatibility
-  VideoThumbnails? get thumbnails;
-  @override // New multi-size thumbnail support
-  int get likes;
-  @override
-  int get comments;
-  @override
-  int get views;
-  @override
-  String get caption;
-  @override
-  bool get isLiked;
-  @override
-  bool get isFavorited;
-  @override
-  bool get isDraft;
-  @override
-  double get mlScore;
-  @override
-  String get categoryId;
-  @override
-  double? get duration;
-  @override // Video duration in seconds
-  Timestamp? get createdAt;
-  @override // For sorting by upload date
-  bool get allowSave;
-  @override // Can viewers save/download
-  bool get allowRemix;
-  @override // Can viewers remix/duet/stitch
-  String get visibility;
-  @override // public, followers, private
-  String get status;
-  @override // draft, processing, published, blocked, deleted
-  bool get isPinned;
-  @override // Pinned to profile
-  List<String> get tags;
-  @override // Video tags
-  List<String> get playlistIds;
-  @override
-  @JsonKey(ignore: true)
-  _$$HomeVideoImplCopyWith<_$HomeVideoImpl> get copyWith =>
-      throw _privateConstructorUsedError;
-}
+// dart format on

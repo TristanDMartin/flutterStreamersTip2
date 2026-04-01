@@ -1,11 +1,21 @@
 const functions = require('firebase-functions');
+const {onRequest, onCall, HttpsError} = require('firebase-functions/v2/https');
+const {onSchedule} = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const {emitTelemetry} = require('./telemetry_emitter');
+const {Storage} = require('@google-cloud/storage');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 admin.initializeApp();
 const firestore = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;
 const storage = admin.storage();
+
+// Video transcoding helpers (format check only - no server transcoding)
+const {transcodeVideo: transcodeVideoHelper, uploadVariant, getPublicUrl, cleanupFiles} = require('./src/videoTranscoding');
+const {checkFormat} = require('./src/videoFormatCheck');
 
 function safeEmitTelemetry(eventType, payload) {
   try {
@@ -52,9 +62,327 @@ exports.onRawUpload = functions.storage.object().onFinalize(async (object) => {
 
   return null;
 });
-// ============================================================================
-// USER PROFILE HELPERS
-// ============================================================================
+
+// DISABLED when Mux configured (Mux handles transcoding). Else: format check.
+const useMux = !!process.env.MUX_TOKEN_ID;
+exports.transcodeVideo = functions
+  .runWith({ timeoutSeconds: 60, memory: '256MB' })
+  .storage.object().onFinalize(async (object) => {
+    if (useMux) return null;
+    const storageClient = new Storage();
+    const db = admin.firestore();
+    const filePath = object.name;
+    const contentType = object.contentType;
+    const bucketName = object.bucket;
+
+    if (!contentType || !contentType.startsWith('video/')) {
+      console.log('Not a video file, skipping:', filePath);
+      return null;
+    }
+
+    const pathParts = filePath.split('/');
+    if (pathParts[0] !== 'videos' || (pathParts.length !== 3 && pathParts.length !== 4)) {
+      console.log('Not in videos/{userId}/{videoId}.mp4, skipping:', filePath);
+      return null;
+    }
+
+    const userId = pathParts[1];
+    let videoId;
+    if (pathParts.length === 3) {
+      videoId = pathParts[2].replace('.mp4', '');
+    } else {
+      videoId = pathParts[2];
+      if (pathParts[3] !== 'original.mp4') return null;
+    }
+
+    const bucket = storageClient.bucket(bucketName);
+    const file = bucket.file(filePath);
+    const videoRef = db.collection('videos').doc(videoId);
+    const tempFilePath = path.join(os.tmpdir(), `${videoId}_check.mp4`);
+
+    try {
+      await videoRef.set({
+        transcodingStatus: 'processing',
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      await file.download({destination: tempFilePath});
+      const result = await checkFormat(tempFilePath);
+      cleanupFiles([tempFilePath]);
+
+      if (result.ok) {
+        const url720 = await getPublicUrl(file);
+        await videoRef.set({
+          mp4_720_url: url720,
+          videoUrl: url720,
+          videoURL: url720,
+          transcodingStatus: 'completed',
+          transcodedAt: FieldValue.serverTimestamp(),
+          status: 'ready',
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        console.log(`✅ Format OK: ${videoId} - using original as mp4_720_url`);
+      } else {
+        await videoRef.set({
+          transcodingStatus: 'failed',
+          transcodingError: result.reason || 'Format not supported',
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        console.log(`❌ Format rejected: ${videoId} - ${result.reason}`);
+      }
+      return null;
+    } catch (error) {
+      console.error(`❌ Error processing ${videoId}:`, error);
+      cleanupFiles([tempFilePath]);
+      try {
+        await videoRef.set({
+          transcodingStatus: 'failed',
+          transcodingError: error.message,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+      } catch (_) {}
+      return null;
+    }
+  });
+
+// DISABLED: Backfill transcoding - was causing $500+ Cloud Run charges.
+exports.backfillVideoTranscoding = functions
+  .runWith({timeoutSeconds: 10, memory: '128MB'})
+  .https.onRequest((req, res) => {
+    res.status(403).json({
+      error: 'Backfill disabled to prevent Cloud Run charges.',
+      message: 'Use client-side transcoding (FFmpeg.wasm) on website. See website_upload/README.md',
+    });
+  });
+
+/**
+ * Process a single video for backfill transcoding
+ */
+async function processVideoForBackfill(storageClient, db, videoId, userId, originalVideoUrl) {
+  // Get bucket name from the original video URL or use default
+  // Get actual project ID from admin
+  const projectId = admin.app().options.projectId || 'streamerstip-6cfdb';
+  let bucketName = projectId + '.firebasestorage.app';
+  
+  // Try to extract bucket name from URL
+  if (originalVideoUrl.startsWith('gs://')) {
+    const match = originalVideoUrl.match(/gs:\/\/([^\/]+)/);
+    if (match && match[1].length >= 3) bucketName = match[1];
+  } else if (originalVideoUrl.includes('storage.googleapis.com')) {
+    const match = originalVideoUrl.match(/storage\.googleapis\.com\/([^\/]+)/);
+    if (match && match[1].length >= 3) bucketName = match[1];
+  } else if (originalVideoUrl.includes('firebasestorage.googleapis.com')) {
+    // Firebase Storage URL format: https://firebasestorage.googleapis.com/v0/b/BUCKET_NAME/o/path
+    // Match: /v0/b/BUCKET_NAME/ (not /v0/b/v0/)
+    const match = originalVideoUrl.match(/\/v0\/b\/([^\/\?]+)/);
+    if (match && match[1] && match[1].length >= 3 && match[1] !== 'v0') {
+      bucketName = match[1];
+    }
+  }
+  
+  console.log(`📦 Using bucket: ${bucketName}`);
+  const bucket = storageClient.bucket(bucketName);
+  
+  // Temp file paths
+  const tempDir = os.tmpdir();
+  const tempFilePath = path.join(tempDir, `${videoId}_original.mp4`);
+  const temp720Path = path.join(tempDir, `${videoId}_720p.mp4`);
+  const temp480Path = path.join(tempDir, `${videoId}_480p.mp4`);
+  
+  try {
+    // Update Firestore: mark as processing
+    const videoRef = db.collection('videos').doc(videoId);
+    await videoRef.set({
+      transcodingStatus: 'processing',
+      backfillProcessedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    
+    // Download original video directly from URL
+    console.log(`📥 Downloading original video from URL: ${originalVideoUrl.substring(0, 100)}...`);
+    
+    // Use node-fetch to download from the URL
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(originalVideoUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download video: HTTP ${response.status} ${response.statusText}`);
+    }
+    
+    // Write to file
+    const stream = fs.createWriteStream(tempFilePath);
+    await new Promise((resolve, reject) => {
+      response.body.pipe(stream);
+      response.body.on('error', reject);
+      stream.on('finish', resolve);
+    });
+    
+    const downloadStats = fs.statSync(tempFilePath);
+    console.log(`📦 Downloaded ${(downloadStats.size / 1024 / 1024).toFixed(2)} MB`);
+    
+    // Generate 720p variant
+    console.log('🎞️ Generating 720p variant...');
+    await transcodeVideoHelper(tempFilePath, temp720Path, 720);
+    const stats720 = fs.statSync(temp720Path);
+    console.log(`✅ 720p generated: ${(stats720.size / 1024 / 1024).toFixed(2)} MB`);
+    
+    // Generate 480p variant
+    console.log('🎞️ Generating 480p variant...');
+    await transcodeVideoHelper(tempFilePath, temp480Path, 480);
+    const stats480 = fs.statSync(temp480Path);
+    console.log(`✅ 480p generated: ${(stats480.size / 1024 / 1024).toFixed(2)} MB`);
+    
+    // Upload variants to Storage
+    console.log('📤 Uploading variants to Storage...');
+    
+    // Get original file path from URL or construct it
+    let originalFilePath = originalVideoUrl;
+    if (originalVideoUrl.includes('/o/')) {
+      // Extract path from Firebase Storage URL
+      const match = originalVideoUrl.match(/\/o\/(.+?)(?:\?|$)/);
+      if (match) {
+        originalFilePath = decodeURIComponent(match[1]);
+      }
+    }
+    
+    // Try to get the original file from Storage, or use the URL directly
+    let url1080 = originalVideoUrl;
+    try {
+      const originalFile = bucket.file(originalFilePath);
+      const exists = await originalFile.exists();
+      if (exists[0]) {
+        url1080 = await getPublicUrl(originalFile);
+      }
+    } catch (err) {
+      console.log('⚠️ Could not get original file from Storage, using provided URL');
+    }
+    
+    const [url720, url480] = await Promise.all([
+      uploadVariant(bucket, userId, videoId, temp720Path, '720p'),
+      uploadVariant(bucket, userId, videoId, temp480Path, '480p'),
+    ]);
+    
+    console.log(`✅ Uploads complete. URLs: 1080p=${!!url1080}, 720p=${!!url720}, 480p=${!!url480}`);
+    
+    // Update Firestore with video URLs and status=ready (app feed queries status in ['published','ready'])
+    console.log('💾 Updating Firestore...');
+    await videoRef.set({
+      mp4_1080_url: url1080,
+      mp4_720_url: url720,
+      mp4_480_url: url480,
+      videoUrl: url720, // Default to 720p for backward compatibility
+      videoURL: url720, // Alternative field name
+      transcodingStatus: 'completed',
+      transcodedAt: FieldValue.serverTimestamp(),
+      backfillCompletedAt: FieldValue.serverTimestamp(),
+      status: 'ready', // So app feed (whereIn status ready/published) shows video
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    
+    console.log(`✅ Successfully backfilled video ${videoId}`);
+    
+    // Cleanup temp files
+    cleanupFiles([tempFilePath, temp720Path, temp480Path]);
+  } catch (error) {
+    console.error(`❌ Error backfilling video ${videoId}:`, error);
+    console.error('Stack trace:', error.stack);
+    
+    // Update Firestore with error status
+    try {
+      await db.collection('videos').doc(videoId).set({
+        transcodingStatus: 'failed',
+        transcodingError: error.message,
+        backfillErrorAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+    } catch (firestoreError) {
+      console.error('Failed to update Firestore with error:', firestoreError);
+    }
+    
+    // Cleanup temp files
+    cleanupFiles([tempFilePath, temp720Path, temp480Path]);
+    
+    // Re-throw error so caller can track it
+    throw error;
+  }
+}
+
+    // Make existing transcoded video files public
+    exports.makeVideoFilesPublic = functions
+      .runWith({
+        timeoutSeconds: 540,
+        memory: '1GB',
+      })
+      .https.onRequest(async (req, res) => {
+        const storageClient = new Storage();
+        const bucket = storageClient.bucket('streamerstip-6cfdb.firebasestorage.app');
+        
+        try {
+          console.log('🔍 Finding all 720p and 480p video files...');
+          
+          const [files720] = await bucket.getFiles({
+            prefix: 'videos/',
+            matchGlob: '**/*_720p.mp4',
+          });
+          
+          const [files480] = await bucket.getFiles({
+            prefix: 'videos/',
+            matchGlob: '**/*_480p.mp4',
+          });
+          
+          const allFiles = [...files720, ...files480];
+          console.log(`📊 Found ${allFiles.length} files to make public (720p: ${files720.length}, 480p: ${files480.length})`);
+          
+          let succeeded = 0;
+          let failed = 0;
+          const errors = [];
+          
+          // Process files in batches to avoid overwhelming the system
+          const batchSize = 10;
+          for (let i = 0; i < allFiles.length; i += batchSize) {
+            const batch = allFiles.slice(i, i + batchSize);
+            await Promise.all(batch.map(async (file) => {
+              try {
+                await file.makePublic();
+                succeeded++;
+                if (succeeded % 10 === 0) {
+                  console.log(`✅ Made ${succeeded} files public...`);
+                }
+              } catch (error) {
+                failed++;
+                errors.push({
+                  file: file.name,
+                  error: error.message,
+                });
+                console.error(`❌ Failed to make ${file.name} public:`, error.message);
+              }
+            }));
+          }
+          
+          console.log(`✅ Completed! Made ${succeeded} files public, ${failed} failed`);
+          
+          return res.status(200).json({
+            success: true,
+            summary: {
+              total: allFiles.length,
+              succeeded: succeeded,
+              failed: failed,
+            },
+            errors: errors.slice(0, 50), // Limit errors in response
+            message: `Made ${succeeded} out of ${allFiles.length} files public.`,
+          });
+        } catch (error) {
+          console.error('❌ Error making files public:', error);
+          return res.status(500).json({
+            success: false,
+            error: error.message,
+            message: 'Failed to make files public.',
+          });
+        }
+      });
+
+    // ============================================================================
+    // USER PROFILE HELPERS
+    // ============================================================================
 
 /**
  * Generate a unique username by checking the usernames collection.
@@ -343,20 +671,16 @@ exports.onVideoUpdate = functions.firestore
   .onUpdate(async (change, context) => {
     const beforeData = change.before.data();
     const afterData = change.after.data();
-    const userId = afterData.userId;
-    
     const beforeStatus = beforeData.status || 'draft';
     const beforePrivacy = beforeData.privacy || 'private';
     const afterStatus = afterData.status || 'draft';
     const afterPrivacy = afterData.privacy || 'private';
-    
+    if (beforeStatus === afterStatus && beforePrivacy === afterPrivacy) {
+      return null;
+    }
+    const userId = afterData.userId;
     const beforeCounts = shouldCountPost(beforeStatus, beforePrivacy);
     const afterCounts = shouldCountPost(afterStatus, afterPrivacy);
-    
-    console.log(`📊 Video updated: ${context.params.videoId}, User: ${userId}`);
-    console.log(`   Before: status=${beforeStatus}, privacy=${beforePrivacy}, counts=${beforeCounts}`);
-    console.log(`   After: status=${afterStatus}, privacy=${afterPrivacy}, counts=${afterCounts}`);
-    
     try {
       if (beforeCounts && !afterCounts) {
         // Post was countable, now it's not - decrement
@@ -683,119 +1007,9 @@ exports.onFollowCreate = functions.firestore
 // CROSS-PLATFORM SYNC - Keep mobile app and website in sync
 // ============================================================================
 
-/**
- * Sync video stats to user profile when video is updated
- * Ensures user's total stats match across all platforms
- */
-exports.syncVideoStatsToProfile = functions.firestore
-  .document('videos/{videoId}')
-  .onUpdate(async (change, context) => {
-    const before = change.before.data();
-    const after = change.after.data();
-    const videoId = context.params.videoId;
-    
-    // Get creator ID (support all field variants)
-    const creatorId = after.userId || after.creatorId || after.creator_id;
-    if (!creatorId) {
-      console.error(`❌ Video ${videoId} has no creator ID`);
-      return null;
-    }
-    
-    // Check if stats changed
-    const statsChanged = 
-      before.views !== after.views ||
-      before.likes !== after.likes ||
-      before.comments !== after.comments ||
-      before.shares !== after.shares;
-    
-    if (!statsChanged) {
-      return null; // No stats update needed
-    }
-    
-    console.log(`📊 Syncing stats for video ${videoId} to user ${creatorId} profile`);
-    
-    // Update user's total stats
-    const userRef = admin.firestore().collection('users').doc(creatorId);
-    
-    try {
-      await admin.firestore().runTransaction(async (transaction) => {
-        const userDoc = await transaction.get(userRef);
-        
-        if (!userDoc.exists) {
-          console.error(`❌ User ${creatorId} not found`);
-          return;
-        }
-        
-        const userData = userDoc.data();
-        
-        // Calculate deltas
-        const viewsDelta = (after.views || 0) - (before.views || 0);
-        const likesDelta = (after.likes || 0) - (before.likes || 0);
-        const commentsDelta = (after.comments || 0) - (before.comments || 0);
-        const sharesDelta = (after.shares || 0) - (before.shares || 0);
-        
-        // Update user's total stats
-        transaction.update(userRef, {
-          totalViews: (userData.totalViews || 0) + viewsDelta,
-          totalLikes: (userData.totalLikes || 0) + likesDelta,
-          totalComments: (userData.totalComments || 0) + commentsDelta,
-          totalShares: (userData.totalShares || 0) + sharesDelta,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-      });
-      
-      console.log(`✅ Synced stats for user ${creatorId} from video ${videoId}`);
-    } catch (error) {
-      console.error(`❌ Error syncing stats: ${error}`);
-    }
-    
-    return null;
-  });
-
-/**
- * Ensure creator fields are consistent when video is created/updated
- * Fixes missing userId, creatorId, or creator_id fields
- */
-exports.normalizeVideoCreatorFields = functions.firestore
-  .document('videos/{videoId}')
-  .onWrite(async (change, context) => {
-    const data = change.after.exists ? change.after.data() : null;
-    if (!data) return null; // Document deleted
-    
-    const videoId = context.params.videoId;
-    
-    // Get creator ID from any field variant
-    const creatorId = data.userId || data.creatorId || data.creator_id;
-    
-    if (!creatorId) {
-      console.error(`❌ Video ${videoId} has no creator ID in any field`);
-      return null;
-    }
-    
-    // Check if all three fields exist and match
-    const needsUpdate = 
-      data.userId !== creatorId ||
-      data.creatorId !== creatorId ||
-      data.creator_id !== creatorId;
-    
-    if (needsUpdate) {
-      console.log(`🔄 Normalizing creator fields for video ${videoId}`);
-      
-      try {
-        await change.after.ref.update({
-          userId: creatorId,
-          creatorId: creatorId,
-          creator_id: creatorId
-        });
-        
-        console.log(`✅ Creator fields normalized for video ${videoId}`);
-      } catch (error) {
-        console.error(`❌ Error normalizing creator fields: ${error}`);
-      }
-    }
-    
-    return null;
-  });
+// DISABLED: normalizeVideoCreatorFields - client sends userId, creatorId, creator_id
+// Saves Cloud Run invocations on every video write.
+// exports.normalizeVideoCreatorFields = ...
 
 /**
  * Sync creator profile data to video documents for faster reads
@@ -1262,140 +1476,9 @@ exports.onVideoPublish = functions.firestore
     }
   });
 
-/**
- * Send milestone notifications when videos reach view/like milestones
- */
-exports.onVideoMilestone = functions.firestore
-  .document('videos/{videoId}')
-  .onUpdate(async (change, context) => {
-    try {
-      const before = change.before.data();
-      const after = change.after.data();
-      const { videoId } = context.params;
-      const ownerId = after.userId || after.creatorId;
-      
-      const milestones = [100, 1000, 10000, 100000, 1000000];
-      
-      // Check view milestones
-      for (const milestone of milestones) {
-        if (before.views < milestone && after.views >= milestone) {
-          console.log(`🎉 Video ${videoId} reached ${milestone} views!`);
-          
-          await admin.firestore()
-            .collection('notifications')
-            .doc(ownerId)
-            .collection('items')
-            .add({
-              type: 'milestone',
-              user: {
-                id: ownerId,
-                username: after.creatorUsername || 'you',
-                displayName: after.creatorName || 'You',
-                avatarURL: after.creatorAvatar || ''
-              },
-              videoId: videoId,
-              milestoneType: 'views',
-              milestoneValue: milestone,
-              postThumbnailUrl: after.thumbnailURL || after.thumbnailUrl || '',
-              timestamp: admin.firestore.FieldValue.serverTimestamp(),
-              isRead: false,
-              status: 'delivered'
-            });
-          
-          console.log(`✅ View milestone notification created: ${milestone} views`);
-          
-          // Send push notification
-          const tokens = await getDeviceTokens(ownerId);
-          if (tokens.length > 0) {
-            const message = {
-              notification: {
-                title: '🎉 Milestone Reached!',
-                body: `Your video reached ${formatNumber(milestone)} views!`
-              },
-              data: {
-                type: 'milestone',
-                videoId: videoId,
-                milestoneType: 'views',
-                milestoneValue: String(milestone)
-              }
-            };
-            
-            await sendToTokens(tokens, message, ownerId);
-          }
-
-          safeEmitTelemetry('video_milestone', {
-            videoId,
-            ownerId,
-            milestoneType: 'views',
-            milestone,
-          });
-        }
-      }
-      
-      // Check like milestones
-      const likeMilestones = [10, 100, 1000, 10000, 100000];
-      for (const milestone of likeMilestones) {
-        if ((before.likes || before.likeCount || 0) < milestone && 
-            (after.likes || after.likeCount || 0) >= milestone) {
-          console.log(`🎉 Video ${videoId} reached ${milestone} likes!`);
-          
-          await admin.firestore()
-            .collection('notifications')
-            .doc(ownerId)
-            .collection('items')
-            .add({
-              type: 'milestone',
-              user: {
-                id: ownerId,
-                username: after.creatorUsername || 'you',
-                displayName: after.creatorName || 'You',
-                avatarURL: after.creatorAvatar || ''
-              },
-              videoId: videoId,
-              milestoneType: 'likes',
-              milestoneValue: milestone,
-              postThumbnailUrl: after.thumbnailURL || after.thumbnailUrl || '',
-              timestamp: admin.firestore.FieldValue.serverTimestamp(),
-              isRead: false,
-              status: 'delivered'
-            });
-          
-          console.log(`✅ Like milestone notification created: ${milestone} likes`);
-          
-          // Send push notification
-          const tokens = await getDeviceTokens(ownerId);
-          if (tokens.length > 0) {
-            const message = {
-              notification: {
-                title: '🎉 Milestone Reached!',
-                body: `Your video reached ${formatNumber(milestone)} likes!`
-              },
-              data: {
-                type: 'milestone',
-                videoId: videoId,
-                milestoneType: 'likes',
-                milestoneValue: String(milestone)
-              }
-            };
-            
-            await sendToTokens(tokens, message, ownerId);
-          }
-
-        safeEmitTelemetry('video_milestone', {
-          videoId,
-          ownerId,
-          milestoneType: 'likes',
-          milestone,
-        });
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('❌ Error in onVideoMilestone:', error);
-      return null;
-    }
-  });
+// DISABLED: onVideoMilestone - saves Cloud Run invocations on every video update.
+// Milestone push notifications (100/1K/10K views) no longer sent.
+// exports.onVideoMilestone = ...
 
 /**
  * Send notifications when a calendar event (live stream) starts
@@ -1498,3 +1581,460 @@ function formatNumber(num) {
   }
   return num.toString();
 }
+
+// =============================================================================
+// Re-implemented functions (were deployed from another codebase)
+// =============================================================================
+
+const region = 'us-central1';
+const crypto = require('crypto');
+const { createDirectUpload, handleMuxWebhook } = require('./src/mux');
+
+exports.createMuxDirectUpload = onCall({ region }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in');
+  const { videoId, userId } = request.data || {};
+  if (!videoId || !userId) throw new HttpsError('invalid-argument', 'videoId and userId required');
+  if (request.auth.uid !== userId) throw new HttpsError('permission-denied', 'userId mismatch');
+  const result = await createDirectUpload(videoId, userId);
+  return result;
+});
+
+exports.muxWebhook = onRequest({ region }, async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).send('Method not allowed');
+    return;
+  }
+  try {
+    const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    await handleMuxWebhook(payload);
+    res.status(200).send('OK');
+  } catch (e) {
+    console.error('Mux webhook error:', e);
+    res.status(500).send('Webhook processing failed');
+  }
+});
+
+exports.apiCsrfToken = onRequest({region}, (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresIn = 3600;
+  res.set('Cache-Control', 'no-store');
+  res.status(200).json({ token, expiresIn });
+});
+
+exports.apiReports = onRequest({region}, async (req, res) => {
+  try {
+    if (req.method === 'GET') {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const idToken = authHeader.split('Bearer ')[1];
+      const decoded = await admin.auth().verifyIdToken(idToken);
+      const snapshot = await firestore.collection('reports').orderBy('timestamp', 'desc').limit(50).get();
+      const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.status(200).json({ reports });
+      return;
+    }
+    if (req.method === 'POST') {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const idToken = authHeader.split('Bearer ')[1];
+      const decoded = await admin.auth().verifyIdToken(idToken);
+      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const { videoId, userId: reportedUserId, reason, type } = body;
+      const collection = type === 'user_report' ? 'user_reports' : 'reports';
+      const doc = type === 'user_report'
+        ? { reporterId: decoded.uid, reportedUserId, reason, timestamp: FieldValue.serverTimestamp(), status: 'pending' }
+        : { videoId, reporterId: decoded.uid, reason, timestamp: FieldValue.serverTimestamp(), status: 'pending' };
+      const ref = await firestore.collection(collection).add(doc);
+      res.status(200).json({ ok: true, id: ref.id });
+      return;
+    }
+    res.status(405).json({ error: 'Method not allowed' });
+  } catch (e) {
+    console.error('apiReports error:', e);
+    res.status(500).json({ error: e.message || 'Internal error' });
+  }
+});
+
+exports.apiVideoUpload = onRequest({region}, async (req, res) => {
+  try {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const { videoId, contentType } = body;
+    if (!videoId) {
+      res.status(400).json({ error: 'videoId required' });
+      return;
+    }
+    const bucket = storage.bucket();
+    const path = `videos/${decoded.uid}/${videoId}.mp4`;
+    const file = bucket.file(path);
+    const [url] = await file.getSignedUrl({
+      action: 'write',
+      expires: Date.now() + 60 * 60 * 1000,
+      contentType: contentType || 'video/mp4',
+    });
+    res.status(200).json({ uploadUrl: url, path });
+  } catch (e) {
+    console.error('apiVideoUpload error:', e);
+    res.status(500).json({ error: e.message || 'Internal error' });
+  }
+});
+
+exports.apiGoogleSecurityEvents = functions.region(region).https.onRequest(async (req, res) => {
+  try {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    await firestore.collection('security_events').add({
+      ...body,
+      receivedAt: FieldValue.serverTimestamp(),
+    });
+    res.status(200).json({ ok: true });
+  } catch (e) {
+    console.error('apiGoogleSecurityEvents error:', e);
+    res.status(500).json({ error: e.message || 'Internal error' });
+  }
+});
+
+function buildOAuthRedirect(provider, baseUrl) {
+  const config = process.env[`${provider.toUpperCase()}_CLIENT_ID`] || functions.config()[provider]?.client_id;
+  if (!config) return null;
+  const scopes = provider === 'kick' ? 'user:read' : provider === 'twitch' ? 'user:read:email' : 'https://www.googleapis.com/auth/youtube.readonly';
+  const authUrl = provider === 'kick' ? `https://kick.com/oauth/authorize` : provider === 'twitch' ? 'https://id.twitch.tv/oauth2/authorize' : 'https://accounts.google.com/o/oauth2/v2/auth';
+  const params = new URLSearchParams({
+    client_id: config,
+    redirect_uri: `${baseUrl}/api${provider.charAt(0).toUpperCase() + provider.slice(1)}AuthCallback`,
+    response_type: 'code',
+    scope: scopes,
+  });
+  return `${authUrl}?${params.toString()}`;
+}
+
+exports.apiKickAuthStart = functions.region(region).https.onRequest((req, res) => {
+  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
+  const url = buildOAuthRedirect('kick', baseUrl);
+  if (!url) {
+    res.status(503).json({ error: 'Kick OAuth not configured' });
+    return;
+  }
+  res.redirect(url);
+});
+
+exports.apiKickAuthCallback = functions.region(region).https.onRequest(async (req, res) => {
+  const code = req.query.code;
+  if (!code) {
+    res.status(400).send('Missing code');
+    return;
+  }
+  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
+  const redirectUri = `${baseUrl}/apiKickAuthCallback`;
+  const clientId = process.env.KICK_CLIENT_ID || functions.config().kick?.client_id;
+  const clientSecret = process.env.KICK_CLIENT_SECRET || functions.config().kick?.client_secret;
+  if (!clientId || !clientSecret) {
+    res.status(503).send('Kick OAuth not configured');
+    return;
+  }
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const tokenRes = await fetch('https://kick.com/api/v2/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
+    });
+    const tokenData = await tokenRes.json();
+    res.redirect(`${baseUrl}?kick_connected=1&access_token=${encodeURIComponent(tokenData.access_token || '')}`);
+  } catch (e) {
+    console.error('Kick callback error:', e);
+    res.status(500).send('OAuth failed');
+  }
+});
+
+exports.apiKickValidate = functions.region(region).https.onRequest(async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.status(401).json({ valid: false });
+    return;
+  }
+  try {
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    const fetch = (await import('node-fetch')).default;
+    const r = await fetch('https://kick.com/api/v2/user', { headers: { Authorization: `Bearer ${token}` } });
+    res.status(200).json({ valid: r.ok });
+  } catch (e) {
+    res.status(200).json({ valid: false });
+  }
+});
+
+exports.apiTwitchAuthStart = functions.region(region).https.onRequest((req, res) => {
+  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
+  const clientId = process.env.TWITCH_CLIENT_ID || functions.config().twitch?.client_id;
+  if (!clientId) {
+    res.status(503).json({ error: 'Twitch OAuth not configured' });
+    return;
+  }
+  const url = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(baseUrl + '/apiTwitchAuthCallback')}&response_type=code&scope=user:read:email`;
+  res.redirect(url);
+});
+
+exports.apiTwitchAuthCallback = functions.region(region).https.onRequest(async (req, res) => {
+  const code = req.query.code;
+  if (!code) {
+    res.status(400).send('Missing code');
+    return;
+  }
+  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
+  const redirectUri = baseUrl + '/apiTwitchAuthCallback';
+  const clientId = process.env.TWITCH_CLIENT_ID || functions.config().twitch?.client_id;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET || functions.config().twitch?.client_secret;
+  if (!clientId || !clientSecret) {
+    res.status(503).send('Twitch OAuth not configured');
+    return;
+  }
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const tokenRes = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
+    });
+    const tokenData = await tokenRes.json();
+    res.redirect(`${baseUrl}?twitch_connected=1&access_token=${encodeURIComponent(tokenData.access_token || '')}`);
+  } catch (e) {
+    console.error('Twitch callback error:', e);
+    res.status(500).send('OAuth failed');
+  }
+});
+
+exports.apiYoutubeAuthStart = functions.region(region).https.onRequest((req, res) => {
+  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
+  const clientId = process.env.YOUTUBE_CLIENT_ID || functions.config().youtube?.client_id;
+  if (!clientId) {
+    res.status(503).json({ error: 'YouTube OAuth not configured' });
+    return;
+  }
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(baseUrl + '/apiYoutubeAuthCallback')}&response_type=code&scope=https://www.googleapis.com/auth/youtube.readonly`;
+  res.redirect(url);
+});
+
+exports.apiYoutubeAuthCallback = functions.region(region).https.onRequest(async (req, res) => {
+  const code = req.query.code;
+  if (!code) {
+    res.status(400).send('Missing code');
+    return;
+  }
+  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
+  const redirectUri = baseUrl + '/apiYoutubeAuthCallback';
+  const clientId = process.env.YOUTUBE_CLIENT_ID || functions.config().youtube?.client_id;
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET || functions.config().youtube?.client_secret;
+  if (!clientId || !clientSecret) {
+    res.status(503).send('YouTube OAuth not configured');
+    return;
+  }
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
+    });
+    const tokenData = await tokenRes.json();
+    res.redirect(`${baseUrl}?youtube_connected=1&access_token=${encodeURIComponent(tokenData.access_token || '')}`);
+  } catch (e) {
+    console.error('YouTube callback error:', e);
+    res.status(500).send('OAuth failed');
+  }
+});
+
+exports.healthCheck = functions.region(region).https.onRequest((req, res) => {
+  res.status(200).json({ ok: true });
+});
+
+exports.markChatAsRead = functions.region(region).https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+  const { chatId } = data || {};
+  if (!chatId) throw new functions.https.HttpsError('invalid-argument', 'chatId required');
+  const uid = context.auth.uid;
+  const chatRef = firestore.doc(`chats/${chatId}`);
+  const chatDoc = await chatRef.get();
+  if (!chatDoc.exists) throw new functions.https.HttpsError('not-found', 'Chat not found');
+  const participants = chatDoc.data().participants || [];
+  if (!participants.includes(uid)) throw new functions.https.HttpsError('permission-denied', 'Not a participant');
+  await chatRef.update({
+    unreadCount: 0,
+    [`unreadCount_${uid}`]: 0,
+    lastReadTimestamp: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
+exports.onCommentDelete = functions.region(region).firestore
+  .document('videos/{videoId}/comments/{commentId}')
+  .onDelete(async (snap, context) => {
+    const { videoId } = context.params;
+    try {
+      const videoRef = firestore.doc(`videos/${videoId}`);
+      await videoRef.update({ commentCount: FieldValue.increment(-1) });
+      console.log('Comment deleted, decremented count for video', videoId);
+    } catch (e) {
+      console.error('onCommentDelete error:', e);
+    }
+  });
+
+exports.onFollowDelete = functions.region(region).firestore
+  .document('follows/{followId}')
+  .onDelete(async (snap, context) => {
+    const data = snap.data();
+    const followerId = data.followerId;
+    const followedId = data.followedId;
+    try {
+      await firestore.doc(`users/${followedId}`).update({ followerCount: FieldValue.increment(-1) });
+      await firestore.doc(`users/${followerId}`).update({ followingCount: FieldValue.increment(-1) });
+      console.log('Follow deleted, updated counts for', followerId, followedId);
+    } catch (e) {
+      console.error('onFollowDelete error:', e);
+    }
+  });
+
+// DISABLED: Sync moved to app (CreatorStatsSyncService). App updates users/{creatorId}.totalViews/totalLikes directly.
+// Stubbed to reduce Cloud Run CPU; invocation still occurs. Undeploy to eliminate entirely.
+exports.onVideoWrite = functions.region(region).firestore
+  .document('videos/{videoId}')
+  .onWrite(async () => null);
+
+exports.sendWelcomeEmail = functions.region(region).auth.user().onCreate(async (user) => {
+  const email = user.email;
+  if (!email) {
+    console.log('sendWelcomeEmail: no email for', user.uid);
+    return null;
+  }
+  const resendKey = process.env.RESEND_KEY || functions.config().resend?.key;
+  if (!resendKey) {
+    console.log('sendWelcomeEmail: Resend not configured, skipping for', user.uid);
+    return null;
+  }
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const from = process.env.RESEND_FROM || functions.config().resend?.from || 'StreamersTip <onboarding@resend.dev>';
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resendKey}` },
+      body: JSON.stringify({
+        from,
+        to: [email],
+        subject: 'Welcome to StreamersTip',
+        html: '<p>Thanks for signing up. We\'re glad to have you!</p>',
+      }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    console.log('Welcome email sent to', email);
+  } catch (e) {
+    console.error('sendWelcomeEmail error:', e);
+  }
+  return null;
+});
+
+exports.syncVideoAnalyticsToVideos = onSchedule(
+  {schedule: '0 3 * * *', region},
+  async () => {
+    const db = admin.firestore();
+    const snapshot = await db.collection('video_analytics').get();
+    if (snapshot.empty) {
+      console.log('syncVideoAnalyticsToVideos: no analytics docs');
+      return null;
+    }
+    const updates = [];
+    for (const doc of snapshot.docs) {
+      const views = doc.data().views;
+      if (views == null || views < 1) continue;
+      updates.push({id: doc.id, views});
+    }
+    const getLimit = 100;
+    const batchSize = 500;
+    let synced = 0;
+    for (let i = 0; i < updates.length; i += batchSize) {
+      const chunk = updates.slice(i, i + batchSize);
+      const refs = chunk.map(({id}) => db.collection('videos').doc(id));
+      const existing = [];
+      for (let j = 0; j < refs.length; j += getLimit) {
+        const sub = refs.slice(j, j + getLimit);
+        const snaps = await db.getAll(...sub);
+        for (let k = 0; k < snaps.length; k++) {
+          if (snaps[k].exists) existing.push(chunk[j + k]);
+        }
+      }
+      if (existing.length === 0) continue;
+      const batch = db.batch();
+      for (const {id, views} of existing) {
+        batch.update(db.collection('videos').doc(id), {
+          views,
+          lastViewedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      synced += existing.length;
+    }
+    console.log('syncVideoAnalyticsToVideos: synced', synced, 'videos');
+    return null;
+  },
+);
+
+exports.cleanupExpiredCalendarEvents = onSchedule(
+  {schedule: 'every 24 hours', region},
+  async () => {
+    const now = admin.firestore.Timestamp.now();
+    const snapshot = await firestore.collection('scheduled_posts').where('status', '==', 'pending').limit(200).get();
+    const toExpire = snapshot.docs.filter(doc => {
+      const schedule = doc.data().schedule;
+      const at = schedule?.scheduledAtUtc;
+      return at && (at.toMillis ? at.toMillis() < now.toMillis() : at < now);
+    });
+    if (toExpire.length === 0) {
+      console.log('cleanupExpiredCalendarEvents: none expired');
+      return null;
+    }
+    const batch = firestore.batch();
+    toExpire.forEach(doc => batch.update(doc.ref, { status: 'expired', updatedAt: FieldValue.serverTimestamp() }));
+    await batch.commit();
+    console.log('cleanupExpiredCalendarEvents: marked', toExpire.length, 'expired');
+    return null;
+  },
+);
+
+exports.manualCleanupCalendarEvents = onCall({region}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in');
+  const decoded = await admin.auth().getUser(request.auth.uid);
+  const isAdmin = decoded.customClaims?.admin === true;
+  if (!isAdmin) throw new HttpsError('permission-denied', 'Admin only');
+  const now = admin.firestore.Timestamp.now();
+  const snapshot = await firestore.collection('scheduled_posts').where('status', '==', 'pending').limit(200).get();
+  const toExpire = snapshot.docs.filter(doc => {
+    const schedule = doc.data().schedule;
+    const at = schedule?.scheduledAtUtc;
+    return at && (at.toMillis ? at.toMillis() < now.toMillis() : at < now);
+  });
+  const batch = firestore.batch();
+  toExpire.forEach(doc => batch.update(doc.ref, { status: 'expired', updatedAt: FieldValue.serverTimestamp() }));
+  if (toExpire.length) await batch.commit();
+  return { ok: true, expired: toExpire.length };
+});

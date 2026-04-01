@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../routing/app_navigator.dart';
+import '../services/pending_auth_redirect_service.dart';
 
 class EmailVerificationView extends ConsumerStatefulWidget {
   final String email;
@@ -166,7 +168,7 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
           await Future.delayed(const Duration(seconds: 1));
           if (mounted) {
             widget.onVerified?.call();
-            Navigator.of(context).popUntil((route) => route.isFirst);
+            PendingAuthRedirectService.instance.consumeOrGoHome(context);
           }
         } else if (!silent) {
           setState(() {
@@ -234,7 +236,7 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
 
     if (shouldSkip == true && mounted) {
       widget.onSkip?.call();
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      PendingAuthRedirectService.instance.consumeOrGoHome(context);
     }
   }
 
@@ -404,7 +406,7 @@ class _EmailVerificationViewState extends ConsumerState<EmailVerificationView> {
           onPressed: () async {
             await FirebaseAuth.instance.signOut();
             if (mounted) {
-              Navigator.of(context).popUntil((route) => route.isFirst);
+              AppNavigator.replaceWithAuth(context);
             }
           },
           child: const Text(

@@ -7,7 +7,7 @@ part 'comment.freezed.dart';
 part 'comment.g.dart';
 
 @freezed
-class Comment with _$Comment {
+sealed class Comment with _$Comment {
   const factory Comment({
     required String id,
     @UserConverter() required User user,

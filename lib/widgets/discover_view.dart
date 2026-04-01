@@ -9,27 +9,26 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
-import '../providers/follows_provider.dart';
 import '../models/trending_creator.dart';
 import 'category_card.dart';
 import 'recommended_content_card.dart';
-import 'streamer_card_view.dart';
-import '../views/search_screen.dart';
-import 'activity_view.dart';
 import '../services/logging_service.dart';
 import '../services/caching_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/accessibility_service.dart';
 import '../services/global_playback_manager.dart';
 import '../constants/playback_owners.dart';
+import '../constants/app_colors.dart';
 import 'instant_response_button.dart';
 import 'lazy_loading_list.dart';
 import 'video_player_view_optimized.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../providers/home_provider.dart' as hp;
+import '../providers/follow_refresh_provider.dart';
 import 'comments_view2.dart';
 import 'enhanced_share_sheet.dart';
+import '../routing/app_navigator.dart';
 // import 'video_thumbnail_view.dart'; // Removed - unused
 
 /// 🔥 FIX: Field mapping utility for data model consistency
@@ -82,8 +81,159 @@ class DiscoverView extends ConsumerStatefulWidget {
 
 class _DiscoverViewState extends ConsumerState<DiscoverView> {
   static const int _videosPerPage = 20;
+  static const List<String> _allowedVideoStatuses = ['published', 'ready'];
   String? _selectedCategory;
   int _currentCategoryPage = 0;
+
+  static const Map<String, List<String>> _categoryAliases = {
+    'tech': ['tech', 'Tech', 'Technology', 'Technical'],
+  };
+
+  List<String> _getCategoryQueryValues(String categoryId) {
+    final aliases = _categoryAliases[categoryId];
+    if (aliases != null) return aliases;
+    return [categoryId];
+  }
+
+  bool _matchesCategory(String? stored, String categoryId) {
+    if (stored == null || stored.isEmpty) return false;
+    final storedLower = stored.toString().toLowerCase();
+    final values = _getCategoryQueryValues(categoryId);
+    return values.any((v) => storedLower == v.toLowerCase());
+  }
+
+  bool _matchesCategoryValue(dynamic stored, String categoryId) {
+    if (stored == null) return false;
+    if (stored is Iterable) {
+      for (final value in stored) {
+        if (_matchesCategory(value?.toString(), categoryId)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return _matchesCategory(stored.toString(), categoryId);
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _fetchCategoryDocs({
+    required List<String> categoryValues,
+    required int limit,
+    DocumentSnapshot? startAfter,
+    String? rangeField,
+    Object? isGreaterThan,
+    String? orderByField,
+    bool descending = true,
+    bool allowOrderlessFallback = false,
+  }) async {
+    const scalarCategoryFields = ['category', 'categoryId', 'category_id'];
+
+    Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> runQuery(
+      String field, {
+      required bool ordered,
+    }) async {
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+          .collection('videos')
+          .where(field, whereIn: categoryValues)
+          .where('status', whereIn: _allowedVideoStatuses);
+
+      if (rangeField != null && isGreaterThan != null) {
+        query = query.where(rangeField, isGreaterThan: isGreaterThan);
+      }
+
+      if (ordered && orderByField != null) {
+        query = query.orderBy(orderByField, descending: descending);
+      }
+
+      query = query.limit(limit);
+
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      final snapshot = await query.get();
+      return snapshot.docs;
+    }
+
+    for (final field in scalarCategoryFields) {
+      try {
+        final docs = await runQuery(field, ordered: orderByField != null);
+        if (docs.isNotEmpty) return docs;
+      } catch (e) {
+        LoggingService.instance.debug(
+          'Category query failed for $field${orderByField != null ? ' with orderBy $orderByField' : ''}: $e',
+          tag: 'DiscoverView',
+        );
+      }
+
+      if (!allowOrderlessFallback || orderByField == null || rangeField != null) {
+        continue;
+      }
+
+      try {
+        final docs = await runQuery(field, ordered: false);
+        if (docs.isNotEmpty) return docs;
+      } catch (e) {
+        LoggingService.instance.debug(
+          'Category query failed for $field without orderBy: $e',
+          tag: 'DiscoverView',
+        );
+      }
+    }
+
+    try {
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+          .collection('videos')
+          .where('categories', arrayContainsAny: categoryValues)
+          .where('status', whereIn: _allowedVideoStatuses);
+
+      if (rangeField != null && isGreaterThan != null) {
+        query = query.where(rangeField, isGreaterThan: isGreaterThan);
+      }
+
+      if (orderByField != null) {
+        query = query.orderBy(orderByField, descending: descending);
+      }
+
+      query = query.limit(limit);
+
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      final snapshot = await query.get();
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs;
+      }
+    } catch (e) {
+      LoggingService.instance.debug(
+        'Category query failed for categories array${orderByField != null ? ' with orderBy $orderByField' : ''}: $e',
+        tag: 'DiscoverView',
+      );
+    }
+
+    return const [];
+  }
+
+  List<Map<String, dynamic>> _mapVideoDocsToFeedItems(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final videos = <Map<String, dynamic>>[];
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final status = data['status'] as String? ?? '';
+      if (!_allowedVideoStatuses.contains(status)) {
+        continue;
+      }
+
+      videos.add({
+        'docId': doc.id,
+        'data': data,
+      });
+    }
+
+    return videos;
+  }
 
   // ✅ FIX #5: Removed unused _cachedVideos - cache implementation reserved for future
   // Cache timestamps and TTL are reserved for future implementation
@@ -98,16 +248,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   StreamSubscription<QuerySnapshot>? _notificationsSubscription;
   Timer? _trendingRefreshTimer; // ✅ FIX #2: Store timer to cancel in dispose
 
-  // Common gradient used throughout the view
-  static const LinearGradient _backgroundGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      Color(0xFF6633CC), // Purple (matches ProfileView)
-      Color(0xFF1A1A4D), // Dark blue (matches ProfileView)
-    ],
-  );
-
   // 🔥 FIX: Consistent spacing and sizing constants
   // Note: These constants are reserved for future UI improvements
 
@@ -115,13 +255,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   void initState() {
     super.initState();
 
-    // 🎯 SINGLE ACTIVE OWNER: Set DiscoverView as active owner
-    final manager = GlobalPlaybackManager.instance;
-    manager.setActiveOwner(PlaybackOwners.discover);
-
-    if (kDebugMode) {
-      debugPrint('🎯 DiscoverView: Set as active owner');
-    }
+    // 🎯 SINGLE ACTIVE OWNER:
+    // Active owner is set centrally (AppNavigationObserver) based on route changes.
 
     // Initialize accessibility service
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -255,7 +390,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       ref.read(discoverProvider.notifier).loadTrendingCreators();
     });
 
-    // Also refresh when new videos are uploaded (listen to videos collection)
+    // Refresh when new videos uploaded (scoped: limit 50, last hour)
     _trendingCreatorsSubscription = FirebaseFirestore.instance
         .collection('videos')
         .where(
@@ -264,6 +399,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             DateTime.now().subtract(const Duration(hours: 1)),
           ),
         )
+        .limit(50)
         .snapshots()
         .listen(
       (snapshot) {
@@ -394,50 +530,24 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       return;
     }
 
-    // Show StreamerCardView as full-screen modal (matching ProfileView/VideoPlayerView pattern)
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: '/streamer_card'),
-        builder: (context) => StreamerCardView(
-          userId: creator.id,
-          currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
-          onDismiss: () => Navigator.of(context).pop(),
-          onFollow: (userId) async {
-            // Handle follow action using FollowsService
-            HapticFeedback.lightImpact();
-            LoggingService.instance.debug(
-              'Follow action for user: $userId',
-              tag: 'DiscoverView',
-            );
-
-            // Use the FollowsService provider to follow the user
-            // This ensures EventTriggerService is properly initialized for notifications
-            final followsService = ref.read(followsServiceProvider);
-            final success = await followsService.followUser(userId);
-
-            if (!success) {
-              throw Exception('Failed to follow user');
-            }
-          },
-          onMessage: (userId) {
-            // Handle message action
-            HapticFeedback.lightImpact();
-            LoggingService.instance.debug(
-              'Message action for user: $userId',
-              tag: 'DiscoverView',
-            );
-          },
-          onNavigateToTab: (tabName) {
-            // Handle tab navigation
-            HapticFeedback.lightImpact();
-          },
-          onShare: (userId) {
-            // Handle share action
-            HapticFeedback.lightImpact();
-          },
-        ),
-        fullscreenDialog: true,
-      ),
+    AppNavigator.openStreamerCard(
+      context,
+      userId: creator.id,
+      currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+      onDismiss: () => Navigator.of(context).pop(),
+      onMessage: (userId) {
+        HapticFeedback.lightImpact();
+        LoggingService.instance.debug(
+          'Message action for user: $userId',
+          tag: 'DiscoverView',
+        );
+      },
+      onNavigateToTab: (tabName) {
+        HapticFeedback.lightImpact();
+      },
+      onShare: (userId) {
+        HapticFeedback.lightImpact();
+      },
     );
   }
 
@@ -471,20 +581,41 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   Widget _buildLiveAvatar(
       String userId, String? initialAvatarURL, String username) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        String? avatarURL = initialAvatarURL;
-        if (snapshot.hasData &&
-            snapshot.data != null &&
-            snapshot.data!.exists) {
-          final userData = snapshot.data!.data() as Map<String, dynamic>?;
-          avatarURL = userData?['avatarURL'] ?? initialAvatarURL;
-        }
-        if (avatarURL == null || avatarURL.isEmpty) {
+    final avatarURL = initialAvatarURL;
+    if (avatarURL == null || avatarURL.isEmpty) {
+      return CircleAvatar(
+        radius: 30,
+        backgroundColor: Colors.grey.withValues(alpha: 0.3),
+        child: Text(
+          username[0].toUpperCase(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: avatarURL,
+        width: 60,
+        height: 60,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.grey.withValues(alpha: 0.3),
+          child: Text(
+            username[0].toUpperCase(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        errorWidget: (context, url, error) {
+          debugPrint('❌ Avatar load error for $username: $error');
           return CircleAvatar(
             radius: 30,
             backgroundColor: Colors.grey.withValues(alpha: 0.3),
@@ -497,63 +628,28 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               ),
             ),
           );
-        }
-        return ClipOval(
-          child: CachedNetworkImage(
-            imageUrl: avatarURL,
-            width: 60,
-            height: 60,
-            fit: BoxFit.cover,
-            placeholder: (context, url) => CircleAvatar(
-              radius: 30,
-              backgroundColor: Colors.grey.withValues(alpha: 0.3),
-              child: Text(
-                username[0].toUpperCase(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            errorWidget: (context, url, error) {
-              debugPrint('❌ Avatar load error for $username: $error');
-              return CircleAvatar(
-                radius: 30,
-                backgroundColor: Colors.grey.withValues(alpha: 0.3),
-                child: Text(
-                  username[0].toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              );
-            },
-            memCacheWidth: 120,
-            memCacheHeight: 120,
-            maxWidthDiskCache: 200,
-            maxHeightDiskCache: 200,
-          ),
-        );
-      },
+        },
+        memCacheWidth: 120,
+        memCacheHeight: 120,
+        maxWidthDiskCache: 200,
+        maxHeightDiskCache: 200,
+      ),
     );
   }
 
   Widget _buildLiveFollowerCount(String userId, int initialCount) {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
-          .collection('follows')
-          .where('followedId', isEqualTo: userId)
+          .collection('users')
+          .doc(userId)
           .snapshots(),
       builder: (context, snapshot) {
-        int followerCount = initialCount;
-        if (snapshot.hasData && snapshot.data != null) {
-          followerCount = snapshot.data!.docs.length;
-        }
+        final data = snapshot.data?.data();
+        final liveCount = FieldMapper.safeInt(
+          data?['followerCount'] ?? data?['followersCount'] ?? initialCount,
+        );
         return Text(
-          _formatFollowerCount(followerCount),
+          _formatFollowerCount(liveCount),
           style: const TextStyle(color: Colors.white70, fontSize: 10),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -600,30 +696,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         ],
       ),
     );
-  }
-
-  /// Get responsive spacing based on screen size
-  /// On very small screens, clamp to min 12dp gaps
-  /// On tall screens, scale up to 24-32dp for a more breathable look
-  double _getResponsiveSpacing(
-    BuildContext context,
-    double minSpacing,
-    double maxSpacing,
-  ) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    // Very small screens - clamp to minimum
-    if (screenHeight < 600 || screenWidth < 360) {
-      return 12.0;
-    }
-
-    // Calculate responsive spacing based on screen height
-    final normalizedHeight =
-        (screenHeight - 600) / (800 - 600); // Normalize between 600-800 height
-    final spacing = minSpacing + (normalizedHeight * (maxSpacing - minSpacing));
-
-    return spacing.clamp(12.0, 32.0); // Clamp between 12-32dp
   }
 
   void _onCategorySelected(String? categoryId) {
@@ -714,17 +786,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         );
       }
 
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) {
-            LoggingService.instance.debug(
-              'ActivityView page builder called',
-              tag: 'DiscoverView',
-            );
-            return const ActivityView();
-          },
-        ),
-      );
+      AppNavigator.openActivity(context);
       LoggingService.instance.debug(
         'Navigation push completed',
         tag: 'DiscoverView',
@@ -743,7 +805,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     }
   }
 
-  /// Safely cast dynamic data to List<String> for hashtags
+  /// Safely cast dynamic data to a string list for hashtags.
   List<String> _safeCastToStringList(dynamic data) {
     if (data == null) return [];
 
@@ -884,18 +946,23 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(followRefreshProvider, (previous, next) {
+      if (previous == next) return;
+      ref.read(discoverProvider.notifier).loadTrendingCreators();
+    });
+
     final discoverViewModel = ref.watch(discoverProvider.notifier);
     final discoverState = ref.watch(discoverProvider);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppColors.supportBackground,
       body: Container(
-        decoration: const BoxDecoration(gradient: _backgroundGradient),
+        decoration: const BoxDecoration(color: AppColors.supportBackground),
         child: CustomScrollView(
           slivers: [
             // App Bar
             SliverAppBar(
-              backgroundColor: Colors.transparent,
+              backgroundColor: AppColors.supportBackground,
               elevation: 0,
               leading: InstantIconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -920,28 +987,35 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: GestureDetector(
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SearchScreen(),
-                      ),
-                    );
+                    AppNavigator.openSearch(context);
                   },
                   child: Container(
                     height: 52,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.10),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: AppColors.supportSurfaceGradient,
+                      ),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.15),
+                        color: Colors.white.withValues(alpha: 0.12),
                         width: 1,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.16),
+                          blurRadius: 18,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
                       children: [
                         Icon(
                           Icons.search,
-                          color: Colors.white.withValues(alpha: 0.6),
+                          color: AppColors.supportAccent,
                           size: 20,
                         ),
                         const SizedBox(width: 10),
@@ -976,68 +1050,75 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 padding: const EdgeInsets.only(
                   left: 20,
                   right: 20,
-                  top: 20,
-                  bottom: 0,
+                  top: 12,
+                  bottom: 16,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Trending Creators',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.10),
                     ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 200,
-                      child: LazyLoadingList<TrendingCreator>(
-                        loadData: _loadTrendingCreators,
-                        itemBuilder: _buildTrendingCreatorCard,
-                        itemsPerPage: 10,
-                        emptyBuilder: (context) =>
-                            _buildEmptyTrendingCreatorsState(),
-                        loadingBuilder: (context) => _buildLoadingState(),
-                        errorBuilder: _buildErrorState,
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeading(
+                        'Trending Creators',
+                        'People gaining momentum right now',
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: 200,
+                        child: LazyLoadingList<TrendingCreator>(
+                          loadData: _loadTrendingCreators,
+                          itemBuilder: _buildTrendingCreatorCard,
+                          itemsPerPage: 10,
+                          emptyBuilder: (context) =>
+                              _buildEmptyTrendingCreatorsState(),
+                          loadingBuilder: (context) => _buildLoadingState(),
+                          errorBuilder: _buildErrorState,
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
 
-            // Categories Section - brought up by using Transform.translate
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.only(
                   left: 20,
                   right: 20,
                   top: 0,
-                  bottom: 0,
+                  bottom: 16,
                 ),
-                child: Transform.translate(
-                  offset:
-                      const Offset(0, -40), // Move Categories up to reduce gap
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.10),
+                    ),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      _buildSectionHeading(
                         'Categories',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        'Jump into the corner of the app that fits your mood',
                       ),
 
                       // Categories PageView with proper spacing
                       SizedBox(
-                        height: 320,
+                        height: 288,
                         child: PageView.builder(
                           onPageChanged: (page) {
                             setState(() {
@@ -1056,11 +1137,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                                 .sublist(startIndex, endIndex);
 
                             return Padding(
-                              // Add bottom padding to prevent overlap with dots
-                              padding: EdgeInsets.only(
-                                bottom: _getResponsiveSpacing(context, 12, 12) +
-                                    12, // Dots height + spacing
-                              ),
+                              padding: const EdgeInsets.only(bottom: 12),
                               child: GridView.builder(
                                 physics: const NeverScrollableScrollPhysics(),
                                 gridDelegate:
@@ -1091,6 +1168,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                                       category: category,
                                       isSelected:
                                           _selectedCategory == category.id,
+                                      hasCategorySelected:
+                                          _selectedCategory != null,
                                       onTap: () => _onCategorySelected(
                                         _selectedCategory == category.id
                                             ? null
@@ -1113,9 +1192,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                       // Page indicator with proper safe area handling
                       Center(
                         child: Padding(
-                          padding: EdgeInsets.only(
-                            bottom: MediaQuery.of(context).padding.bottom + 8,
-                          ),
+                          padding: const EdgeInsets.only(bottom: 4),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: List.generate(
@@ -1149,38 +1226,42 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               // Default view - show resources
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Resources',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionHeading(
+                          'Resources',
+                          'Helpful picks, tools, and ideas to explore next',
                         ),
-                      ),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: discoverState.recommendedContent.length,
-                        itemBuilder: (context, index) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: RecommendedContentCard(
-                              content: discoverState.recommendedContent[index],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                        const SizedBox(height: 12),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: discoverState.recommendedContent.length,
+                          itemBuilder: (context, index) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: RecommendedContentCard(
+                                content: discoverState.recommendedContent[index],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+            ),
             ] else ...[
               // Category selected - show 3-column video grid with tap to open swipeable feed
               _buildCategoryVideoGridSliver(discoverState, discoverViewModel),
@@ -1194,12 +1275,38 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
+  Widget _buildSectionHeading(String title, String subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.68),
+            fontSize: 13,
+            height: 1.3,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildCategoryVideoGridSliver(
     DiscoverState discoverState,
     DiscoverNotifier discoverViewModel,
   ) {
-    if (_selectedCategory == null)
+    if (_selectedCategory == null) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
 
     // Get the selected category
     final selectedCategory = discoverState.categories.firstWhere(
@@ -1209,46 +1316,27 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Category header with clear button
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${selectedCategory.name} Videos',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                InstantTextButton(
-                  onPressed: () {
-                    setState(() {
-                      _selectedCategory = null;
-                    });
-                  },
-                  hapticType: HapticFeedbackType.lightImpact,
-                  child: const Text(
-                    'Clear Filter',
-                    style: TextStyle(
-                      color: Color(0xFF6633CC),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.10),
             ),
-
-            const SizedBox(height: 8),
-
-            // 3-column video grid with tap to open swipeable feed
-            _buildVideoGridWithTapToSwipe(selectedCategory.id, discoverState),
-          ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeading(
+                selectedCategory.name,
+                'Swipe into a focused feed from this category',
+              ),
+              const SizedBox(height: 12),
+              _buildVideoGridWithTapToSwipe(selectedCategory.id, discoverState),
+            ],
+          ),
         ),
       ),
     );
@@ -1377,14 +1465,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                 }
               },
             ),
-            // Play button overlay
-            const Center(
-              child: Icon(
-                Icons.play_circle_outline,
-                color: Colors.white,
-                size: 40,
-              ),
-            ),
             // Duration badge (if available)
             Builder(
               builder: (context) {
@@ -1405,7 +1485,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
+                        color: Colors.black.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -1430,12 +1510,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   String _formatDuration(dynamic duration) {
     if (duration == null) return '0:00';
-
-    // Debug logging to see what we're getting
-    LoggingService.instance.debug(
-      'Duration value: $duration, type: ${duration.runtimeType}',
-      tag: 'DiscoverView',
-    );
 
     int seconds = 0;
 
@@ -1463,13 +1537,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
     final minutes = seconds ~/ 60;
     final remainingSeconds = seconds % 60;
-    final formatted = '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
-
-    LoggingService.instance.debug(
-      'Formatted duration: $formatted',
-      tag: 'DiscoverView',
-    );
-    return formatted;
+    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
   void _openSwipeableVideoFeed(
@@ -1483,7 +1551,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     // Navigate to full-screen swipeable video feed using HomeView pattern
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => _CategoryVideoFeed(
+        builder: (context) => _buildCategoryVideoFeed(
           videos: homeVideos,
           startIndex: startIndex,
           categoryId: _selectedCategory ?? 'unknown',
@@ -1493,7 +1561,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   /// Category video feed widget that follows HomeView's audio management pattern exactly
-  Widget _CategoryVideoFeed({
+  Widget _buildCategoryVideoFeed({
     required List<HomeVideo> videos,
     required int startIndex,
     required String categoryId,
@@ -1531,30 +1599,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         return [];
       }
 
-      // Debug: Log video data to see duration field
-      for (int i = 0; i < mixedVideos.length && i < 3; i++) {
-        final video = mixedVideos[i];
-        LoggingService.instance.debug(
-          'Video $i: title=${video['title']}, duration=${video['duration']}, durationType=${video['duration']?.runtimeType}',
-          tag: 'DiscoverView',
-        );
-
-        // Also check metadata.duration field
-        final metadata = video['metadata'] as Map<String, dynamic>?;
-        if (metadata != null) {
-          LoggingService.instance.debug(
-            'Video $i metadata: duration=${metadata['duration']}, durationType=${metadata['duration']?.runtimeType}',
-            tag: 'DiscoverView',
-          );
-        }
-
-        // Log all available fields
-        LoggingService.instance.debug(
-          'Video $i all fields: ${video.keys.toList()}',
-          tag: 'DiscoverView',
-        );
-      }
-
       // Sort videos: new videos first, then by trending score
       mixedVideos.sort((a, b) {
         final aIsNew = a['isNew'] as bool;
@@ -1584,9 +1628,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           continue;
         }
 
-        // 🔥 GLOBAL DELETION FIX: Filter out deleted videos
-        final status = data['status'] as String?;
-        if (status == 'deleted' || (status != null && status != 'published')) {
+        final status = data['status'] as String? ?? '';
+        final isValidStatus =
+            status == 'published' || status == 'ready';
+        if (!isValidStatus) {
           final videoId =
               videoData['docId'] as String? ?? data['id'] as String?;
           if (videoId != null) {
@@ -1645,17 +1690,19 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
         final thumbnailUrl = FieldMapper.getThumbnailUrl(data);
 
+        final durationValue = data['duration'] ?? data['metadata']?['duration'];
         videos.add({
           'id': videoData['docId'],
           'title': FieldMapper.safeString(
-            data['caption'] ?? data['title'] ?? 'Untitled',
+            data['caption'] ?? data['title'] ?? data['metadata']?['title'] ??
+                'Untitled',
           ),
           'creator': FieldMapper.getDisplayName(userData),
           'thumbnail': thumbnailUrl,
           'thumbnailUrl': thumbnailUrl,
           'thumbnailURL': thumbnailUrl,
           'views': FieldMapper.safeInt(data['views'] ?? data['viewsCount']),
-          'duration': FieldMapper.safeDouble(data['duration']),
+          'duration': FieldMapper.safeDouble(durationValue),
           'videoUrl': FieldMapper.getVideoUrl(data),
           'creatorId': userId,
           'creatorAvatar': FieldMapper.getAvatarUrl(userData),
@@ -1778,7 +1825,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         'Loading mixed category videos for: $categoryId',
         tag: 'DiscoverView',
       );
-
+      if (categoryId == 'All' || categoryId == 'all') {
+        return _loadAllVideosNoCategory(startAfter);
+      }
       // Load recent videos (last 7 days)
       final recentVideos = await _loadRecentVideos(categoryId, startAfter);
       LoggingService.instance.debug(
@@ -1839,13 +1888,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
           'After combining: ${recentVideos.length} total videos for $categoryId',
           tag: 'DiscoverView',
         );
-      } else {
-        // If no categorized videos, return fallback videos
-        LoggingService.instance.debug(
-          'No categorized videos found, returning ${fallbackVideos.length} fallback videos for $categoryId',
-          tag: 'DiscoverView',
-        );
+      } else if (fallbackVideos.isNotEmpty) {
         return fallbackVideos;
+      } else {
+        return _loadCategoryVideosInMemoryFallback(categoryId, startAfter);
       }
 
       // Combine and deduplicate
@@ -1911,139 +1957,21 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      // Query by 'category' field first, then try 'categoryId' if no results
-      Query? query = FirebaseFirestore.instance
-          .collection('videos')
-          .where('category', isEqualTo: categoryId)
-          .where('status', isEqualTo: 'published')
-          .orderBy('createdAt', descending: true)
-          .limit(_videosPerPage);
-
-      if (startAfter != null) {
-        query = query.startAfterDocument(startAfter);
-      }
-
-      LoggingService.instance.debug(
-        'Executing Firestore query: category=$categoryId, status=published, limit=$_videosPerPage',
-        tag: 'DiscoverView',
+      final categoryValues = _getCategoryQueryValues(categoryId);
+      final docs = await _fetchCategoryDocs(
+        categoryValues: categoryValues,
+        limit: _videosPerPage,
+        startAfter: startAfter,
+        orderByField: 'createdAt',
+        allowOrderlessFallback: true,
       );
-
-      QuerySnapshot snapshot;
-      try {
-        snapshot = await query.get();
-
-        LoggingService.instance.debug(
-          'Query with category field returned ${snapshot.docs.length} documents',
-          tag: 'DiscoverView',
-        );
-
-        // If no results, try with 'categoryId' field
-        if (snapshot.docs.isEmpty) {
-          LoggingService.instance.debug(
-            'No results with category field, trying categoryId field',
-            tag: 'DiscoverView',
-          );
-          query = FirebaseFirestore.instance
-              .collection('videos')
-              .where('categoryId', isEqualTo: categoryId)
-              .where('status', isEqualTo: 'published')
-              .orderBy('createdAt', descending: true)
-              .limit(_videosPerPage);
-
-          if (startAfter != null) {
-            query = query.startAfterDocument(startAfter);
-          }
-
-          snapshot = await query.get();
-
-          LoggingService.instance.debug(
-            'Query with categoryId field returned ${snapshot.docs.length} documents',
-            tag: 'DiscoverView',
-          );
-        }
-      } catch (e) {
-        // If query fails due to index or other issues, try with categoryId field
-        LoggingService.instance.debug(
-          'Query with category field failed, trying categoryId field: $e',
-          tag: 'DiscoverView',
-        );
-        try {
-          query = FirebaseFirestore.instance
-              .collection('videos')
-              .where('categoryId', isEqualTo: categoryId)
-              .where('status', isEqualTo: 'published')
-              .orderBy('createdAt', descending: true)
-              .limit(_videosPerPage);
-
-          if (startAfter != null) {
-            query = query.startAfterDocument(startAfter);
-          }
-
-          snapshot = await query.get();
-
-          LoggingService.instance.debug(
-            'Query with categoryId field returned ${snapshot.docs.length} documents',
-            tag: 'DiscoverView',
-          );
-        } catch (e2) {
-          // Last resort: try without orderBy (but still filter by status)
-          LoggingService.instance.debug(
-            'Query with orderBy failed, trying without orderBy: $e2',
-            tag: 'DiscoverView',
-          );
-          query = FirebaseFirestore.instance
-              .collection('videos')
-              .where('categoryId', isEqualTo: categoryId)
-              .where('status', isEqualTo: 'published')
-              .limit(_videosPerPage);
-
-          if (startAfter != null) {
-            query = query.startAfterDocument(startAfter);
-          }
-
-          snapshot = await query.get();
-
-          LoggingService.instance.debug(
-            'Query with categoryId (no orderBy) returned ${snapshot.docs.length} documents',
-            tag: 'DiscoverView',
-          );
-        }
-      }
-
-      final videos = <Map<String, dynamic>>[];
-
-      LoggingService.instance.debug(
-        'Fallback query returned ${snapshot.docs.length} documents',
-        tag: 'DiscoverView',
-      );
-
-      // 🔥 GLOBAL DELETION FIX: Filter out deleted videos in memory as safety net
-      for (final doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>?;
-        if (data == null) continue;
-
-        // Skip deleted videos
-        final status = data['status'] as String?;
-        if (status == 'deleted' || (status != null && status != 'published')) {
-          LoggingService.instance.debug(
-            'Skipping deleted video: ${doc.id}',
-            tag: 'DiscoverView',
-          );
-          continue;
-        }
-
-        LoggingService.instance.debug(
-          'Video ${doc.id}: category=${data['category']}, createdAt=${data['createdAt']}',
-          tag: 'DiscoverView',
-        );
-
-        videos.add({
-          'docId': doc.id,
-          'data': data,
-          'isNew': false,
-          'trendingScore': 0.0,
-        });
-      }
+      final videos = _mapVideoDocsToFeedItems(docs)
+          .map((video) => {
+                ...video,
+                'isNew': false,
+                'trendingScore': 0.0,
+              })
+          .toList();
 
       LoggingService.instance.debug(
         'Processed ${videos.length} fallback videos for $categoryId',
@@ -2054,6 +1982,81 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     } catch (e) {
       LoggingService.instance.error(
         'Error loading all category videos for $categoryId',
+        tag: 'DiscoverView',
+        error: e,
+      );
+      return [];
+    }
+  }
+
+  /// Fallback when composite indexes missing: load all videos, filter by category in memory.
+  Future<List<Map<String, dynamic>>> _loadCategoryVideosInMemoryFallback(
+    String categoryId,
+    DocumentSnapshot? startAfter,
+  ) async {
+    try {
+      final allVideos = await _loadAllVideosNoCategory(startAfter);
+      final filtered = allVideos.where((v) {
+        final data = v['data'] as Map<String, dynamic>?;
+        if (data == null) return false;
+        return _matchesCategoryValue(data['categories'], categoryId) ||
+            _matchesCategoryValue(
+              data['category'] ?? data['categoryId'] ?? data['category_id'],
+              categoryId,
+            );
+      }).toList();
+      LoggingService.instance.debug(
+        'In-memory fallback: ${filtered.length} videos for $categoryId (from ${allVideos.length} total)',
+        tag: 'DiscoverView',
+      );
+      return filtered;
+    } catch (e) {
+      LoggingService.instance.error(
+        'In-memory category fallback failed for $categoryId',
+        tag: 'DiscoverView',
+        error: e,
+      );
+      return [];
+    }
+  }
+
+  /// Load all videos without category filter (All category)
+  Future<List<Map<String, dynamic>>> _loadAllVideosNoCategory(
+    DocumentSnapshot? startAfter,
+  ) async {
+    try {
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+          .collection('videos')
+          .where('status', whereIn: _allowedVideoStatuses)
+          .orderBy('createdAt', descending: true)
+          .limit(_videosPerPage * 2);
+      if (startAfter != null) {
+        query = query.startAfterDocument(startAfter);
+      }
+
+      final snapshot = await query.get();
+      final videos = <Map<String, dynamic>>[];
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        videos.add({
+          'docId': doc.id,
+          'data': data,
+          'isNew': false,
+          'trendingScore': 0.0,
+        });
+      }
+
+      videos.sort((a, b) {
+        final aTs = a['data']['createdAt'] as Timestamp?;
+        final bTs = b['data']['createdAt'] as Timestamp?;
+        if (aTs == null || bTs == null) return 0;
+        return bTs.compareTo(aTs);
+      });
+      return videos.take(_videosPerPage).toList();
+    } catch (e) {
+      LoggingService.instance.error(
+        'Error loading all videos (no category)',
         tag: 'DiscoverView',
         error: e,
       );
@@ -2074,114 +2077,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
       final now = DateTime.now();
       final sevenDaysAgo = now.subtract(const Duration(days: 7));
-
-      // Try to query by both 'category' and 'categoryId' fields
-      // 🔥 FIX: Filter out deleted videos by only getting published videos
-      Query? query = FirebaseFirestore.instance
-          .collection('videos')
-          .where('category', isEqualTo: categoryId)
-          .where('status', isEqualTo: 'published')
-          .where('createdAt', isGreaterThan: sevenDaysAgo)
-          .orderBy('createdAt', descending: true)
-          .limit(_videosPerPage);
-
-      if (startAfter != null) {
-        query = query.startAfterDocument(startAfter);
-      }
-
-      LoggingService.instance.debug(
-        'Executing Firestore query for recent videos: category=$categoryId, limit=$_videosPerPage',
-        tag: 'DiscoverView',
+      final categoryValues = _getCategoryQueryValues(categoryId);
+      final docs = await _fetchCategoryDocs(
+        categoryValues: categoryValues,
+        limit: _videosPerPage,
+        startAfter: startAfter,
+        rangeField: 'createdAt',
+        isGreaterThan: sevenDaysAgo,
+        orderByField: 'createdAt',
       );
-
-      QuerySnapshot snapshot;
-      try {
-        snapshot = await query.get();
-
-        // If no results, try with 'categoryId' field
-        if (snapshot.docs.isEmpty) {
-          LoggingService.instance.debug(
-            'No results with category field, trying categoryId field',
-            tag: 'DiscoverView',
-          );
-          query = FirebaseFirestore.instance
-              .collection('videos')
-              .where('categoryId', isEqualTo: categoryId)
-              .where('status', isEqualTo: 'published')
-              .where('createdAt', isGreaterThan: sevenDaysAgo)
-              .orderBy('createdAt', descending: true)
-              .limit(_videosPerPage);
-
-          if (startAfter != null) {
-            query = query.startAfterDocument(startAfter);
-          }
-
-          snapshot = await query.get();
-        }
-      } catch (e) {
-        // If query fails, try with 'categoryId' field instead
-        LoggingService.instance.debug(
-          'Query with category field failed, trying categoryId field: $e',
-          tag: 'DiscoverView',
-        );
-        try {
-          query = FirebaseFirestore.instance
-              .collection('videos')
-              .where('categoryId', isEqualTo: categoryId)
-              .where('status', isEqualTo: 'published')
-              .where('createdAt', isGreaterThan: sevenDaysAgo)
-              .orderBy('createdAt', descending: true)
-              .limit(_videosPerPage);
-
-          if (startAfter != null) {
-            query = query.startAfterDocument(startAfter);
-          }
-
-          snapshot = await query.get();
-        } catch (e2) {
-          // If still fails, try with categoryId without date filter
-          LoggingService.instance.debug(
-            'Query with date filter failed, trying categoryId without date filter: $e2',
-            tag: 'DiscoverView',
-          );
-          query = FirebaseFirestore.instance
-              .collection('videos')
-              .where('categoryId', isEqualTo: categoryId)
-              .where('status', isEqualTo: 'published')
-              .orderBy('createdAt', descending: true)
-              .limit(_videosPerPage);
-
-          if (startAfter != null) {
-            query = query.startAfterDocument(startAfter);
-          }
-
-          snapshot = await query.get();
-        }
-      }
-      final videos = <Map<String, dynamic>>[];
-
-      LoggingService.instance.debug(
-        'Firestore returned ${snapshot.docs.length} documents for recent videos',
-        tag: 'DiscoverView',
-      );
-
-      // 🔥 GLOBAL DELETION FIX: Filter out deleted videos in memory as safety net
-      for (final doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>?;
-        if (data == null) continue;
-
-        // Skip deleted videos
-        final status = data['status'] as String?;
-        if (status == 'deleted' || (status != null && status != 'published')) {
-          LoggingService.instance.debug(
-            'Skipping deleted video from recent: ${doc.id}',
-            tag: 'DiscoverView',
-          );
-          continue;
-        }
-
-        videos.add({'docId': doc.id, 'data': data});
-      }
+      final videos = _mapVideoDocsToFeedItems(docs);
 
       LoggingService.instance.debug(
         'Processed ${videos.length} recent videos for $categoryId (after filtering deleted)',
@@ -2209,112 +2114,19 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         'Loading trending videos for category: $categoryId',
         tag: 'DiscoverView',
       );
-
-      // Try to query by both 'category' and 'categoryId' fields
-      // 🔥 FIX: Filter out deleted videos by only getting published videos
-      Query? query = FirebaseFirestore.instance
-          .collection('videos')
-          .where('category', isEqualTo: categoryId)
-          .where('status', isEqualTo: 'published')
-          .where('trendingScore', isGreaterThan: 50.0)
-          .orderBy('trendingScore', descending: true)
-          .limit(_videosPerPage);
-
-      if (startAfter != null) {
-        query = query.startAfterDocument(startAfter);
-      }
-
-      LoggingService.instance.debug(
-        'Executing Firestore query for trending videos: category=$categoryId, limit=$_videosPerPage',
-        tag: 'DiscoverView',
+      final categoryValues = _getCategoryQueryValues(categoryId);
+      final docs = await _fetchCategoryDocs(
+        categoryValues: categoryValues,
+        limit: _videosPerPage,
+        startAfter: startAfter,
+        rangeField: 'trendingScore',
+        isGreaterThan: 50.0,
+        orderByField: 'trendingScore',
       );
-
-      QuerySnapshot snapshot;
-      try {
-        snapshot = await query.get();
-
-        LoggingService.instance.debug(
-          'Query with category field returned ${snapshot.docs.length} documents',
-          tag: 'DiscoverView',
-        );
-
-        // If no results, try with 'categoryId' field
-        if (snapshot.docs.isEmpty) {
-          LoggingService.instance.debug(
-            'No results with category field, trying categoryId field',
-            tag: 'DiscoverView',
-          );
-          query = FirebaseFirestore.instance
-              .collection('videos')
-              .where('categoryId', isEqualTo: categoryId)
-              .where('status', isEqualTo: 'published')
-              .where('trendingScore', isGreaterThan: 50.0)
-              .orderBy('trendingScore', descending: true)
-              .limit(_videosPerPage);
-
-          if (startAfter != null) {
-            query = query.startAfterDocument(startAfter);
-          }
-
-          snapshot = await query.get();
-
-          LoggingService.instance.debug(
-            'Query with categoryId field returned ${snapshot.docs.length} documents',
-            tag: 'DiscoverView',
-          );
-        }
-      } catch (e) {
-        // If query fails, try with 'categoryId' field instead
-        LoggingService.instance.debug(
-          'Query with category field failed, trying categoryId field: $e',
-          tag: 'DiscoverView',
-        );
-        query = FirebaseFirestore.instance
-            .collection('videos')
-            .where('categoryId', isEqualTo: categoryId)
-            .where('status', isEqualTo: 'published')
-            .where('trendingScore', isGreaterThan: 50.0)
-            .orderBy('trendingScore', descending: true)
-            .limit(_videosPerPage);
-
-        if (startAfter != null) {
-          query = query.startAfterDocument(startAfter);
-        }
-
-        snapshot = await query.get();
-
-        LoggingService.instance.debug(
-          'Query with categoryId field returned ${snapshot.docs.length} documents',
-          tag: 'DiscoverView',
-        );
-      }
-      final videos = <Map<String, dynamic>>[];
+      final videos = _mapVideoDocsToFeedItems(docs);
 
       LoggingService.instance.debug(
-        'Firestore returned ${snapshot.docs.length} documents for trending videos',
-        tag: 'DiscoverView',
-      );
-
-      // 🔥 GLOBAL DELETION FIX: Filter out deleted videos in memory as safety net
-      for (final doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>?;
-        if (data == null) continue;
-
-        // Skip deleted videos
-        final status = data['status'] as String?;
-        if (status == 'deleted' || (status != null && status != 'published')) {
-          LoggingService.instance.debug(
-            'Skipping deleted video from trending: ${doc.id}',
-            tag: 'DiscoverView',
-          );
-          continue;
-        }
-
-        videos.add({'docId': doc.id, 'data': data});
-      }
-
-      LoggingService.instance.debug(
-        'Processed ${videos.length} trending videos for $categoryId (after filtering deleted)',
+        'Processed ${videos.length} trending videos for $categoryId',
         tag: 'DiscoverView',
       );
 
@@ -2441,9 +2253,10 @@ class _CategoryVideoFeedStatefulState
     super.dispose();
   }
 
-  /// Set up real-time listeners to detect when videos are deleted
+  /// Set up real-time listeners to detect when videos are deleted (first 15)
   void _setupRealtimeDeletionListeners() {
-    for (final video in _videos) {
+    final videosToListen = _videos.take(15).toList();
+    for (final video in videosToListen) {
       final subscription = FirebaseFirestore.instance
           .collection('videos')
           .doc(video.id)
@@ -2451,17 +2264,15 @@ class _CategoryVideoFeedStatefulState
           .listen((snapshot) {
         if (!mounted) return;
 
-        // If video document doesn't exist or status is 'deleted', remove from feed
         if (!snapshot.exists) {
           _removeVideoFromFeed(video.id);
           return;
         }
 
         final data = snapshot.data();
-        final status = data?['status'] as String?;
+        final status = data?['status'] as String? ?? '';
 
-        // Remove video if status is 'deleted' or not 'published'
-        if (status == 'deleted' || status != 'published') {
+        if (status == 'deleted') {
           _removeVideoFromFeed(video.id);
         }
       });
@@ -2510,7 +2321,8 @@ class _CategoryVideoFeedStatefulState
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      onPopInvoked: (didPop) {
+      canPop: true,
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
         if (didPop) {
           // Clean up when navigating back
           LoggingService.instance.debug(
@@ -2569,33 +2381,11 @@ class _CategoryVideoFeedStatefulState
                     sheetType: '',
                     showHUD: true, // Show HUD like HomeView
                     onShowProfile: () {
-                      // Handle profile view
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          settings: const RouteSettings(name: '/streamer_card'),
-                          builder: (context) => StreamerCardView(
-                            userId: video.creator.id,
-                            currentUserId:
-                                fa.FirebaseAuth.instance.currentUser?.uid,
-                            onDismiss: () => Navigator.of(context).pop(),
-                            onFollow: (userId) async {
-                              final followsService = ref.read(
-                                followsServiceProvider,
-                              );
-                              await followsService.followUser(userId);
-                            },
-                            onMessage: (userId) {
-                              // Handle message action
-                            },
-                            onNavigateToTab: (tabName) {
-                              // Handle tab navigation
-                            },
-                            onShare: (userId) {
-                              // Handle share action
-                            },
-                          ),
-                          fullscreenDialog: true,
-                        ),
+                      AppNavigator.openStreamerCard(
+                        context,
+                        userId: video.creator.id,
+                        currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+                        onDismiss: () => Navigator.of(context).pop(),
                       );
                     },
                     onShowComments: () {
@@ -2633,33 +2423,11 @@ class _CategoryVideoFeedStatefulState
                       );
                     },
                     onShowStreamerCard: () {
-                      // Handle streamer card
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          settings: const RouteSettings(name: '/streamer_card'),
-                          builder: (context) => StreamerCardView(
-                            userId: video.creator.id,
-                            currentUserId:
-                                fa.FirebaseAuth.instance.currentUser?.uid,
-                            onDismiss: () => Navigator.of(context).pop(),
-                            onFollow: (userId) async {
-                              final followsService = ref.read(
-                                followsServiceProvider,
-                              );
-                              await followsService.followUser(userId);
-                            },
-                            onMessage: (userId) {
-                              // Handle message action
-                            },
-                            onNavigateToTab: (tabName) {
-                              // Handle tab navigation
-                            },
-                            onShare: (userId) {
-                              // Handle share action
-                            },
-                          ),
-                          fullscreenDialog: true,
-                        ),
+                      AppNavigator.openStreamerCard(
+                        context,
+                        userId: video.creator.id,
+                        currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+                        onDismiss: () => Navigator.of(context).pop(),
                       );
                     },
                     isLiked: video.isLiked,

@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -10,12 +9,14 @@ import 'dart:io';
 import '../models/chat.dart';
 import '../models/message.dart';
 import '../services/auth_service.dart';
+import '../services/r2_media_service.dart';
 
 class ChatNotifier extends StateNotifier<ChatState> {
   final Chat chat;
   final AuthenticationService authService;
   StreamSubscription<QuerySnapshot>?
       _messageListener; // kept for API compatibility
+  Timer? _typingDebounce;
 
   // Persistence key
   String get _messagesKey => "ChatNotifier_messages_${chat.id ?? "unknown"}";
@@ -27,6 +28,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   @override
   void dispose() {
+    _typingDebounce?.cancel();
+    unawaited(setTyping(false));
     _messageListener?.cancel();
     _messageListener = null;
     super.dispose();
@@ -76,6 +79,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         }).toList();
         state = state.copyWith(
             messages: firebaseMessages, isLoading: false, error: null);
+        await _markIncomingMessagesAsRead(docs);
         await _saveMessages();
       },
       onError: (e) {
@@ -172,6 +176,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastMessage": trimmedText,
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
+      await setTyping(false);
 
       // Mark chat as read when opening (reset unread count)
       try {
@@ -299,6 +304,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
 
+      await setTyping(false);
+
       state = state.copyWith(isLoading: false);
       debugPrint('ChatNotifier: GIF sent successfully');
     } catch (e) {
@@ -387,13 +394,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         }
       }
 
-      // Upload GIF to Firebase Storage
-      final storageRef = FirebaseStorage.instance.ref().child('chat_gifs').child(
-          '${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}.gif');
-
-      final uploadTask = storageRef.putFile(gifFile);
-      final snapshot = await uploadTask;
-      final gifUrl = await snapshot.ref.getDownloadURL();
+      final gifUrl = await R2MediaService.instance.uploadChatGif(gifFile);
 
       // Send message with the uploaded GIF URL
       await FirebaseFirestore.instance
@@ -418,6 +419,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
         "lastMessage": "[Device GIF]",
         "lastTimestamp": FieldValue.serverTimestamp(),
       });
+
+      await setTyping(false);
 
       // Clear loading state
       state = state.copyWith(isLoading: false);
@@ -457,6 +460,68 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   void updateComposedText(String text) {
     state = state.copyWith(composedText: text);
+    unawaited(setTyping(text.trim().isNotEmpty));
+
+    _typingDebounce?.cancel();
+    if (text.trim().isNotEmpty) {
+      _typingDebounce = Timer(const Duration(seconds: 4), () {
+        unawaited(setTyping(false));
+      });
+    }
+  }
+
+  Future<void> setTyping(bool isTyping) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final chatId = chat.id;
+    if (currentUser == null || chatId == null || chatId.isEmpty) return;
+
+    try {
+      await FirebaseFirestore.instance.collection("chats").doc(chatId).set({
+        "typingBy": {currentUser.uid: isTyping},
+        "typingUpdatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('ChatNotifier: Error updating typing state: $e');
+    }
+  }
+
+  Future<void> _markIncomingMessagesAsRead(
+    List<QueryDocumentSnapshot<Object?>> docs,
+  ) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final chatId = chat.id;
+    if (currentUser == null || chatId == null || chatId.isEmpty) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+    var hasUpdates = false;
+
+    for (final doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final from = data['from'] as String? ?? '';
+      if (from == currentUser.uid) continue;
+
+      final readBy = List<String>.from(data['readBy'] ?? const []);
+      if (readBy.contains(currentUser.uid)) continue;
+
+      batch.update(doc.reference, {
+        'readBy': FieldValue.arrayUnion([currentUser.uid]),
+        'isRead': true,
+      });
+      hasUpdates = true;
+    }
+
+    if (!hasUpdates) return;
+
+    batch.set(
+      FirebaseFirestore.instance.collection("chats").doc(chatId),
+      {
+        'unreadCount_${currentUser.uid}': 0,
+        'lastReadTimestamp': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+
+    await batch.commit();
   }
 
   Future<void> _loadPersistedMessages() async {

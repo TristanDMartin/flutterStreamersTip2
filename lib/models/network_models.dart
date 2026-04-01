@@ -1,9 +1,9 @@
-/// Network Models for NetworkView
-///
-/// This file contains all the models and algorithms needed for the NetworkView
-/// including relationship management, user connections, and network analytics.
+import 'user_count_fields.dart';
 
-/// ======== CORE MODELS ========
+// Network Models for NetworkView - relationship management, user connections,
+// and network analytics.
+//
+// ======== CORE MODELS ========
 
 /// NetworkTab enum for different network views
 enum NetworkTab { connections, followers, following }
@@ -92,8 +92,8 @@ class UserConnection {
       mutualConnections: List<String>.from(data['mutualConnections'] ?? []),
       hashtags: List<String>.from(data['hashtags'] ?? []),
       bio: data['bio'],
-      followerCount: data['followerCount'] ?? 0,
-      followingCount: data['followingCount'] ?? 0,
+      followerCount: UserCountFields.readFollowersCount(data),
+      followingCount: UserCountFields.readFollowingCount(data),
       postCount: data['postCount'] ?? 0,
     );
   }
@@ -112,8 +112,10 @@ class UserConnection {
       'mutualConnections': mutualConnections,
       'hashtags': hashtags,
       'bio': bio,
-      'followerCount': followerCount,
-      'followingCount': followingCount,
+      ...UserCountFields.writeCanonicalCounts(
+        followersCount: followerCount,
+        followingCount: followingCount,
+      ),
       'postCount': postCount,
     };
   }

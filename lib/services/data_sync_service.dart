@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,10 @@ class DataSyncService extends ChangeNotifier {
   final FavoritesManager _favoritesManager;
   final HomeViewModel _homeNotifier;
   
+  StreamSubscription<DocumentSnapshot>? _profileSub;
+  StreamSubscription<QuerySnapshot>? _followingSub;
+  StreamSubscription<QuerySnapshot>? _favoritesSub;
+
   bool _isLoading = false;
   bool _hasLoaded = false;
   String? _errorMessage;
@@ -173,39 +178,31 @@ class DataSyncService extends ChangeNotifier {
   
   // Set up real-time listeners
   void _setupRealtimeListeners(String userId) {
-    // print("👂 Setting up real-time listeners");
-    
-    // User profile listener
-    _firestore.collection('users').doc(userId).snapshots().listen((snapshot) {
-      if (snapshot.exists) {
-    // print("🔄 User profile updated in real-time");
-        // The AuthService already handles this, but we can add additional logic here
-      }
+    _profileSub?.cancel();
+    _followingSub?.cancel();
+    _favoritesSub?.cancel();
+
+    _profileSub = _firestore
+        .collection('users')
+        .doc(userId)
+        .snapshots()
+        .listen((snapshot) {
+      // AuthService already handles profile sync — no-op here.
     });
-    
-    // Following listener
-    _firestore
+
+    _followingSub = _firestore
         .collection('users')
         .doc(userId)
         .collection('following')
         .snapshots()
-        .listen((snapshot) {
-    // print("🔄 Following list updated: ${snapshot.docs.length} users");
-      // Refresh following videos when following list changes
-      _refreshFollowingVideos();
-    });
-    
-    // Favorites listener
-    _firestore
+        .listen((_) => _refreshFollowingVideos());
+
+    _favoritesSub = _firestore
         .collection('users')
         .doc(userId)
         .collection('favorites')
         .snapshots()
-        .listen((snapshot) {
-    // print("🔄 Favorites updated: ${snapshot.docs.length} videos");
-      // Refresh favorites when favorites list changes
-      _favoritesManager.initialize();
-    });
+        .listen((_) => _favoritesManager.initialize());
   }
   
   // Refresh following videos
@@ -240,6 +237,14 @@ class DataSyncService extends ChangeNotifier {
     _hasLoaded = false;
     _errorMessage = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _profileSub?.cancel();
+    _followingSub?.cancel();
+    _favoritesSub?.cancel();
+    super.dispose();
   }
 }
 

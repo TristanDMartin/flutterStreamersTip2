@@ -4,7 +4,7 @@ part 'ml_score.freezed.dart';
 part 'ml_score.g.dart';
 
 @freezed
-class MLScore with _$MLScore {
+sealed class MLScore with _$MLScore {
   const factory MLScore({
     required double value,
     required String type,

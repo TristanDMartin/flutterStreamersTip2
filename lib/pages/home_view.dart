@@ -7,11 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 
+import '../constants/feed_config.dart';
 import '../models/feed_tab.dart';
 import '../models/home_video.dart';
 import '../providers/home_provider.dart' as hp;
 import '../providers/favorites_provider.dart';
-import '../providers/following_provider.dart';
 import '../providers/feed_state_provider.dart';
 import '../services/error_handling_service.dart';
 import '../services/offline_data_service.dart';
@@ -19,16 +19,19 @@ import '../services/engagement_analytics_service.dart';
 import '../services/unified_algorithm_service.dart';
 import '../services/global_playback_manager.dart';
 import '../services/streamers_tip_like_service.dart';
-import '../constants/playback_owners.dart';
 import '../services/favorites_service_optimized.dart';
+import '../services/video_prefetch_service.dart';
 import '../widgets/network_status_widget.dart';
-import '../widgets/discover_view.dart';
 import '../views/network_view.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/home_view_components/home_content_widget.dart';
 import '../widgets/player_screen.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
+import '../controllers/home_view_controller.dart';
+import '../routing/app_navigator.dart';
+import '../constants/playback_owners.dart';
+import '../constants/app_colors.dart';
 
 class HomeView extends ConsumerStatefulWidget {
   const HomeView({super.key});
@@ -37,16 +40,10 @@ class HomeView extends ConsumerStatefulWidget {
   ConsumerState<HomeView> createState() => _HomeViewState();
 }
 
-/// Lifecycle state for HomeView playback management
-enum HomeViewLifecycleState {
-  idle, // Not visible or active
-  activeOwner, // HomeView owns playback
-  background, // Not visible but will likely return soon
-}
-
 class _HomeViewState extends ConsumerState<HomeView>
     with WidgetsBindingObserver {
-  int _currentIndex = 0;
+  ProviderSubscription<bool>? _homeViewReactivateSubscription;
+  final VideoPrefetchService _videoPrefetchService = VideoPrefetchService();
 
   // Callback infrastructure for scroll to top - now handled by HomeContentWidget
 
@@ -64,17 +61,12 @@ class _HomeViewState extends ConsumerState<HomeView>
   // 🚀 VIRAL ALGORITHM: Ranking cache to prevent excessive re-ranking
   DateTime? _lastRankingTime;
 
-  // ⏱️ MEMORY FIX: Timer for proper cancellation
-  Timer? _focusTimer;
+  // ✅ REMOVED: _focusTimer - no longer needed with pending focus system
 
-  // ✅ IMPROVEMENT: Enum-based lifecycle state management
-  HomeViewLifecycleState _lifecycleState = HomeViewLifecycleState.idle;
-  DateTime? _lastReactivateAt;
-  static const Duration _reactivationCooldown = Duration(milliseconds: 500);
-  bool _shouldResumeOnReturn = false;
-
-  // ✅ IMPROVEMENT: Track navigation to prevent race conditions
-  bool _isNavigatingToDiscover = false;
+  HomeViewController get _controller =>
+      ref.read(homeViewControllerProvider.notifier);
+  HomeViewControllerState get _controllerState =>
+      ref.read(homeViewControllerProvider);
 
   // _returnCounter removed - now using stable ValueKey(video.id) instead
   // _videoEngagementScores removed - tracked in EngagementAnalyticsService instead
@@ -89,15 +81,27 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
 
     WidgetsBinding.instance.addObserver(this);
+    _homeViewReactivateSubscription = ref.listenManual<bool>(
+      homeViewReactivateProvider,
+      (bool? previous, bool next) {
+        if (!mounted) return;
+        if (!next) return;
+        log('🔄 HomeView: Reactivation requested via provider');
+        _controller.handleReturnedToHome(
+          isRouteCurrent: ModalRoute.of(context)?.isCurrent ?? false,
+        );
+        ref.read(homeViewReactivateProvider.notifier).clearReactivation();
+      },
+    );
 
     // Initialize services
     ErrorHandlingService().initialize();
     OfflineDataService();
     EngagementAnalyticsService().initialize();
 
-    // 🎯 SINGLE ACTIVE OWNER: Set HomeView as active owner
-    // setActiveOwner handles pausing/muting non-active owners and allows this owner to play
-    GlobalPlaybackManager.instance.setActiveOwner(PlaybackOwners.home);
+    // 🎯 SINGLE ACTIVE OWNER:
+    // Active owner is set centrally (MainTabView/AppNavigationObserver).
+    // Avoid setting it here to prevent ownership races during startup/rebuilds.
 
     // 🚀 VIRAL ALGORITHM: Start tracking session for engagement analytics
     // 🔥 CRITICAL FIX: Wrap Firebase access in try-catch to prevent crashes
@@ -126,7 +130,7 @@ class _HomeViewState extends ConsumerState<HomeView>
             _loadUserLikedVideos();
             _loadUserFavorites();
             _loadVideos();
-            _markAsActiveOwner();
+            _controller.markAsActiveOwner();
           }
         });
         return;
@@ -139,184 +143,29 @@ class _HomeViewState extends ConsumerState<HomeView>
       // REMOVED: _initializeVideoService() - duplicate call, HomeProvider.loadVideos() already calls loadAllVideos()
 
       // Mark as active on initial load
-      _markAsActiveOwner();
+      _controller.markAsActiveOwner();
     });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-
-    // ✅ IMPROVEMENT: Simplified lifecycle management with extracted helpers
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      if (_handleNavigatingAway()) return;
-      _handleReturnedToHome();
-    });
-  }
-
-  /// ✅ IMPROVEMENT: Check if we're navigating away and handle accordingly
-  /// Returns true if we're navigating away, false otherwise
-  bool _handleNavigatingAway() {
-    final route = ModalRoute.of(context);
-    final isActiveRoute = route != null && route.isCurrent;
-
-    if (isActiveRoute) return false;
-
-    // We are leaving HomeView: block + pause as a hard stop
-    final manager = GlobalPlaybackManager.instance;
-    log('🔇 HomeView: Navigating away - blocking and pausing');
-    _markAsBackground();
-    manager.block(reason: 'home_not_visible');
-    manager.pauseAll();
-    manager.onLeaveHomeView();
-    _shouldResumeOnReturn = true;
-
-    return true;
   }
 
   /// ✅ IMPROVEMENT: Handle return to HomeView with simplified logic
   void _handleReturnedToHome() {
-    // Don't double-handle if navigation callback is already handling it
-    if (_isNavigatingToDiscover) return;
-
-    final route = ModalRoute.of(context);
-    final playbackManager = GlobalPlaybackManager.instance;
-    final isActiveRoute = route != null && route.isCurrent;
-    final isHomeActiveOwner =
-        playbackManager.activeOwner == PlaybackOwners.home;
-
-    if (!isActiveRoute) return;
-
-    // If we're already the active owner, just mark as active (normal state)
-    if (isHomeActiveOwner) {
-      _markAsActiveOwner();
-      return;
-    }
-
-    // Check if we can reactivate now
-    if (!_canReactivateNow()) return;
-
-    log('🔄 HomeView: Detected return from another view - reactivating feed');
-
-    // Give Home ownership back
-    playbackManager.unblock();
-    playbackManager.setActiveOwner(PlaybackOwners.home);
-    _markAsActiveOwner();
-
-    // ✅ Resume only if we had paused due to leaving
-    if (mounted && _shouldResumeOnReturn) {
-      _resumeCurrentVideoInstantly();
-      _shouldResumeOnReturn = false;
-    }
-  }
-
-  /// ✅ IMPROVEMENT: Check if reactivation is allowed based on state and cooldown
-  bool _canReactivateNow() {
-    if (_lifecycleState != HomeViewLifecycleState.background) return false;
-    if (_lastReactivateAt == null) return true;
-    return DateTime.now().difference(_lastReactivateAt!) >
-        _reactivationCooldown;
-  }
-
-  /// ✅ IMPROVEMENT: Mark HomeView as the active owner
-  void _markAsActiveOwner() {
-    _lifecycleState = HomeViewLifecycleState.activeOwner;
-    _lastReactivateAt = DateTime.now();
-  }
-
-  /// ✅ IMPROVEMENT: Mark HomeView as background (will return soon)
-  void _markAsBackground() {
-    _lifecycleState = HomeViewLifecycleState.background;
+    _controller.handleReturnedToHome(
+      isRouteCurrent: ModalRoute.of(context)?.isCurrent ?? false,
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-
-    // TIKTOK-STYLE: Notify GlobalPlaybackManager of lifecycle change
-    GlobalPlaybackManager.instance.onAppLifecycleChanged(state);
-
-    if (state == AppLifecycleState.resumed) {
-      // ✅ FIX #1: Only resume if HomeView is actually visible
-      final route = ModalRoute.of(context);
-      final isCurrent = route?.isCurrent ?? false;
-
-      if (!isCurrent) {
-        log('🔄 HomeView: App resumed but route not current → skip resume');
-        _shouldResumeOnReturn = true;
-        return;
-      }
-
-      log('🔄 HomeView: App resumed & visible → reactivating feed');
-
-      // 🚀 TIKTOK-STYLE: Use instant resume instead of deprecated _reactivateFeed()
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-
-        final playbackManager = GlobalPlaybackManager.instance;
-        playbackManager.setActiveOwner(PlaybackOwners.home);
-        _markAsActiveOwner();
-        _resumeCurrentVideoInstantly();
-        _shouldResumeOnReturn = false;
-      });
-    }
-  }
-
-  /// 🚀 TIKTOK-STYLE: Instantly resume current video when returning (no reload, no delay)
-  void _resumeCurrentVideoInstantly() {
-    if (!mounted) {
-      log('⚠️ HomeView: Cannot resume video - widget not mounted');
-      return;
-    }
-
-    try {
-      log('🚀 HomeView: Instantly resuming current video (TikTok-style)');
-
-      final playbackManager = GlobalPlaybackManager.instance;
-      final homeState = ref.read(hp.homeProvider);
-      final activeFeed = ref.read(activeFeedProvider);
-      final currentVideos = activeFeed == FeedTab.forYou
-          ? homeState.forYouVideos
-          : homeState.followingVideos;
-
-      if (currentVideos.isEmpty) {
-        log('⚠️ HomeView: No videos available to resume');
-        return;
-      }
-
-      // Ensure index is within bounds
-      final safeIndex = _currentIndex.clamp(0, currentVideos.length - 1);
-      if (safeIndex != _currentIndex) {
-        log('⚠️ HomeView: Index $_currentIndex out of bounds, using $safeIndex');
-        if (mounted) {
-          setState(() {
-            _currentIndex = safeIndex;
-          });
-        }
-      }
-
-      final currentVideo = currentVideos[safeIndex];
-
-      // Validate video before resuming
-      if (currentVideo.id.isEmpty || currentVideo.videoURL.isEmpty) {
-        log('⚠️ HomeView: Invalid video at index $safeIndex, cannot resume');
-        return;
-      }
-
-      final ownerId = activeFeed.tabId;
-
-      // 🚀 TIKTOK-STYLE: Instantly request focus (no delay, no reload)
-      log('🎵 HomeView: Instantly requesting focus for current video: ${currentVideo.id}');
-      playbackManager.requestFocus(currentVideo.id, ownerId);
-
-      log('✅ HomeView: Current video resumed instantly');
-    } catch (e, stackTrace) {
-      log('❌ HomeView: Error resuming current video: $e');
-      log('Stack trace: $stackTrace');
-      _showSnackBar('Unable to resume video playback');
-    }
+    _controller.handleAppLifecycleChanged(
+      appLifecycleState: state,
+      isRouteCurrent: ModalRoute.of(context)?.isCurrent ?? false,
+    );
   }
 
   /// ✅ IMPROVEMENT: Show user-friendly error messages
@@ -408,13 +257,33 @@ class _HomeViewState extends ConsumerState<HomeView>
       // Use the new instant play loadVideos method
       await homeVM.loadVideos();
 
-      // 🚀 VIRAL ALGORITHM: Apply personalized ranking to loaded videos
-      await _applyAlgorithmRanking();
+      // 🚀 VIRAL ALGORITHM: Apply personalized ranking (disabled until ready)
+      // Feed shows newest-first for now; algorithm will personalize later
+      if (FeedConfig.usePersonalizationAlgorithm) {
+        await _applyAlgorithmRanking();
+      }
 
-      // ✅ IMPROVEMENT: Schedule focus with proper timer cancellation
-      // Note: Removed _prewarmFirstVideo() - it was duplicate and used wrong owner ID
-      // _ensureFirstVideoFocus() handles this correctly with proper owner ID
-      _scheduleFocusFirstVideo();
+      // 🔥 FIX BLACK SCREEN: Preload first video IMMEDIATELY before setting focus
+      final homeState = ref.read(hp.homeProvider);
+      final activeFeed = ref.read(activeFeedProvider);
+      final List<HomeVideo> videos = switch (activeFeed) {
+        FeedTab.forYou => homeState.forYouVideos,
+        FeedTab.following => homeState.followingVideos,
+        FeedTab.threads => const <HomeVideo>[],
+      };
+
+      if (videos.isNotEmpty) {
+        final firstVideo = videos.first;
+        unawaited(_primeFirstVideo(firstVideo));
+
+        log('🎬 HomeView: Preloading first video in background (non-blocking)');
+        // 🔥 FIX SLOW LOADING: Don't wait for preload - videos will show immediately
+        // VideoPlayer widget handles initialization and shows video when ready
+        GlobalPlaybackManager.instance.preloadAround(0, videos);
+      }
+
+      // Restore focus to the current feed position instead of forcing index 0.
+      _setDesiredFocusForCurrentIndex();
     } catch (e) {
       log('❌ HomeView: Error loading videos: $e');
       _showSnackBar('Couldn\'t load your feed. Pull down to retry.');
@@ -422,22 +291,63 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  /// ✅ IMPROVEMENT: Schedule focus timer with proper cancellation
-  /// ✅ FIX #3: Guard timer against non-current routes
-  void _scheduleFocusFirstVideo() {
-    _focusTimer?.cancel(); // Cancel previous timer if exists
-    _focusTimer = Timer(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
+  Future<void> _primeFirstVideo(HomeVideo video) async {
+    final posterUrl = video.thumbnailURL ?? '';
+    final videoUrl = video.videoURL;
 
-      final route = ModalRoute.of(context);
-      final isCurrent = route?.isCurrent ?? false;
-      if (!isCurrent) {
-        log('⏭️ HomeView: Focus timer fired but route not current → skip');
-        return;
+    if (videoUrl.isEmpty) return;
+
+    try {
+      log('⚡ HomeView: Priming first video for warm open: ${video.id}');
+      await _videoPrefetchService.prime(
+        videoId: video.id,
+        posterUrl: posterUrl,
+        videoUrl: videoUrl,
+      );
+    } catch (e) {
+      log('❌ HomeView: Error priming first video ${video.id}: $e');
+    }
+  }
+
+  void _setDesiredFocusForCurrentIndex() {
+    _setDesiredFocusForIndex(_controllerState.currentIndex);
+  }
+
+  void _setDesiredFocusForIndex(int preferredIndex) {
+    if (!mounted) return;
+
+    final route = ModalRoute.of(context);
+    final isCurrent = route?.isCurrent ?? false;
+    if (!isCurrent) {
+      log('⏭️ HomeView: Route not current, skipping desired focus');
+      return;
+    }
+    
+    try {
+      final homeState = ref.read(hp.homeProvider);
+      final activeFeed = ref.read(activeFeedProvider);
+      final List<HomeVideo> videos = switch (activeFeed) {
+        FeedTab.forYou => homeState.forYouVideos,
+        FeedTab.following => homeState.followingVideos,
+        FeedTab.threads => const <HomeVideo>[],
+      };
+
+      if (videos.isNotEmpty) {
+        final safeIndex = preferredIndex.clamp(0, videos.length - 1);
+        final firstVideo = videos[safeIndex];
+        const ownerId = PlaybackOwners.home;
+
+        log('🎯 HomeView: Setting desired focus for video index $safeIndex: ${firstVideo.id} (owner: $ownerId)');
+        // 🔥 PRODUCTION-GRADE: Use setDesiredFocus - queues if controller not ready, applies immediately if ready
+        GlobalPlaybackManager.instance.setDesiredFocus(firstVideo.id, ownerId);
+
+        if (kDebugMode) {
+          GlobalPlaybackManager.instance.logCurrentState();
+        }
       }
-
-      _ensureFirstVideoFocus();
-    });
+    } catch (e) {
+      log('❌ HomeView: Error setting desired focus for first video: $e');
+    }
   }
 
   /// Apply unified algorithm ranking to videos (VIRAL BOOST)
@@ -458,9 +368,11 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       final homeState = ref.read(hp.homeProvider);
       final activeFeed = ref.read(activeFeedProvider);
-      final candidateVideos = activeFeed == FeedTab.forYou
-          ? homeState.forYouVideos
-          : homeState.followingVideos;
+      final List<HomeVideo> candidateVideos = switch (activeFeed) {
+        FeedTab.forYou => homeState.forYouVideos,
+        FeedTab.following => homeState.followingVideos,
+        FeedTab.threads => const <HomeVideo>[],
+      };
 
       if (candidateVideos.isEmpty) return;
 
@@ -506,47 +418,21 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  /// ✅ REMOVED: _prewarmFirstVideo() - duplicate of _ensureFirstVideoFocus()
-  /// It also used wrong owner ID ('home' instead of activeFeed.tabId)
-  /// _ensureFirstVideoFocus() handles this correctly
-
-  /// Ensure first video gets focus for TikTok-style autoplay on app startup
-  void _ensureFirstVideoFocus() {
-    try {
-      final homeState = ref.read(hp.homeProvider);
-      final activeFeed = ref.read(activeFeedProvider);
-      final videos = activeFeed == FeedTab.forYou
-          ? homeState.forYouVideos
-          : homeState.followingVideos;
-
-      if (videos.isNotEmpty) {
-        final firstVideo = videos.first;
-        final ownerId = activeFeed.tabId;
-
-        // 🔊 AUDIO FIX: Use GlobalPlaybackManager for focus
-        GlobalPlaybackManager.instance.requestFocus(firstVideo.id, ownerId);
-
-        if (kDebugMode) {
-          GlobalPlaybackManager.instance.logCurrentState();
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        log('❌ Error ensuring first video focus: $e');
-      }
-    }
-  }
+  /// ✅ REMOVED: _ensureFirstVideoFocus() - replaced by _setDesiredFocusForFirstVideo()
+  /// Old implementation used requestFocus() with timing issues. New implementation uses
+  /// PlaybackManager's setDesiredFocus() which queues requests and applies when controller is ready.
 
   @override
   void dispose() {
+    _homeViewReactivateSubscription?.close();
+    _homeViewReactivateSubscription = null;
     WidgetsBinding.instance.removeObserver(this);
     // PageController removed - now managed by VideoPageViewWidget
 
     // VideoPreloaderService removed - controllers now managed by GlobalPlaybackManager
     // _videoEngagementScores removed - tracked in EngagementAnalyticsService
 
-    // ⏱️ MEMORY FIX: Cancel timer to prevent memory leaks
-    _focusTimer?.cancel();
+    // ✅ REMOVED: _focusTimer cancellation - timer no longer exists
 
     // ✅ FIX #4: Clean up playback manager when HomeView is disposed
     // Don't call onLeaveHomeView() - it's for route changes, not disposal
@@ -578,21 +464,21 @@ class _HomeViewState extends ConsumerState<HomeView>
   void _handleLeftSwipe(DragEndDetails details) {
     // Check if it's a left swipe (negative velocity)
     if (details.velocity.pixelsPerSecond.dx < -300) {
-      log('👈 HomeView: Left swipe detected');
-      debugPrint('👈 HomeView: Left swipe detected');
-
       try {
         HapticFeedback.lightImpact();
 
         // Get current video and show StreamerCardView
         final homeState = ref.read(hp.homeProvider);
         final activeFeed = ref.read(activeFeedProvider);
-        final videos = activeFeed == FeedTab.forYou
-            ? homeState.forYouVideos
-            : homeState.followingVideos;
+        final List<HomeVideo> videos = switch (activeFeed) {
+          FeedTab.forYou => homeState.forYouVideos,
+          FeedTab.following => homeState.followingVideos,
+          FeedTab.threads => const <HomeVideo>[],
+        };
 
-        if (_currentIndex < videos.length) {
-          final currentVideo = videos[_currentIndex];
+        final int currentIndex = _controllerState.currentIndex;
+        if (currentIndex < videos.length) {
+          final currentVideo = videos[currentIndex];
           _showStreamerCardModal(currentVideo.creator);
         }
       } catch (e) {
@@ -652,11 +538,7 @@ class _HomeViewState extends ConsumerState<HomeView>
 
     // ✅ FIX #3: Unblock playback and restore HomeView ownership
     try {
-      final playbackManager = GlobalPlaybackManager.instance;
-      playbackManager.unblock(); // Remove overlay block
-      playbackManager.setActiveOwner(PlaybackOwners.home);
-      _markAsActiveOwner();
-      _resumeCurrentVideoInstantly(); // Will call requestFocus(...)
+      _controller.resumeAfterOverlayDismissal();
       log('▶️ HomeView: Resumed current video after dismissing StreamerCard');
     } catch (e) {
       log('❌ HomeView: Error resuming after StreamerCard dismissal: $e');
@@ -679,26 +561,28 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   // Handler methods for extracted components
-  void _handleFeedTabChange(FeedTab newTab) {
+  Future<void> _handleFeedTabChange(FeedTab newTab) async {
     if (!mounted) return;
 
     log('🔄 HomeView: Switching from ${ref.read(activeFeedProvider).displayName} to ${newTab.displayName}');
 
     // Use the single source of truth provider
-    switchFeed(ref, newTab);
+    await switchFeed(ref, newTab);
+    if (!mounted) return;
 
-    // Reset current index and trigger video loading
-    if (mounted) {
-      setState(() {
-        _currentIndex = 0;
-      });
+    // Restore the user's last position for each feed to keep switches sticky.
+    _controller.restoreFeedIndex(newTab);
+
+    if (newTab == FeedTab.threads) {
+      log('✅ HomeView: Threads tab active - skipping video focus');
+      return;
     }
 
     // ✅ FIX #2: Give focus to the first video in the new feed
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       try {
-        _ensureFirstVideoFocus();
+        _setDesiredFocusForCurrentIndex();
       } catch (e) {
         log('⚠️ HomeView: Error ensuring first video focus after feed switch: $e');
       }
@@ -712,12 +596,15 @@ class _HomeViewState extends ConsumerState<HomeView>
     
     // Get current feed videos based on active tab
     final activeFeed = ref.read(activeFeedProvider);
-    final List<HomeVideo> videos;
-    
-    if (activeFeed == FeedTab.forYou) {
-      videos = ref.read(hp.homeProvider).forYouVideos;
-    } else {
-      videos = ref.read(hp.homeProvider).followingVideos;
+    final List<HomeVideo> videos = switch (activeFeed) {
+      FeedTab.forYou => ref.read(hp.homeProvider).forYouVideos,
+      FeedTab.following => ref.read(hp.homeProvider).followingVideos,
+      FeedTab.threads => const <HomeVideo>[],
+    };
+
+    if (activeFeed == FeedTab.threads) {
+      log('⏭️ HomeView: Ignoring video tap while Threads tab is active');
+      return;
     }
     
     if (videos.isEmpty) {
@@ -729,18 +616,12 @@ class _HomeViewState extends ConsumerState<HomeView>
     final index = videos.indexWhere((v) => v.id == video.id);
     final videoIndex = index >= 0 ? index : 0;
     
-    // Navigate to PlayerScreen
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: '/player'),
-        fullscreenDialog: true,
-        builder: (context) => PlayerScreen(
-          mode: PlayerMode.homeFeed,
-          initialIndex: videoIndex,
-          videoIds: videos.map((v) => v.id).toList(),
-          videos: videos,
-        ),
-      ),
+    AppNavigator.openPlayer(
+      context,
+      mode: PlayerMode.homeFeed,
+      initialIndex: videoIndex,
+      videoIds: videos.map((v) => v.id).toList(),
+      videos: videos,
     );
   }
 
@@ -750,10 +631,6 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _handleRightSwipe(HomeVideo video) {
-    // Handle right swipe - show StreamerCardView for current video's creator
-    log('👉 HomeView: Right swipe on video: ${video.id}');
-    debugPrint('👉 HomeView: Right swipe detected - showing StreamerCardView');
-
     try {
       HapticFeedback.lightImpact();
 
@@ -769,40 +646,28 @@ class _HomeViewState extends ConsumerState<HomeView>
   /// ✅ IMPROVEMENT: Navigate to DiscoverView with proper state tracking
   /// ✅ FIX #2: Use onLeaveHomeView() for real route changes (not overlays)
   Future<void> _navigateToDiscover() async {
-    if (!mounted || _isNavigatingToDiscover) return;
+    if (!mounted || _controllerState.isNavigatingToDiscover) return;
 
     HapticFeedback.lightImpact();
 
     // ✅ IMPROVEMENT: Track navigation to prevent race conditions
-    _isNavigatingToDiscover = true;
+    _controller.setIsNavigatingToDiscover(true);
 
     // Cancel any pending timer that might resume playback
-    _focusTimer?.cancel();
+    // ✅ REMOVED: _focusTimer cancellation - timer no longer exists
 
     // ✅ FIX #2: Real route change - block + pause + leave
-    final manager = GlobalPlaybackManager.instance;
-    _markAsBackground();
-    manager.block(reason: 'leave_home_to_discover');
-    manager.pauseAll();
-    manager.onLeaveHomeView();
-    _shouldResumeOnReturn = true;
+    _controller.markNavigatingAway(reason: 'leave_home_to_discover');
 
-    // Navigate to DiscoverView
     if (!mounted) {
-      _isNavigatingToDiscover = false;
+      _controller.setIsNavigatingToDiscover(false);
       return;
     }
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const DiscoverView(),
-        settings: const RouteSettings(name: '/discover'),
-      ),
-    );
+    await AppNavigator.openDiscover(context);
 
     // We're back from DiscoverView
-    _isNavigatingToDiscover = false;
+    _controller.setIsNavigatingToDiscover(false);
     if (!mounted) return;
 
     log('🔄 HomeView: Returned from DiscoverView - resuming videos');
@@ -816,33 +681,27 @@ class _HomeViewState extends ConsumerState<HomeView>
     HapticFeedback.lightImpact();
 
     // 🔥 CRITICAL: Cancel any pending timer that might resume playback
-    _focusTimer?.cancel();
+    // ✅ REMOVED: _focusTimer cancellation - timer no longer exists
 
     // ✅ FIX #2: Real route change - block + pause + leave
-    final manager = GlobalPlaybackManager.instance;
-    _markAsBackground();
-    manager.block(reason: 'leave_home_to_network');
-    manager.pauseAll();
-    manager.onLeaveHomeView();
-    _shouldResumeOnReturn = true;
+    _controller.markNavigatingAway(reason: 'leave_home_to_network');
     _navigateToNetworkViewWithTab('discover');
   }
 
-  void _onPageChanged(int index) {
+  Future<void> _onPageChanged(int index) async {
     if (!mounted) return; // 🔒 SAFETY: Exit early if widget is disposed
 
     try {
-      setState(() {
-        _currentIndex = index;
-      });
-
       // TIKTOK-STYLE: Get current video for feed management (with safety checks)
       try {
         final homeState = ref.read(hp.homeProvider);
         final activeFeed = ref.read(activeFeedProvider);
-        final videos = activeFeed == FeedTab.forYou
-            ? homeState.forYouVideos
-            : homeState.followingVideos;
+        _controller.setCurrentIndexForFeed(activeFeed, index);
+        final List<HomeVideo> videos = switch (activeFeed) {
+          FeedTab.forYou => homeState.forYouVideos,
+          FeedTab.following => homeState.followingVideos,
+          FeedTab.threads => const <HomeVideo>[],
+        };
 
         // 🔒 SAFETY: Validate videos list and index before accessing
         if (videos.isEmpty) {
@@ -862,7 +721,7 @@ class _HomeViewState extends ConsumerState<HomeView>
           // TIKTOK-STYLE: Notify GlobalPlaybackManager of index change
           // 🔥 FIX: Wrap in try-catch to prevent crashes during swiping
           try {
-            GlobalPlaybackManager.instance
+            await GlobalPlaybackManager.instance
                 .onVisibleIndexChanged(index, currentVideo);
           } catch (e, stackTrace) {
             log('❌ HomeView: Error in onVisibleIndexChanged: $e');
@@ -870,17 +729,17 @@ class _HomeViewState extends ConsumerState<HomeView>
             // Continue - don't crash
           }
 
-          // TIKTOK-STYLE: Preload adjacent videos for smooth transitions
-          // 🔥 FIX: Wrap in try-catch to prevent crashes
+          // 🔥 PAGINATION: Load more videos when user is near the end
           try {
-            GlobalPlaybackManager.instance.preloadAround(index, videos);
-          } catch (e, stackTrace) {
-            log('❌ HomeView: Error in preloadAround: $e');
-            log('Stack trace: $stackTrace');
+            final homeNotifier = ref.read(hp.homeProvider.notifier);
+            await homeNotifier.loadMoreVideosIfNeeded(
+              currentIndex: index,
+              feed: activeFeed,
+            );
+          } catch (e) {
+            log('⚠️ HomeView: Error loading more videos: $e');
             // Continue - don't crash
           }
-          // ✅ IMPROVEMENT: Removed redundant _preloadAdjacentVideos() call
-          // preloadAround() already handles all preloading efficiently
         } else {
           log('⚠️ HomeView: Index $index out of bounds (videos.length: ${videos.length})');
         }
@@ -907,9 +766,11 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   @override
   Widget build(BuildContext context) {
+    final controllerState = ref.watch(homeViewControllerProvider);
+
     return NetworkStatusWidget(
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: AppColors.supportBackground,
         extendBody:
             true, // This allows content to extend behind the bottom navigation
         body: Stack(
@@ -923,7 +784,7 @@ class _HomeViewState extends ConsumerState<HomeView>
                     key: ValueKey(activeFeed
                         .tabId), // Stable key to prevent audio bleeding
                     activeTab: activeFeed.displayName,
-                    currentIndex: _currentIndex,
+                    currentIndex: controllerState.currentIndex,
                     onTabChange: (tab) {
                       final newTab = tab == 'For You'
                           ? FeedTab.forYou
@@ -938,10 +799,7 @@ class _HomeViewState extends ConsumerState<HomeView>
                     onRightSwipe: _handleRightSwipe,
                     onDiscoverTap: _navigateToDiscover,
                     onNetworkTap: _navigateToNetwork,
-                    onScrollControllerReady: (callback) {
-                      // Scroll callback now handled by HomeContentWidget
-                      log('✅ HomeView: Scroll callback registered');
-                    },
+                    onScrollControllerReady: null,
                   );
                 },
               ),
@@ -962,146 +820,6 @@ class _HomeViewState extends ConsumerState<HomeView>
                   currentUserId:
                       firebase_auth.FirebaseAuth.instance.currentUser?.uid,
                   onDismiss: _dismissStreamerCard,
-                  onFollow: (userId) async {
-                    // Handle follow action with NetworkView-style logic
-                    HapticFeedback.lightImpact();
-                    if (kDebugMode) {
-                      print(
-                          'HomeView: Follow action triggered for user: $userId');
-                    }
-
-                    // Capture context before async operations
-                    final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-                    try {
-                      // Debug: Check authentication
-                      final currentUser =
-                          firebase_auth.FirebaseAuth.instance.currentUser;
-                      if (kDebugMode) {
-                        print('HomeView: Current user: ${currentUser?.uid}');
-                        print('HomeView: Target user ID: $userId');
-                      }
-
-                      if (currentUser == null) {
-                        if (mounted) {
-                          scaffoldMessenger.showSnackBar(
-                            const SnackBar(
-                              content: Text('Please sign in to follow users'),
-                              backgroundColor: Colors.red,
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                        return;
-                      }
-
-                      // Get the following provider
-                      final followingNotifier =
-                          ref.read(followingProvider.notifier);
-
-                      // Check follow states (NetworkView logic)
-                      final isCurrentlyFollowing =
-                          followingNotifier.isFollowing(userId);
-                      final isFollowedBy =
-                          followingNotifier.isFollowedBy(userId);
-                      final isMutualFollow =
-                          isCurrentlyFollowing && isFollowedBy;
-
-                      if (kDebugMode) {
-                        print(
-                            'HomeView: isCurrentlyFollowing: $isCurrentlyFollowing');
-                        print('HomeView: isFollowedBy: $isFollowedBy');
-                        print('HomeView: isMutualFollow: $isMutualFollow');
-                      }
-
-                      if (isCurrentlyFollowing) {
-                        // Unfollow the user
-                        final success =
-                            await followingNotifier.unfollowUser(userId);
-                        if (success) {
-                          if (mounted) {
-                            scaffoldMessenger.showSnackBar(
-                              SnackBar(
-                                content: Text(isMutualFollow
-                                    ? 'Disconnected from user'
-                                    : 'Unfollowed user'),
-                                backgroundColor: Colors.orange,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        } else {
-                          if (mounted) {
-                            scaffoldMessenger.showSnackBar(
-                              const SnackBar(
-                                content: Text('Failed to unfollow user'),
-                                backgroundColor: Colors.red,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                          throw Exception('Failed to unfollow user');
-                        }
-                      } else {
-                        // Follow the user (or follow back)
-                        final success =
-                            await followingNotifier.followUser(userId);
-                        if (success) {
-                          if (mounted) {
-                            final followMessage = isFollowedBy
-                                ? 'Connected with user!'
-                                : 'Following user';
-                            final backgroundColor = Colors.green;
-
-                            scaffoldMessenger.showSnackBar(
-                              SnackBar(
-                                content: Text(followMessage),
-                                backgroundColor: backgroundColor,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        } else {
-                          if (mounted) {
-                            scaffoldMessenger.showSnackBar(
-                              const SnackBar(
-                                content: Text('Failed to follow user'),
-                                backgroundColor: Colors.red,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                          throw Exception('Failed to follow user');
-                        }
-                      }
-                    } catch (e) {
-                      if (kDebugMode) {
-                        print('HomeView: Error in follow action: $e');
-                      }
-                      if (mounted) {
-                        String errorMessage = 'Error following user';
-                        if (e.toString().contains('permission-denied')) {
-                          errorMessage =
-                              'Permission denied. Please check your authentication.';
-                        } else if (e.toString().contains('network')) {
-                          errorMessage =
-                              'Network error. Please check your connection.';
-                        } else if (e.toString().contains('not-found')) {
-                          errorMessage = 'User not found (demo content).';
-                        }
-
-                        scaffoldMessenger.showSnackBar(
-                          SnackBar(
-                            content: Text(errorMessage),
-                            backgroundColor: Colors.orange,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                      // Re-throw the error so StreamerCardView can handle it
-                      rethrow;
-                    }
-                  },
                   onMessage: (userId) {
                     HapticFeedback.lightImpact();
                     if (kDebugMode) {
@@ -1118,7 +836,13 @@ class _HomeViewState extends ConsumerState<HomeView>
                       print('HomeView: Tab navigation requested: $tabName');
                     }
 
-                    // Navigate to NetworkView with the specified tab
+                    setState(() {
+                      _showStreamerCard = false;
+                      _currentStreamerCard = null;
+                    });
+                    _controller.markNavigatingAway(
+                      reason: 'leave_home_to_network_from_streamer_card',
+                    );
                     _navigateToNetworkViewWithTab(tabName);
                   },
                   onShare: (userId) {
@@ -1159,13 +883,13 @@ class _HomeViewState extends ConsumerState<HomeView>
               child: IgnorePointer(
                 child: Container(
                   height: MediaQuery.of(context).padding.bottom +
-                      140, // Increased height to ensure content is visible
+                      72, // Keep a subtle nav fade without eating the creator row
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.9),
+                        AppColors.supportBackground.withValues(alpha: 0.92),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.8],

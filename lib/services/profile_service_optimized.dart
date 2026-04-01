@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/video_url_resolver.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user.dart' as app_user;
+import '../models/user_count_fields.dart';
 import '../models/calendar_event.dart';
 import '../models/home_video.dart';
 
@@ -282,8 +283,8 @@ class ProfileServiceOptimized {
       hashtags: List<String>.from(data['hashtags'] ?? []),
       aiSelf: data['aiSelf']?.toString() ?? '',
       postCount: data['postCount'] ?? 0,
-      followerCount: data['followerCount'] ?? 0,
-      followingCount: data['followingCount'] ?? 0,
+      followerCount: UserCountFields.readFollowersCount(data),
+      followingCount: UserCountFields.readFollowingCount(data),
       calendarEvents: [],
     );
   }

@@ -8,6 +8,7 @@ import '../widgets/chat_view_optimized.dart';
 import '../models/chat.dart' as app_chat;
 import 'online_status_indicator.dart';
 import 'brand_icons.dart';
+import '../constants/app_colors.dart';
 
 class StreamerCardViewOptimized extends StatefulWidget {
   final StreamerCard displayStreamer;
@@ -38,13 +39,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   static const LinearGradient _mainGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [
-      Color(0xFF9248D2), // Rich purple
-      Color(0xFF7768DF), // Purple
-      Color(0xFF1670DE), // Blue
-      Color(0xFF3C8BD6), // Lighter blue
-      Color(0xFF4897D2), // Lightest blue
-    ],
+    colors: AppColors.supportSurfaceGradient,
   );
 
   static const LinearGradient _connectedGradient = LinearGradient(
@@ -228,13 +223,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
 
   Widget _buildBackView() {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-        ),
-      ),
+      color: AppColors.supportBackground,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
@@ -273,47 +262,62 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   Widget _buildTopBar() {
     return Padding(
       padding: EdgeInsets.fromLTRB(
-          16, MediaQuery.of(context).padding.top + 16, 16, 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Back button
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              widget.onDismiss?.call();
-            },
-            child: const Icon(
-              Icons.arrow_back,
-              color: Colors.white,
-              size: 24,
-            ),
+          16, MediaQuery.of(context).padding.top + 14, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
           ),
-          // Center: No title, clean gradient background
-          const SizedBox(width: 40), // Spacer for center
-          // Right side action buttons
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _flipCard();
-                },
-                child: const Icon(
-                  Icons.flip,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Icon(
-                Icons.more_horiz,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                widget.onDismiss?.call();
+              },
+              child: const Icon(
+                Icons.arrow_back,
                 color: Colors.white,
-                size: 24,
+                size: 22,
               ),
-            ],
-          ),
-        ],
+            ),
+            Text(
+              'Streamer Profile',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    _flipCard();
+                  },
+                  child: const Icon(
+                    Icons.flip,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Icon(
+                  Icons.more_horiz,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -321,11 +325,11 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   Widget _buildProfileSection() {
     return Column(
       children: [
-        const SizedBox(height: 20),
+        const SizedBox(height: 14),
         _buildAvatarWithOnlineIndicator(),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         _buildProfileTextInfo(),
-        const SizedBox(height: 20),
+        const SizedBox(height: 8),
       ],
     );
   }
@@ -372,26 +376,28 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
           _currentStreamerCard.displayName,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           '@${_currentStreamerCard.username}',
-          style: const TextStyle(
-            color: Color(0xB3FFFFFF), // Pre-computed opacity
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.74),
             fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
         ),
         if (_currentStreamerCard.bio.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             _currentStreamerCard.bio,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xCCFFFFFF), // Pre-computed opacity
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.78),
               fontSize: 14,
+              height: 1.35,
             ),
           ),
         ],
@@ -401,16 +407,27 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
 
   Widget _buildStatisticsRow() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildStatItem('0', 'Posts'),
-          const SizedBox(width: 54),
-          _buildStatItem('1', 'Followers'),
-          const SizedBox(width: 54),
-          _buildStatItem('1', 'Following'),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildStatItem('0', 'Posts'),
+            const SizedBox(width: 54),
+            _buildStatItem('1', 'Followers'),
+            const SizedBox(width: 54),
+            _buildStatItem('1', 'Following'),
+          ],
+        ),
       ),
     );
   }
@@ -422,15 +439,15 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
           number,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 24,
+            fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
         ),
         Text(
           label,
-          style: const TextStyle(
-            color: Color(0xB3FFFFFF), // Pre-computed opacity
-            fontSize: 16,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.72),
+            fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -439,22 +456,18 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildActionButtons() {
-    debugPrint('🔵 StreamerCardView: _buildActionButtons called');
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       child: Row(
         children: [
-          // Follow Button (First)
           Expanded(
             child: _buildFollowButton(),
           ),
           const SizedBox(width: 12),
-          // Message Button (Second)
           Expanded(
             child: _buildMessageButton(),
           ),
           const SizedBox(width: 12),
-          // Share Button (Third)
           Expanded(
             child: _buildShareButton(),
           ),
@@ -472,13 +485,13 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     // Show loading state while checking connection
     if (_isCheckingConnection) {
       return Container(
-        height: 40,
+        height: 46,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withValues(alpha: 0.12),
             width: 1,
           ),
         ),
@@ -499,15 +512,22 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     return GestureDetector(
       onTap: _handleFollowButtonTap,
       child: Container(
-        height: 40,
+        height: 46,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: BoxDecoration(
           gradient: _getFollowButtonGradient(),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withValues(alpha: 0.16),
             width: 1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.supportAccent.withValues(alpha: 0.18),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Center(
           child: Text(
@@ -515,7 +535,7 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -524,37 +544,29 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildMessageButton() {
-    debugPrint(
-        '🔵 StreamerCardView: _buildMessageButton called - isOwner: $isOwner, _isCheckingConnection: $_isCheckingConnection, _isConnected: $_isConnected');
-
-    // ULTRA SIMPLE TEST: Just a basic container with tap
     return GestureDetector(
       onTap: () {
-        debugPrint('🔵 ULTRA SIMPLE: Message button tapped!');
-        debugPrint(
-            '🔵 ULTRA SIMPLE: Current _isCheckingConnection: $_isCheckingConnection');
-        // Show a very obvious visual change
-        setState(() {
-          _isCheckingConnection = !_isCheckingConnection;
-        });
-        debugPrint(
-            '🔵 ULTRA SIMPLE: After setState _isCheckingConnection: $_isCheckingConnection');
+        HapticFeedback.lightImpact();
+        widget.onMessage?.call(displayStreamer.id);
       },
       child: Container(
-        height: 60, // Make it bigger and more obvious
+        height: 46,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: _isCheckingConnection ? Colors.red : Colors.blue,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white, width: 2), // Add white border
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
+          ),
         ),
-        child: Center(
+        child: const Center(
           child: Text(
-            _isCheckingConnection ? 'TAPPED!' : 'Message',
+            'Message',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 18, // Make text bigger
-              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -563,32 +575,29 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   }
 
   Widget _buildShareButton() {
-    // ULTRA SIMPLE TEST: Just a basic container with tap
     return GestureDetector(
       onTap: () {
-        debugPrint('🔵 ULTRA SIMPLE: Share button tapped!');
-        debugPrint('🔵 ULTRA SIMPLE: Current _showBio: $_showBio');
-        // Show a very obvious visual change
-        setState(() {
-          _showBio = !_showBio; // Toggle some state
-        });
-        debugPrint('🔵 ULTRA SIMPLE: After setState _showBio: $_showBio');
+        HapticFeedback.lightImpact();
+        widget.onShare?.call(displayStreamer.id);
       },
       child: Container(
-        height: 60, // Make it bigger and more obvious
+        height: 46,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: _showBio ? Colors.green : Colors.orange,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white, width: 2), // Add white border
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
+          ),
         ),
-        child: Center(
+        child: const Center(
           child: Text(
-            _showBio ? 'TAPPED!' : 'Share',
+            'Share',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 18, // Make text bigger
-              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -598,14 +607,14 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
 
   Widget _buildContentTabs() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Container(
-        height: 40,
+        height: 48,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withValues(alpha: 0.12),
             width: 1,
           ),
         ),
@@ -641,13 +650,24 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         });
       },
       child: Container(
-        height: 32,
+        height: 40,
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.white.withValues(alpha: 0.2)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
+          gradient: isSelected
+              ? const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                )
+              : null,
+          color: isSelected ? null : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? Colors.white.withValues(alpha: 0.18)
+                : Colors.transparent,
+            width: 1,
+          ),
         ),
         child: Center(
           child: Text(
@@ -655,9 +675,9 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
             style: TextStyle(
               color: isSelected
                   ? Colors.white
-                  : Colors.white.withValues(alpha: 0.7),
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+                  : Colors.white.withValues(alpha: 0.72),
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -765,15 +785,34 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
   Widget _buildBackViewHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          IconButton(
-            onPressed: _flipCard,
-            icon: const Icon(Icons.flip, color: Colors.white, size: 24),
-            tooltip: 'Flip',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
           ),
-        ],
+        ),
+        child: Row(
+          children: [
+            Text(
+              'Streamer Details',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            IconButton(
+              onPressed: _flipCard,
+              icon: const Icon(Icons.flip, color: Colors.white, size: 22),
+              tooltip: 'Flip',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -900,7 +939,15 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
+            ),
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -908,15 +955,15 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
                 title,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
               Icon(
                 isExpanded
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                color: Colors.white,
+                    ? Icons.keyboard_arrow_down
+                    : Icons.keyboard_arrow_right,
+                color: Colors.white.withValues(alpha: 0.9),
                 size: 24,
               ),
             ],
@@ -970,12 +1017,23 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
     if (displayStreamer.platforms.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Text(
-          'No platforms connected',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
-            fontSize: 16,
-            fontStyle: FontStyle.italic,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.10),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            'No platforms connected',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       );
@@ -987,20 +1045,30 @@ class _StreamerCardViewOptimizedState extends State<StreamerCardViewOptimized>
         children: displayStreamer.platforms.map((platform) {
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: Colors.white.withValues(alpha: 0.12),
                 width: 1,
               ),
             ),
             child: Row(
               children: [
-                BrandIcon(
-                  platformType: platform.type.name,
-                  size: 40,
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: BrandIcon(
+                      platformType: platform.type.name,
+                      size: 22,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1313,25 +1381,65 @@ class _EmptyStateWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 80,
-            color: const Color(0x80FFFFFF), // Pre-computed opacity
-          ),
-          const SizedBox(height: 24),
-          Text(
-            message,
-            style: const TextStyle(
-              color: Color(0xB3FFFFFF), // Pre-computed opacity
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Center(
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 320),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
             ),
           ),
-        ],
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: AppColors.supportAccentGradient,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(
+                  icon,
+                  size: 30,
+                  color: Colors.white.withValues(alpha: 0.95),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'This section will show up here once there is something to share.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.68),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

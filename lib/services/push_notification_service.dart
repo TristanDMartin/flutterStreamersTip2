@@ -22,6 +22,7 @@ class PushNotificationService {
 
   StreamSubscription<RemoteMessage>? _messageSubscription;
   StreamSubscription<RemoteMessage>? _backgroundMessageSubscription;
+  StreamSubscription<String>? _tokenRefreshSub;
 
   String? _fcmToken;
 
@@ -44,7 +45,8 @@ class PushNotificationService {
       await _setupMessageHandlers();
 
       // Listen to token refresh
-      _messaging.onTokenRefresh.listen(_onTokenRefresh);
+      _tokenRefreshSub?.cancel();
+      _tokenRefreshSub = _messaging.onTokenRefresh.listen(_onTokenRefresh);
 
       LoggingService.instance.debug('✅ Push notification service initialized',
           tag: 'PushNotificationService');
@@ -93,7 +95,7 @@ class PushNotificationService {
       );
 
       await _localNotifications.initialize(
-        initSettings,
+        settings: initSettings,
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
     } catch (e) {
@@ -310,10 +312,10 @@ class PushNotificationService {
       );
 
       await _localNotifications.show(
-        message.hashCode,
-        notification.title,
-        notification.body,
-        details,
+        id: message.hashCode,
+        title: notification.title,
+        body: notification.body,
+        notificationDetails: details,
         payload: jsonEncode(message.data),
       );
     } catch (e) {
@@ -358,10 +360,10 @@ class PushNotificationService {
           DateTime.now().millisecondsSinceEpoch.remainder(100000);
 
       await _localNotifications.show(
-        notificationId,
-        title,
-        body,
-        details,
+        id: notificationId,
+        title: title,
+        body: body,
+        notificationDetails: details,
         payload: jsonEncode(data),
       );
 
@@ -563,5 +565,6 @@ class PushNotificationService {
   void dispose() {
     _messageSubscription?.cancel();
     _backgroundMessageSubscription?.cancel();
+    _tokenRefreshSub?.cancel();
   }
 }

@@ -1,6 +1,6 @@
 import 'dart:developer';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'follows_service.dart';
 
 /// Service to determine Follow button state based on NetworkView logic
 /// Implements the product rules for Follow/Following/Connected/Self states
@@ -11,7 +11,7 @@ class FollowButtonService {
 
   FollowButtonService._();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FollowsService _followsService = FollowsService();
 
   /// Determine the follow button state for a creator
   /// Returns: 'self', 'connected', 'following', 'follow', or null (hide button)
@@ -48,20 +48,7 @@ class FollowButtonService {
   /// Check if creator is in viewer's Connections (mutual follows)
   Future<bool> _isInConnections(String viewerId, String creatorId) async {
     try {
-      final doc = await _firestore
-          .collection('users')
-          .doc(viewerId)
-          .collection('connections')
-          .doc(creatorId)
-          .get();
-
-      if (!doc.exists) return false;
-
-      final data = doc.data();
-      final followState = data?['followState'] as String?;
-
-      // Connected means mutual follow
-      return followState == 'mutual';
+      return await _followsService.isMutualFollow(creatorId);
     } catch (e) {
       log('❌ FollowButtonService: Error checking connections: $e');
       return false;
@@ -71,20 +58,7 @@ class FollowButtonService {
   /// Check if viewer is following the creator (one-way)
   Future<bool> _isFollowing(String viewerId, String creatorId) async {
     try {
-      final doc = await _firestore
-          .collection('users')
-          .doc(viewerId)
-          .collection('connections')
-          .doc(creatorId)
-          .get();
-
-      if (!doc.exists) return false;
-
-      final data = doc.data();
-      final followState = data?['followState'] as String?;
-
-      // Following or mutual both count as "following"
-      return followState == 'following' || followState == 'mutual';
+      return await _followsService.isFollowing(creatorId);
     } catch (e) {
       log('❌ FollowButtonService: Error checking following: $e');
       return false;
@@ -98,20 +72,8 @@ class FollowButtonService {
   }) async {
     try {
       log('👥 FollowButtonService: Following user $creatorId');
-
-      // Create connection document
-      await _firestore
-          .collection('users')
-          .doc(viewerId)
-          .collection('connections')
-          .doc(creatorId)
-          .set({
-        'followState':
-            'following', // Will auto-upgrade to 'mutual' if they follow back
-        'canDM': false, // Will be true when mutual
-        'updatedAt': FieldValue.serverTimestamp(),
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final success = await _followsService.followUser(creatorId);
+      if (!success) return false;
 
       log('✅ FollowButtonService: Successfully followed $creatorId');
       return true;
@@ -128,14 +90,8 @@ class FollowButtonService {
   }) async {
     try {
       log('👥 FollowButtonService: Unfollowing user $creatorId');
-
-      // Remove connection document
-      await _firestore
-          .collection('users')
-          .doc(viewerId)
-          .collection('connections')
-          .doc(creatorId)
-          .delete();
+      final success = await _followsService.unfollowUser(creatorId);
+      if (!success) return false;
 
       log('✅ FollowButtonService: Successfully unfollowed $creatorId');
       return true;

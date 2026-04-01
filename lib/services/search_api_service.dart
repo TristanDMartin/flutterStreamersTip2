@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/user_count_fields.dart';
 import 'logging_service.dart';
 
 class SearchApiService {
@@ -293,6 +294,7 @@ class SearchApiService {
     final data = doc.data() as Map<String, dynamic>;
     // Firestore stores avatar as 'avatarURL' (uppercase RL), not 'avatarUrl'
     final avatarURL = data['avatarURL'] ?? '';
+    final followerCount = UserCountFields.readFollowersCount(data);
     return SearchResult(
       id: doc.id,
       type: SearchResultType.user,
@@ -303,7 +305,7 @@ class SearchApiService {
         'username': data['username'] ?? '',
         'displayName': data['displayName'] ?? '',
         'avatarUrl': avatarURL,
-        'followerCount': data['followerCount'] ?? 0,
+        'followerCount': followerCount,
         'matchType': matchType,
       },
       imageURL: avatarURL.isNotEmpty ? avatarURL : null,

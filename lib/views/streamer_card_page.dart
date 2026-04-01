@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../models/user.dart';
+import '../constants/app_colors.dart';
 
 class StreamerCardPage extends StatelessWidget {
   final User user;
@@ -17,13 +18,7 @@ class StreamerCardPage extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF9248D2),
-              Color(0xFF7768DF),
-              Color(0xFF1670DE),
-              Color(0xFF3C8BD6),
-              Color(0xFF4897D2),
-            ],
+            colors: AppColors.supportSurfaceGradient,
           ),
         ),
         child: SafeArea(
@@ -269,7 +264,7 @@ class _FilledButton extends StatelessWidget {
         child: Text(
           title,
           style: const TextStyle(
-            color: Color(0xFF9248D2),
+            color: AppColors.supportAccent,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),

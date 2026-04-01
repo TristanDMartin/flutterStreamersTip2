@@ -6,8 +6,8 @@ part of 'connection_lite.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$ConnectionLiteImpl _$$ConnectionLiteImplFromJson(Map<String, dynamic> json) =>
-    _$ConnectionLiteImpl(
+_ConnectionLite _$ConnectionLiteFromJson(Map<String, dynamic> json) =>
+    _ConnectionLite(
       userId: json['userId'] as String,
       handle: json['handle'] as String,
       displayName: json['displayName'] as String,
@@ -18,8 +18,7 @@ _$ConnectionLiteImpl _$$ConnectionLiteImplFromJson(Map<String, dynamic> json) =>
       rankingScore: (json['rankingScore'] as num?)?.toDouble() ?? 0.0,
     );
 
-Map<String, dynamic> _$$ConnectionLiteImplToJson(
-        _$ConnectionLiteImpl instance) =>
+Map<String, dynamic> _$ConnectionLiteToJson(_ConnectionLite instance) =>
     <String, dynamic>{
       'userId': instance.userId,
       'handle': instance.handle,

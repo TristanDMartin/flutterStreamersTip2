@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'story.freezed.dart';
 part 'story.g.dart';
 
 @freezed
-class Story with _$Story {
+sealed class Story with _$Story {
   const factory Story({
     required String id,
     required String creatorId,

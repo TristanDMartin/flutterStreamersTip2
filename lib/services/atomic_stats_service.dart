@@ -1,18 +1,22 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'creator_stats_sync_service.dart';
 
 /// Atomic stats service for preventing race conditions
 /// Ensures stats updates are consistent across mobile and web platforms
 class AtomicStatsService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Increment view count atomically
+  /// Increment view count atomically (writes to video_analytics; sync job updates videos)
   Future<void> incrementViews(String videoId) async {
     try {
-      await _firestore.collection('videos').doc(videoId).update({
-        'views': FieldValue.increment(1),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _firestore
+          .collection('video_analytics')
+          .doc(videoId)
+          .set({
+            'views': FieldValue.increment(1),
+            'lastViewedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
       debugPrint('✅ AtomicStatsService: View count incremented for $videoId');
     } catch (e) {
       debugPrint(
@@ -62,6 +66,10 @@ class AtomicStatsService {
         },
       );
       await batch.commit();
+      await CreatorStatsSyncService().syncLikeToCreator(
+        videoId: videoId,
+        delta: 1,
+      );
       debugPrint('✅ AtomicStatsService: Video $videoId liked by user $userId');
     } catch (e) {
       debugPrint(
@@ -102,6 +110,10 @@ class AtomicStatsService {
             .doc(userId),
       );
       await batch.commit();
+      await CreatorStatsSyncService().syncLikeToCreator(
+        videoId: videoId,
+        delta: -1,
+      );
       debugPrint(
           '✅ AtomicStatsService: Video $videoId unliked by user $userId');
     } catch (e) {

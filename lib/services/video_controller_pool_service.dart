@@ -36,7 +36,7 @@ class VideoControllerPoolService {
       final controller = VideoPlayerController.networkUrl(
         Uri.parse(videoUrl),
         videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true,
+          mixWithOthers: false,
           allowBackgroundPlayback: false,
         ),
       );

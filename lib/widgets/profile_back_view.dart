@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../models/calendar_event.dart';
+import '../constants/app_colors.dart';
 import '../services/robust_auth_service.dart';
 import '../services/profile_update_service.dart';
 import '../services/calendar_cleanup_service.dart';
@@ -39,11 +40,9 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     final userId = widget.user['id'] as String?;
     if (userId != null && userId.isNotEmpty) {
       // Run cleanup in background (non-blocking)
-      CalendarCleanupService().cleanupExpiredEvents(userId).then((_) {
-        debugPrint('✅ Calendar cleanup completed');
-      }).catchError((error) {
-        debugPrint('⚠️ Calendar cleanup error: $error');
-      });
+      CalendarCleanupService()
+          .cleanupExpiredEvents(userId)
+          .catchError((_) => null);
     }
   }
 
@@ -57,12 +56,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   void _setupRealtimeListener() {
     final userId = widget.user['id'] as String?;
     if (userId == null || userId.isEmpty) {
-      debugPrint('⚠️ ProfileBackView: No user ID, skipping real-time listener');
       return;
     }
-
-    debugPrint(
-        '👂 ProfileBackView: Setting up real-time listener for user: $userId');
 
     _userDataSubscription = FirebaseFirestore.instance
         .collection('users')
@@ -71,16 +66,12 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         .listen(
       (snapshot) {
         if (snapshot.exists && mounted) {
-          debugPrint(
-              '📡 ProfileBackView: Received user data update from Firestore');
           setState(() {
             _liveUserData = snapshot.data();
           });
         }
       },
-      onError: (error) {
-        debugPrint('❌ ProfileBackView: Error listening to user data: $error');
-      },
+      onError: (_) {},
     );
   }
 
@@ -108,13 +99,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       try {
         return DateTime.parse(dateValue);
       } catch (e) {
-        debugPrint('❌ ProfileBackView: Error parsing date string: $dateValue');
         return DateTime.now();
       }
     }
 
-    debugPrint(
-        '❌ ProfileBackView: Unknown date type: ${dateValue.runtimeType}');
     return DateTime.now();
   }
 
@@ -123,9 +111,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     try {
       // ProfileBackView displays the user data passed to it directly
       // No need to fetch from Firestore again
-      debugPrint(
-          "🔍 ProfileBackView: Building with user data: ${_currentUserData['username']}");
-
       // Extract platforms and events from the user data
       List<CalendarEvent> events = [];
       List<Map<String, dynamic>> platforms = [];
@@ -184,9 +169,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
 
       return _buildContent(events, platforms);
     } catch (e, stackTrace) {
-      debugPrint("❌ ProfileBackView: Error building widget: $e");
-      debugPrint("❌ ProfileBackView: Stack trace: $stackTrace");
-      debugPrint("❌ ProfileBackView: User data: $_currentUserData");
       return _buildErrorState(e);
     }
   }
@@ -195,13 +177,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     return Container(
       width: double.infinity,
       height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-        ),
-      ),
+      color: AppColors.supportBackground,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Center(
@@ -245,13 +221,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget _buildContent(
       List<CalendarEvent> events, List<Map<String, dynamic>> platforms) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-        ),
-      ),
+      color: AppColors.supportBackground,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
@@ -262,29 +232,32 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               SliverToBoxAdapter(child: _buildIdentity()),
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
               SliverToBoxAdapter(child: _buildTags()),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
               SliverToBoxAdapter(
-                  child: _buildSectionHeader('Bio', isBioExpanded,
-                      () => setState(() => isBioExpanded = !isBioExpanded))),
-              if (isBioExpanded) SliverToBoxAdapter(child: _buildBioBody()),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                child: _buildExpandableSection(
+                  title: 'Bio',
+                  expanded: isBioExpanded,
+                  onTap: () => setState(() => isBioExpanded = !isBioExpanded),
+                  child: _buildBioBody(),
+                ),
+              ),
               SliverToBoxAdapter(
-                  child: _buildSectionHeader(
-                      'Platforms',
-                      isPlatformsExpanded,
-                      () => setState(
-                          () => isPlatformsExpanded = !isPlatformsExpanded))),
-              if (isPlatformsExpanded)
-                SliverToBoxAdapter(child: _buildPlatforms(platforms)),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                child: _buildExpandableSection(
+                  title: 'Platforms',
+                  expanded: isPlatformsExpanded,
+                  onTap: () =>
+                      setState(() => isPlatformsExpanded = !isPlatformsExpanded),
+                  child: _buildPlatforms(platforms),
+                ),
+              ),
               SliverToBoxAdapter(
-                  child: _buildSectionHeader(
-                      'Calendar',
-                      isCalendarExpanded,
-                      () => setState(
-                          () => isCalendarExpanded = !isCalendarExpanded))),
-              if (isCalendarExpanded)
-                SliverToBoxAdapter(child: _buildCalendar(events)),
+                child: _buildExpandableSection(
+                  title: 'Calendar',
+                  expanded: isCalendarExpanded,
+                  onTap: () =>
+                      setState(() => isCalendarExpanded = !isCalendarExpanded),
+                  child: _buildCalendar(events),
+                ),
+              ),
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
             ],
           ),
@@ -296,15 +269,34 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          IconButton(
-            onPressed: widget.onFlip,
-            icon: const Icon(Icons.flip, color: Colors.white, size: 24),
-            tooltip: 'Flip',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+            width: 1,
           ),
-        ],
+        ),
+        child: Row(
+          children: [
+            Text(
+              'Profile Details',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            IconButton(
+              onPressed: widget.onFlip,
+              icon: const Icon(Icons.flip, color: Colors.white, size: 22),
+              tooltip: 'Flip',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -392,10 +384,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               decoration: BoxDecoration(
                 gradient: isSelected
                     ? const LinearGradient(
-                        colors: [
-                          Color(0xFF955CFF),
-                          Color(0xFF3D99F7)
-                        ], // Match Add to Calendar button
+                        colors: AppColors.supportAccentGradient,
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       )
@@ -410,7 +399,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 boxShadow: isSelected
                     ? [
                         BoxShadow(
-                          color: const Color(0xFF955CFF).withValues(alpha: 0.3),
+                          color:
+                              AppColors.supportAccent.withValues(alpha: 0.28),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -440,24 +430,84 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: InkWell(
         onTap: onTap,
-        child: Row(
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-              ),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
             ),
-            const Spacer(),
-            Icon(
+          ),
+          child: Row(
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              Icon(
                 expanded
                     ? Icons.keyboard_arrow_down
                     : Icons.keyboard_arrow_right,
                 color: Colors.white.withValues(alpha: 0.9)),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildExpandableSection({
+    required String title,
+    required bool expanded,
+    required VoidCallback onTap,
+    required Widget child,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        children: [
+          _buildSectionHeader(title, expanded, onTap),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeInOutCubic,
+            alignment: Alignment.topCenter,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final fade = CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOut,
+                );
+                final slide = Tween<Offset>(
+                  begin: const Offset(0, -0.03),
+                  end: Offset.zero,
+                ).animate(fade);
+                return FadeTransition(
+                  opacity: fade,
+                  child: SlideTransition(position: slide, child: child),
+                );
+              },
+              child: expanded
+                  ? KeyedSubtree(
+                      key: ValueKey<String>('section-$title-open'),
+                      child: child,
+                    )
+                  : const SizedBox(
+                      key: ValueKey<String>('section-collapsed'),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -480,13 +530,24 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget _buildPlatforms(List<Map<String, dynamic>> platforms) {
     if (platforms.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-        child: Text(
-          'No platforms added yet.',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.6),
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.10),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            'No platforms added yet.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       );
@@ -510,7 +571,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Widget _buildCalendar(List<CalendarEvent> events) {
-    debugPrint('📅 Building calendar with ${events.length} events');
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Column(
@@ -521,8 +581,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               subtitle: e.description,
               meta: _formatDate(e.date),
               onDelete: () async {
-                debugPrint('🗑️ Deleting calendar event: ${e.title}');
-
                 // Save reference for potential rollback
                 final originalEvents = List<CalendarEvent>.from(events);
 
@@ -534,16 +592,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                 // Save to Firestore and WAIT for completion
                 final authService = ref.read(robustAuthServiceProvider);
                 authService.updateUserCalendarEvents(events).then((_) async {
-                  debugPrint('✅ Calendar event deleted from Firestore');
-
                   // NOW refresh ProfileUpdateService after save completes
                   // This ensures we get the updated data, not stale data
                   await ProfileUpdateService().initialize();
-                  debugPrint(
-                      '✅ ProfileUpdateService refreshed with deleted event');
                 }).catchError((error) {
-                  debugPrint('❌ Error deleting calendar event: $error');
-
                   // Revert optimistic update on error
                   if (mounted) {
                     setState(() {
@@ -571,12 +623,10 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   }
 
   Widget _addToCalendarButton() {
-    debugPrint('🔘 Rendering Add to Calendar button');
     return Container(
       margin: const EdgeInsets.only(top: 16),
       child: GestureDetector(
         onTap: () {
-          debugPrint('➕ Add to Calendar button tapped');
           _showAddEventSheet();
         },
         child: Container(
@@ -584,14 +634,14 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
           width: double.infinity,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
+              colors: AppColors.supportAccentGradient,
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF955CFF).withValues(alpha: 0.4),
+                color: AppColors.supportAccent.withValues(alpha: 0.35),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
@@ -640,37 +690,74 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.8),
+                  color: AppColors.supportBackground.withValues(alpha: 0.96),
                   borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(20)),
+                      const BorderRadius.vertical(top: Radius.circular(28)),
                   border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2), width: 1),
+                    color: Colors.white.withValues(alpha: 0.14),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.24),
+                      blurRadius: 28,
+                      offset: const Offset(0, -10),
+                    ),
+                  ],
                 ),
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.24),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
                     Row(
                       children: [
-                        const Text(
-                          'Add Event',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Add Event',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Share your next stream, drop, or meetup.',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.65),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                         const Spacer(),
                         GestureDetector(
                           onTap: () => Navigator.pop(context),
                           child: Container(
-                            width: 32,
-                            height: 32,
+                            width: 36,
+                            height: 36,
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.1),
+                              color: Colors.white.withValues(alpha: 0.08),
                               shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                width: 1,
+                              ),
                             ),
                             child: const Icon(
                               Icons.close,
@@ -681,58 +768,107 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 22),
 
-                    // Title field (required)
-                    TextField(
-                      onChanged: (v) {
-                        title = v;
-                        setModalState(() {
-                          isValid = title.trim().isNotEmpty;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'Title *',
-                        labelStyle: const TextStyle(color: Colors.white70),
-                        hintText: 'Event title',
-                        hintStyle: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5)),
-                        enabledBorder: const UnderlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white30)),
-                        focusedBorder: const UnderlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white70)),
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Description field (optional)
-                    TextField(
-                      onChanged: (v) => description = v,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: 'Description',
-                        labelStyle: const TextStyle(color: Colors.white70),
-                        hintText: 'Event description (optional)',
-                        hintStyle: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5)),
-                        enabledBorder: const UnderlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white30)),
-                        focusedBorder: const UnderlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white70)),
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Date & Time picker
-                    Row(
-                      children: [
-                        const Text(
-                          'Date & Time *',
-                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.10),
+                          width: 1,
                         ),
-                        const Spacer(),
+                      ),
+                      child: Column(
+                        children: [
+                          TextField(
+                            onChanged: (v) {
+                              title = v;
+                              setModalState(() {
+                                isValid = title.trim().isNotEmpty;
+                              });
+                            },
+                            decoration: InputDecoration(
+                              labelText: 'Title *',
+                              labelStyle:
+                                  const TextStyle(color: Colors.white70),
+                              hintText: 'Event title',
+                              hintStyle: TextStyle(
+                                  color:
+                                      Colors.white.withValues(alpha: 0.45)),
+                              enabledBorder: const UnderlineInputBorder(
+                                  borderSide:
+                                      BorderSide(color: Colors.white24)),
+                              focusedBorder: const UnderlineInputBorder(
+                                  borderSide:
+                                      BorderSide(color: Colors.white70)),
+                            ),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            onChanged: (v) => description = v,
+                            maxLines: 3,
+                            decoration: InputDecoration(
+                              labelText: 'Description',
+                              labelStyle:
+                                  const TextStyle(color: Colors.white70),
+                              hintText: 'Event description (optional)',
+                              hintStyle: TextStyle(
+                                  color:
+                                      Colors.white.withValues(alpha: 0.45)),
+                              enabledBorder: const UnderlineInputBorder(
+                                  borderSide:
+                                      BorderSide(color: Colors.white24)),
+                              focusedBorder: const UnderlineInputBorder(
+                                  borderSide:
+                                      BorderSide(color: Colors.white70)),
+                            ),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.10),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: AppColors.supportAccentGradient,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.calendar_today_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Date & Time',
+                            style:
+                                TextStyle(color: Colors.white70, fontSize: 15),
+                          ),
+                        ),
                         TextButton(
                           onPressed: () async {
                             final currentContext = context;
@@ -765,25 +901,26 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                             _formatDate(when),
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    ),
+                    const SizedBox(height: 22),
 
-                    // Save button
                     SizedBox(
                       width: double.infinity,
-                      height: 48,
+                      height: 50,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isValid
-                              ? const Color(0xFF3D99F7)
+                              ? AppColors.supportAccent
                               : Colors.grey.withValues(alpha: 0.3),
                           foregroundColor: Colors.white,
+                          elevation: isValid ? 6 : 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(24),
                           ),
@@ -794,20 +931,12 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                 final scaffoldMessenger =
                                     ScaffoldMessenger.of(context);
 
-                                debugPrint('📅 Creating new calendar event...');
-                                debugPrint('📅 Title: ${title.trim()}');
-                                debugPrint(
-                                    '📅 Description: ${description.trim()}');
-                                debugPrint('📅 Date: $when');
-
                                 // Create event object with your exact spec
                                 final CalendarEvent ev = CalendarEvent.create(
                                   title: title.trim(),
                                   description: description.trim(),
                                   date: when,
                                 );
-                                debugPrint(
-                                    '📅 Created event with ID: ${ev.id}');
 
                                 // Get current events and add new one
                                 final authService =
@@ -818,8 +947,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                     ...currentUser.calendarEvents,
                                     ev
                                   ];
-                                  debugPrint(
-                                      '📅 Total events after adding: ${next.length}');
 
                                   // Dismiss sheet immediately for instant feel
                                   navigator.pop();
@@ -829,7 +956,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                     const SnackBar(
                                       content:
                                           Text('Event added to your profile'),
-                                      backgroundColor: Color(0xFF3D99F7),
+                                      backgroundColor:
+                                          AppColors.supportAccent,
                                       duration: Duration(seconds: 2),
                                     ),
                                   );
@@ -838,16 +966,9 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                                   authService
                                       .updateUserCalendarEvents(next)
                                       .then((_) async {
-                                    debugPrint(
-                                        '✅ Calendar event saved to Firestore');
-
                                     // NOW refresh ProfileUpdateService after save completes
                                     await ProfileUpdateService().initialize();
-                                    debugPrint(
-                                        '✅ ProfileUpdateService refreshed with new event');
                                   }).catchError((e) {
-                                    debugPrint(
-                                        '❌ Error saving calendar event: $e');
                                     // Show error feedback
                                     scaffoldMessenger.showSnackBar(
                                       SnackBar(
@@ -862,7 +983,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
                               }
                             : null,
                         child: const Text(
-                          'Save',
+                          'Save Event',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -913,9 +1034,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     final platformType = platform['type'] ?? '';
     final username = platform['username'] ?? '';
 
-    debugPrint(
-        '🔍 Platform data: type=$platformType, username=$username, url=$url');
-
     if (url != null && url.isNotEmpty) {
       try {
         // Add timeout to prevent hanging
@@ -930,7 +1048,6 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
         _showSuccessSnackBar(
             'Opening ${_getPlatformDisplayName(platformType)}...');
       } catch (e) {
-        debugPrint('❌ Error launching platform URL: $e');
         _showErrorSnackBar('Cannot open this link');
       }
     } else if (username.isNotEmpty) {
@@ -951,11 +1068,9 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
           _showErrorSnackBar('No link available for this platform');
         }
       } catch (e) {
-        debugPrint('❌ Error launching constructed URL: $e');
         _showErrorSnackBar('Cannot open this link');
       }
     } else {
-      debugPrint('❌ No URL or username provided for platform: $platformType');
       _showErrorSnackBar('No link available for this platform');
     }
   }
@@ -966,19 +1081,15 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       finalUrl = 'https://$finalUrl';
     }
 
-    debugPrint('🔍 Final URL to launch: $finalUrl');
     final uri = Uri.parse(finalUrl);
 
     // Try different launch modes
     bool canLaunch = await canLaunchUrl(uri);
-    debugPrint('🔍 Can launch URL: $canLaunch');
 
     if (canLaunch) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-      debugPrint('🔗 Successfully opened with external app: $finalUrl');
     } else {
       await launchUrl(uri, mode: LaunchMode.platformDefault);
-      debugPrint('🔗 Successfully opened with platform default: $finalUrl');
     }
   }
 
@@ -1123,20 +1234,30 @@ class _ClickablePlatformRow extends StatelessWidget {
         onTap();
       },
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withValues(alpha: 0.12),
             width: 1,
           ),
         ),
         child: Row(
           children: [
-            BrandIcon(
-              platformType: platformType,
-              size: 24,
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: BrandIcon(
+                  platformType: platformType,
+                  size: 22,
+                ),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1162,10 +1283,18 @@ class _ClickablePlatformRow extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              color: Colors.white,
-              size: 16,
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.arrow_forward_ios,
+                color: Colors.white70,
+                size: 14,
+              ),
             ),
           ],
         ),
@@ -1218,7 +1347,7 @@ class _CalendarCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(20),
         border:
             Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),

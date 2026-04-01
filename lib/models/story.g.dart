@@ -6,7 +6,7 @@ part of 'story.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$StoryImpl _$$StoryImplFromJson(Map<String, dynamic> json) => _$StoryImpl(
+_Story _$StoryFromJson(Map<String, dynamic> json) => _Story(
       id: json['id'] as String,
       creatorId: json['creatorId'] as String,
       creatorName: json['creatorName'] as String,
@@ -18,8 +18,7 @@ _$StoryImpl _$$StoryImplFromJson(Map<String, dynamic> json) => _$StoryImpl(
       isViewed: json['isViewed'] as bool? ?? false,
     );
 
-Map<String, dynamic> _$$StoryImplToJson(_$StoryImpl instance) =>
-    <String, dynamic>{
+Map<String, dynamic> _$StoryToJson(_Story instance) => <String, dynamic>{
       'id': instance.id,
       'creatorId': instance.creatorId,
       'creatorName': instance.creatorName,

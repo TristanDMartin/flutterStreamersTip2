@@ -184,7 +184,9 @@ class ConnectionsService {
           final connectionData = doc.data();
           final connectedUserId = connectionData['userId'] ?? doc.id;
 
-          if (processedUserIds.contains(connectedUserId)) continue;
+          if (processedUserIds.contains(connectedUserId)) {
+            continue;
+          }
           processedUserIds.add(connectedUserId);
 
           // Get user details from connection data
@@ -251,7 +253,9 @@ class ConnectionsService {
           final connectedUserId = relationshipData['followingId'] ?? '';
 
           if (processedUserIds.contains(connectedUserId) ||
-              connectedUserId.isEmpty) continue;
+              connectedUserId.isEmpty) {
+            continue;
+          }
           processedUserIds.add(connectedUserId);
 
           // Get user details from relationship data
@@ -312,7 +316,9 @@ class ConnectionsService {
           final connectedUserId = relationshipData['followerId'] ?? '';
 
           if (processedUserIds.contains(connectedUserId) ||
-              connectedUserId.isEmpty) continue;
+              connectedUserId.isEmpty) {
+            continue;
+          }
           processedUserIds.add(connectedUserId);
 
           // Get user details from relationship data
@@ -517,7 +523,9 @@ class ConnectionsService {
           final connectionData = doc.data();
           final connectedUserId = connectionData['userId'] ?? doc.id;
 
-          if (processedUserIds.contains(connectedUserId)) continue;
+          if (processedUserIds.contains(connectedUserId)) {
+            continue;
+          }
           processedUserIds.add(connectedUserId);
 
           // Try to get user details from connection data first
@@ -594,7 +602,9 @@ class ConnectionsService {
           final connectedUserId = relationshipData['followingId'] ?? '';
 
           if (processedUserIds.contains(connectedUserId) ||
-              connectedUserId.isEmpty) continue;
+              connectedUserId.isEmpty) {
+            continue;
+          }
           processedUserIds.add(connectedUserId);
 
           // Get user details from relationship data
@@ -662,7 +672,9 @@ class ConnectionsService {
           final connectedUserId = relationshipData['followerId'] ?? '';
 
           if (processedUserIds.contains(connectedUserId) ||
-              connectedUserId.isEmpty) continue;
+              connectedUserId.isEmpty) {
+            continue;
+          }
           processedUserIds.add(connectedUserId);
 
           // Get user details from relationship data

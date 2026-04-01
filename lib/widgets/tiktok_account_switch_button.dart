@@ -21,7 +21,7 @@ class TikTokAccountSwitchButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final accountSwitcher = ref.watch(accountSwitcherProvider);
+    final accountSwitcherState = ref.watch(accountSwitcherProvider);
     final currentAccount = ref.watch(currentAccountProvider);
     final savedAccounts = ref.watch(savedAccountsProvider);
     final hasMultipleAccounts = ref.watch(hasMultipleAccountsProvider);
@@ -66,7 +66,7 @@ class TikTokAccountSwitchButton extends ConsumerWidget {
                 ),
 
                 // Switching indicator
-                if (accountSwitcher.isSwitching)
+                if (accountSwitcherState.isSwitching)
                   Positioned.fill(
                     child: Container(
                       decoration: BoxDecoration(
@@ -88,7 +88,7 @@ class TikTokAccountSwitchButton extends ConsumerWidget {
                   ),
 
                 // Multiple accounts indicator
-                if (hasMultipleAccounts && !accountSwitcher.isSwitching)
+                if (hasMultipleAccounts && !accountSwitcherState.isSwitching)
                   Positioned(
                     bottom: 0,
                     right: 0,

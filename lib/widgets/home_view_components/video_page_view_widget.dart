@@ -5,6 +5,8 @@ import '../../models/home_video.dart';
 import '../video_player_view_optimized.dart';
 import '../../providers/home_provider.dart';
 import '../../constants/playback_owners.dart';
+import '../../services/feed_telemetry_service.dart';
+import '../../services/global_playback_manager.dart';
 
 /// Video page view widget for HomeView (handles video scrolling)
 class VideoPageViewWidget extends ConsumerStatefulWidget {
@@ -40,8 +42,14 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
 class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
   PageController? _pageController;
   bool _isHorizontalSwipe = false;
-  // ✅ FIX #3: Removed _isVerticalSwipe - PageView handles vertical scrolling
-  bool _isRefreshing = false;
+  int _consecutiveUnplayableCount = 0;
+  int? _lastPrewarmedIndex;
+  double? _lastObservedPage;
+
+  // Telemetry tracking.
+  final FeedTelemetryService _telemetry = FeedTelemetryService();
+  DateTime? _pageEnteredAt;
+  int _lastImpressionIndex = -1;
 
   @override
   void initState() {
@@ -50,14 +58,24 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     if (widget.videos.isNotEmpty) {
       _pageController = PageController(
           initialPage: widget.currentIndex.clamp(0, widget.videos.length - 1));
+      _pageController!.addListener(_handlePageScroll);
     }
 
-    // Expose scroll-to-top functionality to parent
-    if (widget.onControllerReady != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onControllerReady!(_scrollToTop);
-      });
-    }
+      // Expose scroll-to-top functionality to parent
+      if (widget.onControllerReady != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.onControllerReady!(_scrollToTop);
+        });
+      }
+      // Log first impression once videos are available.
+      if (widget.videos.isNotEmpty) {
+        _pageEnteredAt = DateTime.now();
+        _lastImpressionIndex = widget.currentIndex;
+        _telemetry.logVideoImpression(
+          videoId: widget.videos[widget.currentIndex].id,
+          feedPosition: widget.currentIndex,
+        );
+      }
   }
 
   /// Scroll to top of the video feed
@@ -81,6 +99,46 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     }
   }
 
+  void _handlePageScroll() {
+    final controller = _pageController;
+    if (!mounted ||
+        controller == null ||
+        !controller.hasClients ||
+        widget.videos.isEmpty) {
+      return;
+    }
+
+    final page = controller.page;
+    if (page == null) return;
+
+    int direction = 0;
+    final previousPage = _lastObservedPage;
+    if (previousPage != null) {
+      if (page > previousPage + 0.02) {
+        direction = 1;
+      } else if (page < previousPage - 0.02) {
+        direction = -1;
+      }
+    }
+    _lastObservedPage = page;
+
+    final int candidateIndex = page.round().clamp(0, widget.videos.length - 1);
+    final double distance = (page - candidateIndex).abs();
+    if (distance > 0.45) return;
+    if (_lastPrewarmedIndex == candidateIndex) return;
+
+    _lastPrewarmedIndex = candidateIndex;
+    try {
+      GlobalPlaybackManager.instance.preloadAround(
+        candidateIndex,
+        widget.videos,
+        direction: direction,
+      );
+    } catch (e) {
+      log('⚠️ VideoPageView: Error prewarming candidate index $candidateIndex: $e');
+    }
+  }
+
   @override
   void didUpdateWidget(VideoPageViewWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -88,9 +146,12 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
     // Handle empty to non-empty transition
     if (oldWidget.videos.isEmpty && widget.videos.isNotEmpty) {
       // Videos were just loaded - create PageController
+      _pageController?.removeListener(_handlePageScroll);
       _pageController?.dispose();
       final safeIndex = widget.currentIndex.clamp(0, widget.videos.length - 1);
       _pageController = PageController(initialPage: safeIndex);
+      _pageController!.addListener(_handlePageScroll);
+      _lastObservedPage = safeIndex.toDouble();
       log('🔄 VideoPageView: Videos loaded, created PageController');
 
       // ✅ FIX #1: Make sure parent + manager know which index is actually visible
@@ -106,8 +167,10 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
       return; // Don't try to use controller until next frame
     } else if (oldWidget.videos.isNotEmpty && widget.videos.isEmpty) {
       // Videos were cleared - dispose PageController
+      _pageController?.removeListener(_handlePageScroll);
       _pageController?.dispose();
       _pageController = null;
+      _lastObservedPage = null;
       log('🔄 VideoPageView: Videos cleared, disposed PageController');
       return;
     }
@@ -130,15 +193,19 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
           }
         }
 
-        // Handle video list changes (e.g., feed switch)
+        // Handle feed switch explicitly. Preserve the current page for same-feed
+        // list growth so pagination or refresh doesn't yank the user to index 0.
         if ((oldWidget.videos.length != widget.videos.length ||
                 oldWidget.tabId != widget.tabId) &&
             _pageController!.hasClients) {
-          log('🔄 VideoPageView: Videos or tabId changed, resetting to index 0');
+          final bool tabChanged = oldWidget.tabId != widget.tabId;
+          final int safeIndex =
+              widget.currentIndex.clamp(0, widget.videos.length - 1);
+
+          log('🔄 VideoPageView: Videos or tabId changed, keeping index $safeIndex (tabChanged: $tabChanged)');
 
           // Verify scroll position is ready before using controller
           if (_isScrollPositionReady()) {
-            const safeIndex = 0;
             _pageController!.jumpToPage(safeIndex);
 
             // ✅ FIX #1: Keep parent + manager in sync
@@ -175,6 +242,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
 
   @override
   void dispose() {
+    _pageController?.removeListener(_handlePageScroll);
     _pageController?.dispose();
     super.dispose();
   }
@@ -193,6 +261,8 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
             _pageController = PageController(
                 initialPage:
                     widget.currentIndex.clamp(0, widget.videos.length - 1));
+            _pageController!.addListener(_handlePageScroll);
+            _lastObservedPage = widget.currentIndex.toDouble();
           });
         }
       });
@@ -200,152 +270,138 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
       return _buildEmptyState();
     }
 
-    // 🎬 PULL-TO-REFRESH: Only enable when at index 0 (top of feed)
-    final canRefresh = widget.currentIndex == 0 && widget.onRefresh != null;
-
+    Future<void> refreshCallback() async {
+      if (widget.onRefresh != null) await widget.onRefresh!();
+    }
     return GestureDetector(
       behavior: HitTestBehavior.translucent, // Allow gestures to pass through
-      onPanStart: (details) {
-        _handlePanStart(details);
-        // Track if we're at index 0 for pull-to-refresh
-        if (canRefresh && widget.currentIndex == 0) {
-          _pullStartY = details.globalPosition.dy;
-        }
+      onHorizontalDragStart: (_) {
+        _isHorizontalSwipe = true;
       },
-      onPanUpdate: (details) {
-        _handlePanUpdate(details);
-        // Detect pull-to-refresh gesture when at index 0
-        if (canRefresh && widget.currentIndex == 0 && _pullStartY != null) {
-          final deltaY = details.globalPosition.dy - _pullStartY!;
-          // If pulling down more than 100px, trigger refresh
-          if (deltaY > 100 && !_isRefreshing) {
-            _handlePullToRefresh();
-            _pullStartY = null; // Reset to prevent multiple triggers
-          }
-        }
-      },
-      onPanEnd: (details) {
+      onHorizontalDragEnd: (details) {
         _handleSwipe(details);
-        _pullStartY = null; // Reset on gesture end
       },
       child: Stack(
         children: [
-          PageView.builder(
-            controller: _pageController!,
-            scrollDirection: Axis.vertical, // Enable vertical swiping
-            physics: const ClampingScrollPhysics(), // Better physics for mobile
-            allowImplicitScrolling: false, // Prevent interference with gestures
-            onPageChanged: (index) {
-              try {
-                log('🎬 VideoPageView: Page changed to index $index');
-                // 🔒 SAFETY: Validate index before calling callback
-                if (index >= 0 && index < widget.videos.length) {
-                  widget.onPageChanged(index);
-                } else {
-                  log('⚠️ VideoPageView: Invalid index $index (videos.length: ${widget.videos.length})');
+          RefreshIndicator(
+            onRefresh: refreshCallback,
+            color: const Color(0xFF9248D2),
+            backgroundColor: Colors.white24,
+            child: PageView.builder(
+              controller: _pageController!,
+              scrollDirection: Axis.vertical, // Enable vertical swiping
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ), // Allow overscroll at top for pull-to-refresh
+              allowImplicitScrolling: true,
+              onPageChanged: (index) {
+                try {
+                  log('🎬 VideoPageView: Page changed to index $index');
+                  _lastPrewarmedIndex = index;
+                  if (index >= 0 && index < widget.videos.length) {
+                    // --- Telemetry: skip detection for the previous video ---
+                    final now = DateTime.now();
+                    if (_pageEnteredAt != null && _lastImpressionIndex >= 0 &&
+                        _lastImpressionIndex < widget.videos.length) {
+                      final watched = now
+                          .difference(_pageEnteredAt!)
+                          .inMilliseconds / 1000.0;
+                      final prevVideo =
+                          widget.videos[_lastImpressionIndex];
+                      // video_watch_duration for every page-leave
+                      final totalSecs = prevVideo.duration ?? 0;
+                      final completion = totalSecs > 0
+                          ? (watched / totalSecs).clamp(0.0, 1.0)
+                          : 0.0;
+                      _telemetry.logVideoWatchDuration(
+                        videoId: prevVideo.id,
+                        watchedSeconds: watched,
+                        totalSeconds: totalSecs.toDouble(),
+                        completionRate: completion,
+                      );
+                      // video_skip when < 2s watched
+                      if (watched < 2.0) {
+                        _telemetry.logVideoSkip(
+                          videoId: prevVideo.id,
+                          watchedSeconds: watched,
+                        );
+                      }
+                    }
+                    // --- Telemetry: impression for the new video ---
+                    _pageEnteredAt = now;
+                    _lastImpressionIndex = index;
+                    _telemetry.logVideoImpression(
+                      videoId: widget.videos[index].id,
+                      feedPosition: index,
+                    );
+                    widget.onPageChanged(index);
+                  } else {
+                    log('⚠️ VideoPageView: Invalid index $index (videos.length: ${widget.videos.length})');
+                  }
+                } catch (e) {
+                  log('❌ VideoPageView: Error in onPageChanged: $e');
                 }
-              } catch (e) {
-                log('❌ VideoPageView: Error in onPageChanged: $e');
-              }
-            },
-            itemCount: widget.videos.length,
-            itemBuilder: (context, index) {
-              // 🔒 SAFETY: Validate index before accessing videos
-              if (index < 0 || index >= widget.videos.length) {
-                log('⚠️ VideoPageView: Invalid index $index in itemBuilder (videos.length: ${widget.videos.length})');
-                return const SizedBox
-                    .shrink(); // Return empty widget instead of crashing
-              }
-
-              final video = widget.videos[index];
-
-              // 🔒 SAFETY: Validate video object
-              if (video.id.isEmpty || video.videoURL.isEmpty) {
-                log('⚠️ VideoPageView: Invalid video at index $index');
-                return const SizedBox.shrink();
-              }
-
-              final isCurrentVideo = index == widget.currentIndex;
-
-              return VideoPlayerViewOptimized(
-                key: ValueKey(video.id), // Stable key to prevent audio bleeding
-                video: video,
-                isCurrentVideo: isCurrentVideo,
-                isFirstVideo: index == 0,
-                tabId: widget.tabId,
-                ownerKey: PlaybackOwners.home,
-                homeViewModel: ref.read(homeProvider.notifier),
-                showSheet: false,
-                sheetType: 'none',
-                // Callbacks are now optional - will use internal methods
-              );
-            },
-          ),
-          // Show refresh indicator when refreshing
-          if (_isRefreshing && canRefresh)
-            Positioned(
-              top: 50,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF9248D2),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      strokeWidth: 2,
-                    ),
-                  ),
-                ),
-              ),
+              },
+              itemCount: widget.videos.length,
+              itemBuilder: (context, index) {
+                if (index < 0 || index >= widget.videos.length) {
+                  log('⚠️ VideoPageView: Invalid index $index in itemBuilder (videos.length: ${widget.videos.length})');
+                  return const SizedBox.shrink();
+                }
+                final video = widget.videos[index];
+                if (video.id.isEmpty || video.videoURL.isEmpty) {
+                  log('⚠️ VideoPageView: Invalid video at index $index');
+                  return const SizedBox.shrink();
+                }
+                final isCurrentVideo = index == widget.currentIndex;
+                return VideoPlayerViewOptimized(
+                  key: ValueKey(video.id),
+                  video: video,
+                  isCurrentVideo: isCurrentVideo,
+                  isFirstVideo: index == 0,
+                  tabId: widget.tabId,
+                  ownerKey: PlaybackOwners.home,
+                  homeViewModel: ref.read(homeProvider.notifier),
+                  showSheet: false,
+                  sheetType: 'none',
+                  onVideoUnplayable: () {
+                    _consecutiveUnplayableCount++;
+                    if (_consecutiveUnplayableCount >= 3 && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Having trouble loading videos',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          backgroundColor: Color(0xFF6137EB),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      _consecutiveUnplayableCount = 0;
+                    }
+                    if (widget.videos.length > index + 1) {
+                      _pageController?.animateToPage(
+                        index + 1,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                      widget.onPageChanged(index + 1);
+                    }
+                  },
+                  onVideoPlaySuccess: () {
+                    _consecutiveUnplayableCount = 0;
+                    _telemetry.logVideoPlayStart(
+                      videoId: video.id,
+                      source: 'autoplay',
+                    );
+                  },
+                );
+              },
             ),
+          ),
         ],
       ),
     );
-  }
-
-  double? _pullStartY; // Track pull gesture start position
-
-  /// Handle pull-to-refresh gesture
-  Future<void> _handlePullToRefresh() async {
-    if (_isRefreshing || widget.onRefresh == null) return;
-
-    log('🔄 VideoPageView: Pull-to-refresh triggered at index 0');
-
-    if (mounted) {
-      setState(() {
-        _isRefreshing = true;
-      });
-    }
-
-    try {
-      // Call parent's refresh handler
-      await widget.onRefresh!();
-      log('✅ VideoPageView: Pull-to-refresh completed - newest videos at top');
-    } catch (e) {
-      log('❌ VideoPageView: Error during pull-to-refresh: $e');
-    } finally {
-      // ✅ FIX #4: Extra safety - always reset _pullStartY
-      _pullStartY = null;
-      if (mounted) {
-        setState(() {
-          _isRefreshing = false;
-        });
-      }
-    }
   }
 
   Widget _buildEmptyState() {
@@ -381,23 +437,6 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
         ),
       ),
     );
-  }
-
-  void _handlePanStart(DragStartDetails details) {
-    // ✅ FIX #3: Reset horizontal swipe tracking (vertical handled by PageView)
-    _isHorizontalSwipe = false;
-  }
-
-  void _handlePanUpdate(DragUpdateDetails details) {
-    final delta = details.delta;
-    final absDx = delta.dx.abs();
-    final absDy = delta.dy.abs();
-
-    // ✅ FIX #3: Only track horizontal swipes (vertical handled by PageView)
-    if (absDx > absDy && absDx > 10) {
-      _isHorizontalSwipe = true;
-    }
-    // Note: _isVerticalSwipe removed - PageView handles vertical scrolling
   }
 
   void _handleSwipe(DragEndDetails details) {

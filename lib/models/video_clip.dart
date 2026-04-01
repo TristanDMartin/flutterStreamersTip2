@@ -3,7 +3,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'video_clip.freezed.dart';
 
 @freezed
-class VideoClip with _$VideoClip {
+sealed class VideoClip with _$VideoClip {
   const factory VideoClip({
     required String id,
     required String title,

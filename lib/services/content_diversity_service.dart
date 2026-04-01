@@ -11,9 +11,9 @@ class ContentDiversityService {
   ContentDiversityService._();
 
   // Diversity constraints
-  static const int MAX_SAME_CREATOR_IN_ROW = 2;
-  static const int CATEGORY_ROTATION_INTERVAL = 7; // Every 7 videos
-  static const int FRESH_CREATOR_INJECTION_INTERVAL = 10; // Every 10 videos
+  static const int maxSameCreatorInRow = 2;
+  static const int categoryRotationInterval = 7; // Every 7 videos
+  static const int freshCreatorInjectionInterval = 10; // Every 10 videos
 
   /// Apply diversity rules to a list of videos
   /// 🚀 NEWEST FIRST: Diversity rules respect newest-first order - only swap within same time window
@@ -75,7 +75,7 @@ class ContentDiversityService {
       // Rule 1: Max 2 videos from same creator in a row
       if (video.creator.id == lastCreatorId) {
         sameCreatorCount++;
-        if (sameCreatorCount >= MAX_SAME_CREATOR_IN_ROW) {
+        if (sameCreatorCount >= maxSameCreatorInRow) {
           // Skip this video, find different creator (but keep newest-first order)
           final alternateVideo = _findDifferentCreator(
             remainingVideos.sublist(i + 1),
@@ -100,7 +100,7 @@ class ContentDiversityService {
 
       // Rule 2: Category rotation every 7 videos
       videosSinceLastCategory++;
-      if (videosSinceLastCategory >= CATEGORY_ROTATION_INTERVAL) {
+      if (videosSinceLastCategory >= categoryRotationInterval) {
         final differentCategory = _findDifferentCategory(
           remainingVideos.sublist(i + 1),
           lastCategory,
@@ -121,7 +121,7 @@ class ContentDiversityService {
 
       // Rule 3: Fresh creator injection every 10 videos
       videosSinceLastFreshCreator++;
-      if (videosSinceLastFreshCreator >= FRESH_CREATOR_INJECTION_INTERVAL) {
+      if (videosSinceLastFreshCreator >= freshCreatorInjectionInterval) {
         final freshCreator = _findFreshCreator(
           remainingVideos.sublist(i + 1),
           seenCreators,
@@ -198,7 +198,10 @@ class ContentDiversityService {
 
     final score = (creatorDiversity * 0.7) + (categoryDiversity * 0.3);
 
-    log('📊 Diversity score: ${score.toStringAsFixed(2)} (${uniqueCreators} creators, ${uniqueCategories} categories)');
+    log(
+      '📊 Diversity score: ${score.toStringAsFixed(2)} '
+      '($uniqueCreators creators, $uniqueCategories categories)',
+    );
 
     return score.clamp(0.0, 1.0);
   }

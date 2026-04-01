@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'creator_stats_sync_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -209,6 +210,10 @@ class EnhancedLikeService {
       });
 
       await batch.commit();
+      await CreatorStatsSyncService().syncLikeToCreator(
+        videoId: videoId,
+        delta: 1,
+      );
 
       // Trigger like event for notifications
       await _triggerLikeEvent(videoId, userId);
@@ -241,6 +246,10 @@ class EnhancedLikeService {
       });
 
       await batch.commit();
+      await CreatorStatsSyncService().syncLikeToCreator(
+        videoId: videoId,
+        delta: -1,
+      );
 
       // Trigger unlike event for notifications
       await _triggerUnlikeEvent(videoId, userId);

@@ -11,6 +11,19 @@ class AppColors {
   static const Color tertiary = Color(0xFF1670DE); // Blue
   static const Color accent = Color(0xFF66FCF1); // Cyan
 
+  // MARK: - Support/Profile Palette
+  static const Color supportBackground = Color(0xFF1C135D);
+  static const Color supportTopSurface = Color(0xFF6137EB);
+  static const Color supportAccent = primary;
+  static const List<Color> supportAccentGradient = [
+    primary,
+    secondary,
+  ];
+  static const List<Color> supportSurfaceGradient = [
+    supportTopSurface,
+    supportBackground,
+  ];
+
   // MARK: - Background Colors
   static const Color background = Color(0xFF0A0A0A); // Dark background
   static const Color surface = Color(0xFF1A1A1A); // Surface color

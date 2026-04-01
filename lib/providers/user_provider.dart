@@ -6,7 +6,7 @@ import '../services/auth_service.dart';
 part 'user_provider.freezed.dart';
 
 @freezed
-class UserState with _$UserState {
+sealed class UserState with _$UserState {
   const factory UserState({
     String? currentUserId,
     User? currentUser,

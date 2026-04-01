@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/local_draft_service.dart';
 import '../services/draft_thumbnail_service.dart';
 import '../models/home_video.dart';
@@ -96,12 +94,27 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
 
   Future<void> _handleEditDraft(Map<String, dynamic> draft) async {
     try {
-      final videoFile = File(draft['videoPath']);
-      if (!videoFile.existsSync()) {
+      final navigator = Navigator.of(context);
+      final localDraftService = LocalDraftService();
+      final draftId = draft['id'] as String?;
+      if (draftId == null || draftId.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Video file not found'),
+              content: Text('Draft is missing its ID'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final videoFile = await localDraftService.ensureLocalVideoFile(draftId);
+      if (videoFile == null || !videoFile.existsSync()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Draft video is not available on this device yet'),
               backgroundColor: Colors.red,
             ),
           );
@@ -115,7 +128,7 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
           [];
 
       if (mounted) {
-        Navigator.of(context).push(
+        navigator.push(
           MaterialPageRoute(
             builder: (context) => VideoPublishingScreen(
               videoFile: videoFile,
@@ -125,11 +138,11 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
                 // Delete draft after successful publish
                 await LocalDraftService().deleteDraft(draft['id']);
                 if (mounted) {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
+                  navigator.popUntil((route) => route.isFirst);
                 }
               },
               onCancel: () {
-                Navigator.of(context).pop();
+                navigator.pop();
               },
             ),
           ),
@@ -264,23 +277,29 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
   }
 
   Widget _buildDraftCard(Map<String, dynamic> draft) {
-    final videoPath = draft['videoPath'] as String?;
-    final thumbnailPath = draft['thumbnailPath'] as String?;
+    final videoSource =
+        (draft['videoPath'] as String?)?.isNotEmpty == true
+            ? draft['videoPath'] as String
+            : (draft['videoUrl'] as String?) ?? '';
+    final thumbnailSource =
+        (draft['thumbnailPath'] as String?)?.isNotEmpty == true
+            ? draft['thumbnailPath'] as String
+            : (draft['thumbnailUrl'] as String?) ?? '';
     final draftId = draft['id'] ?? 'draft';
 
     debugPrint('🎬 DraftCard: Building draft $draftId');
-    debugPrint('  - videoPath: $videoPath');
-    debugPrint('  - thumbnailPath: $thumbnailPath');
+    debugPrint('  - videoSource: $videoSource');
+    debugPrint('  - thumbnailSource: $thumbnailSource');
 
     // Check if thumbnail exists, if not generate it
-    final hasThumbnail = thumbnailPath != null && 
-        thumbnailPath.isNotEmpty && 
-        File(thumbnailPath).existsSync();
+    final hasLocalThumbnail = (draft['thumbnailPath'] as String?)?.isNotEmpty == true &&
+        File(draft['thumbnailPath'] as String).existsSync();
+    final hasThumbnail = hasLocalThumbnail || thumbnailSource.isNotEmpty;
 
     final draftVideo = HomeVideo(
       id: draftId,
-      videoURL: videoPath ?? '',
-      thumbnailURL: hasThumbnail ? thumbnailPath : null,
+      videoURL: videoSource,
+      thumbnailURL: hasThumbnail ? thumbnailSource : null,
       creator: User(
         id: 'current_user',
         displayName: 'You',
@@ -303,9 +322,13 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
     return Stack(
       children: [
         // Generate thumbnail if missing
-        if (!hasThumbnail && videoPath != null)
+        if (!hasThumbnail &&
+            (draft['videoPath'] as String?)?.isNotEmpty == true)
           FutureBuilder<String?>(
-            future: _generateThumbnailIfMissing(draftId, videoPath),
+            future: _generateThumbnailIfMissing(
+              draftId,
+              draft['videoPath'] as String,
+            ),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return _buildLoadingThumbnail();
@@ -418,20 +441,10 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
         );
         
         if (draft.isNotEmpty) {
-          draft['thumbnailPath'] = thumbnailPath;
-          // Save updated draft using LocalDraftService
-          final localDraftService = LocalDraftService();
-          // Reload and update all drafts
-          final allDrafts = await localDraftService.getAllDrafts();
-          final updatedDrafts = allDrafts.map((d) {
-            if (d['id'] == draftId) {
-              return draft;
-            }
-            return d;
-          }).toList();
-          // Save back using the service's internal method
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('draftVideos', json.encode(updatedDrafts));
+          await localDraftService.updateDraftFields(
+            draftId,
+            {'thumbnailPath': thumbnailPath},
+          );
         }
         
         debugPrint('✅ Generated thumbnail: $thumbnailPath');
@@ -460,4 +473,3 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
     );
   }
 }
-

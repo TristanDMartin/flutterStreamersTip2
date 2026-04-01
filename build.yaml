@@ -2,6 +2,7 @@ targets:
   $default:
     sources:
       include:
+        - $package$
         - lib/**
         - assets/**
       exclude:
@@ -12,6 +13,3 @@ targets:
         - macos/**
         - linux/**
         - windows/**
-    builders:
-      riverpod_generator:
-        options: {}

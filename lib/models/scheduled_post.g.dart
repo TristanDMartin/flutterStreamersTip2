@@ -6,8 +6,8 @@ part of 'scheduled_post.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$ScheduledPostImpl _$$ScheduledPostImplFromJson(Map<String, dynamic> json) =>
-    _$ScheduledPostImpl(
+_ScheduledPost _$ScheduledPostFromJson(Map<String, dynamic> json) =>
+    _ScheduledPost(
       id: json['id'] as String,
       authorId: json['authorId'] as String,
       status: $enumDecode(_$PostStatusEnumMap, json['status']),
@@ -36,7 +36,7 @@ _$ScheduledPostImpl _$$ScheduledPostImplFromJson(Map<String, dynamic> json) =>
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
 
-Map<String, dynamic> _$$ScheduledPostImplToJson(_$ScheduledPostImpl instance) =>
+Map<String, dynamic> _$ScheduledPostToJson(_ScheduledPost instance) =>
     <String, dynamic>{
       'id': instance.id,
       'authorId': instance.authorId,
@@ -68,8 +68,7 @@ const _$PostVisibilityEnumMap = {
   PostVisibility.unlisted: 'unlisted',
 };
 
-_$PostMediaImpl _$$PostMediaImplFromJson(Map<String, dynamic> json) =>
-    _$PostMediaImpl(
+_PostMedia _$PostMediaFromJson(Map<String, dynamic> json) => _PostMedia(
       id: json['id'] as String,
       type: $enumDecode(_$MediaTypeEnumMap, json['type']),
       src: json['src'] as String,
@@ -81,7 +80,7 @@ _$PostMediaImpl _$$PostMediaImplFromJson(Map<String, dynamic> json) =>
           const [],
     );
 
-Map<String, dynamic> _$$PostMediaImplToJson(_$PostMediaImpl instance) =>
+Map<String, dynamic> _$PostMediaToJson(_PostMedia instance) =>
     <String, dynamic>{
       'id': instance.id,
       'type': _$MediaTypeEnumMap[instance.type]!,
@@ -97,8 +96,8 @@ const _$MediaTypeEnumMap = {
   MediaType.gif: 'gif',
 };
 
-_$MediaVariantImpl _$$MediaVariantImplFromJson(Map<String, dynamic> json) =>
-    _$MediaVariantImpl(
+_MediaVariant _$MediaVariantFromJson(Map<String, dynamic> json) =>
+    _MediaVariant(
       platform: json['platform'] as String,
       src: json['src'] as String,
       aspectRatio: (json['aspectRatio'] as num).toDouble(),
@@ -106,7 +105,7 @@ _$MediaVariantImpl _$$MediaVariantImplFromJson(Map<String, dynamic> json) =>
       metadata: json['metadata'] as Map<String, dynamic>?,
     );
 
-Map<String, dynamic> _$$MediaVariantImplToJson(_$MediaVariantImpl instance) =>
+Map<String, dynamic> _$MediaVariantToJson(_MediaVariant instance) =>
     <String, dynamic>{
       'platform': instance.platform,
       'src': instance.src,
@@ -115,8 +114,8 @@ Map<String, dynamic> _$$MediaVariantImplToJson(_$MediaVariantImpl instance) =>
       'metadata': instance.metadata,
     };
 
-_$PlatformConfigImpl _$$PlatformConfigImplFromJson(Map<String, dynamic> json) =>
-    _$PlatformConfigImpl(
+_PlatformConfig _$PlatformConfigFromJson(Map<String, dynamic> json) =>
+    _PlatformConfig(
       key: json['key'] as String,
       enabled: json['enabled'] as bool,
       payload: json['payload'] as Map<String, dynamic>?,
@@ -127,8 +126,7 @@ _$PlatformConfigImpl _$$PlatformConfigImplFromJson(Map<String, dynamic> json) =>
           : DateTime.parse(json['scheduledAtUtc'] as String),
     );
 
-Map<String, dynamic> _$$PlatformConfigImplToJson(
-        _$PlatformConfigImpl instance) =>
+Map<String, dynamic> _$PlatformConfigToJson(_PlatformConfig instance) =>
     <String, dynamic>{
       'key': instance.key,
       'enabled': instance.enabled,
@@ -147,8 +145,8 @@ const _$PlatformStatusEnumMap = {
   PlatformStatus.canceled: 'canceled',
 };
 
-_$PostScheduleImpl _$$PostScheduleImplFromJson(Map<String, dynamic> json) =>
-    _$PostScheduleImpl(
+_PostSchedule _$PostScheduleFromJson(Map<String, dynamic> json) =>
+    _PostSchedule(
       scheduledAtUtc: DateTime.parse(json['scheduledAtUtc'] as String),
       timezone: json['timezone'] as String,
       perPlatform: (json['perPlatform'] as Map<String, dynamic>?)?.map(
@@ -160,7 +158,7 @@ _$PostScheduleImpl _$$PostScheduleImplFromJson(Map<String, dynamic> json) =>
       updatedAtUtc: DateTime.parse(json['updatedAtUtc'] as String),
     );
 
-Map<String, dynamic> _$$PostScheduleImplToJson(_$PostScheduleImpl instance) =>
+Map<String, dynamic> _$PostScheduleToJson(_PostSchedule instance) =>
     <String, dynamic>{
       'scheduledAtUtc': instance.scheduledAtUtc.toIso8601String(),
       'timezone': instance.timezone,
@@ -169,15 +167,13 @@ Map<String, dynamic> _$$PostScheduleImplToJson(_$PostScheduleImpl instance) =>
       'updatedAtUtc': instance.updatedAtUtc.toIso8601String(),
     };
 
-_$PlatformScheduleImpl _$$PlatformScheduleImplFromJson(
-        Map<String, dynamic> json) =>
-    _$PlatformScheduleImpl(
+_PlatformSchedule _$PlatformScheduleFromJson(Map<String, dynamic> json) =>
+    _PlatformSchedule(
       scheduledAtUtc: DateTime.parse(json['scheduledAtUtc'] as String),
       timezone: json['timezone'] as String?,
     );
 
-Map<String, dynamic> _$$PlatformScheduleImplToJson(
-        _$PlatformScheduleImpl instance) =>
+Map<String, dynamic> _$PlatformScheduleToJson(_PlatformSchedule instance) =>
     <String, dynamic>{
       'scheduledAtUtc': instance.scheduledAtUtc.toIso8601String(),
       'timezone': instance.timezone,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../models/upload_job.dart';
 import '../services/upload_status_manager.dart';
 
 class UploadStatusBar extends StatefulWidget {
@@ -9,41 +11,68 @@ class UploadStatusBar extends StatefulWidget {
 }
 
 class _UploadStatusBarState extends State<UploadStatusBar> {
-  final UploadStatusManager _uploadStatusManager = UploadStatusManager();
+  final UploadStatusManager _mgr = UploadStatusManager();
 
   @override
   void initState() {
     super.initState();
-    _uploadStatusManager.addListener(_onUploadStatusChanged);
+    _mgr.addListener(_rebuild);
   }
 
   @override
   void dispose() {
-    _uploadStatusManager.removeListener(_onUploadStatusChanged);
+    _mgr.removeListener(_rebuild);
     super.dispose();
   }
 
-  void _onUploadStatusChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+  void _rebuild() {
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_uploadStatusManager.showStatusBar) {
-      return const SizedBox.shrink();
-    }
+    if (!_mgr.showStatusBar) return const SizedBox.shrink();
 
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: _buildCard(context),
+    );
+  }
+
+  Widget _buildCard(BuildContext context) {
+    switch (_mgr.currentState) {
+      case UploadJobState.uploading:
+      case UploadJobState.queued:
+        return _UploadingCard(mgr: _mgr);
+      case UploadJobState.processing:
+        return _ProcessingCard(mgr: _mgr);
+      case UploadJobState.ready:
+      case UploadJobState.done:
+        return _ReadyCard(mgr: _mgr);
+      case UploadJobState.failed:
+        return _FailedCard(mgr: _mgr);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+}
+
+// ─── Shared card shell ────────────────────────────────────────────────────────
+
+class _StatusCard extends StatelessWidget {
+  final Color borderColor;
+  final List<Widget> children;
+
+  const _StatusCard({required this.borderColor, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: borderColor.withValues(alpha: 0.4)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.3),
@@ -52,164 +81,300 @@ class _UploadStatusBarState extends State<UploadStatusBar> {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          // Progress indicator
-          SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              value: _uploadStatusManager.currentProgress,
-              strokeWidth: 2,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-            ),
-          ),
-          const SizedBox(width: 12),
-
-          // Status message
-          Expanded(
-            child: Text(
-              _uploadStatusManager.currentStatusMessage,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-
-          // Tap to view button
-          if (_uploadStatusManager.currentJobId != null)
-            GestureDetector(
-              onTap: () => _showUploadDetails(context, _uploadStatusManager),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF9248D2).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'View',
-                  style: TextStyle(
-                    color: Color(0xFF9248D2),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-        ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: children,
       ),
     );
   }
+}
 
-  void _showUploadDetails(
-      BuildContext context, UploadStatusManager uploadStatusManager) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+// ─── Uploading ────────────────────────────────────────────────────────────────
+
+class _UploadingCard extends StatelessWidget {
+  final UploadStatusManager mgr;
+  const _UploadingCard({required this.mgr});
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (mgr.currentProgress * 100).toStringAsFixed(0);
+    return _StatusCard(
+      borderColor: const Color(0xFF9248D2),
+      children: [
+        Row(
           children: [
-            // Header
-            Row(
-              children: [
-                const Icon(
-                  Icons.cloud_upload,
-                  color: Color(0xFF9248D2),
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Upload Progress',
-                  style: TextStyle(
+            const Icon(Icons.cloud_upload_outlined,
+                color: Color(0xFF9248D2), size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                mgr.currentStatusMessage,
+                style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close, color: Colors.white70),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Progress bar
-            LinearProgressIndicator(
-              value: uploadStatusManager.currentProgress,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
-            ),
-            const SizedBox(height: 12),
-
-            // Status text
-            Text(
-              uploadStatusManager.currentStatusMessage,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500),
               ),
             ),
-            const SizedBox(height: 20),
+            if (mgr.currentJobId != null)
+              GestureDetector(
+                onTap: () {
+                  if (mgr.currentJobId != null) {
+                    mgr.cancelUpload(mgr.currentJobId!);
+                  }
+                },
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 8),
+                  child: Icon(Icons.close, color: Colors.white54, size: 18),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: mgr.currentProgress,
+            minHeight: 4,
+            backgroundColor: Colors.white12,
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            '$pct%',
+            style: const TextStyle(color: Colors.white38, fontSize: 11),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
-            // Action buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      if (uploadStatusManager.currentJobId != null) {
-                        uploadStatusManager
-                            .cancelUpload(uploadStatusManager.currentJobId!);
-                        Navigator.pop(context);
-                      }
-                    },
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.red),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      // Retry functionality - placeholder for future implementation
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF9248D2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text(
-                      'Retry',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                ),
-              ],
+// ─── Processing ───────────────────────────────────────────────────────────────
+
+class _ProcessingCard extends StatelessWidget {
+  final UploadStatusManager mgr;
+  const _ProcessingCard({required this.mgr});
+
+  @override
+  Widget build(BuildContext context) {
+    return _StatusCard(
+      borderColor: const Color(0xFF9248D2),
+      children: [
+        Row(
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor:
+                    AlwaysStoppedAnimation<Color>(Color(0xFF9248D2)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Processing your video...',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500),
+              ),
+            ),
+            GestureDetector(
+              onTap: mgr.dismissStatusBar,
+              child: const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: Icon(Icons.close, color: Colors.white38, size: 16),
+              ),
             ),
           ],
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          "You can leave — we'll notify you when it's live.",
+          style: TextStyle(color: Colors.white38, fontSize: 11),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Ready ────────────────────────────────────────────────────────────────────
+
+class _ReadyCard extends StatelessWidget {
+  final UploadStatusManager mgr;
+  const _ReadyCard({required this.mgr});
+
+  @override
+  Widget build(BuildContext context) {
+    return _StatusCard(
+      borderColor: Colors.greenAccent,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (mgr.thumbnailUrl != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: CachedNetworkImage(
+                  imageUrl: mgr.thumbnailUrl!,
+                  width: 44,
+                  height: 60,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => const _ThumbnailPlaceholder(),
+                  placeholder: (_, __) => const _ThumbnailPlaceholder(),
+                ),
+              )
+            else
+              const _ThumbnailPlaceholder(),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Your video is live 🎉',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Tap View to see it on your profile.',
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _PillButton(
+                        label: 'View',
+                        color: const Color(0xFF9248D2),
+                        onTap: () {
+                          mgr.dismissStatusBar();
+                          // Navigation to profile handled at the app level.
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      _PillButton(
+                        label: 'Dismiss',
+                        color: Colors.white24,
+                        onTap: mgr.dismissStatusBar,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Failed ───────────────────────────────────────────────────────────────────
+
+class _FailedCard extends StatelessWidget {
+  final UploadStatusManager mgr;
+  const _FailedCard({required this.mgr});
+
+  @override
+  Widget build(BuildContext context) {
+    return _StatusCard(
+      borderColor: Colors.redAccent,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                mgr.errorMessage ?? 'Upload failed',
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            GestureDetector(
+              onTap: mgr.dismissStatusBar,
+              child: const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: Icon(Icons.close, color: Colors.white38, size: 16),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _PillButton(
+              label: 'Retry',
+              color: Colors.redAccent,
+              onTap: mgr.retryUpload,
+            ),
+            const SizedBox(width: 8),
+            _PillButton(
+              label: 'Dismiss',
+              color: Colors.white24,
+              onTap: mgr.dismissStatusBar,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+class _ThumbnailPlaceholder extends StatelessWidget {
+  const _ThumbnailPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 60,
+      decoration: BoxDecoration(
+        color: Colors.white12,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: const Icon(Icons.movie, color: Colors.white38, size: 20),
+    );
+  }
+}
+
+class _PillButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _PillButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+              color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
         ),
       ),
     );

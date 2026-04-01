@@ -11,7 +11,7 @@ import '../models/user.dart' as app_user;
 part 'activity_provider.freezed.dart';
 
 @freezed
-class ActivityState with _$ActivityState {
+sealed class ActivityState with _$ActivityState {
   const factory ActivityState({
     @Default({}) Map<String, List<ActivityNotification>> grouped,
     @Default(false) bool isLoading,
@@ -498,7 +498,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         } catch (legacyError) {
           debugPrint(
               '❌ Failed to mark notification as read in both structures: $e, $legacyError');
-          throw legacyError;
+          rethrow;
         }
       }
 
@@ -978,6 +978,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       case 'live_stream':
       case 'live':
         return ActivityNotificationType.liveStream;
+      case 'admin_broadcast':
+      case 'adminbroadcast':
+      case 'broadcast':
+        return ActivityNotificationType.adminBroadcast;
       default:
         debugPrint(
             '⚠️ ActivityNotifier: Unknown notification type "$s", defaulting to like');

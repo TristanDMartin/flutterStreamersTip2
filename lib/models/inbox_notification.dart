@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'inbox_notification.freezed.dart';
 part 'inbox_notification.g.dart';
 
 @freezed
-class InboxNotification with _$InboxNotification {
+sealed class InboxNotification with _$InboxNotification {
   const factory InboxNotification({
     required String id,
     required String text,

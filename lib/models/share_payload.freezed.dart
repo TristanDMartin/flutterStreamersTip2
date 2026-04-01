@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,36 +9,68 @@ part of 'share_payload.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-SharePayload _$SharePayloadFromJson(Map<String, dynamic> json) {
-  return _SharePayload.fromJson(json);
-}
 
 /// @nodoc
 mixin _$SharePayload {
-  String get videoId => throw _privateConstructorUsedError;
-  ShareLinks get links => throw _privateConstructorUsedError;
-  SharePermissions get permissions => throw _privateConstructorUsedError;
-  ShareMetadata get metadata => throw _privateConstructorUsedError;
-  String? get trackingToken => throw _privateConstructorUsedError;
-  Map<String, int> get platformUsageRanking =>
-      throw _privateConstructorUsedError;
+  String get videoId;
+  ShareLinks get links;
+  SharePermissions get permissions;
+  ShareMetadata get metadata;
+  String? get trackingToken;
+  Map<String, int> get platformUsageRanking;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
   $SharePayloadCopyWith<SharePayload> get copyWith =>
-      throw _privateConstructorUsedError;
+      _$SharePayloadCopyWithImpl<SharePayload>(
+          this as SharePayload, _$identity);
+
+  /// Serializes this SharePayload to a JSON map.
+  Map<String, dynamic> toJson();
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is SharePayload &&
+            (identical(other.videoId, videoId) || other.videoId == videoId) &&
+            (identical(other.links, links) || other.links == links) &&
+            (identical(other.permissions, permissions) ||
+                other.permissions == permissions) &&
+            (identical(other.metadata, metadata) ||
+                other.metadata == metadata) &&
+            (identical(other.trackingToken, trackingToken) ||
+                other.trackingToken == trackingToken) &&
+            const DeepCollectionEquality()
+                .equals(other.platformUsageRanking, platformUsageRanking));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      videoId,
+      links,
+      permissions,
+      metadata,
+      trackingToken,
+      const DeepCollectionEquality().hash(platformUsageRanking));
+
+  @override
+  String toString() {
+    return 'SharePayload(videoId: $videoId, links: $links, permissions: $permissions, metadata: $metadata, trackingToken: $trackingToken, platformUsageRanking: $platformUsageRanking)';
+  }
 }
 
 /// @nodoc
-abstract class $SharePayloadCopyWith<$Res> {
+abstract mixin class $SharePayloadCopyWith<$Res> {
   factory $SharePayloadCopyWith(
-          SharePayload value, $Res Function(SharePayload) then) =
-      _$SharePayloadCopyWithImpl<$Res, SharePayload>;
+          SharePayload value, $Res Function(SharePayload) _then) =
+      _$SharePayloadCopyWithImpl;
   @useResult
   $Res call(
       {String videoId,
@@ -54,15 +86,14 @@ abstract class $SharePayloadCopyWith<$Res> {
 }
 
 /// @nodoc
-class _$SharePayloadCopyWithImpl<$Res, $Val extends SharePayload>
-    implements $SharePayloadCopyWith<$Res> {
-  _$SharePayloadCopyWithImpl(this._value, this._then);
+class _$SharePayloadCopyWithImpl<$Res> implements $SharePayloadCopyWith<$Res> {
+  _$SharePayloadCopyWithImpl(this._self, this._then);
 
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
+  final SharePayload _self;
+  final $Res Function(SharePayload) _then;
 
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -73,134 +104,246 @@ class _$SharePayloadCopyWithImpl<$Res, $Val extends SharePayload>
     Object? trackingToken = freezed,
     Object? platformUsageRanking = null,
   }) {
-    return _then(_value.copyWith(
+    return _then(_self.copyWith(
       videoId: null == videoId
-          ? _value.videoId
+          ? _self.videoId
           : videoId // ignore: cast_nullable_to_non_nullable
               as String,
       links: null == links
-          ? _value.links
+          ? _self.links
           : links // ignore: cast_nullable_to_non_nullable
               as ShareLinks,
       permissions: null == permissions
-          ? _value.permissions
+          ? _self.permissions
           : permissions // ignore: cast_nullable_to_non_nullable
               as SharePermissions,
       metadata: null == metadata
-          ? _value.metadata
+          ? _self.metadata
           : metadata // ignore: cast_nullable_to_non_nullable
               as ShareMetadata,
       trackingToken: freezed == trackingToken
-          ? _value.trackingToken
+          ? _self.trackingToken
           : trackingToken // ignore: cast_nullable_to_non_nullable
               as String?,
       platformUsageRanking: null == platformUsageRanking
-          ? _value.platformUsageRanking
-          : platformUsageRanking // ignore: cast_nullable_to_non_nullable
-              as Map<String, int>,
-    ) as $Val);
-  }
-
-  @override
-  @pragma('vm:prefer-inline')
-  $ShareLinksCopyWith<$Res> get links {
-    return $ShareLinksCopyWith<$Res>(_value.links, (value) {
-      return _then(_value.copyWith(links: value) as $Val);
-    });
-  }
-
-  @override
-  @pragma('vm:prefer-inline')
-  $SharePermissionsCopyWith<$Res> get permissions {
-    return $SharePermissionsCopyWith<$Res>(_value.permissions, (value) {
-      return _then(_value.copyWith(permissions: value) as $Val);
-    });
-  }
-
-  @override
-  @pragma('vm:prefer-inline')
-  $ShareMetadataCopyWith<$Res> get metadata {
-    return $ShareMetadataCopyWith<$Res>(_value.metadata, (value) {
-      return _then(_value.copyWith(metadata: value) as $Val);
-    });
-  }
-}
-
-/// @nodoc
-abstract class _$$SharePayloadImplCopyWith<$Res>
-    implements $SharePayloadCopyWith<$Res> {
-  factory _$$SharePayloadImplCopyWith(
-          _$SharePayloadImpl value, $Res Function(_$SharePayloadImpl) then) =
-      __$$SharePayloadImplCopyWithImpl<$Res>;
-  @override
-  @useResult
-  $Res call(
-      {String videoId,
-      ShareLinks links,
-      SharePermissions permissions,
-      ShareMetadata metadata,
-      String? trackingToken,
-      Map<String, int> platformUsageRanking});
-
-  @override
-  $ShareLinksCopyWith<$Res> get links;
-  @override
-  $SharePermissionsCopyWith<$Res> get permissions;
-  @override
-  $ShareMetadataCopyWith<$Res> get metadata;
-}
-
-/// @nodoc
-class __$$SharePayloadImplCopyWithImpl<$Res>
-    extends _$SharePayloadCopyWithImpl<$Res, _$SharePayloadImpl>
-    implements _$$SharePayloadImplCopyWith<$Res> {
-  __$$SharePayloadImplCopyWithImpl(
-      _$SharePayloadImpl _value, $Res Function(_$SharePayloadImpl) _then)
-      : super(_value, _then);
-
-  @pragma('vm:prefer-inline')
-  @override
-  $Res call({
-    Object? videoId = null,
-    Object? links = null,
-    Object? permissions = null,
-    Object? metadata = null,
-    Object? trackingToken = freezed,
-    Object? platformUsageRanking = null,
-  }) {
-    return _then(_$SharePayloadImpl(
-      videoId: null == videoId
-          ? _value.videoId
-          : videoId // ignore: cast_nullable_to_non_nullable
-              as String,
-      links: null == links
-          ? _value.links
-          : links // ignore: cast_nullable_to_non_nullable
-              as ShareLinks,
-      permissions: null == permissions
-          ? _value.permissions
-          : permissions // ignore: cast_nullable_to_non_nullable
-              as SharePermissions,
-      metadata: null == metadata
-          ? _value.metadata
-          : metadata // ignore: cast_nullable_to_non_nullable
-              as ShareMetadata,
-      trackingToken: freezed == trackingToken
-          ? _value.trackingToken
-          : trackingToken // ignore: cast_nullable_to_non_nullable
-              as String?,
-      platformUsageRanking: null == platformUsageRanking
-          ? _value._platformUsageRanking
+          ? _self.platformUsageRanking
           : platformUsageRanking // ignore: cast_nullable_to_non_nullable
               as Map<String, int>,
     ));
+  }
+
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $ShareLinksCopyWith<$Res> get links {
+    return $ShareLinksCopyWith<$Res>(_self.links, (value) {
+      return _then(_self.copyWith(links: value));
+    });
+  }
+
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $SharePermissionsCopyWith<$Res> get permissions {
+    return $SharePermissionsCopyWith<$Res>(_self.permissions, (value) {
+      return _then(_self.copyWith(permissions: value));
+    });
+  }
+
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $ShareMetadataCopyWith<$Res> get metadata {
+    return $ShareMetadataCopyWith<$Res>(_self.metadata, (value) {
+      return _then(_self.copyWith(metadata: value));
+    });
+  }
+}
+
+/// Adds pattern-matching-related methods to [SharePayload].
+extension SharePayloadPatterns on SharePayload {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_SharePayload value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _SharePayload() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_SharePayload value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SharePayload():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_SharePayload value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SharePayload() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String videoId,
+            ShareLinks links,
+            SharePermissions permissions,
+            ShareMetadata metadata,
+            String? trackingToken,
+            Map<String, int> platformUsageRanking)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _SharePayload() when $default != null:
+        return $default(_that.videoId, _that.links, _that.permissions,
+            _that.metadata, _that.trackingToken, _that.platformUsageRanking);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String videoId,
+            ShareLinks links,
+            SharePermissions permissions,
+            ShareMetadata metadata,
+            String? trackingToken,
+            Map<String, int> platformUsageRanking)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SharePayload():
+        return $default(_that.videoId, _that.links, _that.permissions,
+            _that.metadata, _that.trackingToken, _that.platformUsageRanking);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String videoId,
+            ShareLinks links,
+            SharePermissions permissions,
+            ShareMetadata metadata,
+            String? trackingToken,
+            Map<String, int> platformUsageRanking)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SharePayload() when $default != null:
+        return $default(_that.videoId, _that.links, _that.permissions,
+            _that.metadata, _that.trackingToken, _that.platformUsageRanking);
+      case _:
+        return null;
+    }
   }
 }
 
 /// @nodoc
 @JsonSerializable()
-class _$SharePayloadImpl implements _SharePayload {
-  const _$SharePayloadImpl(
+class _SharePayload implements SharePayload {
+  const _SharePayload(
       {required this.videoId,
       required this.links,
       required this.permissions,
@@ -208,9 +351,8 @@ class _$SharePayloadImpl implements _SharePayload {
       this.trackingToken,
       final Map<String, int> platformUsageRanking = const {}})
       : _platformUsageRanking = platformUsageRanking;
-
-  factory _$SharePayloadImpl.fromJson(Map<String, dynamic> json) =>
-      _$$SharePayloadImplFromJson(json);
+  factory _SharePayload.fromJson(Map<String, dynamic> json) =>
+      _$SharePayloadFromJson(json);
 
   @override
   final String videoId;
@@ -232,16 +374,26 @@ class _$SharePayloadImpl implements _SharePayload {
     return EqualUnmodifiableMapView(_platformUsageRanking);
   }
 
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'SharePayload(videoId: $videoId, links: $links, permissions: $permissions, metadata: $metadata, trackingToken: $trackingToken, platformUsageRanking: $platformUsageRanking)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$SharePayloadCopyWith<_SharePayload> get copyWith =>
+      __$SharePayloadCopyWithImpl<_SharePayload>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$SharePayloadToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$SharePayloadImpl &&
+            other is _SharePayload &&
             (identical(other.videoId, videoId) || other.videoId == videoId) &&
             (identical(other.links, links) || other.links == links) &&
             (identical(other.permissions, permissions) ||
@@ -254,7 +406,7 @@ class _$SharePayloadImpl implements _SharePayload {
                 .equals(other._platformUsageRanking, _platformUsageRanking));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType,
@@ -265,202 +417,137 @@ class _$SharePayloadImpl implements _SharePayload {
       trackingToken,
       const DeepCollectionEquality().hash(_platformUsageRanking));
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$SharePayloadImplCopyWith<_$SharePayloadImpl> get copyWith =>
-      __$$SharePayloadImplCopyWithImpl<_$SharePayloadImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$SharePayloadImplToJson(
-      this,
-    );
+  String toString() {
+    return 'SharePayload(videoId: $videoId, links: $links, permissions: $permissions, metadata: $metadata, trackingToken: $trackingToken, platformUsageRanking: $platformUsageRanking)';
   }
 }
 
-abstract class _SharePayload implements SharePayload {
-  const factory _SharePayload(
-      {required final String videoId,
-      required final ShareLinks links,
-      required final SharePermissions permissions,
-      required final ShareMetadata metadata,
-      final String? trackingToken,
-      final Map<String, int> platformUsageRanking}) = _$SharePayloadImpl;
+/// @nodoc
+abstract mixin class _$SharePayloadCopyWith<$Res>
+    implements $SharePayloadCopyWith<$Res> {
+  factory _$SharePayloadCopyWith(
+          _SharePayload value, $Res Function(_SharePayload) _then) =
+      __$SharePayloadCopyWithImpl;
+  @override
+  @useResult
+  $Res call(
+      {String videoId,
+      ShareLinks links,
+      SharePermissions permissions,
+      ShareMetadata metadata,
+      String? trackingToken,
+      Map<String, int> platformUsageRanking});
 
-  factory _SharePayload.fromJson(Map<String, dynamic> json) =
-      _$SharePayloadImpl.fromJson;
-
   @override
-  String get videoId;
+  $ShareLinksCopyWith<$Res> get links;
   @override
-  ShareLinks get links;
+  $SharePermissionsCopyWith<$Res> get permissions;
   @override
-  SharePermissions get permissions;
-  @override
-  ShareMetadata get metadata;
-  @override
-  String? get trackingToken;
-  @override
-  Map<String, int> get platformUsageRanking;
-  @override
-  @JsonKey(ignore: true)
-  _$$SharePayloadImplCopyWith<_$SharePayloadImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  $ShareMetadataCopyWith<$Res> get metadata;
 }
 
-ShareLinks _$ShareLinksFromJson(Map<String, dynamic> json) {
-  return _ShareLinks.fromJson(json);
+/// @nodoc
+class __$SharePayloadCopyWithImpl<$Res>
+    implements _$SharePayloadCopyWith<$Res> {
+  __$SharePayloadCopyWithImpl(this._self, this._then);
+
+  final _SharePayload _self;
+  final $Res Function(_SharePayload) _then;
+
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? videoId = null,
+    Object? links = null,
+    Object? permissions = null,
+    Object? metadata = null,
+    Object? trackingToken = freezed,
+    Object? platformUsageRanking = null,
+  }) {
+    return _then(_SharePayload(
+      videoId: null == videoId
+          ? _self.videoId
+          : videoId // ignore: cast_nullable_to_non_nullable
+              as String,
+      links: null == links
+          ? _self.links
+          : links // ignore: cast_nullable_to_non_nullable
+              as ShareLinks,
+      permissions: null == permissions
+          ? _self.permissions
+          : permissions // ignore: cast_nullable_to_non_nullable
+              as SharePermissions,
+      metadata: null == metadata
+          ? _self.metadata
+          : metadata // ignore: cast_nullable_to_non_nullable
+              as ShareMetadata,
+      trackingToken: freezed == trackingToken
+          ? _self.trackingToken
+          : trackingToken // ignore: cast_nullable_to_non_nullable
+              as String?,
+      platformUsageRanking: null == platformUsageRanking
+          ? _self._platformUsageRanking
+          : platformUsageRanking // ignore: cast_nullable_to_non_nullable
+              as Map<String, int>,
+    ));
+  }
+
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $ShareLinksCopyWith<$Res> get links {
+    return $ShareLinksCopyWith<$Res>(_self.links, (value) {
+      return _then(_self.copyWith(links: value));
+    });
+  }
+
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $SharePermissionsCopyWith<$Res> get permissions {
+    return $SharePermissionsCopyWith<$Res>(_self.permissions, (value) {
+      return _then(_self.copyWith(permissions: value));
+    });
+  }
+
+  /// Create a copy of SharePayload
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $ShareMetadataCopyWith<$Res> get metadata {
+    return $ShareMetadataCopyWith<$Res>(_self.metadata, (value) {
+      return _then(_self.copyWith(metadata: value));
+    });
+  }
 }
 
 /// @nodoc
 mixin _$ShareLinks {
-  String get webShareUrl => throw _privateConstructorUsedError;
-  String? get deepLink => throw _privateConstructorUsedError;
-  String? get downloadUrl => throw _privateConstructorUsedError;
-  String? get embedCode => throw _privateConstructorUsedError;
+  String get webShareUrl;
+  String? get deepLink;
+  String? get downloadUrl;
+  String? get embedCode;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
+  /// Create a copy of ShareLinks
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
   $ShareLinksCopyWith<ShareLinks> get copyWith =>
-      throw _privateConstructorUsedError;
-}
+      _$ShareLinksCopyWithImpl<ShareLinks>(this as ShareLinks, _$identity);
 
-/// @nodoc
-abstract class $ShareLinksCopyWith<$Res> {
-  factory $ShareLinksCopyWith(
-          ShareLinks value, $Res Function(ShareLinks) then) =
-      _$ShareLinksCopyWithImpl<$Res, ShareLinks>;
-  @useResult
-  $Res call(
-      {String webShareUrl,
-      String? deepLink,
-      String? downloadUrl,
-      String? embedCode});
-}
-
-/// @nodoc
-class _$ShareLinksCopyWithImpl<$Res, $Val extends ShareLinks>
-    implements $ShareLinksCopyWith<$Res> {
-  _$ShareLinksCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
-  @pragma('vm:prefer-inline')
-  @override
-  $Res call({
-    Object? webShareUrl = null,
-    Object? deepLink = freezed,
-    Object? downloadUrl = freezed,
-    Object? embedCode = freezed,
-  }) {
-    return _then(_value.copyWith(
-      webShareUrl: null == webShareUrl
-          ? _value.webShareUrl
-          : webShareUrl // ignore: cast_nullable_to_non_nullable
-              as String,
-      deepLink: freezed == deepLink
-          ? _value.deepLink
-          : deepLink // ignore: cast_nullable_to_non_nullable
-              as String?,
-      downloadUrl: freezed == downloadUrl
-          ? _value.downloadUrl
-          : downloadUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      embedCode: freezed == embedCode
-          ? _value.embedCode
-          : embedCode // ignore: cast_nullable_to_non_nullable
-              as String?,
-    ) as $Val);
-  }
-}
-
-/// @nodoc
-abstract class _$$ShareLinksImplCopyWith<$Res>
-    implements $ShareLinksCopyWith<$Res> {
-  factory _$$ShareLinksImplCopyWith(
-          _$ShareLinksImpl value, $Res Function(_$ShareLinksImpl) then) =
-      __$$ShareLinksImplCopyWithImpl<$Res>;
-  @override
-  @useResult
-  $Res call(
-      {String webShareUrl,
-      String? deepLink,
-      String? downloadUrl,
-      String? embedCode});
-}
-
-/// @nodoc
-class __$$ShareLinksImplCopyWithImpl<$Res>
-    extends _$ShareLinksCopyWithImpl<$Res, _$ShareLinksImpl>
-    implements _$$ShareLinksImplCopyWith<$Res> {
-  __$$ShareLinksImplCopyWithImpl(
-      _$ShareLinksImpl _value, $Res Function(_$ShareLinksImpl) _then)
-      : super(_value, _then);
-
-  @pragma('vm:prefer-inline')
-  @override
-  $Res call({
-    Object? webShareUrl = null,
-    Object? deepLink = freezed,
-    Object? downloadUrl = freezed,
-    Object? embedCode = freezed,
-  }) {
-    return _then(_$ShareLinksImpl(
-      webShareUrl: null == webShareUrl
-          ? _value.webShareUrl
-          : webShareUrl // ignore: cast_nullable_to_non_nullable
-              as String,
-      deepLink: freezed == deepLink
-          ? _value.deepLink
-          : deepLink // ignore: cast_nullable_to_non_nullable
-              as String?,
-      downloadUrl: freezed == downloadUrl
-          ? _value.downloadUrl
-          : downloadUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      embedCode: freezed == embedCode
-          ? _value.embedCode
-          : embedCode // ignore: cast_nullable_to_non_nullable
-              as String?,
-    ));
-  }
-}
-
-/// @nodoc
-@JsonSerializable()
-class _$ShareLinksImpl implements _ShareLinks {
-  const _$ShareLinksImpl(
-      {required this.webShareUrl,
-      this.deepLink,
-      this.downloadUrl,
-      this.embedCode});
-
-  factory _$ShareLinksImpl.fromJson(Map<String, dynamic> json) =>
-      _$$ShareLinksImplFromJson(json);
-
-  @override
-  final String webShareUrl;
-  @override
-  final String? deepLink;
-  @override
-  final String? downloadUrl;
-  @override
-  final String? embedCode;
-
-  @override
-  String toString() {
-    return 'ShareLinks(webShareUrl: $webShareUrl, deepLink: $deepLink, downloadUrl: $downloadUrl, embedCode: $embedCode)';
-  }
+  /// Serializes this ShareLinks to a JSON map.
+  Map<String, dynamic> toJson();
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$ShareLinksImpl &&
+            other is ShareLinks &&
             (identical(other.webShareUrl, webShareUrl) ||
                 other.webShareUrl == webShareUrl) &&
             (identical(other.deepLink, deepLink) ||
@@ -471,209 +558,631 @@ class _$ShareLinksImpl implements _ShareLinks {
                 other.embedCode == embedCode));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode =>
       Object.hash(runtimeType, webShareUrl, deepLink, downloadUrl, embedCode);
 
-  @JsonKey(ignore: true)
   @override
+  String toString() {
+    return 'ShareLinks(webShareUrl: $webShareUrl, deepLink: $deepLink, downloadUrl: $downloadUrl, embedCode: $embedCode)';
+  }
+}
+
+/// @nodoc
+abstract mixin class $ShareLinksCopyWith<$Res> {
+  factory $ShareLinksCopyWith(
+          ShareLinks value, $Res Function(ShareLinks) _then) =
+      _$ShareLinksCopyWithImpl;
+  @useResult
+  $Res call(
+      {String webShareUrl,
+      String? deepLink,
+      String? downloadUrl,
+      String? embedCode});
+}
+
+/// @nodoc
+class _$ShareLinksCopyWithImpl<$Res> implements $ShareLinksCopyWith<$Res> {
+  _$ShareLinksCopyWithImpl(this._self, this._then);
+
+  final ShareLinks _self;
+  final $Res Function(ShareLinks) _then;
+
+  /// Create a copy of ShareLinks
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
-  _$$ShareLinksImplCopyWith<_$ShareLinksImpl> get copyWith =>
-      __$$ShareLinksImplCopyWithImpl<_$ShareLinksImpl>(this, _$identity);
+  @override
+  $Res call({
+    Object? webShareUrl = null,
+    Object? deepLink = freezed,
+    Object? downloadUrl = freezed,
+    Object? embedCode = freezed,
+  }) {
+    return _then(_self.copyWith(
+      webShareUrl: null == webShareUrl
+          ? _self.webShareUrl
+          : webShareUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      deepLink: freezed == deepLink
+          ? _self.deepLink
+          : deepLink // ignore: cast_nullable_to_non_nullable
+              as String?,
+      downloadUrl: freezed == downloadUrl
+          ? _self.downloadUrl
+          : downloadUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      embedCode: freezed == embedCode
+          ? _self.embedCode
+          : embedCode // ignore: cast_nullable_to_non_nullable
+              as String?,
+    ));
+  }
+}
+
+/// Adds pattern-matching-related methods to [ShareLinks].
+extension ShareLinksPatterns on ShareLinks {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_ShareLinks value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ShareLinks() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_ShareLinks value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareLinks():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_ShareLinks value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareLinks() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(String webShareUrl, String? deepLink, String? downloadUrl,
+            String? embedCode)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ShareLinks() when $default != null:
+        return $default(_that.webShareUrl, _that.deepLink, _that.downloadUrl,
+            _that.embedCode);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(String webShareUrl, String? deepLink, String? downloadUrl,
+            String? embedCode)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareLinks():
+        return $default(_that.webShareUrl, _that.deepLink, _that.downloadUrl,
+            _that.embedCode);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(String webShareUrl, String? deepLink, String? downloadUrl,
+            String? embedCode)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareLinks() when $default != null:
+        return $default(_that.webShareUrl, _that.deepLink, _that.downloadUrl,
+            _that.embedCode);
+      case _:
+        return null;
+    }
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _ShareLinks implements ShareLinks {
+  const _ShareLinks(
+      {required this.webShareUrl,
+      this.deepLink,
+      this.downloadUrl,
+      this.embedCode});
+  factory _ShareLinks.fromJson(Map<String, dynamic> json) =>
+      _$ShareLinksFromJson(json);
+
+  @override
+  final String webShareUrl;
+  @override
+  final String? deepLink;
+  @override
+  final String? downloadUrl;
+  @override
+  final String? embedCode;
+
+  /// Create a copy of ShareLinks
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$ShareLinksCopyWith<_ShareLinks> get copyWith =>
+      __$ShareLinksCopyWithImpl<_ShareLinks>(this, _$identity);
 
   @override
   Map<String, dynamic> toJson() {
-    return _$$ShareLinksImplToJson(
+    return _$ShareLinksToJson(
       this,
     );
   }
-}
-
-abstract class _ShareLinks implements ShareLinks {
-  const factory _ShareLinks(
-      {required final String webShareUrl,
-      final String? deepLink,
-      final String? downloadUrl,
-      final String? embedCode}) = _$ShareLinksImpl;
-
-  factory _ShareLinks.fromJson(Map<String, dynamic> json) =
-      _$ShareLinksImpl.fromJson;
 
   @override
-  String get webShareUrl;
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _ShareLinks &&
+            (identical(other.webShareUrl, webShareUrl) ||
+                other.webShareUrl == webShareUrl) &&
+            (identical(other.deepLink, deepLink) ||
+                other.deepLink == deepLink) &&
+            (identical(other.downloadUrl, downloadUrl) ||
+                other.downloadUrl == downloadUrl) &&
+            (identical(other.embedCode, embedCode) ||
+                other.embedCode == embedCode));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  String? get deepLink;
+  int get hashCode =>
+      Object.hash(runtimeType, webShareUrl, deepLink, downloadUrl, embedCode);
+
   @override
-  String? get downloadUrl;
-  @override
-  String? get embedCode;
-  @override
-  @JsonKey(ignore: true)
-  _$$ShareLinksImplCopyWith<_$ShareLinksImpl> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-SharePermissions _$SharePermissionsFromJson(Map<String, dynamic> json) {
-  return _SharePermissions.fromJson(json);
-}
-
-/// @nodoc
-mixin _$SharePermissions {
-  bool get canShare => throw _privateConstructorUsedError;
-  bool get canDownload => throw _privateConstructorUsedError;
-  bool get canDuet => throw _privateConstructorUsedError;
-  bool get canRemix => throw _privateConstructorUsedError;
-  bool get canRepost => throw _privateConstructorUsedError;
-  String? get restrictionReason => throw _privateConstructorUsedError;
-
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $SharePermissionsCopyWith<SharePermissions> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $SharePermissionsCopyWith<$Res> {
-  factory $SharePermissionsCopyWith(
-          SharePermissions value, $Res Function(SharePermissions) then) =
-      _$SharePermissionsCopyWithImpl<$Res, SharePermissions>;
-  @useResult
-  $Res call(
-      {bool canShare,
-      bool canDownload,
-      bool canDuet,
-      bool canRemix,
-      bool canRepost,
-      String? restrictionReason});
-}
-
-/// @nodoc
-class _$SharePermissionsCopyWithImpl<$Res, $Val extends SharePermissions>
-    implements $SharePermissionsCopyWith<$Res> {
-  _$SharePermissionsCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
-  @pragma('vm:prefer-inline')
-  @override
-  $Res call({
-    Object? canShare = null,
-    Object? canDownload = null,
-    Object? canDuet = null,
-    Object? canRemix = null,
-    Object? canRepost = null,
-    Object? restrictionReason = freezed,
-  }) {
-    return _then(_value.copyWith(
-      canShare: null == canShare
-          ? _value.canShare
-          : canShare // ignore: cast_nullable_to_non_nullable
-              as bool,
-      canDownload: null == canDownload
-          ? _value.canDownload
-          : canDownload // ignore: cast_nullable_to_non_nullable
-              as bool,
-      canDuet: null == canDuet
-          ? _value.canDuet
-          : canDuet // ignore: cast_nullable_to_non_nullable
-              as bool,
-      canRemix: null == canRemix
-          ? _value.canRemix
-          : canRemix // ignore: cast_nullable_to_non_nullable
-              as bool,
-      canRepost: null == canRepost
-          ? _value.canRepost
-          : canRepost // ignore: cast_nullable_to_non_nullable
-              as bool,
-      restrictionReason: freezed == restrictionReason
-          ? _value.restrictionReason
-          : restrictionReason // ignore: cast_nullable_to_non_nullable
-              as String?,
-    ) as $Val);
+  String toString() {
+    return 'ShareLinks(webShareUrl: $webShareUrl, deepLink: $deepLink, downloadUrl: $downloadUrl, embedCode: $embedCode)';
   }
 }
 
 /// @nodoc
-abstract class _$$SharePermissionsImplCopyWith<$Res>
-    implements $SharePermissionsCopyWith<$Res> {
-  factory _$$SharePermissionsImplCopyWith(_$SharePermissionsImpl value,
-          $Res Function(_$SharePermissionsImpl) then) =
-      __$$SharePermissionsImplCopyWithImpl<$Res>;
+abstract mixin class _$ShareLinksCopyWith<$Res>
+    implements $ShareLinksCopyWith<$Res> {
+  factory _$ShareLinksCopyWith(
+          _ShareLinks value, $Res Function(_ShareLinks) _then) =
+      __$ShareLinksCopyWithImpl;
   @override
   @useResult
   $Res call(
-      {bool canShare,
-      bool canDownload,
-      bool canDuet,
-      bool canRemix,
-      bool canRepost,
-      String? restrictionReason});
+      {String webShareUrl,
+      String? deepLink,
+      String? downloadUrl,
+      String? embedCode});
 }
 
 /// @nodoc
-class __$$SharePermissionsImplCopyWithImpl<$Res>
-    extends _$SharePermissionsCopyWithImpl<$Res, _$SharePermissionsImpl>
-    implements _$$SharePermissionsImplCopyWith<$Res> {
-  __$$SharePermissionsImplCopyWithImpl(_$SharePermissionsImpl _value,
-      $Res Function(_$SharePermissionsImpl) _then)
-      : super(_value, _then);
+class __$ShareLinksCopyWithImpl<$Res> implements _$ShareLinksCopyWith<$Res> {
+  __$ShareLinksCopyWithImpl(this._self, this._then);
 
-  @pragma('vm:prefer-inline')
+  final _ShareLinks _self;
+  final $Res Function(_ShareLinks) _then;
+
+  /// Create a copy of ShareLinks
+  /// with the given fields replaced by the non-null parameter values.
   @override
+  @pragma('vm:prefer-inline')
   $Res call({
-    Object? canShare = null,
-    Object? canDownload = null,
-    Object? canDuet = null,
-    Object? canRemix = null,
-    Object? canRepost = null,
-    Object? restrictionReason = freezed,
+    Object? webShareUrl = null,
+    Object? deepLink = freezed,
+    Object? downloadUrl = freezed,
+    Object? embedCode = freezed,
   }) {
-    return _then(_$SharePermissionsImpl(
-      canShare: null == canShare
-          ? _value.canShare
-          : canShare // ignore: cast_nullable_to_non_nullable
-              as bool,
-      canDownload: null == canDownload
-          ? _value.canDownload
-          : canDownload // ignore: cast_nullable_to_non_nullable
-              as bool,
-      canDuet: null == canDuet
-          ? _value.canDuet
-          : canDuet // ignore: cast_nullable_to_non_nullable
-              as bool,
-      canRemix: null == canRemix
-          ? _value.canRemix
-          : canRemix // ignore: cast_nullable_to_non_nullable
-              as bool,
-      canRepost: null == canRepost
-          ? _value.canRepost
-          : canRepost // ignore: cast_nullable_to_non_nullable
-              as bool,
-      restrictionReason: freezed == restrictionReason
-          ? _value.restrictionReason
-          : restrictionReason // ignore: cast_nullable_to_non_nullable
+    return _then(_ShareLinks(
+      webShareUrl: null == webShareUrl
+          ? _self.webShareUrl
+          : webShareUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      deepLink: freezed == deepLink
+          ? _self.deepLink
+          : deepLink // ignore: cast_nullable_to_non_nullable
+              as String?,
+      downloadUrl: freezed == downloadUrl
+          ? _self.downloadUrl
+          : downloadUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      embedCode: freezed == embedCode
+          ? _self.embedCode
+          : embedCode // ignore: cast_nullable_to_non_nullable
               as String?,
     ));
   }
 }
 
 /// @nodoc
+mixin _$SharePermissions {
+  bool get canShare;
+  bool get canDownload;
+  bool get canDuet;
+  bool get canRemix;
+  bool get canRepost;
+  String? get restrictionReason;
+
+  /// Create a copy of SharePermissions
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  $SharePermissionsCopyWith<SharePermissions> get copyWith =>
+      _$SharePermissionsCopyWithImpl<SharePermissions>(
+          this as SharePermissions, _$identity);
+
+  /// Serializes this SharePermissions to a JSON map.
+  Map<String, dynamic> toJson();
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is SharePermissions &&
+            (identical(other.canShare, canShare) ||
+                other.canShare == canShare) &&
+            (identical(other.canDownload, canDownload) ||
+                other.canDownload == canDownload) &&
+            (identical(other.canDuet, canDuet) || other.canDuet == canDuet) &&
+            (identical(other.canRemix, canRemix) ||
+                other.canRemix == canRemix) &&
+            (identical(other.canRepost, canRepost) ||
+                other.canRepost == canRepost) &&
+            (identical(other.restrictionReason, restrictionReason) ||
+                other.restrictionReason == restrictionReason));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, canShare, canDownload, canDuet,
+      canRemix, canRepost, restrictionReason);
+
+  @override
+  String toString() {
+    return 'SharePermissions(canShare: $canShare, canDownload: $canDownload, canDuet: $canDuet, canRemix: $canRemix, canRepost: $canRepost, restrictionReason: $restrictionReason)';
+  }
+}
+
+/// @nodoc
+abstract mixin class $SharePermissionsCopyWith<$Res> {
+  factory $SharePermissionsCopyWith(
+          SharePermissions value, $Res Function(SharePermissions) _then) =
+      _$SharePermissionsCopyWithImpl;
+  @useResult
+  $Res call(
+      {bool canShare,
+      bool canDownload,
+      bool canDuet,
+      bool canRemix,
+      bool canRepost,
+      String? restrictionReason});
+}
+
+/// @nodoc
+class _$SharePermissionsCopyWithImpl<$Res>
+    implements $SharePermissionsCopyWith<$Res> {
+  _$SharePermissionsCopyWithImpl(this._self, this._then);
+
+  final SharePermissions _self;
+  final $Res Function(SharePermissions) _then;
+
+  /// Create a copy of SharePermissions
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? canShare = null,
+    Object? canDownload = null,
+    Object? canDuet = null,
+    Object? canRemix = null,
+    Object? canRepost = null,
+    Object? restrictionReason = freezed,
+  }) {
+    return _then(_self.copyWith(
+      canShare: null == canShare
+          ? _self.canShare
+          : canShare // ignore: cast_nullable_to_non_nullable
+              as bool,
+      canDownload: null == canDownload
+          ? _self.canDownload
+          : canDownload // ignore: cast_nullable_to_non_nullable
+              as bool,
+      canDuet: null == canDuet
+          ? _self.canDuet
+          : canDuet // ignore: cast_nullable_to_non_nullable
+              as bool,
+      canRemix: null == canRemix
+          ? _self.canRemix
+          : canRemix // ignore: cast_nullable_to_non_nullable
+              as bool,
+      canRepost: null == canRepost
+          ? _self.canRepost
+          : canRepost // ignore: cast_nullable_to_non_nullable
+              as bool,
+      restrictionReason: freezed == restrictionReason
+          ? _self.restrictionReason
+          : restrictionReason // ignore: cast_nullable_to_non_nullable
+              as String?,
+    ));
+  }
+}
+
+/// Adds pattern-matching-related methods to [SharePermissions].
+extension SharePermissionsPatterns on SharePermissions {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_SharePermissions value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _SharePermissions() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_SharePermissions value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SharePermissions():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_SharePermissions value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SharePermissions() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(bool canShare, bool canDownload, bool canDuet,
+            bool canRemix, bool canRepost, String? restrictionReason)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _SharePermissions() when $default != null:
+        return $default(_that.canShare, _that.canDownload, _that.canDuet,
+            _that.canRemix, _that.canRepost, _that.restrictionReason);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(bool canShare, bool canDownload, bool canDuet,
+            bool canRemix, bool canRepost, String? restrictionReason)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SharePermissions():
+        return $default(_that.canShare, _that.canDownload, _that.canDuet,
+            _that.canRemix, _that.canRepost, _that.restrictionReason);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(bool canShare, bool canDownload, bool canDuet,
+            bool canRemix, bool canRepost, String? restrictionReason)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SharePermissions() when $default != null:
+        return $default(_that.canShare, _that.canDownload, _that.canDuet,
+            _that.canRemix, _that.canRepost, _that.restrictionReason);
+      case _:
+        return null;
+    }
+  }
+}
+
+/// @nodoc
 @JsonSerializable()
-class _$SharePermissionsImpl implements _SharePermissions {
-  const _$SharePermissionsImpl(
+class _SharePermissions implements SharePermissions {
+  const _SharePermissions(
       {this.canShare = true,
       this.canDownload = true,
       this.canDuet = true,
       this.canRemix = true,
       this.canRepost = true,
       this.restrictionReason});
-
-  factory _$SharePermissionsImpl.fromJson(Map<String, dynamic> json) =>
-      _$$SharePermissionsImplFromJson(json);
+  factory _SharePermissions.fromJson(Map<String, dynamic> json) =>
+      _$SharePermissionsFromJson(json);
 
   @override
   @JsonKey()
@@ -693,16 +1202,26 @@ class _$SharePermissionsImpl implements _SharePermissions {
   @override
   final String? restrictionReason;
 
+  /// Create a copy of SharePermissions
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'SharePermissions(canShare: $canShare, canDownload: $canDownload, canDuet: $canDuet, canRemix: $canRemix, canRepost: $canRepost, restrictionReason: $restrictionReason)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$SharePermissionsCopyWith<_SharePermissions> get copyWith =>
+      __$SharePermissionsCopyWithImpl<_SharePermissions>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$SharePermissionsToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$SharePermissionsImpl &&
+            other is _SharePermissions &&
             (identical(other.canShare, canShare) ||
                 other.canShare == canShare) &&
             (identical(other.canDownload, canDownload) ||
@@ -716,146 +1235,142 @@ class _$SharePermissionsImpl implements _SharePermissions {
                 other.restrictionReason == restrictionReason));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(runtimeType, canShare, canDownload, canDuet,
       canRemix, canRepost, restrictionReason);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$SharePermissionsImplCopyWith<_$SharePermissionsImpl> get copyWith =>
-      __$$SharePermissionsImplCopyWithImpl<_$SharePermissionsImpl>(
-          this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$SharePermissionsImplToJson(
-      this,
-    );
+  String toString() {
+    return 'SharePermissions(canShare: $canShare, canDownload: $canDownload, canDuet: $canDuet, canRemix: $canRemix, canRepost: $canRepost, restrictionReason: $restrictionReason)';
   }
 }
 
-abstract class _SharePermissions implements SharePermissions {
-  const factory _SharePermissions(
-      {final bool canShare,
-      final bool canDownload,
-      final bool canDuet,
-      final bool canRemix,
-      final bool canRepost,
-      final String? restrictionReason}) = _$SharePermissionsImpl;
-
-  factory _SharePermissions.fromJson(Map<String, dynamic> json) =
-      _$SharePermissionsImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$SharePermissionsCopyWith<$Res>
+    implements $SharePermissionsCopyWith<$Res> {
+  factory _$SharePermissionsCopyWith(
+          _SharePermissions value, $Res Function(_SharePermissions) _then) =
+      __$SharePermissionsCopyWithImpl;
   @override
-  bool get canShare;
-  @override
-  bool get canDownload;
-  @override
-  bool get canDuet;
-  @override
-  bool get canRemix;
-  @override
-  bool get canRepost;
-  @override
-  String? get restrictionReason;
-  @override
-  @JsonKey(ignore: true)
-  _$$SharePermissionsImplCopyWith<_$SharePermissionsImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {bool canShare,
+      bool canDownload,
+      bool canDuet,
+      bool canRemix,
+      bool canRepost,
+      String? restrictionReason});
 }
 
-ShareMetadata _$ShareMetadataFromJson(Map<String, dynamic> json) {
-  return _ShareMetadata.fromJson(json);
+/// @nodoc
+class __$SharePermissionsCopyWithImpl<$Res>
+    implements _$SharePermissionsCopyWith<$Res> {
+  __$SharePermissionsCopyWithImpl(this._self, this._then);
+
+  final _SharePermissions _self;
+  final $Res Function(_SharePermissions) _then;
+
+  /// Create a copy of SharePermissions
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? canShare = null,
+    Object? canDownload = null,
+    Object? canDuet = null,
+    Object? canRemix = null,
+    Object? canRepost = null,
+    Object? restrictionReason = freezed,
+  }) {
+    return _then(_SharePermissions(
+      canShare: null == canShare
+          ? _self.canShare
+          : canShare // ignore: cast_nullable_to_non_nullable
+              as bool,
+      canDownload: null == canDownload
+          ? _self.canDownload
+          : canDownload // ignore: cast_nullable_to_non_nullable
+              as bool,
+      canDuet: null == canDuet
+          ? _self.canDuet
+          : canDuet // ignore: cast_nullable_to_non_nullable
+              as bool,
+      canRemix: null == canRemix
+          ? _self.canRemix
+          : canRemix // ignore: cast_nullable_to_non_nullable
+              as bool,
+      canRepost: null == canRepost
+          ? _self.canRepost
+          : canRepost // ignore: cast_nullable_to_non_nullable
+              as bool,
+      restrictionReason: freezed == restrictionReason
+          ? _self.restrictionReason
+          : restrictionReason // ignore: cast_nullable_to_non_nullable
+              as String?,
+    ));
+  }
 }
 
 /// @nodoc
 mixin _$ShareMetadata {
-  String get creatorUsername => throw _privateConstructorUsedError;
-  String get creatorDisplayName => throw _privateConstructorUsedError;
-  String? get caption => throw _privateConstructorUsedError;
-  String? get thumbnailUrl => throw _privateConstructorUsedError;
-  List<String> get hashtags => throw _privateConstructorUsedError;
-  DateTime? get createdAt => throw _privateConstructorUsedError;
+  String get creatorUsername;
+  String get creatorDisplayName;
+  String? get caption;
+  String? get thumbnailUrl;
+  List<String> get hashtags;
+  DateTime? get createdAt;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $ShareMetadataCopyWith<ShareMetadata> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $ShareMetadataCopyWith<$Res> {
-  factory $ShareMetadataCopyWith(
-          ShareMetadata value, $Res Function(ShareMetadata) then) =
-      _$ShareMetadataCopyWithImpl<$Res, ShareMetadata>;
-  @useResult
-  $Res call(
-      {String creatorUsername,
-      String creatorDisplayName,
-      String? caption,
-      String? thumbnailUrl,
-      List<String> hashtags,
-      DateTime? createdAt});
-}
-
-/// @nodoc
-class _$ShareMetadataCopyWithImpl<$Res, $Val extends ShareMetadata>
-    implements $ShareMetadataCopyWith<$Res> {
-  _$ShareMetadataCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of ShareMetadata
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $ShareMetadataCopyWith<ShareMetadata> get copyWith =>
+      _$ShareMetadataCopyWithImpl<ShareMetadata>(
+          this as ShareMetadata, _$identity);
+
+  /// Serializes this ShareMetadata to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? creatorUsername = null,
-    Object? creatorDisplayName = null,
-    Object? caption = freezed,
-    Object? thumbnailUrl = freezed,
-    Object? hashtags = null,
-    Object? createdAt = freezed,
-  }) {
-    return _then(_value.copyWith(
-      creatorUsername: null == creatorUsername
-          ? _value.creatorUsername
-          : creatorUsername // ignore: cast_nullable_to_non_nullable
-              as String,
-      creatorDisplayName: null == creatorDisplayName
-          ? _value.creatorDisplayName
-          : creatorDisplayName // ignore: cast_nullable_to_non_nullable
-              as String,
-      caption: freezed == caption
-          ? _value.caption
-          : caption // ignore: cast_nullable_to_non_nullable
-              as String?,
-      thumbnailUrl: freezed == thumbnailUrl
-          ? _value.thumbnailUrl
-          : thumbnailUrl // ignore: cast_nullable_to_non_nullable
-              as String?,
-      hashtags: null == hashtags
-          ? _value.hashtags
-          : hashtags // ignore: cast_nullable_to_non_nullable
-              as List<String>,
-      createdAt: freezed == createdAt
-          ? _value.createdAt
-          : createdAt // ignore: cast_nullable_to_non_nullable
-              as DateTime?,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is ShareMetadata &&
+            (identical(other.creatorUsername, creatorUsername) ||
+                other.creatorUsername == creatorUsername) &&
+            (identical(other.creatorDisplayName, creatorDisplayName) ||
+                other.creatorDisplayName == creatorDisplayName) &&
+            (identical(other.caption, caption) || other.caption == caption) &&
+            (identical(other.thumbnailUrl, thumbnailUrl) ||
+                other.thumbnailUrl == thumbnailUrl) &&
+            const DeepCollectionEquality().equals(other.hashtags, hashtags) &&
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      creatorUsername,
+      creatorDisplayName,
+      caption,
+      thumbnailUrl,
+      const DeepCollectionEquality().hash(hashtags),
+      createdAt);
+
+  @override
+  String toString() {
+    return 'ShareMetadata(creatorUsername: $creatorUsername, creatorDisplayName: $creatorDisplayName, caption: $caption, thumbnailUrl: $thumbnailUrl, hashtags: $hashtags, createdAt: $createdAt)';
   }
 }
 
 /// @nodoc
-abstract class _$$ShareMetadataImplCopyWith<$Res>
-    implements $ShareMetadataCopyWith<$Res> {
-  factory _$$ShareMetadataImplCopyWith(
-          _$ShareMetadataImpl value, $Res Function(_$ShareMetadataImpl) then) =
-      __$$ShareMetadataImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $ShareMetadataCopyWith<$Res> {
+  factory $ShareMetadataCopyWith(
+          ShareMetadata value, $Res Function(ShareMetadata) _then) =
+      _$ShareMetadataCopyWithImpl;
   @useResult
   $Res call(
       {String creatorUsername,
@@ -867,13 +1382,15 @@ abstract class _$$ShareMetadataImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$ShareMetadataImplCopyWithImpl<$Res>
-    extends _$ShareMetadataCopyWithImpl<$Res, _$ShareMetadataImpl>
-    implements _$$ShareMetadataImplCopyWith<$Res> {
-  __$$ShareMetadataImplCopyWithImpl(
-      _$ShareMetadataImpl _value, $Res Function(_$ShareMetadataImpl) _then)
-      : super(_value, _then);
+class _$ShareMetadataCopyWithImpl<$Res>
+    implements $ShareMetadataCopyWith<$Res> {
+  _$ShareMetadataCopyWithImpl(this._self, this._then);
 
+  final ShareMetadata _self;
+  final $Res Function(ShareMetadata) _then;
+
+  /// Create a copy of ShareMetadata
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -884,39 +1401,216 @@ class __$$ShareMetadataImplCopyWithImpl<$Res>
     Object? hashtags = null,
     Object? createdAt = freezed,
   }) {
-    return _then(_$ShareMetadataImpl(
+    return _then(_self.copyWith(
       creatorUsername: null == creatorUsername
-          ? _value.creatorUsername
+          ? _self.creatorUsername
           : creatorUsername // ignore: cast_nullable_to_non_nullable
               as String,
       creatorDisplayName: null == creatorDisplayName
-          ? _value.creatorDisplayName
+          ? _self.creatorDisplayName
           : creatorDisplayName // ignore: cast_nullable_to_non_nullable
               as String,
       caption: freezed == caption
-          ? _value.caption
+          ? _self.caption
           : caption // ignore: cast_nullable_to_non_nullable
               as String?,
       thumbnailUrl: freezed == thumbnailUrl
-          ? _value.thumbnailUrl
+          ? _self.thumbnailUrl
           : thumbnailUrl // ignore: cast_nullable_to_non_nullable
               as String?,
       hashtags: null == hashtags
-          ? _value._hashtags
+          ? _self.hashtags
           : hashtags // ignore: cast_nullable_to_non_nullable
               as List<String>,
       createdAt: freezed == createdAt
-          ? _value.createdAt
+          ? _self.createdAt
           : createdAt // ignore: cast_nullable_to_non_nullable
               as DateTime?,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [ShareMetadata].
+extension ShareMetadataPatterns on ShareMetadata {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_ShareMetadata value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ShareMetadata() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_ShareMetadata value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareMetadata():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_ShareMetadata value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareMetadata() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String creatorUsername,
+            String creatorDisplayName,
+            String? caption,
+            String? thumbnailUrl,
+            List<String> hashtags,
+            DateTime? createdAt)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ShareMetadata() when $default != null:
+        return $default(_that.creatorUsername, _that.creatorDisplayName,
+            _that.caption, _that.thumbnailUrl, _that.hashtags, _that.createdAt);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String creatorUsername,
+            String creatorDisplayName,
+            String? caption,
+            String? thumbnailUrl,
+            List<String> hashtags,
+            DateTime? createdAt)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareMetadata():
+        return $default(_that.creatorUsername, _that.creatorDisplayName,
+            _that.caption, _that.thumbnailUrl, _that.hashtags, _that.createdAt);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String creatorUsername,
+            String creatorDisplayName,
+            String? caption,
+            String? thumbnailUrl,
+            List<String> hashtags,
+            DateTime? createdAt)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ShareMetadata() when $default != null:
+        return $default(_that.creatorUsername, _that.creatorDisplayName,
+            _that.caption, _that.thumbnailUrl, _that.hashtags, _that.createdAt);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$ShareMetadataImpl implements _ShareMetadata {
-  const _$ShareMetadataImpl(
+class _ShareMetadata implements ShareMetadata {
+  const _ShareMetadata(
       {required this.creatorUsername,
       required this.creatorDisplayName,
       this.caption,
@@ -924,9 +1618,8 @@ class _$ShareMetadataImpl implements _ShareMetadata {
       final List<String> hashtags = const [],
       this.createdAt})
       : _hashtags = hashtags;
-
-  factory _$ShareMetadataImpl.fromJson(Map<String, dynamic> json) =>
-      _$$ShareMetadataImplFromJson(json);
+  factory _ShareMetadata.fromJson(Map<String, dynamic> json) =>
+      _$ShareMetadataFromJson(json);
 
   @override
   final String creatorUsername;
@@ -948,16 +1641,26 @@ class _$ShareMetadataImpl implements _ShareMetadata {
   @override
   final DateTime? createdAt;
 
+  /// Create a copy of ShareMetadata
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'ShareMetadata(creatorUsername: $creatorUsername, creatorDisplayName: $creatorDisplayName, caption: $caption, thumbnailUrl: $thumbnailUrl, hashtags: $hashtags, createdAt: $createdAt)';
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$ShareMetadataCopyWith<_ShareMetadata> get copyWith =>
+      __$ShareMetadataCopyWithImpl<_ShareMetadata>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$ShareMetadataToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$ShareMetadataImpl &&
+            other is _ShareMetadata &&
             (identical(other.creatorUsername, creatorUsername) ||
                 other.creatorUsername == creatorUsername) &&
             (identical(other.creatorDisplayName, creatorDisplayName) ||
@@ -970,7 +1673,7 @@ class _$ShareMetadataImpl implements _ShareMetadata {
                 other.createdAt == createdAt));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType,
@@ -981,46 +1684,76 @@ class _$ShareMetadataImpl implements _ShareMetadata {
       const DeepCollectionEquality().hash(_hashtags),
       createdAt);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$ShareMetadataImplCopyWith<_$ShareMetadataImpl> get copyWith =>
-      __$$ShareMetadataImplCopyWithImpl<_$ShareMetadataImpl>(this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$ShareMetadataImplToJson(
-      this,
-    );
+  String toString() {
+    return 'ShareMetadata(creatorUsername: $creatorUsername, creatorDisplayName: $creatorDisplayName, caption: $caption, thumbnailUrl: $thumbnailUrl, hashtags: $hashtags, createdAt: $createdAt)';
   }
 }
 
-abstract class _ShareMetadata implements ShareMetadata {
-  const factory _ShareMetadata(
-      {required final String creatorUsername,
-      required final String creatorDisplayName,
-      final String? caption,
-      final String? thumbnailUrl,
-      final List<String> hashtags,
-      final DateTime? createdAt}) = _$ShareMetadataImpl;
-
-  factory _ShareMetadata.fromJson(Map<String, dynamic> json) =
-      _$ShareMetadataImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$ShareMetadataCopyWith<$Res>
+    implements $ShareMetadataCopyWith<$Res> {
+  factory _$ShareMetadataCopyWith(
+          _ShareMetadata value, $Res Function(_ShareMetadata) _then) =
+      __$ShareMetadataCopyWithImpl;
   @override
-  String get creatorUsername;
-  @override
-  String get creatorDisplayName;
-  @override
-  String? get caption;
-  @override
-  String? get thumbnailUrl;
-  @override
-  List<String> get hashtags;
-  @override
-  DateTime? get createdAt;
-  @override
-  @JsonKey(ignore: true)
-  _$$ShareMetadataImplCopyWith<_$ShareMetadataImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call(
+      {String creatorUsername,
+      String creatorDisplayName,
+      String? caption,
+      String? thumbnailUrl,
+      List<String> hashtags,
+      DateTime? createdAt});
 }
+
+/// @nodoc
+class __$ShareMetadataCopyWithImpl<$Res>
+    implements _$ShareMetadataCopyWith<$Res> {
+  __$ShareMetadataCopyWithImpl(this._self, this._then);
+
+  final _ShareMetadata _self;
+  final $Res Function(_ShareMetadata) _then;
+
+  /// Create a copy of ShareMetadata
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? creatorUsername = null,
+    Object? creatorDisplayName = null,
+    Object? caption = freezed,
+    Object? thumbnailUrl = freezed,
+    Object? hashtags = null,
+    Object? createdAt = freezed,
+  }) {
+    return _then(_ShareMetadata(
+      creatorUsername: null == creatorUsername
+          ? _self.creatorUsername
+          : creatorUsername // ignore: cast_nullable_to_non_nullable
+              as String,
+      creatorDisplayName: null == creatorDisplayName
+          ? _self.creatorDisplayName
+          : creatorDisplayName // ignore: cast_nullable_to_non_nullable
+              as String,
+      caption: freezed == caption
+          ? _self.caption
+          : caption // ignore: cast_nullable_to_non_nullable
+              as String?,
+      thumbnailUrl: freezed == thumbnailUrl
+          ? _self.thumbnailUrl
+          : thumbnailUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      hashtags: null == hashtags
+          ? _self._hashtags
+          : hashtags // ignore: cast_nullable_to_non_nullable
+              as List<String>,
+      createdAt: freezed == createdAt
+          ? _self.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as DateTime?,
+    ));
+  }
+}
+
+// dart format on

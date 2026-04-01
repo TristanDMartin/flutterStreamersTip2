@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,97 +9,76 @@ part of 'activity_provider.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
 
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
 /// @nodoc
-mixin _$ActivityState {
-  Map<String, List<ActivityNotification>> get grouped =>
-      throw _privateConstructorUsedError;
-  bool get isLoading => throw _privateConstructorUsedError;
-  bool get isProcessing => throw _privateConstructorUsedError;
-  int get processingCount => throw _privateConstructorUsedError;
-  String? get error => throw _privateConstructorUsedError;
-  bool get hasError => throw _privateConstructorUsedError;
+mixin _$ActivityState implements DiagnosticableTreeMixin {
+  Map<String, List<ActivityNotification>> get grouped;
+  bool get isLoading;
+  bool get isProcessing;
+  int get processingCount;
+  String? get error;
+  bool get hasError;
 
-  @JsonKey(ignore: true)
-  $ActivityStateCopyWith<ActivityState> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $ActivityStateCopyWith<$Res> {
-  factory $ActivityStateCopyWith(
-          ActivityState value, $Res Function(ActivityState) then) =
-      _$ActivityStateCopyWithImpl<$Res, ActivityState>;
-  @useResult
-  $Res call(
-      {Map<String, List<ActivityNotification>> grouped,
-      bool isLoading,
-      bool isProcessing,
-      int processingCount,
-      String? error,
-      bool hasError});
-}
-
-/// @nodoc
-class _$ActivityStateCopyWithImpl<$Res, $Val extends ActivityState>
-    implements $ActivityStateCopyWith<$Res> {
-  _$ActivityStateCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of ActivityState
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $ActivityStateCopyWith<ActivityState> get copyWith =>
+      _$ActivityStateCopyWithImpl<ActivityState>(
+          this as ActivityState, _$identity);
+
   @override
-  $Res call({
-    Object? grouped = null,
-    Object? isLoading = null,
-    Object? isProcessing = null,
-    Object? processingCount = null,
-    Object? error = freezed,
-    Object? hasError = null,
-  }) {
-    return _then(_value.copyWith(
-      grouped: null == grouped
-          ? _value.grouped
-          : grouped // ignore: cast_nullable_to_non_nullable
-              as Map<String, List<ActivityNotification>>,
-      isLoading: null == isLoading
-          ? _value.isLoading
-          : isLoading // ignore: cast_nullable_to_non_nullable
-              as bool,
-      isProcessing: null == isProcessing
-          ? _value.isProcessing
-          : isProcessing // ignore: cast_nullable_to_non_nullable
-              as bool,
-      processingCount: null == processingCount
-          ? _value.processingCount
-          : processingCount // ignore: cast_nullable_to_non_nullable
-              as int,
-      error: freezed == error
-          ? _value.error
-          : error // ignore: cast_nullable_to_non_nullable
-              as String?,
-      hasError: null == hasError
-          ? _value.hasError
-          : hasError // ignore: cast_nullable_to_non_nullable
-              as bool,
-    ) as $Val);
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    properties
+      ..add(DiagnosticsProperty('type', 'ActivityState'))
+      ..add(DiagnosticsProperty('grouped', grouped))
+      ..add(DiagnosticsProperty('isLoading', isLoading))
+      ..add(DiagnosticsProperty('isProcessing', isProcessing))
+      ..add(DiagnosticsProperty('processingCount', processingCount))
+      ..add(DiagnosticsProperty('error', error))
+      ..add(DiagnosticsProperty('hasError', hasError));
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is ActivityState &&
+            const DeepCollectionEquality().equals(other.grouped, grouped) &&
+            (identical(other.isLoading, isLoading) ||
+                other.isLoading == isLoading) &&
+            (identical(other.isProcessing, isProcessing) ||
+                other.isProcessing == isProcessing) &&
+            (identical(other.processingCount, processingCount) ||
+                other.processingCount == processingCount) &&
+            (identical(other.error, error) || other.error == error) &&
+            (identical(other.hasError, hasError) ||
+                other.hasError == hasError));
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      const DeepCollectionEquality().hash(grouped),
+      isLoading,
+      isProcessing,
+      processingCount,
+      error,
+      hasError);
+
+  @override
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return 'ActivityState(grouped: $grouped, isLoading: $isLoading, isProcessing: $isProcessing, processingCount: $processingCount, error: $error, hasError: $hasError)';
   }
 }
 
 /// @nodoc
-abstract class _$$ActivityStateImplCopyWith<$Res>
-    implements $ActivityStateCopyWith<$Res> {
-  factory _$$ActivityStateImplCopyWith(
-          _$ActivityStateImpl value, $Res Function(_$ActivityStateImpl) then) =
-      __$$ActivityStateImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $ActivityStateCopyWith<$Res> {
+  factory $ActivityStateCopyWith(
+          ActivityState value, $Res Function(ActivityState) _then) =
+      _$ActivityStateCopyWithImpl;
   @useResult
   $Res call(
       {Map<String, List<ActivityNotification>> grouped,
@@ -111,13 +90,15 @@ abstract class _$$ActivityStateImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$ActivityStateImplCopyWithImpl<$Res>
-    extends _$ActivityStateCopyWithImpl<$Res, _$ActivityStateImpl>
-    implements _$$ActivityStateImplCopyWith<$Res> {
-  __$$ActivityStateImplCopyWithImpl(
-      _$ActivityStateImpl _value, $Res Function(_$ActivityStateImpl) _then)
-      : super(_value, _then);
+class _$ActivityStateCopyWithImpl<$Res>
+    implements $ActivityStateCopyWith<$Res> {
+  _$ActivityStateCopyWithImpl(this._self, this._then);
 
+  final ActivityState _self;
+  final $Res Function(ActivityState) _then;
+
+  /// Create a copy of ActivityState
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -128,41 +109,216 @@ class __$$ActivityStateImplCopyWithImpl<$Res>
     Object? error = freezed,
     Object? hasError = null,
   }) {
-    return _then(_$ActivityStateImpl(
+    return _then(_self.copyWith(
       grouped: null == grouped
-          ? _value._grouped
+          ? _self.grouped
           : grouped // ignore: cast_nullable_to_non_nullable
               as Map<String, List<ActivityNotification>>,
       isLoading: null == isLoading
-          ? _value.isLoading
+          ? _self.isLoading
           : isLoading // ignore: cast_nullable_to_non_nullable
               as bool,
       isProcessing: null == isProcessing
-          ? _value.isProcessing
+          ? _self.isProcessing
           : isProcessing // ignore: cast_nullable_to_non_nullable
               as bool,
       processingCount: null == processingCount
-          ? _value.processingCount
+          ? _self.processingCount
           : processingCount // ignore: cast_nullable_to_non_nullable
               as int,
       error: freezed == error
-          ? _value.error
+          ? _self.error
           : error // ignore: cast_nullable_to_non_nullable
               as String?,
       hasError: null == hasError
-          ? _value.hasError
+          ? _self.hasError
           : hasError // ignore: cast_nullable_to_non_nullable
               as bool,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [ActivityState].
+extension ActivityStatePatterns on ActivityState {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_ActivityState value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ActivityState() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_ActivityState value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ActivityState():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_ActivityState value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ActivityState() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            Map<String, List<ActivityNotification>> grouped,
+            bool isLoading,
+            bool isProcessing,
+            int processingCount,
+            String? error,
+            bool hasError)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ActivityState() when $default != null:
+        return $default(_that.grouped, _that.isLoading, _that.isProcessing,
+            _that.processingCount, _that.error, _that.hasError);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            Map<String, List<ActivityNotification>> grouped,
+            bool isLoading,
+            bool isProcessing,
+            int processingCount,
+            String? error,
+            bool hasError)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ActivityState():
+        return $default(_that.grouped, _that.isLoading, _that.isProcessing,
+            _that.processingCount, _that.error, _that.hasError);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            Map<String, List<ActivityNotification>> grouped,
+            bool isLoading,
+            bool isProcessing,
+            int processingCount,
+            String? error,
+            bool hasError)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ActivityState() when $default != null:
+        return $default(_that.grouped, _that.isLoading, _that.isProcessing,
+            _that.processingCount, _that.error, _that.hasError);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 
-class _$ActivityStateImpl
-    with DiagnosticableTreeMixin
-    implements _ActivityState {
-  const _$ActivityStateImpl(
+class _ActivityState with DiagnosticableTreeMixin implements ActivityState {
+  const _ActivityState(
       {final Map<String, List<ActivityNotification>> grouped = const {},
       this.isLoading = false,
       this.isProcessing = false,
@@ -195,14 +351,16 @@ class _$ActivityStateImpl
   @JsonKey()
   final bool hasError;
 
+  /// Create a copy of ActivityState
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'ActivityState(grouped: $grouped, isLoading: $isLoading, isProcessing: $isProcessing, processingCount: $processingCount, error: $error, hasError: $hasError)';
-  }
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$ActivityStateCopyWith<_ActivityState> get copyWith =>
+      __$ActivityStateCopyWithImpl<_ActivityState>(this, _$identity);
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
     properties
       ..add(DiagnosticsProperty('type', 'ActivityState'))
       ..add(DiagnosticsProperty('grouped', grouped))
@@ -217,7 +375,7 @@ class _$ActivityStateImpl
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$ActivityStateImpl &&
+            other is _ActivityState &&
             const DeepCollectionEquality().equals(other._grouped, _grouped) &&
             (identical(other.isLoading, isLoading) ||
                 other.isLoading == isLoading) &&
@@ -240,36 +398,76 @@ class _$ActivityStateImpl
       error,
       hasError);
 
-  @JsonKey(ignore: true)
+  @override
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return 'ActivityState(grouped: $grouped, isLoading: $isLoading, isProcessing: $isProcessing, processingCount: $processingCount, error: $error, hasError: $hasError)';
+  }
+}
+
+/// @nodoc
+abstract mixin class _$ActivityStateCopyWith<$Res>
+    implements $ActivityStateCopyWith<$Res> {
+  factory _$ActivityStateCopyWith(
+          _ActivityState value, $Res Function(_ActivityState) _then) =
+      __$ActivityStateCopyWithImpl;
+  @override
+  @useResult
+  $Res call(
+      {Map<String, List<ActivityNotification>> grouped,
+      bool isLoading,
+      bool isProcessing,
+      int processingCount,
+      String? error,
+      bool hasError});
+}
+
+/// @nodoc
+class __$ActivityStateCopyWithImpl<$Res>
+    implements _$ActivityStateCopyWith<$Res> {
+  __$ActivityStateCopyWithImpl(this._self, this._then);
+
+  final _ActivityState _self;
+  final $Res Function(_ActivityState) _then;
+
+  /// Create a copy of ActivityState
+  /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
-  _$$ActivityStateImplCopyWith<_$ActivityStateImpl> get copyWith =>
-      __$$ActivityStateImplCopyWithImpl<_$ActivityStateImpl>(this, _$identity);
+  $Res call({
+    Object? grouped = null,
+    Object? isLoading = null,
+    Object? isProcessing = null,
+    Object? processingCount = null,
+    Object? error = freezed,
+    Object? hasError = null,
+  }) {
+    return _then(_ActivityState(
+      grouped: null == grouped
+          ? _self._grouped
+          : grouped // ignore: cast_nullable_to_non_nullable
+              as Map<String, List<ActivityNotification>>,
+      isLoading: null == isLoading
+          ? _self.isLoading
+          : isLoading // ignore: cast_nullable_to_non_nullable
+              as bool,
+      isProcessing: null == isProcessing
+          ? _self.isProcessing
+          : isProcessing // ignore: cast_nullable_to_non_nullable
+              as bool,
+      processingCount: null == processingCount
+          ? _self.processingCount
+          : processingCount // ignore: cast_nullable_to_non_nullable
+              as int,
+      error: freezed == error
+          ? _self.error
+          : error // ignore: cast_nullable_to_non_nullable
+              as String?,
+      hasError: null == hasError
+          ? _self.hasError
+          : hasError // ignore: cast_nullable_to_non_nullable
+              as bool,
+    ));
+  }
 }
 
-abstract class _ActivityState implements ActivityState {
-  const factory _ActivityState(
-      {final Map<String, List<ActivityNotification>> grouped,
-      final bool isLoading,
-      final bool isProcessing,
-      final int processingCount,
-      final String? error,
-      final bool hasError}) = _$ActivityStateImpl;
-
-  @override
-  Map<String, List<ActivityNotification>> get grouped;
-  @override
-  bool get isLoading;
-  @override
-  bool get isProcessing;
-  @override
-  int get processingCount;
-  @override
-  String? get error;
-  @override
-  bool get hasError;
-  @override
-  @JsonKey(ignore: true)
-  _$$ActivityStateImplCopyWith<_$ActivityStateImpl> get copyWith =>
-      throw _privateConstructorUsedError;
-}
+// dart format on

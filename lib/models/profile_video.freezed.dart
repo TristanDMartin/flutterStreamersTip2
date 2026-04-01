@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,168 +9,97 @@ part of 'profile_video.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
 
 /// @nodoc
 mixin _$ProfileVideo {
-  String get id => throw _privateConstructorUsedError;
-  User get creator => throw _privateConstructorUsedError;
-  String get videoURL => throw _privateConstructorUsedError;
-  String? get thumbnailURL => throw _privateConstructorUsedError;
-  double get duration =>
-      throw _privateConstructorUsedError; // Duration in seconds
-  String get caption => throw _privateConstructorUsedError;
-  DateTime get createdAt =>
-      throw _privateConstructorUsedError; // When the video was posted
-  int get likes => throw _privateConstructorUsedError;
-  int get comments => throw _privateConstructorUsedError;
-  int get views => throw _privateConstructorUsedError;
-  int get shares => throw _privateConstructorUsedError;
-  bool get isLiked => throw _privateConstructorUsedError;
-  bool get isFavorited => throw _privateConstructorUsedError;
-  bool get isDraft => throw _privateConstructorUsedError;
-  double get mlScore => throw _privateConstructorUsedError;
-  String get categoryId => throw _privateConstructorUsedError;
+  String get id;
+  User get creator;
+  String get videoURL;
+  String? get thumbnailURL;
+  double get duration; // Duration in seconds
+  String get caption;
+  DateTime get createdAt; // When the video was posted
+  int get likes;
+  int get comments;
+  int get views;
+  int get shares;
+  bool get isLiked;
+  bool get isFavorited;
+  bool get isDraft;
+  double get mlScore;
+  String get categoryId;
 
-  @JsonKey(ignore: true)
-  $ProfileVideoCopyWith<ProfileVideo> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $ProfileVideoCopyWith<$Res> {
-  factory $ProfileVideoCopyWith(
-          ProfileVideo value, $Res Function(ProfileVideo) then) =
-      _$ProfileVideoCopyWithImpl<$Res, ProfileVideo>;
-  @useResult
-  $Res call(
-      {String id,
-      User creator,
-      String videoURL,
-      String? thumbnailURL,
-      double duration,
-      String caption,
-      DateTime createdAt,
-      int likes,
-      int comments,
-      int views,
-      int shares,
-      bool isLiked,
-      bool isFavorited,
-      bool isDraft,
-      double mlScore,
-      String categoryId});
-}
-
-/// @nodoc
-class _$ProfileVideoCopyWithImpl<$Res, $Val extends ProfileVideo>
-    implements $ProfileVideoCopyWith<$Res> {
-  _$ProfileVideoCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of ProfileVideo
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $ProfileVideoCopyWith<ProfileVideo> get copyWith =>
+      _$ProfileVideoCopyWithImpl<ProfileVideo>(
+          this as ProfileVideo, _$identity);
+
   @override
-  $Res call({
-    Object? id = null,
-    Object? creator = null,
-    Object? videoURL = null,
-    Object? thumbnailURL = freezed,
-    Object? duration = null,
-    Object? caption = null,
-    Object? createdAt = null,
-    Object? likes = null,
-    Object? comments = null,
-    Object? views = null,
-    Object? shares = null,
-    Object? isLiked = null,
-    Object? isFavorited = null,
-    Object? isDraft = null,
-    Object? mlScore = null,
-    Object? categoryId = null,
-  }) {
-    return _then(_value.copyWith(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      creator: null == creator
-          ? _value.creator
-          : creator // ignore: cast_nullable_to_non_nullable
-              as User,
-      videoURL: null == videoURL
-          ? _value.videoURL
-          : videoURL // ignore: cast_nullable_to_non_nullable
-              as String,
-      thumbnailURL: freezed == thumbnailURL
-          ? _value.thumbnailURL
-          : thumbnailURL // ignore: cast_nullable_to_non_nullable
-              as String?,
-      duration: null == duration
-          ? _value.duration
-          : duration // ignore: cast_nullable_to_non_nullable
-              as double,
-      caption: null == caption
-          ? _value.caption
-          : caption // ignore: cast_nullable_to_non_nullable
-              as String,
-      createdAt: null == createdAt
-          ? _value.createdAt
-          : createdAt // ignore: cast_nullable_to_non_nullable
-              as DateTime,
-      likes: null == likes
-          ? _value.likes
-          : likes // ignore: cast_nullable_to_non_nullable
-              as int,
-      comments: null == comments
-          ? _value.comments
-          : comments // ignore: cast_nullable_to_non_nullable
-              as int,
-      views: null == views
-          ? _value.views
-          : views // ignore: cast_nullable_to_non_nullable
-              as int,
-      shares: null == shares
-          ? _value.shares
-          : shares // ignore: cast_nullable_to_non_nullable
-              as int,
-      isLiked: null == isLiked
-          ? _value.isLiked
-          : isLiked // ignore: cast_nullable_to_non_nullable
-              as bool,
-      isFavorited: null == isFavorited
-          ? _value.isFavorited
-          : isFavorited // ignore: cast_nullable_to_non_nullable
-              as bool,
-      isDraft: null == isDraft
-          ? _value.isDraft
-          : isDraft // ignore: cast_nullable_to_non_nullable
-              as bool,
-      mlScore: null == mlScore
-          ? _value.mlScore
-          : mlScore // ignore: cast_nullable_to_non_nullable
-              as double,
-      categoryId: null == categoryId
-          ? _value.categoryId
-          : categoryId // ignore: cast_nullable_to_non_nullable
-              as String,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is ProfileVideo &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.creator, creator) || other.creator == creator) &&
+            (identical(other.videoURL, videoURL) ||
+                other.videoURL == videoURL) &&
+            (identical(other.thumbnailURL, thumbnailURL) ||
+                other.thumbnailURL == thumbnailURL) &&
+            (identical(other.duration, duration) ||
+                other.duration == duration) &&
+            (identical(other.caption, caption) || other.caption == caption) &&
+            (identical(other.createdAt, createdAt) ||
+                other.createdAt == createdAt) &&
+            (identical(other.likes, likes) || other.likes == likes) &&
+            (identical(other.comments, comments) ||
+                other.comments == comments) &&
+            (identical(other.views, views) || other.views == views) &&
+            (identical(other.shares, shares) || other.shares == shares) &&
+            (identical(other.isLiked, isLiked) || other.isLiked == isLiked) &&
+            (identical(other.isFavorited, isFavorited) ||
+                other.isFavorited == isFavorited) &&
+            (identical(other.isDraft, isDraft) || other.isDraft == isDraft) &&
+            (identical(other.mlScore, mlScore) || other.mlScore == mlScore) &&
+            (identical(other.categoryId, categoryId) ||
+                other.categoryId == categoryId));
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      creator,
+      videoURL,
+      thumbnailURL,
+      duration,
+      caption,
+      createdAt,
+      likes,
+      comments,
+      views,
+      shares,
+      isLiked,
+      isFavorited,
+      isDraft,
+      mlScore,
+      categoryId);
+
+  @override
+  String toString() {
+    return 'ProfileVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, duration: $duration, caption: $caption, createdAt: $createdAt, likes: $likes, comments: $comments, views: $views, shares: $shares, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId)';
   }
 }
 
 /// @nodoc
-abstract class _$$ProfileVideoImplCopyWith<$Res>
-    implements $ProfileVideoCopyWith<$Res> {
-  factory _$$ProfileVideoImplCopyWith(
-          _$ProfileVideoImpl value, $Res Function(_$ProfileVideoImpl) then) =
-      __$$ProfileVideoImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $ProfileVideoCopyWith<$Res> {
+  factory $ProfileVideoCopyWith(
+          ProfileVideo value, $Res Function(ProfileVideo) _then) =
+      _$ProfileVideoCopyWithImpl;
   @useResult
   $Res call(
       {String id,
@@ -192,13 +121,14 @@ abstract class _$$ProfileVideoImplCopyWith<$Res>
 }
 
 /// @nodoc
-class __$$ProfileVideoImplCopyWithImpl<$Res>
-    extends _$ProfileVideoCopyWithImpl<$Res, _$ProfileVideoImpl>
-    implements _$$ProfileVideoImplCopyWith<$Res> {
-  __$$ProfileVideoImplCopyWithImpl(
-      _$ProfileVideoImpl _value, $Res Function(_$ProfileVideoImpl) _then)
-      : super(_value, _then);
+class _$ProfileVideoCopyWithImpl<$Res> implements $ProfileVideoCopyWith<$Res> {
+  _$ProfileVideoCopyWithImpl(this._self, this._then);
 
+  final ProfileVideo _self;
+  final $Res Function(ProfileVideo) _then;
+
+  /// Create a copy of ProfileVideo
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -219,79 +149,331 @@ class __$$ProfileVideoImplCopyWithImpl<$Res>
     Object? mlScore = null,
     Object? categoryId = null,
   }) {
-    return _then(_$ProfileVideoImpl(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       creator: null == creator
-          ? _value.creator
+          ? _self.creator
           : creator // ignore: cast_nullable_to_non_nullable
               as User,
       videoURL: null == videoURL
-          ? _value.videoURL
+          ? _self.videoURL
           : videoURL // ignore: cast_nullable_to_non_nullable
               as String,
       thumbnailURL: freezed == thumbnailURL
-          ? _value.thumbnailURL
+          ? _self.thumbnailURL
           : thumbnailURL // ignore: cast_nullable_to_non_nullable
               as String?,
       duration: null == duration
-          ? _value.duration
+          ? _self.duration
           : duration // ignore: cast_nullable_to_non_nullable
               as double,
       caption: null == caption
-          ? _value.caption
+          ? _self.caption
           : caption // ignore: cast_nullable_to_non_nullable
               as String,
       createdAt: null == createdAt
-          ? _value.createdAt
+          ? _self.createdAt
           : createdAt // ignore: cast_nullable_to_non_nullable
               as DateTime,
       likes: null == likes
-          ? _value.likes
+          ? _self.likes
           : likes // ignore: cast_nullable_to_non_nullable
               as int,
       comments: null == comments
-          ? _value.comments
+          ? _self.comments
           : comments // ignore: cast_nullable_to_non_nullable
               as int,
       views: null == views
-          ? _value.views
+          ? _self.views
           : views // ignore: cast_nullable_to_non_nullable
               as int,
       shares: null == shares
-          ? _value.shares
+          ? _self.shares
           : shares // ignore: cast_nullable_to_non_nullable
               as int,
       isLiked: null == isLiked
-          ? _value.isLiked
+          ? _self.isLiked
           : isLiked // ignore: cast_nullable_to_non_nullable
               as bool,
       isFavorited: null == isFavorited
-          ? _value.isFavorited
+          ? _self.isFavorited
           : isFavorited // ignore: cast_nullable_to_non_nullable
               as bool,
       isDraft: null == isDraft
-          ? _value.isDraft
+          ? _self.isDraft
           : isDraft // ignore: cast_nullable_to_non_nullable
               as bool,
       mlScore: null == mlScore
-          ? _value.mlScore
+          ? _self.mlScore
           : mlScore // ignore: cast_nullable_to_non_nullable
               as double,
       categoryId: null == categoryId
-          ? _value.categoryId
+          ? _self.categoryId
           : categoryId // ignore: cast_nullable_to_non_nullable
               as String,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [ProfileVideo].
+extension ProfileVideoPatterns on ProfileVideo {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_ProfileVideo value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ProfileVideo() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_ProfileVideo value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ProfileVideo():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_ProfileVideo value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ProfileVideo() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(
+            String id,
+            User creator,
+            String videoURL,
+            String? thumbnailURL,
+            double duration,
+            String caption,
+            DateTime createdAt,
+            int likes,
+            int comments,
+            int views,
+            int shares,
+            bool isLiked,
+            bool isFavorited,
+            bool isDraft,
+            double mlScore,
+            String categoryId)?
+        $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _ProfileVideo() when $default != null:
+        return $default(
+            _that.id,
+            _that.creator,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.duration,
+            _that.caption,
+            _that.createdAt,
+            _that.likes,
+            _that.comments,
+            _that.views,
+            _that.shares,
+            _that.isLiked,
+            _that.isFavorited,
+            _that.isDraft,
+            _that.mlScore,
+            _that.categoryId);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(
+            String id,
+            User creator,
+            String videoURL,
+            String? thumbnailURL,
+            double duration,
+            String caption,
+            DateTime createdAt,
+            int likes,
+            int comments,
+            int views,
+            int shares,
+            bool isLiked,
+            bool isFavorited,
+            bool isDraft,
+            double mlScore,
+            String categoryId)
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ProfileVideo():
+        return $default(
+            _that.id,
+            _that.creator,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.duration,
+            _that.caption,
+            _that.createdAt,
+            _that.likes,
+            _that.comments,
+            _that.views,
+            _that.shares,
+            _that.isLiked,
+            _that.isFavorited,
+            _that.isDraft,
+            _that.mlScore,
+            _that.categoryId);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(
+            String id,
+            User creator,
+            String videoURL,
+            String? thumbnailURL,
+            double duration,
+            String caption,
+            DateTime createdAt,
+            int likes,
+            int comments,
+            int views,
+            int shares,
+            bool isLiked,
+            bool isFavorited,
+            bool isDraft,
+            double mlScore,
+            String categoryId)?
+        $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _ProfileVideo() when $default != null:
+        return $default(
+            _that.id,
+            _that.creator,
+            _that.videoURL,
+            _that.thumbnailURL,
+            _that.duration,
+            _that.caption,
+            _that.createdAt,
+            _that.likes,
+            _that.comments,
+            _that.views,
+            _that.shares,
+            _that.isLiked,
+            _that.isFavorited,
+            _that.isDraft,
+            _that.mlScore,
+            _that.categoryId);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 
-class _$ProfileVideoImpl implements _ProfileVideo {
-  const _$ProfileVideoImpl(
+class _ProfileVideo implements ProfileVideo {
+  const _ProfileVideo(
       {required this.id,
       required this.creator,
       required this.videoURL,
@@ -355,16 +537,19 @@ class _$ProfileVideoImpl implements _ProfileVideo {
   @JsonKey()
   final String categoryId;
 
+  /// Create a copy of ProfileVideo
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString() {
-    return 'ProfileVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, duration: $duration, caption: $caption, createdAt: $createdAt, likes: $likes, comments: $comments, views: $views, shares: $shares, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId)';
-  }
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$ProfileVideoCopyWith<_ProfileVideo> get copyWith =>
+      __$ProfileVideoCopyWithImpl<_ProfileVideo>(this, _$identity);
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$ProfileVideoImpl &&
+            other is _ProfileVideo &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.creator, creator) || other.creator == creator) &&
             (identical(other.videoURL, videoURL) ||
@@ -410,66 +595,136 @@ class _$ProfileVideoImpl implements _ProfileVideo {
       mlScore,
       categoryId);
 
-  @JsonKey(ignore: true)
+  @override
+  String toString() {
+    return 'ProfileVideo(id: $id, creator: $creator, videoURL: $videoURL, thumbnailURL: $thumbnailURL, duration: $duration, caption: $caption, createdAt: $createdAt, likes: $likes, comments: $comments, views: $views, shares: $shares, isLiked: $isLiked, isFavorited: $isFavorited, isDraft: $isDraft, mlScore: $mlScore, categoryId: $categoryId)';
+  }
+}
+
+/// @nodoc
+abstract mixin class _$ProfileVideoCopyWith<$Res>
+    implements $ProfileVideoCopyWith<$Res> {
+  factory _$ProfileVideoCopyWith(
+          _ProfileVideo value, $Res Function(_ProfileVideo) _then) =
+      __$ProfileVideoCopyWithImpl;
+  @override
+  @useResult
+  $Res call(
+      {String id,
+      User creator,
+      String videoURL,
+      String? thumbnailURL,
+      double duration,
+      String caption,
+      DateTime createdAt,
+      int likes,
+      int comments,
+      int views,
+      int shares,
+      bool isLiked,
+      bool isFavorited,
+      bool isDraft,
+      double mlScore,
+      String categoryId});
+}
+
+/// @nodoc
+class __$ProfileVideoCopyWithImpl<$Res>
+    implements _$ProfileVideoCopyWith<$Res> {
+  __$ProfileVideoCopyWithImpl(this._self, this._then);
+
+  final _ProfileVideo _self;
+  final $Res Function(_ProfileVideo) _then;
+
+  /// Create a copy of ProfileVideo
+  /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
-  _$$ProfileVideoImplCopyWith<_$ProfileVideoImpl> get copyWith =>
-      __$$ProfileVideoImplCopyWithImpl<_$ProfileVideoImpl>(this, _$identity);
+  $Res call({
+    Object? id = null,
+    Object? creator = null,
+    Object? videoURL = null,
+    Object? thumbnailURL = freezed,
+    Object? duration = null,
+    Object? caption = null,
+    Object? createdAt = null,
+    Object? likes = null,
+    Object? comments = null,
+    Object? views = null,
+    Object? shares = null,
+    Object? isLiked = null,
+    Object? isFavorited = null,
+    Object? isDraft = null,
+    Object? mlScore = null,
+    Object? categoryId = null,
+  }) {
+    return _then(_ProfileVideo(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      creator: null == creator
+          ? _self.creator
+          : creator // ignore: cast_nullable_to_non_nullable
+              as User,
+      videoURL: null == videoURL
+          ? _self.videoURL
+          : videoURL // ignore: cast_nullable_to_non_nullable
+              as String,
+      thumbnailURL: freezed == thumbnailURL
+          ? _self.thumbnailURL
+          : thumbnailURL // ignore: cast_nullable_to_non_nullable
+              as String?,
+      duration: null == duration
+          ? _self.duration
+          : duration // ignore: cast_nullable_to_non_nullable
+              as double,
+      caption: null == caption
+          ? _self.caption
+          : caption // ignore: cast_nullable_to_non_nullable
+              as String,
+      createdAt: null == createdAt
+          ? _self.createdAt
+          : createdAt // ignore: cast_nullable_to_non_nullable
+              as DateTime,
+      likes: null == likes
+          ? _self.likes
+          : likes // ignore: cast_nullable_to_non_nullable
+              as int,
+      comments: null == comments
+          ? _self.comments
+          : comments // ignore: cast_nullable_to_non_nullable
+              as int,
+      views: null == views
+          ? _self.views
+          : views // ignore: cast_nullable_to_non_nullable
+              as int,
+      shares: null == shares
+          ? _self.shares
+          : shares // ignore: cast_nullable_to_non_nullable
+              as int,
+      isLiked: null == isLiked
+          ? _self.isLiked
+          : isLiked // ignore: cast_nullable_to_non_nullable
+              as bool,
+      isFavorited: null == isFavorited
+          ? _self.isFavorited
+          : isFavorited // ignore: cast_nullable_to_non_nullable
+              as bool,
+      isDraft: null == isDraft
+          ? _self.isDraft
+          : isDraft // ignore: cast_nullable_to_non_nullable
+              as bool,
+      mlScore: null == mlScore
+          ? _self.mlScore
+          : mlScore // ignore: cast_nullable_to_non_nullable
+              as double,
+      categoryId: null == categoryId
+          ? _self.categoryId
+          : categoryId // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
 }
 
-abstract class _ProfileVideo implements ProfileVideo {
-  const factory _ProfileVideo(
-      {required final String id,
-      required final User creator,
-      required final String videoURL,
-      final String? thumbnailURL,
-      final double duration,
-      final String caption,
-      required final DateTime createdAt,
-      final int likes,
-      final int comments,
-      final int views,
-      final int shares,
-      final bool isLiked,
-      final bool isFavorited,
-      final bool isDraft,
-      final double mlScore,
-      final String categoryId}) = _$ProfileVideoImpl;
-
-  @override
-  String get id;
-  @override
-  User get creator;
-  @override
-  String get videoURL;
-  @override
-  String? get thumbnailURL;
-  @override
-  double get duration;
-  @override // Duration in seconds
-  String get caption;
-  @override
-  DateTime get createdAt;
-  @override // When the video was posted
-  int get likes;
-  @override
-  int get comments;
-  @override
-  int get views;
-  @override
-  int get shares;
-  @override
-  bool get isLiked;
-  @override
-  bool get isFavorited;
-  @override
-  bool get isDraft;
-  @override
-  double get mlScore;
-  @override
-  String get categoryId;
-  @override
-  @JsonKey(ignore: true)
-  _$$ProfileVideoImplCopyWith<_$ProfileVideoImpl> get copyWith =>
-      throw _privateConstructorUsedError;
-}
+// dart format on

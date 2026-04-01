@@ -1,22 +1,26 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/user.dart';
+import '../models/user_count_fields.dart';
 import '../models/user_status.dart';
 import 'username_lock_service.dart';
+import 'r2_media_service.dart';
 
 class AuthenticationService extends ChangeNotifier {
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
   final UsernameLockService _usernameLockService = UsernameLockService();
+
+  StreamSubscription<firebase_auth.User?>? _authStateSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDataSub;
 
   User? _currentUser;
   bool _isLoading = false;
@@ -31,10 +35,8 @@ class AuthenticationService extends ChangeNotifier {
   Map<String, dynamic>? get currentUserProfile => _currentUserProfile;
 
   AuthenticationService() {
-    _auth.authStateChanges().listen((firebase_auth.User? user) {
-      // print("🔄 Auth state changed: ${user != null ? 'Logged in' : 'Logged out'}");
+    _authStateSub = _auth.authStateChanges().listen((firebase_auth.User? user) {
       if (user != null) {
-        // print("👤 User: ${user.email} (${user.uid})");
         _handleUserSignIn(user);
       } else {
         _currentUser = null;
@@ -76,8 +78,8 @@ class AuthenticationService extends ChangeNotifier {
           onlineStatus: data['onlineStatus'] as String? ?? 'online',
           hashtags: hashtags,
           postCount: data['postCount'] as int? ?? 0,
-          followerCount: data['followerCount'] as int? ?? 0,
-          followingCount: data['followingCount'] as int? ?? 0,
+          followerCount: UserCountFields.readFollowersCount(data),
+          followingCount: UserCountFields.readFollowingCount(data),
         );
 
         _currentUser = user;
@@ -218,7 +220,8 @@ class AuthenticationService extends ChangeNotifier {
 
   // Set up real-time listener for user data changes
   void _setupUserDataListener(String userId) {
-    _firestore.collection('users').doc(userId).snapshots().listen((snapshot) {
+    _userDataSub?.cancel();
+    _userDataSub = _firestore.collection('users').doc(userId).snapshots().listen((snapshot) {
       if (snapshot.exists && _currentUser != null) {
         final data = snapshot.data()!;
 
@@ -234,10 +237,8 @@ class AuthenticationService extends ChangeNotifier {
               data['onlineStatus'] as String? ?? _currentUser!.onlineStatus,
           hashtags: _parseHashtags(data['hashtags']) ?? _currentUser!.hashtags,
           postCount: data['postCount'] as int? ?? _currentUser!.postCount,
-          followerCount:
-              data['followerCount'] as int? ?? _currentUser!.followerCount,
-          followingCount:
-              data['followingCount'] as int? ?? _currentUser!.followingCount,
+          followerCount: UserCountFields.readFollowersCount(data),
+          followingCount: UserCountFields.readFollowingCount(data),
         );
 
         _currentUser = updatedUser;
@@ -566,8 +567,8 @@ class AuthenticationService extends ChangeNotifier {
         hashtags:
             (userData['hashtags'] as List<dynamic>?)?.cast<String>() ?? [],
         postCount: userData['postCount'] ?? 0,
-        followerCount: userData['followerCount'] ?? 0,
-        followingCount: userData['followingCount'] ?? 0,
+        followerCount: UserCountFields.readFollowersCount(userData),
+        followingCount: UserCountFields.readFollowingCount(userData),
       );
 
       _currentUser = user;
@@ -711,121 +712,25 @@ class AuthenticationService extends ChangeNotifier {
         throw Exception('Selected image file does not exist');
       }
 
-      // Check file size (max 10MB)
       final fileSize = await imageFile.length();
-      const maxSize = 10 * 1024 * 1024; // 10MB
+      const maxSize = 5 * 1024 * 1024;
       if (fileSize > maxSize) {
         debugPrint('❌ Avatar upload failed: File too large ($fileSize bytes)');
-        throw Exception('Image file is too large. Maximum size is 10MB.');
+        throw Exception('Image file is too large. Maximum size is 5MB.');
       }
-
       debugPrint('✅ File validation passed. Size: $fileSize bytes');
 
-      // Check network connectivity
       final connectivityResult = await Connectivity().checkConnectivity();
       if (connectivityResult.contains(ConnectivityResult.none)) {
         debugPrint('❌ Avatar upload failed: No network connection');
         throw Exception(
             'No internet connection. Please check your network and try again.');
       }
-      debugPrint('✅ Network connectivity confirmed');
 
-      // Test Firebase Storage connectivity first with better error handling
-      try {
-        debugPrint('🧪 Testing Firebase Storage connectivity...');
-        debugPrint('🔧 Storage bucket: ${_storage.bucket}');
-        debugPrint('🔧 Storage app: ${_storage.app.name}');
-
-        // Try a simple write test instead of metadata check
-        final testRef = _storage.ref().child('avatars/_connectivity_test');
-        try {
-          // Try to upload a small test file
-          final testData = 'test';
-          await testRef.putString(testData).timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              throw Exception('Storage connection timeout');
-            },
-          );
-
-          // Clean up test file
-          try {
-            await testRef.delete();
-          } catch (e) {
-            debugPrint('⚠️ Could not delete test file: $e');
-          }
-
-          debugPrint('✅ Firebase Storage is accessible');
-        } catch (e) {
-          // Check for specific storage errors
-          final errorString = e.toString();
-          if (errorString.contains('storage/unauthorized') ||
-              errorString.contains('storage/permission-denied')) {
-            throw Exception(
-                'Firebase Storage permission denied. Please check your Storage rules.');
-          } else if (errorString.contains('storage/bucket-not-found')) {
-            throw Exception(
-                'Firebase Storage bucket not configured. Please set up Storage in Firebase Console.');
-          } else if (errorString.contains('storage/quota-exceeded')) {
-            throw Exception(
-                'Firebase Storage quota exceeded. Please check your Firebase project limits.');
-          } else if (errorString.contains('TimeoutException')) {
-            throw Exception(
-                'Firebase Storage connection timeout. Please check your internet connection.');
-          } else {
-            // If it's not a critical error, try to continue with actual upload
-            debugPrint('⚠️ Storage test had issues but continuing: $e');
-          }
-        }
-      } catch (e) {
-        debugPrint('❌ Firebase Storage test failed: $e');
-        // Re-throw with more context
-        if (e is Exception) {
-          rethrow;
-        } else {
-          throw Exception(
-              'Firebase Storage is not accessible: ${e.toString()}');
-        }
-      }
-
-      // Create a reference to the file in Firebase Storage
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      debugPrint('🔧 Firebase Storage instance: ${_storage.app.name}');
-      debugPrint('🔧 Firebase Storage bucket: ${_storage.bucket}');
-      final ref = _storage.ref().child('avatars/${user.uid}_$timestamp.jpg');
-
-      debugPrint(
-          '📁 Storage reference created: avatars/${user.uid}_$timestamp.jpg');
-      debugPrint('📁 Storage reference full path: ${ref.fullPath}');
-
-      // Upload the file with metadata
-      final uploadTask = ref.putFile(
-        imageFile,
-        SettableMetadata(
-          contentType: 'image/jpeg',
-          customMetadata: {
-            'uploadedBy': user.uid,
-            'uploadedAt': timestamp.toString(),
-          },
-        ),
-      );
-
-      debugPrint('⬆️ Starting file upload to Firebase Storage...');
-
-      // Listen to upload progress
-      uploadTask.snapshotEvents.listen((snapshot) {
-        final progress =
-            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        debugPrint('📊 Upload progress: ${progress.toStringAsFixed(1)}%');
-      });
-
-      final snapshot = await uploadTask;
-
-      debugPrint('✅ File upload completed successfully');
-
-      // Get the download URL
-      final downloadUrl = await snapshot.ref.getDownloadURL();
-      debugPrint('🔗 Download URL obtained: $downloadUrl');
+      debugPrint('⬆️ Uploading avatar to R2...');
+      final downloadUrl =
+          await R2MediaService.instance.uploadAvatar(imageFile);
+      debugPrint('✅ Avatar uploaded to R2: $downloadUrl');
 
       // Update user profile in Firestore
       debugPrint('💾 Updating user profile in Firestore...');
@@ -869,43 +774,23 @@ class AuthenticationService extends ChangeNotifier {
         debugPrint('❌ Exception details: ${e.toString()}');
       }
 
-      // Provide more specific error messages
       String errorMessage = 'Failed to upload avatar';
-
-      if (e.toString().contains('Storage bucket not configured')) {
-        errorMessage =
-            'Firebase Storage not set up. Please enable Storage in Firebase Console.';
-      } else if (e.toString().contains('Storage is not accessible')) {
-        errorMessage =
-            'Firebase Storage connection failed. Please check your internet connection.';
+      if (e.toString().contains('Media upload not configured')) {
+        errorMessage = 'Avatar upload is temporarily unavailable. Try again later.';
       } else if (e.toString().contains('No internet connection')) {
         errorMessage =
             'No internet connection. Please check your network and try again.';
-      } else if (e.toString().contains('storage/unauthorized')) {
-        errorMessage = 'Storage access denied. Please check your permissions.';
-      } else if (e.toString().contains('storage/object-not-found')) {
-        errorMessage = 'Storage object not found. Please try again.';
-      } else if (e.toString().contains('storage/bucket-not-found')) {
-        errorMessage =
-            'Firebase Storage bucket not found. Please set up Storage in Firebase Console.';
-      } else if (e.toString().contains('storage/project-not-found')) {
-        errorMessage = 'Firebase project not found. Please contact support.';
-      } else if (e.toString().contains('storage/quota-exceeded')) {
-        errorMessage = 'Storage quota exceeded. Please contact support.';
       } else if (e.toString().contains('network') ||
           e.toString().contains('timeout')) {
         errorMessage = 'Network error. Please check your internet connection.';
-      } else if (e.toString().contains('permission')) {
-        errorMessage = 'Permission denied. Please check your app permissions.';
       } else if (e.toString().contains('too large')) {
         errorMessage = e.toString().split(': ').last;
       } else if (e.toString().contains('does not exist')) {
         errorMessage = e.toString().split(': ').last;
       } else if (e.toString().contains('User not authenticated')) {
         errorMessage = 'Please sign in again to upload your avatar.';
-      } else if (e.toString().contains('firebase_storage/unknown')) {
-        errorMessage =
-            'Firebase Storage is not properly configured. Please enable Storage in Firebase Console.';
+      } else if (e.toString().contains('File too large')) {
+        errorMessage = e.toString().split(': ').last;
       } else {
         errorMessage = 'Failed to upload avatar: ${e.toString()}';
       }
@@ -1110,6 +995,13 @@ class AuthenticationService extends ChangeNotifier {
   void setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authStateSub?.cancel();
+    _userDataSub?.cancel();
+    super.dispose();
   }
 }
 

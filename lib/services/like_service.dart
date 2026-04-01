@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'creator_stats_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,6 +18,7 @@ class LikeService {
   // Local state cache
   final Map<String, LikeState> _localCache = {};
   final Map<String, StreamSubscription> _subscriptions = {};
+  StreamSubscription? _connectivitySub;
 
   // Offline queue for when network is unavailable
   final List<LikeOperation> _offlineQueue = [];
@@ -32,7 +34,8 @@ class LikeService {
     await _loadCachedStates();
 
     // Monitor connectivity
-    _connectivity.onConnectivityChanged.listen((result) {
+    _connectivitySub?.cancel();
+    _connectivitySub = _connectivity.onConnectivityChanged.listen((result) {
       _isOnline = !result.contains(ConnectivityResult.none);
       if (_isOnline) {
         _processOfflineQueue();
@@ -223,6 +226,10 @@ class LikeService {
       }
 
       await batch.commit();
+      await CreatorStatsSyncService().syncLikeToCreator(
+        videoId: operation.videoId,
+        delta: operation.action == LikeAction.like ? 1 : -1,
+      );
 
       // Update local state to remove loading
       final currentState = getLikeState(operation.videoId);
@@ -400,6 +407,7 @@ class LikeService {
 
   /// Cleanup resources
   void dispose() {
+    _connectivitySub?.cancel();
     for (final subscription in _subscriptions.values) {
       subscription.cancel();
     }

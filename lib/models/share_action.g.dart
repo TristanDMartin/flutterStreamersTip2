@@ -6,8 +6,7 @@ part of 'share_action.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$ShareActionImpl _$$ShareActionImplFromJson(Map<String, dynamic> json) =>
-    _$ShareActionImpl(
+_ShareAction _$ShareActionFromJson(Map<String, dynamic> json) => _ShareAction(
       id: json['id'] as String,
       name: json['name'] as String,
       iconName: json['iconName'] as String,
@@ -17,7 +16,7 @@ _$ShareActionImpl _$$ShareActionImplFromJson(Map<String, dynamic> json) =>
           .fromJson((json['backgroundColor'] as num).toInt()),
     );
 
-Map<String, dynamic> _$$ShareActionImplToJson(_$ShareActionImpl instance) =>
+Map<String, dynamic> _$ShareActionToJson(_ShareAction instance) =>
     <String, dynamic>{
       'id': instance.id,
       'name': instance.name,

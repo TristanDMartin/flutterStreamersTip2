@@ -22,7 +22,7 @@ class VideoResumeService {
   factory VideoResumeService() => _instance;
   VideoResumeService._internal();
 
-  static const Duration _resumeGraceWindow = Duration(seconds: 2);
+  static const Duration _resumeGraceWindow = Duration(minutes: 30);
   static const Duration _minimumResumePosition = Duration(seconds: 1);
 
   // Store playback state per video ID

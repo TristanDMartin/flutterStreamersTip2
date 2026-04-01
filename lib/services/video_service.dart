@@ -6,14 +6,70 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart' as app_user;
+import '../utils/video_url_resolver.dart';
+import '../utils/video_health_gate.dart';
 import 'real_user_data_service.dart';
+import 'user_blocking_service.dart';
 
 class VideoService extends StateNotifier<List<HomeVideo>> {
   VideoService() : super([]);
 
+  static const int _feedDiversityWindow = 3;
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final RealUserDataService _userDataService = RealUserDataService();
+
+  void _recordSkip(
+    List<String> skippedVideoDetails,
+    Map<String, int> skipReasons,
+    String videoId,
+    String reason,
+  ) {
+    skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+    skippedVideoDetails.add('$videoId -> $reason');
+  }
+
+  List<HomeVideo> _applyLightweightFeedDiversity(List<HomeVideo> videos) {
+    if (videos.length <= 2) return videos;
+
+    final remaining = List<HomeVideo>.from(videos);
+    final diversified = <HomeVideo>[];
+
+    while (remaining.isNotEmpty) {
+      HomeVideo? selected;
+      int selectedIndex = 0;
+
+      for (int i = 0; i < remaining.length; i++) {
+        final candidate = remaining[i];
+        final recent = diversified.length <= _feedDiversityWindow
+            ? diversified
+            : diversified.sublist(diversified.length - _feedDiversityWindow);
+
+        final creatorCollision =
+            recent.any((video) => video.creator.id == candidate.creator.id);
+        final categoryCollision = candidate.categoryId.isNotEmpty &&
+            recent.any((video) => video.categoryId == candidate.categoryId);
+
+        if (!creatorCollision && !categoryCollision) {
+          selected = candidate;
+          selectedIndex = i;
+          break;
+        }
+
+        if (!creatorCollision && selected == null) {
+          selected = candidate;
+          selectedIndex = i;
+        }
+      }
+
+      selected ??= remaining.first;
+      diversified.add(selected);
+      remaining.removeAt(selectedIndex);
+    }
+
+    return diversified;
+  }
 
   /// Parse duration from various formats (string "M:SS", double, int) to seconds (double)
   double _parseDuration(dynamic duration) {
@@ -68,96 +124,157 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       }
       debugPrint('✅ VideoService: User authenticated: ${user.uid}');
 
-      // 🔍 FIX: Query videos - try multiple approaches for maximum compatibility
+      final blockedUserIds = await UserBlockingService().getBlockedUsers();
+      if (blockedUserIds.isNotEmpty) {
+        debugPrint(
+            '🚫 VideoService: Filtering ${blockedUserIds.length} blocked creators from feed');
+      }
+
+      // Canonical feed query — spec §4.
+      // Primary: isReadyForFeed==true, status==active, visibility==public,
+      //          ordered by engagementScore DESC then publishedAt DESC.
+      // Fallback 1: backward-compat status values ('published'/'ready').
+      // Fallback 2: bare createdAt order (no index required).
       QuerySnapshot<Map<String, dynamic>> snapshot;
-
-      // First, try query with status filter (requires composite index)
+      const limitCount = 20;
       try {
-        final query = _firestore
+        snapshot = await _firestore
             .collection('videos')
-            .where('status', isEqualTo: 'published')
-            .orderBy('createdAt', descending: true)
-            .limit(50); // Reduced from 500 to prevent memory issues
-        snapshot = await query.get();
+            .where('isReadyForFeed', isEqualTo: true)
+            .where('status', isEqualTo: 'active')
+            .where('visibility', isEqualTo: 'public')
+            .orderBy('engagementScore', descending: true)
+            .orderBy('publishedAt', descending: true)
+            .limit(limitCount)
+            .get();
         debugPrint(
-            '🎬 VideoService: Found ${snapshot.docs.length} published videos in Firestore (with status filter)');
-      } catch (e) {
-        debugPrint(
-            '⚠️ VideoService: Composite index missing, trying fallback query: $e');
-
-        // Fallback 1: Try query without status filter, just order by createdAt
+            '🎬 VideoService: ${snapshot.docs.length} videos (canonical isReadyForFeed query)');
+      } catch (_) {
+        // Fallback 1 — legacy status values; covers videos before schema migration.
         try {
-          final fallbackQuery = _firestore
+          snapshot = await _firestore
               .collection('videos')
-              .orderBy('createdAt', descending: true)
-              .limit(100); // Reduced from 1000 to prevent memory issues
-          snapshot = await fallbackQuery.get();
+              .where('isReadyForFeed', isEqualTo: true)
+              .orderBy('publishedAt', descending: true)
+              .limit(limitCount)
+              .get();
           debugPrint(
-              '🎬 VideoService: Found ${snapshot.docs.length} total videos (will filter in memory)');
-        } catch (e2) {
-          debugPrint(
-              '⚠️ VideoService: OrderBy also failed, trying simple query: $e2');
-
-          // Fallback 2: Just get all videos without ordering
-          snapshot = await _firestore.collection('videos').limit(100).get(); // Reduced from 1000 to prevent memory issues
-          debugPrint(
-              '🎬 VideoService: Found ${snapshot.docs.length} total videos (no ordering)');
+              '🎬 VideoService: ${snapshot.docs.length} videos (isReadyForFeed, publishedAt fallback)');
+        } catch (_) {
+          // Fallback 2 — no isReadyForFeed index yet; soft-filter post-fetch.
+          try {
+            snapshot = await _firestore
+                .collection('videos')
+                .where('status', whereIn: ['published', 'ready', 'active'])
+                .orderBy('createdAt', descending: true)
+                .limit(limitCount)
+                .get();
+            debugPrint(
+                '🎬 VideoService: ${snapshot.docs.length} videos (status whereIn fallback)');
+          } catch (_) {
+            snapshot = await _firestore
+                .collection('videos')
+                .orderBy('createdAt', descending: true)
+                .limit(limitCount)
+                .get();
+            debugPrint(
+                '🎬 VideoService: ${snapshot.docs.length} videos (bare createdAt fallback)');
+          }
         }
       }
 
-      // Debug: Show details of each video found
+      // In-memory sort: engagementScore DESC → publishedAt DESC → createdAt DESC.
+      // Applies when the fallback query ran without the canonical ordering.
+      final docsList = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.docs);
+      docsList.sort((a, b) {
+        final aData = a.data();
+        final bData = b.data();
+        final aScore = (aData['engagementScore'] as num?)?.toDouble() ?? 0.0;
+        final bScore = (bData['engagementScore'] as num?)?.toDouble() ?? 0.0;
+        if (bScore != aScore) return bScore.compareTo(aScore);
+        final aTs = aData['publishedAt'] ?? aData['createdAt'];
+        final bTs = bData['publishedAt'] ?? bData['createdAt'];
+        final aMs = aTs is Timestamp ? aTs.millisecondsSinceEpoch : 0;
+        final bMs = bTs is Timestamp ? bTs.millisecondsSinceEpoch : 0;
+        return bMs.compareTo(aMs);
+      });
       debugPrint(
-          '🎬 VideoService: Processing ${snapshot.docs.length} videos from Firestore');
-      for (int i = 0; i < snapshot.docs.length && i < 5; i++) {
-        final doc = snapshot.docs[i];
+          '🎬 VideoService: Processing ${docsList.length} videos from Firestore (newest first)');
+      for (int i = 0; i < docsList.length && i < 5; i++) {
+        final doc = docsList[i];
         final data = doc.data();
         debugPrint(
-            '🎬 Video ${i + 1}: ID=${doc.id}, userId=${data['userId'] ?? data['creatorId'] ?? 'NONE'}, status=${data['status']}, privacy=${data['privacy']}, videoUrl=${(data['videoUrl'] ?? data['videoURL']) != null ? 'YES' : 'NO'}, thumbnailUrl=${(data['thumbnailUrl'] ?? data['thumbnailURL']) != null ? 'YES' : 'NO'}');
+            '🎬 Video ${i + 1}: ID=${doc.id}, status=${data['status']}, updatedAt=${data['updatedAt'] != null ? 'YES' : 'NO'}, videoUrl=${(data['videoUrl'] ?? data['videoURL'] ?? data['video_url']) != null ? 'YES' : 'NO'}');
       }
       final videos = <HomeVideo>[];
       int processedCount = 0;
       int skippedCount = 0;
       final skipReasons = <String, int>{};
+      final skippedVideoDetails = <String>[];
 
-      for (final doc in snapshot.docs) {
+      for (final doc in docsList) {
         final data = doc.data();
 
         debugPrint(
-            '🎬 VideoService: Processing video ${doc.id}: status=${data['status']}, privacy=${data['privacy']}, userId: ${data['userId']}');
+            '🎬 VideoService: Processing video ${doc.id}: status=${data['status']}, privacy=${data['privacy']}, ownerId: ${getOwnerId(data)}');
 
-        // 🔍 FIX: Filter for published videos only (if not already filtered by query)
-        if (data['status'] != 'published') {
-          final reason = 'status: ${data['status']}';
-          skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+        // Status gate — accept spec enum ('active') and legacy values for
+        // backward compat with videos written before schema migration.
+        final status = data['status'] as String?;
+        final isActiveStatus = status == 'active' ||
+            status == 'published' ||
+            status == 'ready';
+        if (!isActiveStatus) {
+          final reason = 'status: $status';
+          _recordSkip(skippedVideoDetails, skipReasons, doc.id, reason);
           skippedCount++;
-          debugPrint(
-              '🎬 VideoService: Skipping video ${doc.id} - status: ${data['status']} (not published)');
           continue;
         }
 
-        // 🔍 FIX: Filter for public videos only (privacy == 'Everyone' or null)
-        // Note: null privacy is treated as public for backward compatibility
-        // TEMPORARILY RELAXED: Show all published videos regardless of privacy for debugging
-        final privacy = data['privacy'] as String?;
-        if (privacy != null && privacy != 'Everyone' && privacy != 'Public') {
-          debugPrint(
-              '🎬 VideoService: ⚠️ Video ${doc.id} has privacy: "$privacy" (will still show for now)');
-          // Don't skip - show all published videos regardless of privacy
-          // TODO: Re-enable privacy filtering once videos are confirmed working
-        } else {
-          debugPrint(
-              '🎬 VideoService: ✅ Privacy check passed for ${doc.id} - privacy: ${privacy ?? "null (treated as public)"}');
+        // isReadyForFeed gate — hard-skip if explicitly false.
+        // null → legacy video; let it through for backward compat.
+        if (data['isReadyForFeed'] == false) {
+          _recordSkip(
+            skippedVideoDetails,
+            skipReasons,
+            doc.id,
+            'isReadyForFeed',
+          );
+          skippedCount++;
+          continue;
         }
 
-        // Support all field name variants for cross-platform compatibility
-        final userId = (data['userId'] ??
-            data['creatorId'] ??
-            data['creator_id']) as String?;
+        // Visibility/privacy gate — spec §3: only public videos in global feed.
+        // Handle both new 'visibility' field and legacy 'privacy' field.
+        final visibility = data['visibility'] as String?;
+        final privacy = data['privacy'] as String?;
+        final isPublic = visibility == 'public' ||
+            privacy == 'Everyone' ||
+            privacy == 'Public' ||
+            (visibility == null && privacy == null); // legacy: null = public
+        if (!isPublic) {
+          _recordSkip(skippedVideoDetails, skipReasons, doc.id, 'visibility');
+          skippedCount++;
+          continue;
+        }
+
+        // Canonical owner: single source of truth for filtering
+        final userId = getOwnerId(data);
         if (userId == null) {
-          skipReasons['no userId'] = (skipReasons['no userId'] ?? 0) + 1;
+          _recordSkip(skippedVideoDetails, skipReasons, doc.id, 'no userId');
           skippedCount++;
           debugPrint(
-              '🎬 VideoService: Skipping video ${doc.id} - no userId/creatorId/creator_id field');
+              '🎬 VideoService: Skipping video ${doc.id} - no owner field');
+          continue;
+        }
+        if (blockedUserIds.contains(userId)) {
+          _recordSkip(
+            skippedVideoDetails,
+            skipReasons,
+            doc.id,
+            'blocked creator',
+          );
+          skippedCount++;
           continue;
         }
 
@@ -166,49 +283,36 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         final thumbnailUrl =
             (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
 
-        // 🔍 FIX: Validate video URL before processing (support both field variants)
-        final videoUrl =
-            (data['videoUrl'] ?? data['videoURL']) as String? ?? '';
-        if (videoUrl.isEmpty) {
-          skipReasons['no videoUrl'] = (skipReasons['no videoUrl'] ?? 0) + 1;
+        final videoUrl = resolveVideoUrl(data);
+        final playableResult = await VideoHealthGate.instance.resolvePlayableSource(
+          doc.id,
+          cachedData: data,
+          fallbackUrl: videoUrl.isEmpty ? null : videoUrl,
+        );
+        if (playableResult is! Playable) {
+          final unplayable = playableResult as Unplayable;
+          final reason = unplayable.reason;
+          final info = unplayable.debugInfo;
+          _recordSkip(skippedVideoDetails, skipReasons, doc.id, reason);
           skippedCount++;
-          debugPrint(
-              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - no videoUrl/videoURL field');
-          debugPrint(
-              '   💡 To fix: Ensure videoUrl or videoURL is set in Firestore for this video');
+          if (kDebugMode) {
+            final raw = data['videoUrl'] ?? data['videoURL'] ?? data['video_url'];
+            final urlStr = raw is String ? raw : '';
+            final host = urlStr.isNotEmpty ? Uri.tryParse(urlStr)?.host ?? '?' : 'none';
+            debugPrint(
+              '🎬 VideoService: SKIP ${doc.id} (unplayable): reason=$reason, '
+              'status=$status, hasMux=${data['muxPlaybackId'] != null}, '
+              'videoUrlHost=$host, raw=${raw != null ? "YES" : "NO"}');
+            VideoHealthGate.instance.logUnplayableVideo(
+              doc.id, reason, {...info, 'videoUrlHost': host},
+            );
+          }
           continue;
         }
-
-        // 🔍 FIX: Validate URL format (must be HTTP/HTTPS, not localhost)
-        if (!videoUrl.startsWith('http://') &&
-            !videoUrl.startsWith('https://')) {
-          skipReasons['invalid URL format'] =
-              (skipReasons['invalid URL format'] ?? 0) + 1;
-          skippedCount++;
-          debugPrint(
-              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - invalid URL format: "$videoUrl"');
-          debugPrint(
-              '   💡 To fix: Video URL must start with http:// or https://');
-          continue;
-        }
-
-        // 🔍 FIX: Skip localhost URLs (these won't work in production)
-        // BUT: Allow localhost in debug mode for development
-        if (!kDebugMode &&
-            (videoUrl.contains('localhost') ||
-                videoUrl.contains('127.0.0.1'))) {
-          skipReasons['localhost URL'] =
-              (skipReasons['localhost URL'] ?? 0) + 1;
-          skippedCount++;
-          debugPrint(
-              '🎬 VideoService: ⚠️ SKIPPING video ${doc.id} - localhost URL: "$videoUrl"');
-          debugPrint(
-              '   💡 To fix: Video URL must point to Firebase Storage or CDN, not localhost');
-          continue;
-        }
+        final playableUrl = playableResult.url;
 
         debugPrint(
-            '🎬 VideoService: ✅ Video URL check passed for ${doc.id} - URL length: ${videoUrl.length}, valid format: ✅');
+            '🎬 VideoService: ✅ Playable ${doc.id} - gate-approved URL');
 
         // Get creator data
         final creator = await _userDataService.getUserById(userId);
@@ -247,7 +351,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           final placeholderVideo = HomeVideo(
             id: doc.id,
             creator: placeholderCreator,
-            videoURL: videoUrl,
+            videoURL: playableUrl,
             thumbnailURL: thumbnailUrl,
             thumbnails: placeholderThumbnails,
             caption: data['caption'] ??
@@ -272,7 +376,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         }
 
         debugPrint(
-            '🎬 VideoService: Video ${doc.id} - thumbnailUrl: "$thumbnailUrl", videoUrl: "$videoUrl"');
+            '🎬 VideoService: Video ${doc.id} - thumbnailUrl: "$thumbnailUrl", playableUrl: "$playableUrl"');
         debugPrint(
             '🎬 VideoService: Full video data for ${doc.id}: ${data.keys.toList()}');
 
@@ -324,7 +428,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         final video = HomeVideo(
           id: doc.id,
           creator: creator,
-          videoURL: videoUrl,
+          videoURL: playableUrl,
           thumbnailURL:
               thumbnailUrl, // Keep legacy field for backward compatibility
           thumbnails: thumbnails, // Add new thumbnails object
@@ -350,13 +454,36 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         processedCount++;
       }
 
-      // Log summary after processing all videos
-      debugPrint('🎬 VideoService: ========== PROCESSING SUMMARY ==========');
-      debugPrint('   Total videos from Firestore: ${snapshot.docs.length}');
-      debugPrint('   Successfully processed: $processedCount');
-      debugPrint('   Skipped: $skippedCount');
+      // Log summary after processing all videos (diagnostic for "new uploads not showing")
+      final totalFetched = docsList.length;
+      debugPrint('🎬 VideoService: ========== FEED DIAGNOSTIC ==========');
+      debugPrint(
+          '   totalFetched: $totalFetched, playableCount: $processedCount, '
+          'skippedCount: $skippedCount');
       if (skipReasons.isNotEmpty) {
-        debugPrint('   Skip reasons: $skipReasons');
+        debugPrint('   skipReasons: $skipReasons');
+        if (skippedVideoDetails.isNotEmpty) {
+          final capped = skippedVideoDetails.take(25).toList();
+          final suffix = skippedVideoDetails.length > capped.length
+              ? '/${skippedVideoDetails.length}'
+              : '';
+          debugPrint('   skippedVideoDetails (${capped.length}$suffix):');
+          for (final detail in capped) {
+            debugPrint('     - $detail');
+          }
+        }
+        if (skippedCount > 0 && processedCount == 0) {
+          final top = skipReasons.entries
+              .reduce((a, b) => a.value > b.value ? a : b);
+          final hint = switch (top.key) {
+            'processing' => 'webhook not updating status→ready',
+            'raw_or_original_forbidden' => 'raw/isOriginal flags',
+            'firebase_storage_deprecated' => 'legacy Firebase, migrate to Mux',
+            'image_url_not_video' => 'placehold.co/placeholder URL',
+            _ => 'check gate rules',
+          };
+          debugPrint('   ⚠️ All skipped. Top: "${top.key}" (${top.value}x) → $hint');
+        }
       }
 
       // Remove duplicates based on video ID
@@ -367,32 +494,26 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         }
       }
 
-      // Convert back to list and sort by creation date (newest first)
+      // Keep order from docsList (newest updated/created first); dedupe preserves first occurrence
       final deduplicatedVideos = uniqueVideos.values.toList();
+      final diversifiedVideos =
+          _applyLightweightFeedDiversity(deduplicatedVideos);
 
-      // Sort by creation date - newest first (most recent uploads at top)
-      deduplicatedVideos.sort((a, b) {
-        // Sort by creation timestamp - newest first
-        final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
-        final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
-        return bTime.compareTo(aTime); // Reverse order for newest first
-      });
-
-      state = deduplicatedVideos;
+      state = diversifiedVideos;
       debugPrint(
-          '✅ VideoService: Loaded ${deduplicatedVideos.length} unique videos (removed ${videos.length - deduplicatedVideos.length} duplicates)');
+          '✅ VideoService: Loaded ${diversifiedVideos.length} unique videos (removed ${videos.length - deduplicatedVideos.length} duplicates)');
 
       // 🔍 DIAGNOSTIC: Log summary of loaded videos and statistics
-      if (deduplicatedVideos.isEmpty) {
+      if (diversifiedVideos.isEmpty) {
         debugPrint('⚠️ VideoService: ⚠️⚠️⚠️ NO VIDEOS LOADED! ⚠️⚠️⚠️');
         debugPrint(
             '   Check the logs above to see why videos were filtered out.');
         debugPrint('   Common issues:');
-        debugPrint('   1. Videos have status != "published"');
-        debugPrint('   2. Videos have privacy != "Everyone" (or null)');
-        debugPrint('   3. Videos are missing videoUrl field');
-        debugPrint('   4. Videos are missing userId/creatorId field');
-        debugPrint('   5. Creator user documents don\'t exist');
+        debugPrint('   1. Webhook not firing → status stuck at processing');
+        debugPrint('   2. muxPlaybackId null → gate rejects');
+        debugPrint('   3. visibility/privacy not public');
+        debugPrint('   4. raw/isOriginal flags set');
+        debugPrint('   5. placehold.co as videoUrl');
 
         // Additional diagnostic: Count total videos in Firestore
         try {
@@ -418,9 +539,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
                 (data['videoUrl'] as String).isEmpty) {
               missingFields['videoUrl'] = (missingFields['videoUrl'] ?? 0) + 1;
             }
-            if (data['userId'] == null && data['creatorId'] == null) {
-              missingFields['userId/creatorId'] =
-                  (missingFields['userId/creatorId'] ?? 0) + 1;
+            if (getOwnerId(data) == null) {
+              missingFields['ownerId'] = (missingFields['ownerId'] ?? 0) + 1;
             }
           }
 
@@ -434,20 +554,20 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         }
       } else {
         debugPrint(
-            '🎬 VideoService: Successfully loaded ${deduplicatedVideos.length} videos');
+            '🎬 VideoService: Successfully loaded ${diversifiedVideos.length} videos');
         debugPrint('📊 Video summary:');
-        for (int i = 0; i < deduplicatedVideos.length && i < 10; i++) {
-          final video = deduplicatedVideos[i];
+        for (int i = 0; i < diversifiedVideos.length && i < 10; i++) {
+          final video = diversifiedVideos[i];
           debugPrint(
               '   ${i + 1}. ${video.id} by ${video.creator.displayName} - ${video.videoURL.isNotEmpty ? "✅ HAS URL" : "❌ NO URL"}');
         }
-        if (deduplicatedVideos.length > 10) {
-          debugPrint('   ... and ${deduplicatedVideos.length - 10} more');
+        if (diversifiedVideos.length > 10) {
+          debugPrint('   ... and ${diversifiedVideos.length - 10} more');
         }
 
         // Log count of videos filtered out
         final totalBeforeFilter = snapshot.docs.length;
-        final totalAfterFilter = deduplicatedVideos.length;
+        final totalAfterFilter = diversifiedVideos.length;
         final filteredOut = totalBeforeFilter - totalAfterFilter;
         if (filteredOut > 0) {
           debugPrint(
@@ -522,7 +642,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
     if (removedCount != newCount) {
       debugPrint(
-          '✅ VideoService: Removed video $videoId from state (${removedCount} -> ${newCount})');
+          '✅ VideoService: Removed video $videoId from state ($removedCount -> $newCount)');
     } else {
       debugPrint('⚠️ VideoService: Video $videoId not found in state');
     }
@@ -642,16 +762,13 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             diagnostics['publishedPublicWithUrl'] =
                 (diagnostics['publishedPublicWithUrl'] as int) + 1;
 
-            final userId =
-                data['userId'] ?? data['creatorId'] ?? data['creator_id'];
-            if (userId != null) {
+            if (getOwnerId(data) != null) {
               diagnostics['publishedPublicWithCreator'] =
                   (diagnostics['publishedPublicWithCreator'] as int) + 1;
             }
           }
         }
 
-        // Check both field variants for missing fields
         final videoUrl = data['videoUrl'] ?? data['videoURL'];
         if (videoUrl == null || (videoUrl as String).isEmpty) {
           (diagnostics['missingFields'] as Map<String, int>)['videoUrl'] =
@@ -659,13 +776,9 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
                       0) +
                   1;
         }
-        final userId =
-            data['userId'] ?? data['creatorId'] ?? data['creator_id'];
-        if (userId == null) {
-          (diagnostics['missingFields']
-                  as Map<String, int>)['userId/creatorId'] =
-              ((diagnostics['missingFields']
-                          as Map<String, int>)['userId/creatorId'] ??
+        if (getOwnerId(data) == null) {
+          (diagnostics['missingFields'] as Map<String, int>)['ownerId'] =
+              ((diagnostics['missingFields'] as Map<String, int>)['ownerId'] ??
                       0) +
                   1;
         }
@@ -691,6 +804,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   }
 
   /// Fetch "For You" videos (public videos) - returns a result object with videos and pagination info
+  /// Spec: 20 initial, 10 load more, cursor-based
   Future<Map<String, dynamic>> fetchForYouVideos({
     int? pageSize,
     dynamic lastDocument,
@@ -698,54 +812,150 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     try {
       debugPrint('🎬 VideoService: Fetching For You videos...');
 
-      // 🔍 FIX: Ensure videos are loaded first
-      if (state.isEmpty) {
-        debugPrint(
-            '⚠️ VideoService: No videos in state, loading videos first...');
-        await loadAllVideos();
-      }
+      final isLoadMore = lastDocument != null;
+      final limit = isLoadMore ? (pageSize ?? 10) : (pageSize ?? 20);
 
-      // Get all videos from current state
-      final allVideos = state;
-      debugPrint('🎬 VideoService: Total videos in state: ${allVideos.length}');
-
-      // Filter for public, published videos only
-      final forYouVideos = allVideos
-          .where((video) =>
-                  !video.isDraft && // Only published videos
-                  video.videoURL.isNotEmpty && // Must have video URL
-                  video.creator.id.isNotEmpty // Must have creator
-              )
-          .toList();
-
-      debugPrint(
-          '✅ VideoService: Found ${forYouVideos.length} For You videos (filtered from ${allVideos.length} total)');
-
-      // Log first few videos for debugging
-      if (forYouVideos.isNotEmpty) {
-        for (int i = 0; i < forYouVideos.length && i < 3; i++) {
-          final video = forYouVideos[i];
-          debugPrint(
-              '🎬 For You Video ${i + 1}: ${video.id} by ${video.creator.displayName} - ${video.videoURL.isNotEmpty ? "HAS URL" : "NO URL"}');
+      if (isLoadMore) {
+        DocumentSnapshot<Map<String, dynamic>>? startAfterDoc;
+        if (lastDocument is DocumentSnapshot<Map<String, dynamic>>) {
+          startAfterDoc = lastDocument;
+        } else if (lastDocument is Map && lastDocument['lastDoc'] != null) {
+          startAfterDoc =
+              lastDocument['lastDoc'] as DocumentSnapshot<Map<String, dynamic>>;
         }
-      } else {
-        debugPrint('⚠️ VideoService: No For You videos found! Check:');
-        debugPrint('   1. Are videos published (status == "published")?');
-        debugPrint('   2. Are videos public (privacy == "Everyone")?');
-        debugPrint('   3. Do videos have videoUrl field?');
-        debugPrint('   4. Do videos have userId/creatorId field?');
+        return await _fetchForYouPaginated(
+          limit: limit,
+          startAfter: startAfterDoc,
+        );
       }
 
-      return {
-        'videos': forYouVideos,
-        'lastDocument': null, // No pagination for now
-      };
+      return await _fetchForYouPaginated(limit: limit, startAfter: null);
     } catch (e) {
       debugPrint('❌ VideoService: Error fetching For You videos: $e');
       return {
         'videos': <HomeVideo>[],
         'lastDocument': null,
       };
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetchForYouPaginated({
+    required int limit,
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return {'videos': <HomeVideo>[], 'lastDocument': null};
+      }
+
+      final blockedUserIds = await UserBlockingService().getBlockedUsers();
+
+      // Canonical paginated query — spec §4.
+      Query<Map<String, dynamic>> baseQuery;
+      try {
+        baseQuery = _firestore
+            .collection('videos')
+            .where('isReadyForFeed', isEqualTo: true)
+            .where('status', isEqualTo: 'active')
+            .where('visibility', isEqualTo: 'public')
+            .orderBy('engagementScore', descending: true)
+            .orderBy('publishedAt', descending: true)
+            .limit(limit);
+      } catch (_) {
+        baseQuery = _firestore
+            .collection('videos')
+            .where('isReadyForFeed', isEqualTo: true)
+            .orderBy('publishedAt', descending: true)
+            .limit(limit);
+      }
+
+      Query<Map<String, dynamic>> query = startAfter != null
+          ? baseQuery.startAfterDocument(startAfter)
+          : baseQuery;
+
+      QuerySnapshot<Map<String, dynamic>> snapshot;
+      try {
+        snapshot = await query.get();
+      } catch (_) {
+        // Fallback: legacy status filter, no isReadyForFeed index.
+        Query<Map<String, dynamic>> fallback = _firestore
+            .collection('videos')
+            .where('status', whereIn: ['published', 'ready', 'active'])
+            .orderBy('createdAt', descending: true)
+            .limit(limit);
+        if (startAfter != null) fallback = fallback.startAfterDocument(startAfter);
+        snapshot = await fallback.get();
+      }
+
+      final docsList = snapshot.docs;
+      final videos = <HomeVideo>[];
+
+      for (final doc in docsList) {
+        final data = doc.data();
+        final userId = getOwnerId(data);
+        if (userId == null || blockedUserIds.contains(userId)) continue;
+
+        final status = data['status'] as String?;
+        final isActiveStatus = status == 'active' ||
+            status == 'published' ||
+            status == 'ready';
+        if (!isActiveStatus) continue;
+
+        if (data['isReadyForFeed'] == false) continue;
+
+        // Visibility gate — handle both field names.
+        final visibility = data['visibility'] as String?;
+        final privacyField = data['privacy'] as String?;
+        final isPublic = visibility == 'public' ||
+            privacyField == 'Everyone' ||
+            privacyField == 'Public' ||
+            (visibility == null && privacyField == null);
+        if (!isPublic) continue;
+
+        final videoUrl = resolveVideoUrl(data);
+        final playableResult = await VideoHealthGate.instance
+            .resolvePlayableSource(
+          doc.id,
+          cachedData: data,
+          fallbackUrl: videoUrl.isEmpty ? null : videoUrl,
+        );
+        if (playableResult is! Playable) continue;
+
+        final creator = await _userDataService.getUserById(userId);
+        if (creator == null) continue;
+
+        final thumbnailUrl =
+            (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
+        final video = HomeVideo(
+          id: doc.id,
+          creator: creator,
+          videoURL: playableResult.url,
+          thumbnailURL: thumbnailUrl,
+          thumbnails: null,
+          caption: data['caption'] ?? data['title'] ?? 'Untitled',
+          categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+          views: data['views']?.toInt() ?? 0,
+          likes: data['likes']?.toInt() ?? 0,
+          comments: data['comments']?.toInt() ?? 0,
+          duration: _parseDuration(
+              data['metadata']?['duration'] ?? data['duration']),
+          isDraft: false,
+          createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+        );
+        videos.add(video);
+      }
+
+      final lastDoc =
+          docsList.isNotEmpty ? docsList.last : null;
+
+      return {
+        'videos': videos,
+        'lastDocument': lastDoc,
+      };
+    } catch (e) {
+      debugPrint('❌ VideoService: _fetchForYouPaginated error: $e');
+      return {'videos': <HomeVideo>[], 'lastDocument': null};
     }
   }
 
@@ -829,7 +1039,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 }
 
 // Provider for VideoService
-final videoServiceProvider =
+final videoServiceStateProvider =
     StateNotifierProvider<VideoService, List<HomeVideo>>((ref) {
   return VideoService();
 });
@@ -837,7 +1047,7 @@ final videoServiceProvider =
 // Helper providers for filtered videos
 final userVideosProvider =
     Provider.family<List<HomeVideo>, String>((ref, userId) {
-  final allVideos = ref.watch(videoServiceProvider);
+  final allVideos = ref.watch(videoServiceStateProvider);
   debugPrint('🎬 userVideosProvider: Looking for userId: $userId');
   debugPrint('🎬 userVideosProvider: Total videos: ${allVideos.length}');
 
@@ -863,6 +1073,6 @@ final userVideosProvider =
 
 final categoryVideosProvider =
     Provider.family<List<HomeVideo>, String>((ref, categoryId) {
-  final allVideos = ref.watch(videoServiceProvider);
+  final allVideos = ref.watch(videoServiceStateProvider);
   return allVideos.where((video) => video.categoryId == categoryId).toList();
 });

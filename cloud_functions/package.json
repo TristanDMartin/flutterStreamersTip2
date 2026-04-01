@@ -8,23 +8,27 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
+    "backfill:mux-feed-fields": "node scripts/backfill_mux_feed_fields.js",
+    "migrate:legacy-video-comment-replies": "node scripts/migrate_legacy_video_comment_replies.js",
     "test:rules:follows": "node follows_rules_test.js",
     "test:e2e:follows": "node follows_e2e_test.js"
   },
-  "engines": {
-    "node": "18"
-  },
+  "engines": {"node": "20"},
   "main": "index.js",
   "dependencies": {
+    "@google-cloud/storage": "^7.7.0",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.0.1",
     "firebase-admin": "^11.8.0",
     "firebase-functions": "^4.3.1",
+    "fluent-ffmpeg": "^2.1.2",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.4",
-    "firebase": "^10.12.0",
     "eslint": "^8.15.0",
     "eslint-config-google": "^0.14.0",
+    "firebase": "^10.12.0",
     "firebase-functions-test": "^3.1.0"
   },
   "private": true

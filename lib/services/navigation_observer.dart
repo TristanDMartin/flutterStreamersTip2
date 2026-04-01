@@ -104,11 +104,12 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     final isInboxRoute = routeName.contains('inbox') ||
         routeName.contains('chat') ||
         routeName.contains('message');
-    final isModalRoute = route is PopupRoute ||
-        route is ModalRoute && (isCommentsModal || isShareSheetModal);
+    final isSupportedPlaybackModal =
+        (route is PopupRoute || route is ModalRoute) &&
+        (isCommentsModal || isShareSheetModal);
 
     // If this is a known lightweight modal over the current view, keep playing
-    if (isModalRoute) {
+    if (isSupportedPlaybackModal) {
       debugPrint(
           '🎵 NavigationObserver: Modal presented - keeping video playing (route: $routeName)');
       return;
@@ -157,7 +158,17 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       return;
     }
 
-    // Fallback: unknown/unnamed route → block + pause
+    // Unnamed MaterialPageRoute (e.g. video detail from Discover) → treat as
+    // a player context; the widget itself manages block/unblock via initState.
+    if (route is MaterialPageRoute && name == null) {
+      _manager.unblock();
+      _manager.setActiveOwner(PlaybackOwners.player);
+      debugPrint(
+          '🎬 NavigationObserver: Unnamed MaterialPageRoute - allowing playback');
+      return;
+    }
+
+    // Fallback: truly unknown route → block + pause
     if (isForeground) {
       _manager.block(reason: 'route_change_unknown');
       _manager.pauseAll();

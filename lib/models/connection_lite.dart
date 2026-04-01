@@ -7,7 +7,7 @@ part 'connection_lite.g.dart';
 ///
 /// Optimized for fast rendering in horizontal scrollable connections row
 @freezed
-class ConnectionLite with _$ConnectionLite {
+sealed class ConnectionLite with _$ConnectionLite {
   const factory ConnectionLite({
     required String userId,
     required String handle,

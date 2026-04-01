@@ -2,20 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../models/user_model.dart' as user_model;
 import '../models/network_models.dart' as network_models;
+import '../models/user_count_fields.dart';
 import '../models/user_status.dart';
 import '../services/follows_service.dart';
 import '../services/migration_service.dart';
 import '../services/performance_monitoring_service.dart';
 import '../services/global_playback_manager.dart';
-import '../widgets/streamer_card_view.dart';
 import '../widgets/status_aware_avatar.dart';
 import '../providers/status_provider.dart';
+import '../routing/app_navigator.dart';
+import '../providers/follow_refresh_provider.dart';
+import '../constants/app_colors.dart';
 
 class NetworkView extends ConsumerStatefulWidget {
   final String? initialTab;
@@ -27,11 +31,14 @@ class NetworkView extends ConsumerStatefulWidget {
 }
 
 class _NetworkViewState extends ConsumerState<NetworkView>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   network_models.NetworkTab _selectedTab =
       network_models.NetworkTab.connections;
   final ScrollController _listController = ScrollController();
   final GlobalPlaybackManager _playbackManager = GlobalPlaybackManager.instance;
+  late final AnimationController _contentTransitionController;
+  late final Animation<double> _contentFadeAnimation;
+  late final Animation<Offset> _contentSlideAnimation;
   static const int _pageSize = 20;
   int _connectionsPage = 1;
   int _followersPage = 1;
@@ -89,10 +96,13 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   // Real-time relationship listeners
   StreamSubscription<QuerySnapshot>? _followersSubscription;
   StreamSubscription<QuerySnapshot>? _followingSubscription;
-  StreamSubscription<QuerySnapshot>? _scopedFollowsSubscription;
+  StreamSubscription<QuerySnapshot>? _scopedFollowsSubscription1;
+  StreamSubscription<QuerySnapshot>? _scopedFollowsSubscription2;
 
   // Error state
   bool _hasShownPermissionError = false;
+
+  bool get _isFirebaseReady => Firebase.apps.isNotEmpty;
 
   @override
   bool get wantKeepAlive => false; // Don't keep alive when not visible
@@ -100,6 +110,25 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   @override
   void initState() {
     super.initState();
+
+    _contentTransitionController = AnimationController(
+      duration: const Duration(milliseconds: 260),
+      vsync: this,
+    );
+    _contentFadeAnimation = CurvedAnimation(
+      parent: _contentTransitionController,
+      curve: Curves.easeOutCubic,
+    );
+    _contentSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.025),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _contentTransitionController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    _contentTransitionController.value = 1;
 
     // 🔊 AUDIO FIX: Block playback IMMEDIATELY (synchronously) when NetworkView opens
     // This prevents audio bleeding from HomeView - must happen before any widgets build
@@ -131,13 +160,17 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     _initializeConnectivityMonitoring();
 
     // Load users from clean relationship service
-    _loadUsersFromFollowsService();
+    if (_isFirebaseReady) {
+      _loadUsersFromFollowsService();
+    }
 
     // Start monitoring when view initializes
     PerformanceMonitoringService().startMonitoring();
 
     // Initialize real-time relationship listeners
-    _initializeRelationshipListeners();
+    if (_isFirebaseReady) {
+      _initializeRelationshipListeners();
+    }
   }
 
   void _logDriftIfAny({
@@ -161,7 +194,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     _connectivitySubscription?.cancel();
     _followersSubscription?.cancel();
     _followingSubscription?.cancel();
-    _scopedFollowsSubscription?.cancel();
+    _scopedFollowsSubscription1?.cancel();
+    _scopedFollowsSubscription2?.cancel();
 
     // Stop performance monitoring
     PerformanceMonitoringService().stopMonitoring();
@@ -170,6 +204,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     _listController.removeListener(_maybeLoadMore);
     _listController.dispose();
     _searchController.dispose();
+    _contentTransitionController.dispose();
     // Dispose timers
     _searchTimer?.cancel();
 
@@ -209,39 +244,14 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
     Timer? debounceTimer;
 
-    bool _isRelevantFollow(Map<String, dynamic> data) {
-      final followerId = data['followerUserId'] ??
-          data['followerId'] ??
-          data['follower'] ??
-          data['follower_id'];
-      final targetId = data['targetUserId'] ??
-          data['followingId'] ??
-          data['followedId'] ??
-          data['target_user_id'];
-      return followerId == currentUserId || targetId == currentUserId;
-    }
-
-    _scopedFollowsSubscription = FirebaseFirestore.instance
-        .collection('follows')
-        .snapshots()
-        .listen((snapshot) {
-      final relevantChanges = snapshot.docChanges.where((change) {
-        final data = change.doc.data() ?? <String, dynamic>{};
-        return _isRelevantFollow(data);
-      }).toList();
-
-      if (kDebugMode && relevantChanges.isNotEmpty) {
-        debugPrint(
-            '🔄 NetworkView: Relevant follows changes: ${relevantChanges.length}');
-      }
-
-      if (relevantChanges.isEmpty) return;
-
+    void onFollowsUpdate(QuerySnapshot _) {
       debounceTimer?.cancel();
       debounceTimer = Timer(const Duration(milliseconds: 500), () {
         _refreshDataInstantly();
       });
-    }, onError: (error) {
+    }
+
+    void onError(Object error) {
       if (kDebugMode) {
         debugPrint('❌ NetworkView: Error in scoped follows listener: $error');
       }
@@ -262,7 +272,19 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           ),
         );
       }
-    });
+    }
+
+    _scopedFollowsSubscription1 = FirebaseFirestore.instance
+        .collection('follows')
+        .where('followerUserId', isEqualTo: currentUserId)
+        .snapshots()
+        .listen(onFollowsUpdate, onError: onError);
+
+    _scopedFollowsSubscription2 = FirebaseFirestore.instance
+        .collection('follows')
+        .where('targetUserId', isEqualTo: currentUserId)
+        .snapshots()
+        .listen(onFollowsUpdate, onError: onError);
 
     debugPrint('✅ NetworkView: Real-time listeners initialized (scoped)');
   }
@@ -308,6 +330,18 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   /// Load users from clean relationship service
   Future<void> _loadUsersFromFollowsService() async {
+    if (!_isFirebaseReady) {
+      if (mounted) {
+        setState(() {
+          _connectionsUsers = [];
+          _followersUsers = [];
+          _followingUsers = [];
+          _isLoadingUsers = false;
+        });
+      }
+      return;
+    }
+
     // Check network connectivity first
     final hasConnection = await _checkNetworkConnectivity();
     if (!hasConnection) {
@@ -351,10 +385,10 @@ class _NetworkViewState extends ConsumerState<NetworkView>
               .doc(currentUserId)
               .get();
           final data = userDoc.data();
-          followersCountDoc =
-              data != null ? data['followersCount'] as int? : null;
-          followingCountDoc =
-              data != null ? data['followingCount'] as int? : null;
+          if (data != null) {
+            followersCountDoc = UserCountFields.readFollowersCount(data);
+            followingCountDoc = UserCountFields.readFollowingCount(data);
+          }
         } catch (e) {
           debugPrint('⚠️ NetworkView: Unable to read doc counters: $e');
         }
@@ -618,291 +652,50 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
 
-    const bg = LinearGradient(
-      colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
+    ref.listen<int>(followRefreshProvider, (previous, next) {
+      if (previous == next || !mounted) return;
+      _refreshDataInstantly();
+    });
 
-    return WillPopScope(
-      onWillPop: () async {
-        debugPrint(
-            '🔄 NetworkView: WillPop triggered - resuming HomeView video');
-        // 🔊 AUDIO FIX: Unblock playback when returning to HomeView
-        // This allows HomeView videos to resume playing
-        try {
-          final playbackManager = GlobalPlaybackManager.instance;
-          playbackManager.unblock();
-          // Schedule resume for after the pop completes
-          Future.delayed(const Duration(milliseconds: 150), () {
-            debugPrint('▶️ NetworkView: Calling resumeAfterTabSwitch()');
-            playbackManager.resumeAfterTabSwitch();
-          });
-        } catch (e) {
-          debugPrint('❌ NetworkView: Error resuming video: $e');
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
+        if (didPop) {
+          debugPrint(
+              '🔄 NetworkView: Popped - letting navigation observer reactivate HomeView');
         }
-        return true; // Allow the pop to proceed
       },
       child: Container(
-        decoration: const BoxDecoration(gradient: bg),
+        color: AppColors.supportBackground,
         child: SafeArea(
           child: Column(
             children: [
-              // Top row with network status, search and sort icons
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // User status indicator - sync with ProfileView
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final statusAsync = ref.watch(statusNotifierProvider);
-
-                        return statusAsync.when(
-                          data: (presence) {
-                            final statusColor =
-                                _getStatusColor(presence.status);
-                            final statusText = presence.status.displayName;
-                            final statusIcon = _getStatusIcon(presence.status);
-
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: statusColor.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: statusColor.withValues(alpha: 0.4),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    statusIcon,
-                                    color: statusColor,
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    statusText,
-                                    style: TextStyle(
-                                      color: statusColor,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                          loading: () => Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.grey.withValues(alpha: 0.4),
-                                width: 1,
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.grey),
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Loading...',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          error: (error, stack) => Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.red.withValues(alpha: 0.4),
-                                width: 1,
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.error,
-                                  color: Colors.red,
-                                  size: 16,
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Error',
-                                  style: TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    // Search and sort icons
-                    Row(
-                      children: [
-                        // Manual refresh button
-                        GestureDetector(
-                          onTap: () {
-                            debugPrint('🔄 Manual refresh triggered');
-                            _refreshDataInstantly();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                  color: Colors.green.withValues(alpha: 0.4)),
-                            ),
-                            child: const Icon(
-                              Icons.refresh,
-                              color: Colors.green,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                        // Debug button
-                        GestureDetector(
-                          onTap: () async {
-                            debugPrint('🔧 Debug: Testing FollowsService...');
-                            final followsSvc = FollowsService();
-
-                            // Test all three tabs
-                            final connections =
-                                await followsSvc.getUsersForTab('connections');
-                            final followers =
-                                await followsSvc.getUsersForTab('followers');
-                            final following =
-                                await followsSvc.getUsersForTab('following');
-
-                            debugPrint('🔧 Debug Results:');
-                            debugPrint('  Connections: ${connections.length}');
-                            debugPrint('  Followers: ${followers.length}');
-                            debugPrint('  Following: ${following.length}');
-
-                            // Show results in UI
-                            if (mounted && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                      'Debug: C:${connections.length} F:${followers.length} Fo:${following.length}'),
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
-                            }
-
-                            // Force refresh
-                            _refreshDataInstantly();
-
-                            // Also test the real-time listeners
-                            debugPrint(
-                                '🔧 Debug: Testing real-time listeners...');
-                            _initializeRelationshipListeners();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                  color: Colors.orange.withValues(alpha: 0.4)),
-                            ),
-                            child: const Icon(
-                              Icons.bug_report,
-                              color: Colors.orange,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                        // Sort button
-                        GestureDetector(
-                          onTap: _showSortOptions,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                width: 1,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.sort,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                        // Search button
-                        GestureDetector(
-                          onTap: _toggleSearch,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                width: 1,
-                              ),
-                            ),
-                            child: Icon(
-                              _isSearchVisible ? Icons.close : Icons.search,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              _buildTopChrome(),
 
               // Search bar (conditional)
-              if (_isSearchVisible) _buildSearchBar(),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                child: _isSearchVisible
+                    ? Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: _buildSearchBar(),
+                      )
+                    : const SizedBox.shrink(),
+              ),
 
               // Tab buttons with swipe functionality
               _buildTabButtons(),
 
               // Main content area
               Expanded(
-                child: _buildMainContent(),
+                child: FadeTransition(
+                  opacity: _contentFadeAnimation,
+                  child: SlideTransition(
+                    position: _contentSlideAnimation,
+                    child: _buildMainContent(),
+                  ),
+                ),
               ),
             ],
           ),
@@ -961,6 +754,211 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     );
   }
 
+  Widget _buildTopChrome() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.09),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.14),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 20,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Your Network',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _isSearchVisible
+                            ? 'Search across your connections, followers, and following.'
+                            : 'Keep track of your people and move between lists quickly.',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _buildStatusChip(),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildHeaderAction(
+                    icon: Icons.refresh_rounded,
+                    label: 'Refresh',
+                    onTap: _refreshDataInstantly,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildHeaderAction(
+                    icon: Icons.swap_vert_rounded,
+                    label: 'Sort',
+                    onTap: _showSortOptions,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildHeaderAction(
+                    icon: _isSearchVisible
+                        ? Icons.close_rounded
+                        : Icons.search_rounded,
+                    label: _isSearchVisible ? 'Close' : 'Search',
+                    isPrimary: true,
+                    onTap: _toggleSearch,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusChip() {
+    if (!_isFirebaseReady) {
+      return _buildStatusPill(
+        label: 'Offline',
+        icon: Icons.cloud_off_rounded,
+        color: Colors.grey,
+      );
+    }
+
+    return Consumer(
+      builder: (context, ref, child) {
+        final statusAsync = ref.watch(statusNotifierProvider);
+        return statusAsync.when(
+          data: (presence) => _buildStatusPill(
+            label: presence.status.displayName,
+            icon: _getStatusIcon(presence.status),
+            color: _getStatusColor(presence.status),
+          ),
+          loading: () => _buildStatusPill(
+            label: 'Loading',
+            icon: Icons.more_horiz_rounded,
+            color: Colors.grey,
+          ),
+          error: (error, stack) => _buildStatusPill(
+            label: 'Error',
+            icon: Icons.error_outline_rounded,
+            color: Colors.red,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusPill({
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: color.withValues(alpha: 0.30),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 15),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isPrimary = false,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          gradient: isPrimary
+              ? const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                )
+              : null,
+          color: isPrimary ? null : Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isPrimary
+                ? Colors.white.withValues(alpha: 0.10)
+                : Colors.white.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTabButtons() {
     return GestureDetector(
       onHorizontalDragEnd: (details) {
@@ -974,7 +972,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         }
       },
       child: SizedBox(
-        height: 160,
+        height: 148,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -1017,69 +1015,92 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     return GestureDetector(
       onTap: () => _selectTab(tab),
       child: Container(
-        width: 190,
-        height: 150,
+        width: 178,
+        height: 132,
         decoration: BoxDecoration(
+          gradient: isSelected
+              ? const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
           color: isSelected
-              ? Colors.white.withValues(alpha: 0.2)
-              : Colors.white.withValues(alpha: 0.1),
+              ? null
+              : Colors.white.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
-                ? Colors.white.withValues(alpha: 0.4)
-                : Colors.white.withValues(alpha: 0.2),
-            width: 2,
+                ? Colors.white.withValues(alpha: 0.24)
+                : Colors.white.withValues(alpha: 0.16),
+            width: 1.4,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ]
+              : null,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Icon with gradient when selected
-            if (isSelected)
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [
-                    Color(0xFF6137EB),
-                    Color(0xFF1C135D),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ).createShader(bounds),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: isSelected ? 0.20 : 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: isSelected ? 0.18 : 0.12),
+                  ),
+                ),
                 child: Icon(
                   icon,
-                  size: 40,
-                  color: Colors.white,
+                  size: 22,
+                  color: Colors.white.withValues(alpha: isSelected ? 1 : 0.82),
                 ),
-              )
-            else
-              Icon(
-                icon,
-                size: 40,
-                color: Colors.white.withValues(alpha: 0.7),
               ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: TextStyle(
-                color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.7),
-                fontSize: 16,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              const Spacer(),
+              Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: isSelected ? 1 : 0.82),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              count.toString(),
-              style: TextStyle(
-                color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.7),
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Text(
+                    count.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'people',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.74),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1099,24 +1120,10 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     }
 
     final currentList = _currentList();
-    debugPrint(
-        '🎯 NetworkView: _buildMainContent - currentList.length: ${currentList.length}');
-    debugPrint(
-        '🎯 NetworkView: _buildMainContent - _selectedTab: $_selectedTab');
-    debugPrint(
-        '🎯 NetworkView: _buildMainContent - _connectionsUsers.length: ${_connectionsUsers.length}');
-    debugPrint(
-        '🎯 NetworkView: _buildMainContent - _followersUsers.length: ${_followersUsers.length}');
-    debugPrint(
-        '🎯 NetworkView: _buildMainContent - _followingUsers.length: ${_followingUsers.length}');
-
     if (currentList.isEmpty) {
-      debugPrint('⚠️ NetworkView: currentList is empty, showing empty state');
       return _buildEmptyState();
     }
 
-    debugPrint(
-        '✅ NetworkView: Building ListView with ${currentList.length} users');
     return RefreshIndicator(
       onRefresh: _handlePullToRefresh,
       color: Colors.white,
@@ -1126,26 +1133,16 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         itemCount: currentList.length,
         itemBuilder: (context, index) {
           final user = currentList[index];
-          debugPrint(
-              '🔨 NetworkView: Building user card $index: ${user.displayName} (${user.id})');
-          return _buildUserCard(user); // User cards now match search bar width
+          return _buildUserCard(user);
         },
       ),
     );
   }
 
   void _navigateToStreamerCard(user_model.User user) {
-    debugPrint(
-        '🔵 NetworkView: _navigateToStreamerCard called for user: ${user.displayName}');
-    debugPrint('🔵 NetworkView: User ID being passed: ${user.id}');
-    debugPrint('🔵 NetworkView: User username: ${user.username}');
-    debugPrint('🔵 NetworkView: User displayName: ${user.displayName}');
-
     Future.microtask(() async {
       if (mounted) {
         final userId = await _resolveUserDocumentId(user);
-        debugPrint(
-            '🔵 NetworkView: Resolved userId for StreamerCardView: $userId');
         if (userId == null) {
           debugPrint(
               '❌ NetworkView: Unable to resolve user document for ${user.displayName} (${user.username})');
@@ -1160,56 +1157,25 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           return;
         }
 
-        // Force the app to stay in foreground with multiple approaches
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
         SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-        // Use push instead of pushReplacement to maintain navigation stack
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => StreamerCardView(
-              userId: userId,
-              currentUserId: FirebaseAuth.instance.currentUser?.uid,
-              onDismiss: () => Navigator.of(context).pop(),
-              onFollow: (userId) async {
-                // Handle follow action - just refresh data since StreamerCardView handles the actual follow
-                HapticFeedback.lightImpact();
-                debugPrint(
-                    '🔵 NetworkView: Follow action triggered for user: $userId - refreshing data');
-
-                // Just refresh the data to reflect any changes made by StreamerCardView
-                _refreshDataInstantly();
-              },
-              onMessage: (userId) {
-                // Handle message action
-                HapticFeedback.lightImpact();
-                debugPrint(
-                    '🔵 NetworkView: Message action triggered for user: $userId');
-                // The StreamerCardView will handle the actual messaging logic
-                // This callback is just for tracking/logging purposes
-              },
-              onShare: (userId) {
-                // Handle share action
-                HapticFeedback.lightImpact();
-                debugPrint(
-                    '🔵 NetworkView: Share action triggered for user: $userId');
-                // Share functionality implementation
-                // This would involve sharing user profile or content
-                // Currently not implemented - would require share service integration
-              },
-              onNavigateToTab: (tabName) {
-                // Handle tab navigation from StreamerCardView
-                HapticFeedback.lightImpact();
-                debugPrint(
-                    '🔵 NetworkView: Tab navigation requested: $tabName');
-                _navigateToTab(tabName);
-
-                // Close the StreamerCardView and return to NetworkView
-                Navigator.of(context).pop();
-              },
-            ),
-          ),
-        );
+        if (!mounted) return;
+        AppNavigator.openStreamerCard(
+          context,
+          userId: userId,
+          currentUserId: FirebaseAuth.instance.currentUser?.uid,
+          onDismiss: () => Navigator.of(context).pop(),
+          onNavigateToTab: (tabName) {
+            HapticFeedback.lightImpact();
+            _navigateToTab(tabName);
+            Navigator.of(context).pop();
+          },
+        ).then((_) {
+          if (mounted) {
+            _refreshDataInstantly();
+          }
+        });
       }
     });
   }
@@ -1254,8 +1220,14 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   Widget _buildUserCard(user_model.User user) {
-    debugPrint(
-        '🎨 NetworkView: _buildUserCard called for user: ${user.displayName} (${user.id})');
+    final subtitle = user.bio?.trim().isNotEmpty == true
+        ? user.bio!.trim()
+        : '@${user.username}';
+    final statsLabel = _selectedTab == network_models.NetworkTab.followers
+        ? '${user.followerCount} followers'
+        : _selectedTab == network_models.NetworkTab.following
+            ? '${user.followingCount} following'
+            : '${user.postCount} posts';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1266,30 +1238,37 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         background: _buildSwipeBackground(),
         child: GestureDetector(
           onTap: () {
-            debugPrint(
-                '🔵 NetworkView: User card tapped for user: ${user.displayName}');
             HapticFeedback.lightImpact();
             _navigateToStreamerCard(user);
           },
           child: Container(
             width: double.infinity,
-            height: 60,
+            height: 86,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+              color: Colors.white.withValues(alpha: 0.09),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.14),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
                 children: [
                   StatusAwareAvatar(
                     userId: user.id,
                     avatarURL: user.avatarURL,
-                    radius: 20,
+                    radius: 24,
                     showOnlineIndicator: true,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1299,27 +1278,46 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                           user.displayName,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 4),
                         Text(
-                          '@${user.username}',
+                          subtitle,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.70),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
                           ),
                           overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          statsLabel,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.54),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right,
-                    color: Colors.white.withValues(alpha: 0.5),
-                    size: 20,
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white.withValues(alpha: 0.72),
+                      size: 20,
+                    ),
                   ),
                 ],
               ),
@@ -1331,54 +1329,105 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   Widget _buildEmptyState() {
+    final title = _selectedTab == network_models.NetworkTab.followers
+        ? 'No followers yet'
+        : _selectedTab == network_models.NetworkTab.following
+            ? 'You are not following anyone yet'
+            : 'No connections yet';
+    final subtitle = _selectedTab == network_models.NetworkTab.followers
+        ? 'Share your profile and keep posting to grow your audience.'
+        : _selectedTab == network_models.NetworkTab.following
+            ? 'Find creators and friends from Home or Search, then follow them here.'
+            : 'Follow back people who follow you to turn one-way relationships into connections.';
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.people_outline,
-            size: 80,
-            color: Colors.white.withValues(alpha: 0.3),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 28),
+        padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.14),
           ),
-          const SizedBox(height: 20),
-          Text(
-            _selectedTab == network_models.NetworkTab.followers
-                ? 'No followers yet'
-                : _selectedTab == network_models.NetworkTab.following
-                    ? 'You are not following anyone'
-                    : 'No connections yet',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _selectedTab == network_models.NetworkTab.followers
-                ? 'Share your profile to grow your audience.'
-                : _selectedTab == network_models.NetworkTab.following
-                    ? 'Discover people to follow from Home or Search.'
-                    : 'Follow back people who follow you to connect.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _refreshDataInstantly,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(
+                Icons.people_outline_rounded,
+                size: 36,
+                color: Colors.white,
               ),
             ),
-            child: const Text('Refresh'),
-          ),
-        ],
+            const SizedBox(height: 20),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              subtitle,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.70),
+                fontSize: 14,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 18),
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                _refreshDataInstantly();
+              },
+              child: Container(
+                height: 46,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: AppColors.supportAccentGradient,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Refresh network',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1387,23 +1436,23 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
-        height: 60,
+        height: 86,
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(22),
         ),
         child: Row(
           children: [
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Container(
-              width: 40,
-              height: 40,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1426,10 +1475,27 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 10,
+                    width: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            const SizedBox(width: 14),
           ],
         ),
       ),
@@ -1441,15 +1507,22 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [
+            Colors.red.withValues(alpha: 0.58),
+            Colors.red.withValues(alpha: 0.88),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.block, color: Colors.white),
+          Icon(Icons.block_rounded, color: Colors.white),
           SizedBox(width: 8),
-          Icon(Icons.delete_forever, color: Colors.white),
+          Icon(Icons.delete_forever_rounded, color: Colors.white),
         ],
       ),
     );
@@ -1507,6 +1580,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   void _selectTab(network_models.NetworkTab tab) {
+    if (_selectedTab == tab) return;
     setState(() {
       _selectedTab = tab;
       switch (tab) {
@@ -1521,6 +1595,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           break;
       }
     });
+    _contentTransitionController.forward(from: 0);
     if (_listController.hasClients) {
       _listController.jumpTo(0);
     }
@@ -1554,39 +1629,47 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   }
 
   void _nextTab() {
-    setState(() {
-      switch (_selectedTab) {
-        case network_models.NetworkTab.connections:
-          _selectedTab = network_models.NetworkTab.followers;
-          break;
-        case network_models.NetworkTab.followers:
-          _selectedTab = network_models.NetworkTab.following;
-          break;
-        case network_models.NetworkTab.following:
-          _selectedTab = network_models.NetworkTab.connections;
-          break;
-      }
-    });
+    switch (_selectedTab) {
+      case network_models.NetworkTab.connections:
+        _selectTab(network_models.NetworkTab.followers);
+        break;
+      case network_models.NetworkTab.followers:
+        _selectTab(network_models.NetworkTab.following);
+        break;
+      case network_models.NetworkTab.following:
+        _selectTab(network_models.NetworkTab.connections);
+        break;
+    }
   }
 
   void _previousTab() {
-    setState(() {
-      switch (_selectedTab) {
-        case network_models.NetworkTab.connections:
-          _selectedTab = network_models.NetworkTab.following;
-          break;
-        case network_models.NetworkTab.followers:
-          _selectedTab = network_models.NetworkTab.connections;
-          break;
-        case network_models.NetworkTab.following:
-          _selectedTab = network_models.NetworkTab.followers;
-          break;
-      }
-    });
+    switch (_selectedTab) {
+      case network_models.NetworkTab.connections:
+        _selectTab(network_models.NetworkTab.following);
+        break;
+      case network_models.NetworkTab.followers:
+        _selectTab(network_models.NetworkTab.connections);
+        break;
+      case network_models.NetworkTab.following:
+        _selectTab(network_models.NetworkTab.followers);
+        break;
+    }
   }
 
   /// Refresh data instantly without showing loading indicator
   Future<void> _refreshDataInstantly() async {
+    if (!_isFirebaseReady) {
+      if (mounted) {
+        setState(() {
+          _connectionsUsers = [];
+          _followersUsers = [];
+          _followingUsers = [];
+          _isLoadingUsers = false;
+        });
+      }
+      return;
+    }
+
     try {
       debugPrint('🔄 NetworkView: Starting instant data refresh...');
       final followsSvc = FollowsService();

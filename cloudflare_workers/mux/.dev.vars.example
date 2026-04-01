@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local development (do not commit .dev.vars)
+MUX_TOKEN_ID=your_mux_token_id
+MUX_TOKEN_SECRET=your_mux_token_secret
+MUX_WEBHOOK_SECRET=your_webhook_signing_secret
+# FIREBASE_SERVICE_ACCOUNT_JSON must be the full JSON string on one line

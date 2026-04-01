@@ -3,7 +3,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'social_link.freezed.dart';
 
 @freezed
-class SocialLink with _$SocialLink {
+sealed class SocialLink with _$SocialLink {
   const factory SocialLink({
     required String id,
     required SocialLinkType type,

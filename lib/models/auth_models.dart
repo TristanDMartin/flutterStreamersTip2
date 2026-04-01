@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'user.dart';
 import 'json_converters.dart';
@@ -7,7 +6,7 @@ part 'auth_models.freezed.dart';
 part 'auth_models.g.dart';
 
 @freezed
-class AuthResponse with _$AuthResponse {
+sealed class AuthResponse with _$AuthResponse {
   const factory AuthResponse({
     @UserConverter() required User user,
     required String token,
@@ -18,7 +17,7 @@ class AuthResponse with _$AuthResponse {
 }
 
 @freezed
-class LoginRequest with _$LoginRequest {
+sealed class LoginRequest with _$LoginRequest {
   const factory LoginRequest({
     required String email,
     required String password,
@@ -28,7 +27,7 @@ class LoginRequest with _$LoginRequest {
 }
 
 @freezed
-class SignupRequest with _$SignupRequest {
+sealed class SignupRequest with _$SignupRequest {
   const factory SignupRequest({
     required String username,
     required String email,

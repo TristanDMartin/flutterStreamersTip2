@@ -216,25 +216,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
     if (replyText.isEmpty) return;
 
     final app_user.User me = _currentUserOrSample();
-    final Comment optimistic = Comment(
-      id: 'r-${DateTime.now().microsecondsSinceEpoch}',
-      user: me,
-      text: replyText,
-      timestamp: DateTime.now(),
-      likeCount: 0,
-      isLiked: false,
-      replies: <Comment>[],
-    );
-
     setState(() {
-      final int idx = _comments.indexWhere((c) => c.id == parent.id);
-      if (idx != -1) {
-        final List<Comment> updatedReplies = List<Comment>.from(
-          _comments[idx].replies ?? <Comment>[],
-        );
-        updatedReplies.insert(0, optimistic);
-        _comments[idx] = _comments[idx].copyWith(replies: updatedReplies);
-      }
+      _isLoading = true;
+      _errorMessage = null;
     });
 
     try {
@@ -244,17 +228,15 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
         text: replyText,
         author: me,
       );
+      await _loadComments();
     } catch (e) {
-      setState(() {
-        final int idx = _comments.indexWhere((c) => c.id == parent.id);
-        if (idx != -1) {
-          final List<Comment> updatedReplies = List<Comment>.from(
-            _comments[idx].replies ?? <Comment>[],
-          )..removeWhere((r) => r.id == optimistic.id);
-          _comments[idx] = _comments[idx].copyWith(replies: updatedReplies);
-        }
-        _errorMessage = e.toString();
-      });
+      if (mounted) {
+        setState(() => _errorMessage = e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -267,8 +249,9 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
     if (comment.user.id == currentUser.uid) return true;
 
     // Video owner can delete any comment on their video
-    if (widget.videoOwnerId != null && widget.videoOwnerId == currentUser.uid)
+    if (widget.videoOwnerId != null && widget.videoOwnerId == currentUser.uid) {
       return true;
+    }
 
     return false;
   }
@@ -291,15 +274,7 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
       );
 
       if (success) {
-        setState(() {
-          _comments.removeWhere((c) => c.id == commentId);
-          for (int i = 0; i < _comments.length; i++) {
-            final List<Comment> replies = List<Comment>.from(
-              _comments[i].replies ?? <Comment>[],
-            )..removeWhere((r) => r.id == commentId);
-            _comments[i] = _comments[i].copyWith(replies: replies);
-          }
-        });
+        await _loadComments();
       }
     } catch (e) {
       setState(() => _errorMessage = e.toString());
@@ -444,8 +419,10 @@ class _CommentsViewOptimizedState extends ConsumerState<CommentsViewOptimized>
         return OptimizedCommentTile(
           comment: c,
           videoId: widget.videoId,
+          videoOwnerId: widget.videoOwnerId,
           onReply: () => _showReplySheet(c),
           onDelete: _canDeleteComment(c) ? () => _showDeleteSheet(c) : null,
+          onDeleteReply: _showDeleteSheet,
         );
       },
     );

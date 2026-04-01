@@ -31,7 +31,7 @@ class SchedulingNotificationService {
     );
 
     await _notifications.initialize(
-      settings,
+      settings: settings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
@@ -78,10 +78,11 @@ class SchedulingNotificationService {
     );
 
     await _notifications.show(
-      postId.hashCode,
-      'Post Scheduled',
-      'Your post "${_truncateText(caption, 50)}" is scheduled for ${_formatDateTime(scheduledAt)}',
-      details,
+      id: postId.hashCode,
+      title: 'Post Scheduled',
+      body:
+          'Your post "${_truncateText(caption, 50)}" is scheduled for ${_formatDateTime(scheduledAt)}',
+      notificationDetails: details,
       payload: 'scheduled_post:$postId',
     );
   }
@@ -119,14 +120,14 @@ class SchedulingNotificationService {
     );
 
     await _notifications.zonedSchedule(
-      postId.hashCode + 1000, // Different ID to avoid conflicts
-      'Post Publishing Soon',
-      'Your post "${_truncateText(caption, 50)}" will be published in 10 minutes',
-      tz.TZDateTime.from(notificationTime, tz.local),
-      details,
+      id: postId.hashCode + 1000, // Different ID to avoid conflicts
+      title: 'Post Publishing Soon',
+      body:
+          'Your post "${_truncateText(caption, 50)}" will be published in 10 minutes',
+      scheduledDate: tz.TZDateTime.from(notificationTime, tz.local),
+      notificationDetails: details,
+      androidScheduleMode: AndroidScheduleMode.exact,
       payload: 'pre_publish:$postId',
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 
@@ -165,10 +166,11 @@ class SchedulingNotificationService {
     );
 
     await _notifications.show(
-      postId.hashCode + 2000, // Different ID to avoid conflicts
-      'Post Published Successfully',
-      'Your post "${_truncateText(caption, 30)}" was published to $successfulPlatforms',
-      details,
+      id: postId.hashCode + 2000, // Different ID to avoid conflicts
+      title: 'Post Published Successfully',
+      body:
+          'Your post "${_truncateText(caption, 30)}" was published to $successfulPlatforms',
+      notificationDetails: details,
       payload: 'post_published:$postId',
     );
   }
@@ -208,10 +210,11 @@ class SchedulingNotificationService {
     );
 
     await _notifications.show(
-      postId.hashCode + 3000, // Different ID to avoid conflicts
-      'Post Publishing Failed',
-      'Your post "${_truncateText(caption, 30)}" failed to publish to $failedPlatforms',
-      details,
+      id: postId.hashCode + 3000, // Different ID to avoid conflicts
+      title: 'Post Publishing Failed',
+      body:
+          'Your post "${_truncateText(caption, 30)}" failed to publish to $failedPlatforms',
+      notificationDetails: details,
       payload: 'post_failed:$postId',
     );
   }
@@ -246,10 +249,11 @@ class SchedulingNotificationService {
     );
 
     await _notifications.show(
-      postId.hashCode + 4000, // Different ID to avoid conflicts
-      'Re-authentication Required',
-      'Your $platformName connection needs to be renewed to continue publishing',
-      details,
+      id: postId.hashCode + 4000, // Different ID to avoid conflicts
+      title: 'Re-authentication Required',
+      body:
+          'Your $platformName connection needs to be renewed to continue publishing',
+      notificationDetails: details,
       payload: 'reauth_required:$postId:$platformName',
     );
   }
@@ -258,11 +262,11 @@ class SchedulingNotificationService {
   static Future<void> cancelPostNotifications(String postId) async {
     await initialize();
 
-    await _notifications.cancel(postId.hashCode);
-    await _notifications.cancel(postId.hashCode + 1000);
-    await _notifications.cancel(postId.hashCode + 2000);
-    await _notifications.cancel(postId.hashCode + 3000);
-    await _notifications.cancel(postId.hashCode + 4000);
+    await _notifications.cancel(id: postId.hashCode);
+    await _notifications.cancel(id: postId.hashCode + 1000);
+    await _notifications.cancel(id: postId.hashCode + 2000);
+    await _notifications.cancel(id: postId.hashCode + 3000);
+    await _notifications.cancel(id: postId.hashCode + 4000);
   }
 
   // Cancel all scheduled notifications
@@ -310,14 +314,13 @@ class SchedulingNotificationService {
     );
 
     await _notifications.zonedSchedule(
-      id,
-      title,
-      body,
-      tz.TZDateTime.from(scheduledAt, tz.local),
-      details,
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: tz.TZDateTime.from(scheduledAt, tz.local),
+      notificationDetails: details,
+      androidScheduleMode: AndroidScheduleMode.exact,
       payload: payload,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 

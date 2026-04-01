@@ -90,27 +90,46 @@ class UploadJob {
 }
 
 enum UploadJobState {
-  queued,
+  idle,
+  validating,
   uploading,
+  processing,
+  ready,
   failed,
+  /// Legacy alias kept for JSON backwards-compat; treated as [uploading].
+  queued,
+  /// Legacy alias kept for JSON backwards-compat; treated as [ready].
   done,
 }
 
 extension UploadJobStateExtension on UploadJobState {
   String get displayName {
     switch (this) {
-      case UploadJobState.queued:
-        return 'Queued';
+      case UploadJobState.idle:
+        return 'Idle';
+      case UploadJobState.validating:
+        return 'Validating';
       case UploadJobState.uploading:
+      case UploadJobState.queued:
         return 'Uploading';
+      case UploadJobState.processing:
+        return 'Processing';
+      case UploadJobState.ready:
+      case UploadJobState.done:
+        return 'Live';
       case UploadJobState.failed:
         return 'Failed';
-      case UploadJobState.done:
-        return 'Completed';
     }
   }
 
-  bool get isActive => this == UploadJobState.queued || this == UploadJobState.uploading;
-  bool get isCompleted => this == UploadJobState.done;
+  bool get isActive =>
+      this == UploadJobState.validating ||
+      this == UploadJobState.uploading ||
+      this == UploadJobState.queued ||
+      this == UploadJobState.processing;
+
+  bool get isCompleted =>
+      this == UploadJobState.ready || this == UploadJobState.done;
+
   bool get hasFailed => this == UploadJobState.failed;
 }

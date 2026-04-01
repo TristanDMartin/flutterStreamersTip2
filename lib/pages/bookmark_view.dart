@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/bookmark_event.dart';
 import '../services/enhanced_bookmark_service.dart';
+import '../widgets/profile_video_feed_view.dart';
 
 class BookmarkView extends StatefulWidget {
   const BookmarkView({super.key});
@@ -10,183 +12,83 @@ class BookmarkView extends StatefulWidget {
   State<BookmarkView> createState() => _BookmarkViewState();
 }
 
-class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMixin {
+class _BookmarkViewState extends State<BookmarkView>
+    with TickerProviderStateMixin {
+  late final TabController _outerTabController;
+  late final TabController _eventTabController;
   late final EnhancedBookmarkService _bookmarkService;
-  late final TabController _tabController;
-  
+
   List<BookmarkEvent> _bookmarks = [];
   bool _isLoading = true;
   String? _error;
 
+  static const Color _purple = Color(0xFF955CFF);
+  static const Color _gradientStart = Color(0xFF6137EB);
+  static const Color _gradientEnd = Color(0xFF1C135D);
+
   @override
   void initState() {
     super.initState();
+    _outerTabController = TabController(length: 2, vsync: this);
+    _eventTabController = TabController(length: 3, vsync: this);
     _bookmarkService = EnhancedBookmarkService();
-    _tabController = TabController(length: 3, vsync: this);
     _initializeBookmarks();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _outerTabController.dispose();
+    _eventTabController.dispose();
     super.dispose();
   }
 
   Future<void> _initializeBookmarks() async {
     try {
       await _bookmarkService.initialize();
-      _loadBookmarks();
+      _bookmarkService.getBookmarksStream().listen(
+        (bookmarks) {
+          if (mounted) {
+            setState(() {
+              _bookmarks = bookmarks;
+              _isLoading = false;
+              _error = null;
+            });
+          }
+        },
+        onError: (Object error) {
+          if (mounted) {
+            setState(() {
+              _error = 'Failed to load bookmarks: $error';
+              _isLoading = false;
+            });
+          }
+        },
+      );
     } catch (e) {
-      setState(() {
-        _error = 'Failed to initialize bookmarks: $e';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to initialize bookmarks: $e';
+          _isLoading = false;
+        });
+      }
     }
-  }
-
-  void _loadBookmarks() {
-    _bookmarkService.getBookmarksStream().listen(
-      (bookmarks) {
-        if (mounted) {
-          setState(() {
-            _bookmarks = bookmarks;
-            _isLoading = false;
-            _error = null;
-          });
-        }
-      },
-      onError: (error) {
-        if (mounted) {
-          setState(() {
-            _error = 'Failed to load bookmarks: $error';
-            _isLoading = false;
-          });
-        }
-      },
-    );
   }
 
   Map<EventStatus, List<BookmarkEvent>> _getBookmarksByStatus() {
-    final Map<EventStatus, List<BookmarkEvent>> grouped = {
-      EventStatus.upcoming: [],
-      EventStatus.live: [],
-      EventStatus.past: [],
+    return {
+      EventStatus.upcoming: _bookmarks
+          .where((b) => b.status == EventStatus.upcoming)
+          .toList(),
+      EventStatus.live:
+          _bookmarks.where((b) => b.status == EventStatus.live).toList(),
+      EventStatus.past:
+          _bookmarks.where((b) => b.status == EventStatus.past).toList(),
     };
-
-    for (final bookmark in _bookmarks) {
-      grouped[bookmark.status]!.add(bookmark);
-    }
-
-    return grouped;
-  }
-
-  Future<void> _deleteBookmark(BookmarkEvent bookmark) async {
-    HapticFeedback.lightImpact();
-    
-    // Optimistic UI update
-    setState(() {
-      _bookmarks.removeWhere((b) => b.eventId == bookmark.eventId);
-    });
-
-    try {
-      final success = await _bookmarkService.deleteBookmark(eventId: bookmark.eventId);
-      
-      if (!success && mounted) {
-        // Revert optimistic update on failure
-        setState(() {
-          _bookmarks.add(bookmark);
-          _bookmarks.sort((a, b) => a.notifyAt.compareTo(b.notifyAt));
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to delete bookmark'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bookmark deleted'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      // Revert optimistic update on error
-      if (mounted) {
-        setState(() {
-          _bookmarks.add(bookmark);
-          _bookmarks.sort((a, b) => a.notifyAt.compareTo(b.notifyAt));
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _toggleNotification(BookmarkEvent bookmark) async {
-    HapticFeedback.lightImpact();
-    
-    final newNotify = !bookmark.notify;
-    
-    // Optimistic UI update
-    setState(() {
-      final index = _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
-      if (index != -1) {
-        _bookmarks[index] = bookmark.copyWith(notify: newNotify);
-      }
-    });
-
-    try {
-      final success = await _bookmarkService.toggleNotification(
-        eventId: bookmark.eventId,
-        notify: newNotify,
-      );
-      
-      if (!success && mounted) {
-        // Revert optimistic update on failure
-        setState(() {
-          final index = _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
-          if (index != -1) {
-            _bookmarks[index] = bookmark;
-          }
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to update notification settings'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      // Revert optimistic update on error
-      if (mounted) {
-        setState(() {
-          final index = _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
-          if (index != -1) {
-            _bookmarks[index] = bookmark;
-          }
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
@@ -194,7 +96,7 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+            colors: [_gradientStart, _gradientEnd],
           ),
         ),
         child: Scaffold(
@@ -211,111 +113,278 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
               ),
             ),
             bottom: TabBar(
-              controller: _tabController,
-              indicatorColor: const Color(0xFF955CFF),
+              controller: _outerTabController,
+              indicatorColor: _purple,
               labelColor: Colors.white,
               unselectedLabelColor: Colors.grey,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
               tabs: const [
-                Tab(text: 'Upcoming'),
-                Tab(text: 'Live'),
-                Tab(text: 'Past'),
+                Tab(text: 'Videos'),
+                Tab(text: 'Events'),
               ],
             ),
           ),
-          body: _isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(
-                    color: Color(0xFF955CFF),
-                  ),
-                )
-              : _error != null
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.error_outline,
-                            color: Colors.red,
-                            size: 64,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _error!,
-                            style: const TextStyle(color: Colors.red),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: _initializeBookmarks,
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildBookmarkList(EventStatus.upcoming),
-                        _buildBookmarkList(EventStatus.live),
-                        _buildBookmarkList(EventStatus.past),
-                      ],
-                    ),
+          body: TabBarView(
+            controller: _outerTabController,
+            children: [
+              _SavedVideosTab(userId: currentUser?.uid),
+              _EventsTab(
+                isLoading: _isLoading,
+                error: _error,
+                bookmarksByStatus: _getBookmarksByStatus(),
+                tabController: _eventTabController,
+                onRetry: _initializeBookmarks,
+                onDelete: _deleteBookmark,
+                onToggleNotification: _toggleNotification,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBookmarkList(EventStatus status) {
-    final groupedBookmarks = _getBookmarksByStatus();
-    final bookmarks = groupedBookmarks[status] ?? [];
+  Future<void> _deleteBookmark(BookmarkEvent bookmark) async {
+    HapticFeedback.lightImpact();
+    setState(() => _bookmarks.removeWhere((b) => b.eventId == bookmark.eventId));
+    final success =
+        await _bookmarkService.deleteBookmark(eventId: bookmark.eventId);
+    if (!success && mounted) {
+      setState(() {
+        _bookmarks.add(bookmark);
+        _bookmarks.sort((a, b) => a.notifyAt.compareTo(b.notifyAt));
+      });
+    }
+  }
 
+  Future<void> _toggleNotification(BookmarkEvent bookmark) async {
+    HapticFeedback.lightImpact();
+    final newNotify = !bookmark.notify;
+    setState(() {
+      final index = _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
+      if (index != -1) _bookmarks[index] = bookmark.copyWith(notify: newNotify);
+    });
+    final success = await _bookmarkService.toggleNotification(
+      eventId: bookmark.eventId,
+      notify: newNotify,
+    );
+    if (!success && mounted) {
+      setState(() {
+        final index =
+            _bookmarks.indexWhere((b) => b.eventId == bookmark.eventId);
+        if (index != -1) _bookmarks[index] = bookmark;
+      });
+    }
+  }
+}
+
+// ─── Saved Videos Tab ────────────────────────────────────────────────────────
+
+class _SavedVideosTab extends StatelessWidget {
+  final String? userId;
+
+  const _SavedVideosTab({required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    if (userId == null) {
+      return const Center(
+        child: Text(
+          'Sign in to view saved videos',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+    return ProfileVideoFeedView(
+      feedType: ProfileVideoFeedType.favorites,
+      userId: userId,
+    );
+  }
+}
+
+// ─── Events Tab ──────────────────────────────────────────────────────────────
+
+class _EventsTab extends StatelessWidget {
+  final bool isLoading;
+  final String? error;
+  final Map<EventStatus, List<BookmarkEvent>> bookmarksByStatus;
+  final TabController tabController;
+  final VoidCallback onRetry;
+  final Future<void> Function(BookmarkEvent) onDelete;
+  final Future<void> Function(BookmarkEvent) onToggleNotification;
+
+  static const Color _purple = Color(0xFF955CFF);
+
+  const _EventsTab({
+    required this.isLoading,
+    required this.error,
+    required this.bookmarksByStatus,
+    required this.tabController,
+    required this.onRetry,
+    required this.onDelete,
+    required this.onToggleNotification,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: _purple),
+      );
+    }
+    if (error != null) {
+      return _ErrorState(error: error!, onRetry: onRetry);
+    }
+    return Column(
+      children: [
+        _buildEventTabBar(),
+        Expanded(
+          child: TabBarView(
+            controller: tabController,
+            children: [
+              _EventList(
+                bookmarks: bookmarksByStatus[EventStatus.upcoming] ?? [],
+                emptyIcon: Icons.schedule,
+                emptyMessage: 'No upcoming events bookmarked',
+                onDelete: onDelete,
+                onToggleNotification: onToggleNotification,
+              ),
+              _EventList(
+                bookmarks: bookmarksByStatus[EventStatus.live] ?? [],
+                emptyIcon: Icons.live_tv,
+                emptyMessage: 'No live events right now',
+                onDelete: onDelete,
+                onToggleNotification: onToggleNotification,
+              ),
+              _EventList(
+                bookmarks: bookmarksByStatus[EventStatus.past] ?? [],
+                emptyIcon: Icons.history,
+                emptyMessage: 'No past events bookmarked',
+                onDelete: onDelete,
+                onToggleNotification: onToggleNotification,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEventTabBar() {
+    return TabBar(
+      controller: tabController,
+      indicatorColor: _purple,
+      labelColor: Colors.white,
+      unselectedLabelColor: Colors.grey,
+      tabs: const [
+        Tab(text: 'Upcoming'),
+        Tab(text: 'Live'),
+        Tab(text: 'Past'),
+      ],
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String error;
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red, size: 64),
+          const SizedBox(height: 16),
+          Text(
+            error,
+            style: const TextStyle(color: Colors.red),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventList extends StatelessWidget {
+  final List<BookmarkEvent> bookmarks;
+  final IconData emptyIcon;
+  final String emptyMessage;
+  final Future<void> Function(BookmarkEvent) onDelete;
+  final Future<void> Function(BookmarkEvent) onToggleNotification;
+
+  const _EventList({
+    required this.bookmarks,
+    required this.emptyIcon,
+    required this.emptyMessage,
+    required this.onDelete,
+    required this.onToggleNotification,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     if (bookmarks.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              _getEmptyIcon(status),
-              color: Colors.grey,
-              size: 64,
-            ),
+            Icon(emptyIcon, color: Colors.grey, size: 64),
             const SizedBox(height: 16),
             Text(
-              _getEmptyMessage(status),
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 18,
-              ),
+              emptyMessage,
+              style: const TextStyle(color: Colors.grey, fontSize: 18),
               textAlign: TextAlign.center,
             ),
           ],
         ),
       );
     }
-
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: bookmarks.length,
-      itemBuilder: (context, index) {
-        final bookmark = bookmarks[index];
-        return _buildBookmarkCard(bookmark);
-      },
+      itemBuilder: (context, index) =>
+          _EventCard(
+            bookmark: bookmarks[index],
+            onDelete: onDelete,
+            onToggleNotification: onToggleNotification,
+          ),
     );
   }
+}
 
-  Widget _buildBookmarkCard(BookmarkEvent bookmark) {
+class _EventCard extends StatelessWidget {
+  final BookmarkEvent bookmark;
+  final Future<void> Function(BookmarkEvent) onDelete;
+  final Future<void> Function(BookmarkEvent) onToggleNotification;
+
+  static const Color _purple = Color(0xFF955CFF);
+
+  const _EventCard({
+    required this.bookmark,
+    required this.onDelete,
+    required this.onToggleNotification,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: Colors.white.withValues(alpha: 0.1),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1,
-        ),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
       ),
       child: InkWell(
-        onTap: () => _showBookmarkDetails(bookmark),
+        onTap: () => _showDetails(context),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -340,60 +409,50 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
                         Text(
                           bookmark.creatorName,
                           style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 14,
-                          ),
+                              color: Colors.grey, fontSize: 14),
                         ),
                       ],
                     ),
                   ),
-                  _buildStatusChip(bookmark.status),
+                  _StatusChip(status: bookmark.status),
                 ],
               ),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(
-                    Icons.schedule,
-                    color: Colors.grey[400],
-                    size: 16,
-                  ),
+                  Icon(Icons.schedule, color: Colors.grey[400], size: 16),
                   const SizedBox(width: 8),
                   Text(
-                    _formatDateTime(bookmark.startAt),
-                    style: TextStyle(
-                      color: Colors.grey[400],
-                      fontSize: 14,
-                    ),
+                    _formatRelative(bookmark.startAt),
+                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
                   ),
                   const Spacer(),
                   Text(
                     bookmark.formattedStartTime,
                     style: TextStyle(
-                      color: _getTimeColor(bookmark.status),
+                      color: _timeColor(bookmark.status),
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   IconButton(
-                    onPressed: () => _toggleNotification(bookmark),
+                    onPressed: () => onToggleNotification(bookmark),
                     icon: Icon(
-                      bookmark.notify ? Icons.notifications : Icons.notifications_off,
-                      color: bookmark.notify ? const Color(0xFF955CFF) : Colors.grey,
+                      bookmark.notify
+                          ? Icons.notifications
+                          : Icons.notifications_off,
+                      color: bookmark.notify ? _purple : Colors.grey,
                     ),
                   ),
                   const Spacer(),
                   IconButton(
-                    onPressed: () => _showDeleteConfirmation(bookmark),
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.red,
-                    ),
+                    onPressed: () => _confirmDelete(context),
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
                   ),
                 ],
               ),
@@ -404,54 +463,15 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
     );
   }
 
-  Widget _buildStatusChip(EventStatus status) {
-    Color color;
-    switch (status) {
-      case EventStatus.upcoming:
-        color = Colors.blue;
-        break;
-      case EventStatus.live:
-        color = Colors.green;
-        break;
-      case EventStatus.past:
-        color = Colors.grey;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color),
-      ),
-      child: Text(
-        status.displayName,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
+  String _formatRelative(DateTime dt) {
+    final diff = dt.difference(DateTime.now());
+    if (diff.inDays > 0) return '${diff.inDays}d ${diff.inHours % 24}h';
+    if (diff.inHours > 0) return '${diff.inHours}h ${diff.inMinutes % 60}m';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}m';
+    return 'Now';
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = dateTime.difference(now);
-    
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ${difference.inHours % 24}h';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ${difference.inMinutes % 60}m';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m';
-    } else {
-      return 'Now';
-    }
-  }
-
-  Color _getTimeColor(EventStatus status) {
+  Color _timeColor(EventStatus status) {
     switch (status) {
       case EventStatus.upcoming:
         return Colors.blue;
@@ -462,96 +482,89 @@ class _BookmarkViewState extends State<BookmarkView> with TickerProviderStateMix
     }
   }
 
-  IconData _getEmptyIcon(EventStatus status) {
-    switch (status) {
-      case EventStatus.upcoming:
-        return Icons.schedule;
-      case EventStatus.live:
-        return Icons.live_tv;
-      case EventStatus.past:
-        return Icons.history;
-    }
-  }
-
-  String _getEmptyMessage(EventStatus status) {
-    switch (status) {
-      case EventStatus.upcoming:
-        return 'No upcoming events bookmarked';
-      case EventStatus.live:
-        return 'No live events right now';
-      case EventStatus.past:
-        return 'No past events bookmarked';
-    }
-  }
-
-  void _showBookmarkDetails(BookmarkEvent bookmark) {
+  void _showDetails(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(
-          bookmark.title,
-          style: const TextStyle(color: Colors.white),
-        ),
+        title: Text(bookmark.title,
+            style: const TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Creator: ${bookmark.creatorName}',
-              style: const TextStyle(color: Colors.grey),
-            ),
+            Text('Creator: ${bookmark.creatorName}',
+                style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 8),
+            Text('Start: ${_formatRelative(bookmark.startAt)}',
+                style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 8),
             Text(
-              'Start Time: ${_formatDateTime(bookmark.startAt)}',
-              style: const TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Notifications: ${bookmark.notify ? "On" : "Off"}',
-              style: const TextStyle(color: Colors.grey),
-            ),
+                'Notifications: ${bookmark.notify ? "On" : "Off"}',
+                style: const TextStyle(color: Colors.grey)),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close')),
         ],
       ),
     );
   }
 
-  void _showDeleteConfirmation(BookmarkEvent bookmark) {
+  void _confirmDelete(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
-          'Delete Bookmark',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Delete Bookmark',
+            style: TextStyle(color: Colors.white)),
         content: Text(
-          'Are you sure you want to delete "${bookmark.title}" from your bookmarks?',
+          'Remove "${bookmark.title}" from your bookmarks?',
           style: const TextStyle(color: Colors.grey),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              _deleteBookmark(bookmark);
+              onDelete(bookmark);
             },
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red),
-            ),
+            child:
+                const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final EventStatus status;
+
+  const _StatusChip({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      EventStatus.upcoming => Colors.blue,
+      EventStatus.live => Colors.green,
+      EventStatus.past => Colors.grey,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color),
+      ),
+      child: Text(
+        status.displayName,
+        style: TextStyle(
+            color: color, fontSize: 12, fontWeight: FontWeight.bold),
       ),
     );
   }

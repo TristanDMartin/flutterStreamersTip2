@@ -7,15 +7,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Flutterbuild</string>
+	<string>StreamersTip</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.tristanmartin.flutterbuild</string>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>flutterbuild</string>
+	<string>StreamersTip</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -28,8 +28,6 @@
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
 			<key>localhost</key>
@@ -39,48 +37,14 @@
 			</dict>
 		</dict>
 	</dict>
-	<key>NSAppleMusicUsageDescription</key>
-	<string>This app needs access to Apple Music for audio features.</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>This app needs access to Bluetooth for device connectivity.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>This app needs access to Bluetooth for device connectivity.</string>
-	<key>NSCalendarsUsageDescription</key>
-	<string>This app needs access to calendar to schedule events.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs access to camera to take photos and record videos.</string>
-	<key>NSContactsUsageDescription</key>
-	<string>This app needs access to contacts to find friends.</string>
-	<key>NSFaceIDUsageDescription</key>
-	<string>This app uses Face ID for secure authentication.</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>This app needs access to health data for fitness tracking.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>This app needs access to health data for fitness tracking.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>This app needs access to local network for device discovery.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app needs access to location to show nearby streamers.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs access to location to show nearby streamers.</string>
+	<string>StreamersTip uses the camera to record videos and capture profile media.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>This app needs access to microphone to record videos.</string>
-	<key>NSMotionUsageDescription</key>
-	<string>This app needs access to motion sensors for activity tracking.</string>
-	<key>NSNearbyInteractionUsageDescription</key>
-	<string>This app needs access to nearby interaction for proximity features.</string>
+	<string>StreamersTip uses the microphone when you record videos in the app.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>This app needs access to photo library to save photos and videos.</string>
+	<string>StreamersTip saves exported media to your photo library when you choose to save it.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app needs access to photo library to select and save media.</string>
-	<key>NSRemindersUsageDescription</key>
-	<string>This app needs access to reminders to set notifications.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>This app needs access to speech recognition for voice commands.</string>
-	<key>NSTouchIDUsageDescription</key>
-	<string>This app uses Touch ID for secure authentication.</string>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>This app needs access to tracking for personalized content.</string>
+	<string>StreamersTip uses your photo library so you can select videos and images to upload.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -1,23 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/comment.dart';
 import '../services/comments_service.dart';
+import '../services/report_service.dart';
 import 'status_aware_avatar.dart';
 
 class OptimizedCommentTile extends ConsumerStatefulWidget {
   final Comment comment;
   final String videoId;
+  final String? videoOwnerId;
   final VoidCallback? onReply;
   final VoidCallback? onDelete;
+  final ValueChanged<Comment>? onDeleteReply;
+  final VoidCallback? onCreateThread;
+  final VoidCallback? onOpenLinkedThread;
+  final String? linkedThreadId;
   final bool showReplies;
 
   const OptimizedCommentTile({
     super.key,
     required this.comment,
     required this.videoId,
+    this.videoOwnerId,
     this.onReply,
     this.onDelete,
+    this.onDeleteReply,
+    this.onCreateThread,
+    this.onOpenLinkedThread,
+    this.linkedThreadId,
     this.showReplies = true,
   });
 
@@ -46,6 +58,78 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
     }
     if (oldWidget.comment.likeCount != widget.comment.likeCount) {
       _likeCount = widget.comment.likeCount;
+    }
+  }
+
+  bool _isVideoOwner() {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (currentUser == null || widget.videoOwnerId == null) return false;
+    return widget.videoOwnerId == currentUser.uid;
+  }
+
+  bool get _hasLinkedThread =>
+      widget.linkedThreadId != null && widget.linkedThreadId!.isNotEmpty;
+
+  bool get _isDeletedComment => widget.comment.text.trim() == '[deleted]';
+
+  Future<void> _reportComment() async {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+    if (currentUser.uid == widget.comment.user.id) return;
+
+    final reportService = ReportService();
+    final alreadyReported = await reportService.hasUserReportedComment(
+      videoId: widget.videoId,
+      commentId: widget.comment.id,
+    );
+    if (!mounted) return;
+    if (alreadyReported) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You have already reported this comment.')),
+      );
+      return;
+    }
+
+    final selectedReason = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      builder: (context) {
+        final reasons = reportService.getReportReasons();
+        return SafeArea(
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: reasons.length,
+            itemBuilder: (context, index) {
+              final reason = reasons[index];
+              return ListTile(
+                leading: const Icon(Icons.flag_outlined, color: Colors.white70),
+                title: Text(reason, style: const TextStyle(color: Colors.white)),
+                onTap: () => Navigator.of(context).pop(reason),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    if (selectedReason == null) return;
+
+    try {
+      await reportService.reportComment(
+        videoId: widget.videoId,
+        commentId: widget.comment.id,
+        commentAuthorId: widget.comment.user.id,
+        reason: selectedReason,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Comment reported. Thanks for letting us know.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to report comment: $e')),
+      );
     }
   }
 
@@ -89,6 +173,14 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
 
   @override
   Widget build(BuildContext context) {
+    final showActionRow = !_isDeletedComment &&
+        (widget.onReply != null ||
+            widget.onDelete != null ||
+            (_hasLinkedThread && widget.onOpenLinkedThread != null) ||
+            (!_hasLinkedThread &&
+                _isVideoOwner() &&
+                widget.onCreateThread != null));
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
@@ -149,104 +241,166 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                         fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 8),
-
-                    // Action buttons
-                    Row(
-                      children: [
-                        if (widget.onReply != null)
-                          GestureDetector(
-                            onTap: widget.onReply,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[800],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                'Reply',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                    if (showActionRow) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          if (widget.onReply != null)
+                            GestureDetector(
+                              onTap: widget.onReply,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[800],
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                              ),
-                            ),
-                          ),
-                        if (widget.onDelete != null) ...[
-                          const SizedBox(width: 12),
-                          GestureDetector(
-                            onTap: widget.onDelete,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                'Delete',
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              // Like button and count
-              Column(
-                children: [
-                  GestureDetector(
-                    onTap: _toggleLike,
-                    child: Stack(
-                      children: [
-                        Icon(
-                          _isLiked ? Icons.favorite : Icons.favorite_border,
-                          color: _isLiked ? Colors.red : Colors.white70,
-                          size: 20,
-                        ),
-                        if (_isLoading)
-                          Positioned.fill(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Center(
-                                child: SizedBox(
-                                  width: 12,
-                                  height: 12,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.red),
+                                child: const Text(
+                                  'Reply',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _likeCount.toString(),
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+                          if (widget.onDelete != null) ...[
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: widget.onDelete,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  'Delete',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (_hasLinkedThread &&
+                              widget.onOpenLinkedThread != null) ...[
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: widget.onOpenLinkedThread,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  'View Thread',
+                                  style: TextStyle(
+                                    color: Colors.lightBlueAccent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (!_hasLinkedThread &&
+                              _isVideoOwner() &&
+                              widget.onCreateThread != null) ...[
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: widget.onCreateThread,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blueGrey[800],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  'Thread',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
               ),
+
+              if (!_isDeletedComment)
+                Column(
+                  children: [
+                    if (firebase_auth.FirebaseAuth.instance.currentUser !=
+                            null &&
+                        firebase_auth.FirebaseAuth.instance.currentUser!.uid !=
+                            widget.comment.user.id)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: GestureDetector(
+                          onTap: _reportComment,
+                          child: Icon(
+                            Icons.flag_outlined,
+                            color: Colors.white.withValues(alpha: 0.7),
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    GestureDetector(
+                      onTap: _toggleLike,
+                      child: Stack(
+                        children: [
+                          Icon(
+                            _isLiked ? Icons.favorite : Icons.favorite_border,
+                            color: _isLiked ? Colors.red : Colors.white70,
+                            size: 20,
+                          ),
+                          if (_isLoading)
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.red),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _likeCount.toString(),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
 
@@ -259,6 +413,11 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
                     .map((reply) => OptimizedReplyTile(
                           reply: reply,
                           videoId: widget.videoId,
+                          videoOwnerId: widget.videoOwnerId,
+                          onDelete: (widget.onDeleteReply != null &&
+                                  !_isDeletedComment)
+                              ? () => widget.onDeleteReply!(reply)
+                              : null,
                         ))
                     .toList(),
               ),
@@ -272,11 +431,15 @@ class _OptimizedCommentTileState extends ConsumerState<OptimizedCommentTile> {
 class OptimizedReplyTile extends StatefulWidget {
   final Comment reply;
   final String videoId;
+  final String? videoOwnerId;
+  final VoidCallback? onDelete;
 
   const OptimizedReplyTile({
     super.key,
     required this.reply,
     required this.videoId,
+    this.videoOwnerId,
+    this.onDelete,
   });
 
   @override
@@ -293,6 +456,15 @@ class _OptimizedReplyTileState extends State<OptimizedReplyTile> {
     super.initState();
     _isLiked = widget.reply.isLiked;
     _likeCount = widget.reply.likeCount;
+  }
+
+  bool get _isDeletedReply => widget.reply.text.trim() == '[deleted]';
+
+  bool get _canDeleteReply {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return false;
+    return widget.reply.user.id == currentUser.uid ||
+        widget.videoOwnerId == currentUser.uid;
   }
 
   Future<void> _toggleLike() async {
@@ -394,8 +566,20 @@ class _OptimizedReplyTileState extends State<OptimizedReplyTile> {
           const SizedBox(width: 8),
           Column(
             children: [
+              if (_canDeleteReply && widget.onDelete != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: GestureDetector(
+                    onTap: widget.onDelete,
+                    child: Icon(
+                      Icons.delete_outline,
+                      color: Colors.white.withValues(alpha: 0.75),
+                      size: 16,
+                    ),
+                  ),
+                ),
               GestureDetector(
-                onTap: _toggleLike,
+                onTap: _isDeletedReply ? null : _toggleLike,
                 child: Stack(
                   children: [
                     Icon(

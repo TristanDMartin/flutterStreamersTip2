@@ -5,7 +5,7 @@ part 'platform.freezed.dart';
 part 'platform.g.dart';
 
 @freezed
-class Platform with _$Platform {
+sealed class Platform with _$Platform {
   const factory Platform({
     required String id,
     required PlatformType type,

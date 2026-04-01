@@ -1,0 +1,12 @@
+{
+  "name": "streamerstip-website-upload",
+  "version": "1.0.0",
+  "description": "Client-side video transcoding for StreamersTip website uploads - zero server cost",
+  "type": "module",
+  "main": "transcodeAndUpload.js",
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.6",
+    "@ffmpeg/util": "^0.12.1",
+    "firebase": "^10.12.0"
+  }
+}

@@ -28,6 +28,7 @@ class TikTokAccountSwitcher extends ChangeNotifier {
   // Animation state
   bool _isAnimating = false;
   double _switchProgress = 0.0;
+  Timer? _switchAnimationTimer;
 
   // ✅ SECURITY FIX: Use FlutterSecureStorage instead of SharedPreferences
   static const _storage = FlutterSecureStorage(
@@ -271,17 +272,20 @@ class TikTokAccountSwitcher extends ChangeNotifier {
 
   /// Animate the switching process
   void _animateSwitch() {
+    _switchAnimationTimer?.cancel();
     _switchProgress = 0.0;
-    Timer.periodic(const Duration(milliseconds: 16), (timer) {
-      _switchProgress += 16 / _switchAnimationDuration.inMilliseconds;
-
-      if (_switchProgress >= 1.0) {
-        timer.cancel();
-        _switchProgress = 1.0;
-      }
-
-      notifyListeners();
-    });
+    _switchAnimationTimer = Timer.periodic(
+      const Duration(milliseconds: 16),
+      (timer) {
+        _switchProgress += 16 / _switchAnimationDuration.inMilliseconds;
+        if (_switchProgress >= 1.0) {
+          timer.cancel();
+          _switchAnimationTimer = null;
+          _switchProgress = 1.0;
+        }
+        notifyListeners();
+      },
+    );
   }
 
   /// Complete the animation
@@ -521,6 +525,12 @@ class TikTokAccountSwitcher extends ChangeNotifier {
       debugPrint('❌ Stack trace: ${StackTrace.current}');
       return false;
     }
+  }
+
+  @override
+  void dispose() {
+    _switchAnimationTimer?.cancel();
+    super.dispose();
   }
 }
 

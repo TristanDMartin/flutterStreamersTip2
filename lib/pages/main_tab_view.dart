@@ -6,9 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/robust_auth_service.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/custom_bottom_nav.dart';
-import '../widgets/tiktok_camera_view.dart';
 import '../views/network_view.dart';
-import '../widgets/inbox_view_optimized.dart';
 import 'home_view.dart';
 import '../models/user.dart';
 import '../services/network_view_model_advanced.dart';
@@ -17,17 +15,22 @@ import '../services/clean_relationship_service.dart';
 import '../providers/home_provider.dart';
 import '../providers/feed_state_provider.dart';
 import '../services/global_playback_manager.dart';
-import '../constants/playback_owners.dart';
+import '../routing/app_routes.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
-  const MainTabView({super.key});
+  const MainTabView({
+    super.key,
+    this.initialTabIndex = 0,
+  });
+
+  final int initialTabIndex;
 
   @override
   ConsumerState<MainTabView> createState() => _MainTabViewState();
 }
 
 class _MainTabViewState extends ConsumerState<MainTabView> {
-  int _currentIndex = 0;
+  late int _currentIndex;
   late PageController _pageController;
   late NetworkViewModelAdvanced _networkViewModel;
 
@@ -36,14 +39,18 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
   Timer? _cameraNavTimer;
   Timer? _inboxNavTimer;
   Timer? _profileNavTimer;
-  Timer? _resumeTimer;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    _currentIndex = widget.initialTabIndex;
+    _pageController = PageController(initialPage: _currentIndex);
     _networkViewModel = NetworkViewModelAdvanced();
     _startDataSync();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncPlaybackForCurrentTab();
+    });
   }
 
   @override
@@ -53,41 +60,15 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     _cameraNavTimer?.cancel();
     _inboxNavTimer?.cancel();
     _profileNavTimer?.cancel();
-    _resumeTimer?.cancel();
-
     _pageController.dispose();
     _networkViewModel.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Listen for route changes to detect when returning to HomeView
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkIfReturnedToHomeView();
-    });
-  }
-
-  void _checkIfReturnedToHomeView() {
-    // Check if we're currently on HomeView and no modal is open
-    // CRITICAL FIX: Only resume if we're actually on the first route (HomeView)
-    // Don't resume if we've navigated to another view via Navigator.push()
-    if (_currentIndex == 0 && ModalRoute.of(context)?.isFirst == true) {
-      // Additional check: make sure we're not in a pushed route
-      final navigator = Navigator.of(context);
-      if (navigator.canPop() == false) {
-        _resumeHomeViewVideos();
-      } else {
-        log('🚫 MainTabView: Not resuming video - navigated to another view');
-      }
-    }
-  }
-
-  void _resumeHomeViewVideos() {
-    // 🔊 AUDIO FIX: Use GlobalPlaybackManager to resume
-    GlobalPlaybackManager.instance.resumeAfterTabSwitch();
-    log('▶️ MainTabView: Resumed HomeView videos');
+  void _requestHomeReactivation(String reason) {
+    if (_currentIndex != 0) return;
+    ref.read(homeViewReactivateProvider.notifier).triggerReactivation();
+    log('▶️ MainTabView: Requested HomeView reactivation ($reason)');
   }
 
   void _startDataSync() {
@@ -138,8 +119,11 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       return;
     }
 
-    // 🎯 SINGLE ACTIVE OWNER: Use setActiveOwner for home tab, block for others
-    final playbackManager = GlobalPlaybackManager.instance;
+    // Silence Home immediately when leaving it for another tab so audio
+    // cannot leak during the page animation into Network or other views.
+    if (_currentIndex == 0 && index != 0) {
+      _pauseAllHomeViewVideos();
+    }
 
     setState(() {
       _currentIndex = index;
@@ -152,26 +136,18 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       curve: Curves.easeInOut,
     )
         .then((_) {
-      if (index == 0) {
-        // 🎯 SINGLE ACTIVE OWNER: Set home as active owner (handles pausing non-active owners)
-        playbackManager.setActiveOwner(PlaybackOwners.home);
-        // Resume immediately - no delay for TikTok-like experience
-        _requestFocusForCurrentVideo();
-      } else {
-        // For non-video tabs (NetworkView, etc.), block playback
-        playbackManager.block(reason: 'tabSwitch_nonVideoTab');
-      }
+      _syncPlaybackForCurrentTab();
     });
   }
 
-  void _requestFocusForCurrentVideo() {
-    // 🚀 TIKTOK-STYLE: The activeOwnerSubscription listener in VideoPlayerViewOptimized
-    // will automatically resume the current video when home becomes active owner.
-    // This method is kept as a safety net but the listener handles instant resume.
-    log('🎵 MainTabView: setActiveOwner called - listener will handle instant resume');
+  void _syncPlaybackForCurrentTab() {
+    final playbackManager = GlobalPlaybackManager.instance;
+    if (_currentIndex == 0) {
+      _requestHomeReactivation('tab_sync');
+      return;
+    }
 
-    // Note: No need to call resumeAfterTabSwitch() - the listener in VideoPlayerViewOptimized
-    // will detect the owner change and resume instantly for TikTok-like experience
+    playbackManager.block(reason: 'tabSwitch_nonVideoTab');
   }
 
   void _onUploadTapped() {
@@ -185,16 +161,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       if (!mounted) return;
       // Navigate directly to StreamersTip camera view
       Navigator.of(context)
-          .push(
-        MaterialPageRoute(
-          settings: const RouteSettings(name: '/camera'),
-          builder: (context) => const TikTokCameraView(),
-        ),
-      )
+          .pushNamed(AppRoutes.camera)
           .then((_) {
-        // SEAMLESS RETURN: Reactivate HomeView when returning from CameraView
-        log('🔄 MainTabView: Returned from CameraView - reactivating HomeView');
-        _reactivateHomeView();
+        _requestHomeReactivation('return_from_camera');
       });
     });
     log('🚨 CAMERA NAVIGATION: Navigator.push completed');
@@ -210,20 +179,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       if (!mounted) return;
       // Navigate to inbox view as full screen
       Navigator.of(context)
-          .push(
-        MaterialPageRoute(
-          settings: const RouteSettings(name: '/inbox'),
-          builder: (context) => const InboxViewOptimized(),
-          fullscreenDialog: true,
-        ),
-      )
+          .pushNamed(AppRoutes.inbox)
           .then((_) {
-        // SEAMLESS RETURN: Reactivate HomeView when returning from InboxView
-        log('🔄 MainTabView: Returned from InboxView - triggering HomeView reactivation');
-        // Trigger HomeView to reactivate via provider
-        ref.read(homeViewReactivateProvider.notifier).state = true;
-        // Also call local reactivation for immediate playback resume
-        _reactivateHomeView();
+        _requestHomeReactivation('return_from_inbox');
       });
     });
   }
@@ -268,9 +226,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
           ),
         )
             .then((_) {
-          // SEAMLESS RETURN: Reactivate HomeView when returning from ProfileView
-          log('🔄 MainTabView: Returned from ProfileView - reactivating HomeView');
-          _reactivateHomeView();
+          _requestHomeReactivation('return_from_profile');
         });
       });
     }
@@ -311,23 +267,6 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     }
   }
 
-  /// Reactivate HomeView when returning from other views
-  void _reactivateHomeView() {
-    try {
-      log('🔄 MainTabView: Reactivating HomeView after return from other view');
-
-      // 🎯 SINGLE ACTIVE OWNER: Set home as active owner
-      final playbackManager = ref.read(globalPlaybackManagerProvider);
-      playbackManager.setActiveOwner(PlaybackOwners.home);
-      // Also request focus for current video immediately
-      _requestFocusForCurrentVideo();
-
-      log('✅ MainTabView: HomeView instantly reactivated - TikTok-like experience');
-    } catch (e) {
-      log('❌ MainTabView: Error reactivating HomeView: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -340,17 +279,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             _currentIndex = index;
           });
 
-          // 🎯 SINGLE ACTIVE OWNER: Use setActiveOwner for home tab, block for others
-          final playbackManager = GlobalPlaybackManager.instance;
-          if (index == 0) {
-            // 🎯 SINGLE ACTIVE OWNER: Set home as active owner
-            playbackManager.setActiveOwner(PlaybackOwners.home);
-            // Resume immediately - no delay for TikTok-like experience
-            _requestFocusForCurrentVideo();
-          } else {
-            // For non-video tabs, block playback
-            playbackManager.block(reason: 'tabSwitch_nonVideoTab');
-          }
+          _syncPlaybackForCurrentTab();
         },
         // Disable horizontal swipe gestures when on HomeView (index 0) to allow left/right swipes for StreamerCardView
         // Disable swipe gestures when on NetworkView (index 1)

@@ -70,11 +70,39 @@ class UnreadMessagesService {
     if (currentUser == null) return;
 
     try {
-      // Reset unread count for current user
-      await _firestore.collection('chats').doc(chatId).update({
-        'unreadCount_${currentUser.uid}': 0,
-      });
-      // print('✅ Marked chat $chatId as read for user ${currentUser.uid}');
+      final messagesSnapshot = await _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .where('recipients', arrayContains: currentUser.uid)
+          .get();
+
+      final batch = _firestore.batch();
+      var hasUpdates = false;
+
+      for (final messageDoc in messagesSnapshot.docs) {
+        final readBy = List<String>.from(messageDoc.data()['readBy'] ?? const []);
+        if (readBy.contains(currentUser.uid)) continue;
+
+        batch.update(messageDoc.reference, {
+          'readBy': FieldValue.arrayUnion([currentUser.uid]),
+          'isRead': true,
+        });
+        hasUpdates = true;
+      }
+
+      batch.set(
+        _firestore.collection('chats').doc(chatId),
+        {
+          'unreadCount_${currentUser.uid}': 0,
+          'lastReadTimestamp': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (hasUpdates || messagesSnapshot.docs.isNotEmpty) {
+        await batch.commit();
+      }
     } catch (e) {
       // print('❌ Error marking chat as read: $e');
     }
@@ -92,7 +120,8 @@ class UnreadMessagesService {
           .collection('messages')
           .doc(messageId)
           .update({
-        'readBy': FieldValue.arrayUnion([currentUser.uid])
+        'readBy': FieldValue.arrayUnion([currentUser.uid]),
+        'isRead': true,
       });
     } catch (e) {
       // print('❌ Error marking message as read: $e');

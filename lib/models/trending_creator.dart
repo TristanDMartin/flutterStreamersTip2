@@ -5,7 +5,7 @@ import 'user.dart';
 part 'trending_creator.freezed.dart';
 
 @freezed
-class TrendingCreator with _$TrendingCreator {
+sealed class TrendingCreator with _$TrendingCreator {
   const factory TrendingCreator({
     required String id,
     required String username,

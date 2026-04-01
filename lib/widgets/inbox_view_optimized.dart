@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../constants/app_colors.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/shared_draft.dart';
 import '../models/user.dart' as app_user;
@@ -13,7 +14,7 @@ import '../services/chat_service.dart';
 import '../services/draft_sharing_service.dart';
 import '../services/local_draft_service.dart';
 import '../providers/unread_messages_provider.dart';
-import 'chat_view.dart';
+import '../routing/app_navigator.dart';
 import 'new_message_view.dart';
 import 'draft_feedback_view.dart';
 // import 'draft_creation_view.dart'; // Removed - unused
@@ -38,8 +39,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   static const Color _secondaryColor = Color(0xFF7768DF);
   static const Color _accentColor = Color(0xFF1670DE);
   static const Color _successColor = Color(0xFF4CAF50);
-  static const Color _backgroundDark = Color(0xFF6137EB);
-  static const Color _backgroundMedium = Color(0xFF1C135D);
 
   // Data
   List<app_chat.Chat> _chats = [];
@@ -100,11 +99,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       onChatsUpdate: (chats) async {
         // Filter out invalid chats (with empty participant IDs)
         final validChats = _filterValidChats(chats);
-
-        if (validChats.length < chats.length) {
-          debugPrint(
-              '⚠️ InboxView: Filtered out ${chats.length - validChats.length} invalid chats');
-        }
 
         // Set up real-time unread count listeners for each chat
         _setupUnreadCountListeners(validChats);
@@ -196,11 +190,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           .where((id) => id.isNotEmpty && id != currentUser.uid)
           .toList();
 
-      if (validParticipants.isEmpty) {
-        debugPrint(
-            '⚠️ InboxView: Skipping chat ${chat.id} - no valid participants');
-        continue;
-      }
+      if (validParticipants.isEmpty) continue;
 
       final otherUserId = validParticipants.first;
 
@@ -232,9 +222,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           setState(() {
             _userProfiles[otherUserId] = updatedUser;
           });
-
-          debugPrint(
-              'InboxView: Updated user profile for $otherUserId - displayName: ${updatedUser.displayName}, username: ${updatedUser.username}');
         }
       });
     }
@@ -298,11 +285,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       // Filter out invalid chats (with empty participant IDs)
       final validChats = _filterValidChats(allChats);
 
-      if (validChats.length < allChats.length) {
-        debugPrint(
-            '⚠️ InboxView: Filtered out ${allChats.length - validChats.length} invalid chats');
-      }
-
       // Load user profiles and unread counts for each chat
       await _loadUserDataForChats(validChats);
 
@@ -342,8 +324,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     final currentUser = _inboxService.auth.currentUser;
     if (currentUser == null) return;
 
-    debugPrint('InboxView: Loading user data for ${chats.length} chats');
-
     // Load user profiles and unread counts in parallel
     final futures = <Future>[];
 
@@ -353,24 +333,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           .where((id) => id.isNotEmpty && id != currentUser.uid)
           .toList();
 
-      if (validParticipants.isEmpty) {
-        debugPrint(
-            '⚠️ InboxView: Skipping chat ${chat.id} - no valid participants');
-        continue;
-      }
+      if (validParticipants.isEmpty) continue;
 
       final otherUserId = validParticipants.first;
-
-      debugPrint('InboxView: Loading data for other user: $otherUserId');
 
       // Load user profile
       futures.add(_inboxService.getUserProfile(otherUserId).then((user) {
         if (user != null) {
-          debugPrint(
-              'InboxView: Loaded user profile - displayName: ${user.displayName}, username: ${user.username}, avatarURL: ${user.avatarURL}');
           _userProfiles[otherUserId] = user;
-        } else {
-          debugPrint('InboxView: Failed to load user profile for $otherUserId');
         }
       }));
 
@@ -409,9 +379,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
 
     await Future.wait(futures);
-
-    debugPrint('InboxView: Loaded ${_userProfiles.length} user profiles');
-
     // Cache user data offline
     await _offlineService.cacheUserProfiles(_userProfiles);
     await _offlineService.cacheUnreadCounts(_unreadCounts);
@@ -469,34 +436,39 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.supportBackground,
       extendBodyBehindAppBar: true,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              _backgroundDark,
-              _backgroundMedium,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(),
-              _buildSearchBar(),
-              _buildTabBar(),
-              Expanded(
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(),
+            _buildSearchBar(),
+            _buildTabBar(),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 240),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.02),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  );
+                },
                 child: _isLoading
                     ? _buildLoadingState()
                     : _error != null
                         ? _buildErrorState()
                         : _buildTabContent(),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -504,7 +476,26 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: AppColors.supportSurfaceGradient,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
       child: Column(
         children: [
           Row(
@@ -560,139 +551,156 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               ),
             ],
           ),
-          if (_isSelectionMode) ...[
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.check_circle,
-                        color: _primaryColor,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${_selectedItems.length} selected',
-                        style: const TextStyle(
-                          color: _primaryColor,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (_selectedItems.isNotEmpty)
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _selectedItems.clear();
-                            });
-                          },
-                          child: const Text(
-                            'Clear',
-                            style: TextStyle(
-                              color: _primaryColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (_selectedItems.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _selectedItems.length ==
-                                    (_tabController.index == 0
-                                        ? _filteredChats.length
-                                        : _filteredDrafts.length)
-                                ? () {
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: _isSelectionMode
+                  ? Padding(
+                      key: const ValueKey('selection-controls'),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.check_circle,
+                                color: _primaryColor,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${_selectedItems.length} selected',
+                                style: const TextStyle(
+                                  color: _primaryColor,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const Spacer(),
+                              if (_selectedItems.isNotEmpty)
+                                TextButton(
+                                  onPressed: () {
                                     setState(() {
                                       _selectedItems.clear();
                                     });
-                                  }
-                                : _selectAll,
-                            icon: Icon(
-                              _selectedItems.length ==
-                                      (_tabController.index == 0
-                                          ? _filteredChats.length
-                                          : _filteredDrafts.length)
-                                  ? Icons.deselect
-                                  : Icons.select_all,
-                              size: 16,
-                            ),
-                            label: Text(
-                              _selectedItems.length ==
-                                      (_tabController.index == 0
-                                          ? _filteredChats.length
-                                          : _filteredDrafts.length)
-                                  ? 'Deselect All'
-                                  : 'Select All',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  Colors.white.withValues(alpha: 0.1),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (_tabController.index == 0) ...[
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _markAsRead,
-                              icon: const Icon(Icons.mark_email_read, size: 16),
-                              label: const Text(
-                                'Mark Read',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _successColor,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  },
+                                  child: const Text(
+                                    'Clear',
+                                    style: TextStyle(
+                                      color: _primaryColor,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                              ),
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
+                          if (_selectedItems.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: _selectedItems.length ==
+                                            (_tabController.index == 0
+                                                ? _filteredChats.length
+                                                : _filteredDrafts.length)
+                                        ? () {
+                                            setState(() {
+                                              _selectedItems.clear();
+                                            });
+                                          }
+                                        : _selectAll,
+                                    icon: Icon(
+                                      _selectedItems.length ==
+                                              (_tabController.index == 0
+                                                  ? _filteredChats.length
+                                                  : _filteredDrafts.length)
+                                          ? Icons.deselect
+                                          : Icons.select_all,
+                                      size: 16,
+                                    ),
+                                    label: Text(
+                                      _selectedItems.length ==
+                                              (_tabController.index == 0
+                                                  ? _filteredChats.length
+                                                  : _filteredDrafts.length)
+                                          ? 'Deselect All'
+                                          : 'Select All',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          Colors.white.withValues(alpha: 0.1),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 8),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                if (_tabController.index == 0) ...[
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: _markAsRead,
+                                      icon: const Icon(Icons.mark_email_read,
+                                          size: 16),
+                                      label: const Text(
+                                        'Mark Read',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _successColor,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 8),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: _deleteSelected,
+                                    icon: const Icon(Icons.delete, size: 16),
+                                    label: const Text(
+                                      'Delete',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 8),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _deleteSelected,
-                            icon: const Icon(Icons.delete, size: 16),
-                            label: const Text(
-                              'Delete',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
+                    )
+                  : const SizedBox(
+                      key: ValueKey('selection-placeholder'),
                     ),
-                  ],
-                ],
-              ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -700,14 +708,21 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   Widget _buildSearchBar() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: Colors.white.withValues(alpha: 0.12),
           width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: TextField(
         controller: _searchController,
@@ -758,17 +773,25 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   Widget _buildTabBar() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
+          color: Colors.white.withValues(alpha: 0.12),
           width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: TabBar(
         controller: _tabController,
+        onTap: (_) => setState(() {}),
         indicator: BoxDecoration(
           gradient: const LinearGradient(
             colors: [_primaryColor, _secondaryColor],
@@ -794,7 +817,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               children: [
                 const Icon(Icons.chat_bubble_outline, size: 18),
                 const SizedBox(width: 8),
-                Text('Messages (${_chats.length})'),
+                Text('Chats (${_chats.length})'),
               ],
             ),
           ),
@@ -804,7 +827,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               children: [
                 const Icon(Icons.drafts_outlined, size: 18),
                 const SizedBox(width: 8),
-                Text('Drafts (${_sharedDrafts.length})'),
+                Text('Shared Drafts (${_sharedDrafts.length})'),
               ],
             ),
           ),
@@ -840,7 +863,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
       itemCount: _filteredChats.length,
       itemBuilder: (context, index) {
         final chat = _filteredChats[index];
@@ -854,14 +877,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       return _buildEmptyState(
         'No shared drafts yet',
         Icons.drafts,
-        'Create a draft to share with others!',
-        'Create Draft',
-        _createNewDraft,
+        'Shared draft feedback will appear here once someone sends you one.',
+        'Refresh',
+        _refreshData,
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
       itemCount: _filteredDrafts.length,
       itemBuilder: (context, index) {
         final draft = _filteredDrafts[index];
@@ -900,28 +923,37 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             : 'L';
     final unreadCount = _unreadCounts[chat.id ?? ''] ?? 0;
     final isOnline = _onlineStatus[otherUserId] ?? false;
-
-    debugPrint(
-        'InboxView: Building chat tile for $otherUserId - userProfile: ${userProfile != null ? 'loaded' : 'null'}, name: $participantName');
+    final secondaryLabel = isOnline
+        ? 'Online now'
+        : ((userProfile?.username.isNotEmpty) ?? false)
+            ? '@${userProfile!.username}'
+            : 'Conversation';
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: isSelected
             ? _primaryColor.withValues(alpha: 0.15)
-            : Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(20),
+            : Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: isSelected
               ? _primaryColor.withValues(alpha: 0.5)
-              : Colors.white.withValues(alpha: 0.08),
+              : Colors.white.withValues(alpha: 0.10),
           width: isSelected ? 2 : 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           onTap: _isSelectionMode
               ? () => _toggleSelection(chat.id ?? '')
               : () => _openChat(chat),
@@ -931,7 +963,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             _toggleSelection(chat.id ?? '');
           },
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             child: Row(
               children: [
                 // Avatar with selection indicator and online status
@@ -1093,16 +1125,34 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              participantName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.3,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  participantName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.3,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  secondaryLabel,
+                                  style: TextStyle(
+                                    color: isOnline
+                                        ? Colors.white.withValues(alpha: 0.82)
+                                        : Colors.white.withValues(alpha: 0.52),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1127,9 +1177,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       Text(
                         chat.lastMessage ?? 'No messages yet',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
+                          color: Colors.white.withValues(alpha: 0.72),
                           fontSize: 13,
-                          fontWeight: FontWeight.w400,
+                          fontWeight:
+                              unreadCount > 0 ? FontWeight.w500 : FontWeight.w400,
                           height: 1.3,
                         ),
                         maxLines: 2,
@@ -1156,25 +1207,34 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Widget _buildDraftTile(SharedDraft draft) {
     final isSelected = _selectedItems.contains(draft.id);
     final isUnread = draft.status != SharedDraftStatus.viewed;
+    final draftSubtitle =
+        draft.senderName.isNotEmpty ? 'From ${draft.senderName}' : 'Shared draft';
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: isSelected
             ? _primaryColor.withValues(alpha: 0.15)
-            : Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(20),
+            : Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: isSelected
               ? _primaryColor.withValues(alpha: 0.5)
-              : Colors.white.withValues(alpha: 0.08),
+              : Colors.white.withValues(alpha: 0.10),
           width: isSelected ? 2 : 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           onTap: _isSelectionMode
               ? () => _toggleSelection(draft.id)
               : () => _openDraft(draft),
@@ -1184,7 +1244,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             _toggleSelection(draft.id);
           },
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             child: Row(
               children: [
                 // Draft icon with selection indicator
@@ -1263,16 +1323,32 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              draft.draftTitle,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.3,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  draft.draftTitle,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.3,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  draftSubtitle,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.52),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1332,125 +1408,132 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       String buttonText, VoidCallback onPressed) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Animated icon container
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: const Duration(milliseconds: 800),
-              curve: Curves.elasticOut,
-              builder: (context, value, child) {
-                return Transform.scale(
-                  scale: value,
-                  child: Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.white.withValues(alpha: 0.1),
-                          Colors.white.withValues(alpha: 0.05),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          key: ValueKey('empty-$title'),
+          constraints: const BoxConstraints(maxWidth: 420),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.10),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 800),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: AppColors.supportAccentGradient,
                         ),
-                      ],
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 64,
-                      color: Colors.white.withValues(alpha: 0.8),
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 32),
-            // Title with better typography
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            // Subtitle with better styling
-            Text(
-              subtitle,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 16,
-                fontWeight: FontWeight.w400,
-                height: 1.4,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 40),
-            // Enhanced button design
-            Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [_primaryColor, _secondaryColor],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: _primaryColor.withValues(alpha: 0.4),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: ElevatedButton(
-                onPressed: onPressed,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.add_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      buttonText,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: _primaryColor.withValues(alpha: 0.30),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
                       ),
+                      child: Icon(
+                        icon,
+                        size: 40,
+                        color: Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.64),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  height: 1.45,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 28),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: AppColors.supportAccentGradient,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _primaryColor.withValues(alpha: 0.36),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
                     ),
                   ],
                 ),
+                child: ElevatedButton(
+                  onPressed: onPressed,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 28, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.add_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        buttonText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1458,56 +1541,73 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   Widget _buildLoadingState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Animated loading indicator
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: const Duration(milliseconds: 1200),
-            curve: Curves.easeInOut,
-            builder: (context, value, child) {
-              return Transform.scale(
-                scale: 0.8 + (0.2 * value),
-                child: Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      width: 2,
+      child: Container(
+        key: const ValueKey('loading-state'),
+        constraints: const BoxConstraints(maxWidth: 420),
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.10),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 1200),
+              curve: Curves.easeInOut,
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: 0.88 + (0.12 * value),
+                  child: Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          _primaryColor.withValues(alpha: 0.9),
+                        ),
+                        strokeWidth: 3,
+                      ),
                     ),
                   ),
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _primaryColor.withValues(alpha: 0.8),
-                    ),
-                    strokeWidth: 3,
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Loading conversations...',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+                );
+              },
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'This may take a moment',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
+            const SizedBox(height: 22),
+            const Text(
+              'Loading your inbox',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.4,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              'We’re gathering your latest conversations and shared drafts.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.62),
+                fontSize: 14,
+                height: 1.45,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1515,65 +1615,90 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Widget _buildErrorState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.red.withValues(alpha: 0.3),
-                  width: 2,
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          key: const ValueKey('error-state'),
+          constraints: const BoxConstraints(maxWidth: 420),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.10),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.red.withValues(alpha: 0.28),
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(
+                  Icons.error_outline,
+                  size: 40,
+                  color: Colors.red[300],
                 ),
               ),
-              child: Icon(
-                Icons.error_outline,
-                size: 48,
-                color: Colors.red[400],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Error loading inbox',
-              style: TextStyle(
-                color: Colors.red[400],
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _error ?? 'Unknown error',
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 16,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: _loadData,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryColor,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Retry',
+              const SizedBox(height: 22),
+              const Text(
+                'We couldn’t load your inbox',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _error ?? 'Unknown error',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.64),
+                  fontSize: 14,
+                  height: 1.45,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 26),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: AppColors.supportAccentGradient,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: ElevatedButton(
+                  onPressed: _loadData,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 28, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    'Try Again',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1625,8 +1750,12 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         await _loadData(); // Reload data
       } else {
         // Delete selected drafts
-        for (final draftId in _selectedItems) {
-          await _inboxService.deleteSharedDraft(draftId);
+        final selectedDrafts = _sharedDrafts
+            .where((draft) => _selectedItems.contains(draft.id))
+            .toList();
+        for (final draft in selectedDrafts) {
+          final draftDocId = await _resolveSharedDraftDocumentId(draft);
+          await _inboxService.deleteSharedDraft(draftDocId);
         }
         await _loadData(); // Reload data
       }
@@ -1640,6 +1769,36 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     } catch (e) {
       _showSnackBar('Error deleting items', Colors.red);
     }
+  }
+
+  Future<String> _resolveSharedDraftDocumentId(SharedDraft draft) async {
+    if (draft.id.isEmpty) return draft.id;
+
+    try {
+      final directDoc = await FirebaseFirestore.instance
+          .collection('shared_drafts')
+          .doc(draft.id)
+          .get();
+      if (directDoc.exists) {
+        return draft.id;
+      }
+
+      final matchingDrafts = await FirebaseFirestore.instance
+          .collection('shared_drafts')
+          .where('originalDraftId', isEqualTo: draft.draftId)
+          .where('sharerId', isEqualTo: draft.senderId)
+          .where('recipients', arrayContains: draft.receiverId)
+          .limit(1)
+          .get();
+
+      if (matchingDrafts.docs.isNotEmpty) {
+        return matchingDrafts.docs.first.id;
+      }
+    } catch (e) {
+      debugPrint('❌ Error resolving shared draft document ID: $e');
+    }
+
+    return draft.id;
   }
 
   void _markAsRead() async {
@@ -1669,7 +1828,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: _backgroundMedium,
+            backgroundColor: AppColors.supportBackground,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -1710,25 +1869,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     Navigator.of(context).push(
       _createSlideTransition(page: const NewMessageView()),
     );
-  }
-
-  void _createNewDraft() async {
-    HapticFeedback.lightImpact();
-
-    if (mounted) {
-      // final result = await Navigator.of(context).push(
-      //   _createSlideTransition(page: const DraftCreationView()),
-      // );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Draft creation feature coming soon!')),
-      );
-      final result = null;
-
-      // Refresh data if draft was created
-      if (result == true) {
-        _refreshData();
-      }
-    }
   }
 
   void _openChat(app_chat.Chat chat) async {
@@ -1831,20 +1971,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 final userProfile = _userProfiles[foundOtherUserId];
 
                 if (mounted) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      settings: const RouteSettings(name: '/inbox'),
-                      builder: (context) => ChatView(
-                        chat: updatedChat,
-                        otherUserId: foundOtherUserId,
-                        otherUserName: userProfile?.displayName ??
-                            userProfile?.username ??
-                            'User',
-                        otherUserAvatarURL: userProfile?.avatarURL,
-                        otherUserIsOnline:
-                            _onlineStatus[foundOtherUserId] ?? false,
-                      ),
-                    ),
+                  AppNavigator.openChat(
+                    context,
+                    chat: updatedChat,
+                    otherUserId: foundOtherUserId,
+                    otherUserName:
+                        userProfile?.displayName ?? userProfile?.username ?? 'User',
+                    otherUserAvatarUrl: userProfile?.avatarURL,
+                    otherUserIsOnline: _onlineStatus[foundOtherUserId] ?? false,
                   );
                 }
                 _isNavigating = false;
@@ -1967,19 +2101,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final userProfile = _userProfiles[validOtherUserId];
 
       if (mounted) {
-        // Use a simpler navigation without complex transitions
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            settings: const RouteSettings(name: '/inbox'),
-            builder: (context) => ChatView(
-              chat: validChat,
-              otherUserId: validOtherUserId,
-              otherUserName:
-                  userProfile?.displayName ?? userProfile?.username ?? 'User',
-              otherUserAvatarURL: userProfile?.avatarURL,
-              otherUserIsOnline: _onlineStatus[validOtherUserId] ?? false,
-            ),
-          ),
+        AppNavigator.openChat(
+          context,
+          chat: validChat,
+          otherUserId: validOtherUserId,
+          otherUserName:
+              userProfile?.displayName ?? userProfile?.username ?? 'User',
+          otherUserAvatarUrl: userProfile?.avatarURL,
+          otherUserIsOnline: _onlineStatus[validOtherUserId] ?? false,
         );
       }
     } catch (e) {
@@ -2018,8 +2147,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         return;
       }
 
-      // Mark draft as viewed
-      await _inboxService.markAsRead(draft.id);
+      // Mark the canonical shared draft document as viewed, not a synthetic inbox ID.
+      final sharedDraftDocId = await _resolveSharedDraftDocumentId(draft);
+      await _inboxService.markSharedDraftViewed(sharedDraftDocId);
 
       // Get current user to determine if we're the sender or receiver
       final currentUser = _inboxService.auth.currentUser;
@@ -2033,6 +2163,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final otherUserId = isSender ? draft.receiverId : draft.senderId;
 
       if (otherUserId.isEmpty) {
+        if (!mounted) return;
         _isNavigating = false;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2048,6 +2179,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final chat = await chatService.fetchOrCreateChat(otherUserId);
 
       if (chat == null || chat.id == null || chat.id!.isEmpty) {
+        if (!mounted) return;
         _isNavigating = false;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2068,10 +2200,15 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final sharedDrafts = await draftSharingService.getSharedDraftsWithMe();
       final sharedDraftsByMe = await draftSharingService.getDraftsSharedByMe();
 
-      // Find the shared draft document
+      // Find the shared draft document that matches this sender/recipient pair.
       final allDrafts = [...sharedDrafts, ...sharedDraftsByMe];
       final foundDraft = allDrafts.firstWhere(
-        (d) => d['id'] == draft.id || d['originalDraftId'] == draft.draftId,
+        (d) =>
+            d['id'] == draft.id ||
+            (d['originalDraftId'] == draft.draftId &&
+                d['sharerId'] == draft.senderId &&
+                (d['recipients'] as List<dynamic>? ?? const <dynamic>[])
+                    .contains(draft.receiverId)),
         orElse: () => <String, dynamic>{},
       );
 
@@ -2087,24 +2224,35 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           'hashtags': [],
           'sharerId': draft.senderId,
           'recipients': [draft.receiverId],
+          'draftThumbnailUrl': draft.draftThumbnailUrl,
         };
       }
 
-      // Try to get video path from local draft service
-      try {
-        final localDraftService = LocalDraftService();
-        final localDrafts = await localDraftService.getAllDrafts();
-        final localDraft = localDrafts.firstWhere(
-          (d) => d['id'] == draft.draftId,
-          orElse: () => <String, dynamic>{},
-        );
+      // Prefer canonical Firestore/storage assets. Only enrich from local cache
+      // when durable asset fields are missing.
+      final hasCanonicalVideo =
+          (sharedDraftData['videoUrl'] as String?)?.isNotEmpty == true;
+      final hasCanonicalThumbnail =
+          (sharedDraftData['thumbnailUrl'] as String?)?.isNotEmpty == true ||
+              (sharedDraftData['draftThumbnailUrl'] as String?)?.isNotEmpty ==
+                  true;
 
-        if (localDraft.isNotEmpty) {
-          sharedDraftData['videoPath'] = localDraft['videoPath'];
-          sharedDraftData['thumbnailPath'] = localDraft['thumbnailPath'];
+      if (!hasCanonicalVideo || !hasCanonicalThumbnail) {
+        try {
+          final localDraftService = LocalDraftService();
+          final localDrafts = await localDraftService.getAllDrafts();
+          final localDraft = localDrafts.firstWhere(
+            (d) => d['id'] == draft.draftId,
+            orElse: () => <String, dynamic>{},
+          );
+
+          if (localDraft.isNotEmpty) {
+            sharedDraftData['videoPath'] = localDraft['videoPath'];
+            sharedDraftData['thumbnailPath'] = localDraft['thumbnailPath'];
+          }
+        } catch (e) {
+          debugPrint('⚠️ Could not load local draft data: $e');
         }
-      } catch (e) {
-        debugPrint('⚠️ Could not load local draft data: $e');
       }
 
       if (mounted) {

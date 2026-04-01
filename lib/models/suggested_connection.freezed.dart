@@ -1,5 +1,5 @@
-// coverage:ignore-file
 // GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
 // ignore_for_file: type=lint
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
@@ -9,89 +9,67 @@ part of 'suggested_connection.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// dart format off
 T _$identity<T>(T value) => value;
-
-final _privateConstructorUsedError = UnsupportedError(
-    'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
-
-SuggestedConnection _$SuggestedConnectionFromJson(Map<String, dynamic> json) {
-  return _SuggestedConnection.fromJson(json);
-}
 
 /// @nodoc
 mixin _$SuggestedConnection {
-  String get id => throw _privateConstructorUsedError;
-  String get username => throw _privateConstructorUsedError;
-  String get avatarName => throw _privateConstructorUsedError;
+  String get id;
+  String get username;
+  String get avatarName;
 
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
-  @JsonKey(ignore: true)
-  $SuggestedConnectionCopyWith<SuggestedConnection> get copyWith =>
-      throw _privateConstructorUsedError;
-}
-
-/// @nodoc
-abstract class $SuggestedConnectionCopyWith<$Res> {
-  factory $SuggestedConnectionCopyWith(
-          SuggestedConnection value, $Res Function(SuggestedConnection) then) =
-      _$SuggestedConnectionCopyWithImpl<$Res, SuggestedConnection>;
-  @useResult
-  $Res call({String id, String username, String avatarName});
-}
-
-/// @nodoc
-class _$SuggestedConnectionCopyWithImpl<$Res, $Val extends SuggestedConnection>
-    implements $SuggestedConnectionCopyWith<$Res> {
-  _$SuggestedConnectionCopyWithImpl(this._value, this._then);
-
-  // ignore: unused_field
-  final $Val _value;
-  // ignore: unused_field
-  final $Res Function($Val) _then;
-
+  /// Create a copy of SuggestedConnection
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @pragma('vm:prefer-inline')
+  $SuggestedConnectionCopyWith<SuggestedConnection> get copyWith =>
+      _$SuggestedConnectionCopyWithImpl<SuggestedConnection>(
+          this as SuggestedConnection, _$identity);
+
+  /// Serializes this SuggestedConnection to a JSON map.
+  Map<String, dynamic> toJson();
+
   @override
-  $Res call({
-    Object? id = null,
-    Object? username = null,
-    Object? avatarName = null,
-  }) {
-    return _then(_value.copyWith(
-      id: null == id
-          ? _value.id
-          : id // ignore: cast_nullable_to_non_nullable
-              as String,
-      username: null == username
-          ? _value.username
-          : username // ignore: cast_nullable_to_non_nullable
-              as String,
-      avatarName: null == avatarName
-          ? _value.avatarName
-          : avatarName // ignore: cast_nullable_to_non_nullable
-              as String,
-    ) as $Val);
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is SuggestedConnection &&
+            (identical(other.id, id) || other.id == id) &&
+            (identical(other.username, username) ||
+                other.username == username) &&
+            (identical(other.avatarName, avatarName) ||
+                other.avatarName == avatarName));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, id, username, avatarName);
+
+  @override
+  String toString() {
+    return 'SuggestedConnection(id: $id, username: $username, avatarName: $avatarName)';
   }
 }
 
 /// @nodoc
-abstract class _$$SuggestedConnectionImplCopyWith<$Res>
-    implements $SuggestedConnectionCopyWith<$Res> {
-  factory _$$SuggestedConnectionImplCopyWith(_$SuggestedConnectionImpl value,
-          $Res Function(_$SuggestedConnectionImpl) then) =
-      __$$SuggestedConnectionImplCopyWithImpl<$Res>;
-  @override
+abstract mixin class $SuggestedConnectionCopyWith<$Res> {
+  factory $SuggestedConnectionCopyWith(
+          SuggestedConnection value, $Res Function(SuggestedConnection) _then) =
+      _$SuggestedConnectionCopyWithImpl;
   @useResult
   $Res call({String id, String username, String avatarName});
 }
 
 /// @nodoc
-class __$$SuggestedConnectionImplCopyWithImpl<$Res>
-    extends _$SuggestedConnectionCopyWithImpl<$Res, _$SuggestedConnectionImpl>
-    implements _$$SuggestedConnectionImplCopyWith<$Res> {
-  __$$SuggestedConnectionImplCopyWithImpl(_$SuggestedConnectionImpl _value,
-      $Res Function(_$SuggestedConnectionImpl) _then)
-      : super(_value, _then);
+class _$SuggestedConnectionCopyWithImpl<$Res>
+    implements $SuggestedConnectionCopyWith<$Res> {
+  _$SuggestedConnectionCopyWithImpl(this._self, this._then);
 
+  final SuggestedConnection _self;
+  final $Res Function(SuggestedConnection) _then;
+
+  /// Create a copy of SuggestedConnection
+  /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
   $Res call({
@@ -99,33 +77,183 @@ class __$$SuggestedConnectionImplCopyWithImpl<$Res>
     Object? username = null,
     Object? avatarName = null,
   }) {
-    return _then(_$SuggestedConnectionImpl(
+    return _then(_self.copyWith(
       id: null == id
-          ? _value.id
+          ? _self.id
           : id // ignore: cast_nullable_to_non_nullable
               as String,
       username: null == username
-          ? _value.username
+          ? _self.username
           : username // ignore: cast_nullable_to_non_nullable
               as String,
       avatarName: null == avatarName
-          ? _value.avatarName
+          ? _self.avatarName
           : avatarName // ignore: cast_nullable_to_non_nullable
               as String,
     ));
   }
 }
 
+/// Adds pattern-matching-related methods to [SuggestedConnection].
+extension SuggestedConnectionPatterns on SuggestedConnection {
+  /// A variant of `map` that fallback to returning `orElse`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeMap<TResult extends Object?>(
+    TResult Function(_SuggestedConnection value)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _SuggestedConnection() when $default != null:
+        return $default(_that);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// Callbacks receives the raw object, upcasted.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case final Subclass2 value:
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult map<TResult extends Object?>(
+    TResult Function(_SuggestedConnection value) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SuggestedConnection():
+        return $default(_that);
+    }
+  }
+
+  /// A variant of `map` that fallback to returning `null`.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case final Subclass value:
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? mapOrNull<TResult extends Object?>(
+    TResult? Function(_SuggestedConnection value)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SuggestedConnection() when $default != null:
+        return $default(_that);
+      case _:
+        return null;
+    }
+  }
+
+  /// A variant of `when` that fallback to an `orElse` callback.
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return orElse();
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult maybeWhen<TResult extends Object?>(
+    TResult Function(String id, String username, String avatarName)? $default, {
+    required TResult orElse(),
+  }) {
+    final _that = this;
+    switch (_that) {
+      case _SuggestedConnection() when $default != null:
+        return $default(_that.id, _that.username, _that.avatarName);
+      case _:
+        return orElse();
+    }
+  }
+
+  /// A `switch`-like method, using callbacks.
+  ///
+  /// As opposed to `map`, this offers destructuring.
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case Subclass2(:final field2):
+  ///     return ...;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult when<TResult extends Object?>(
+    TResult Function(String id, String username, String avatarName) $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SuggestedConnection():
+        return $default(_that.id, _that.username, _that.avatarName);
+    }
+  }
+
+  /// A variant of `when` that fallback to returning `null`
+  ///
+  /// It is equivalent to doing:
+  /// ```dart
+  /// switch (sealedClass) {
+  ///   case Subclass(:final field):
+  ///     return ...;
+  ///   case _:
+  ///     return null;
+  /// }
+  /// ```
+
+  @optionalTypeArgs
+  TResult? whenOrNull<TResult extends Object?>(
+    TResult? Function(String id, String username, String avatarName)? $default,
+  ) {
+    final _that = this;
+    switch (_that) {
+      case _SuggestedConnection() when $default != null:
+        return $default(_that.id, _that.username, _that.avatarName);
+      case _:
+        return null;
+    }
+  }
+}
+
 /// @nodoc
 @JsonSerializable()
-class _$SuggestedConnectionImpl
-    with DiagnosticableTreeMixin
-    implements _SuggestedConnection {
-  const _$SuggestedConnectionImpl(
+class _SuggestedConnection implements SuggestedConnection {
+  const _SuggestedConnection(
       {required this.id, required this.username, required this.avatarName});
-
-  factory _$SuggestedConnectionImpl.fromJson(Map<String, dynamic> json) =>
-      _$$SuggestedConnectionImplFromJson(json);
+  factory _SuggestedConnection.fromJson(Map<String, dynamic> json) =>
+      _$SuggestedConnectionFromJson(json);
 
   @override
   final String id;
@@ -134,26 +262,27 @@ class _$SuggestedConnectionImpl
   @override
   final String avatarName;
 
+  /// Create a copy of SuggestedConnection
+  /// with the given fields replaced by the non-null parameter values.
   @override
-  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'SuggestedConnection(id: $id, username: $username, avatarName: $avatarName)';
-  }
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @pragma('vm:prefer-inline')
+  _$SuggestedConnectionCopyWith<_SuggestedConnection> get copyWith =>
+      __$SuggestedConnectionCopyWithImpl<_SuggestedConnection>(
+          this, _$identity);
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
-    super.debugFillProperties(properties);
-    properties
-      ..add(DiagnosticsProperty('type', 'SuggestedConnection'))
-      ..add(DiagnosticsProperty('id', id))
-      ..add(DiagnosticsProperty('username', username))
-      ..add(DiagnosticsProperty('avatarName', avatarName));
+  Map<String, dynamic> toJson() {
+    return _$SuggestedConnectionToJson(
+      this,
+    );
   }
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
-            other is _$SuggestedConnectionImpl &&
+            other is _SuggestedConnection &&
             (identical(other.id, id) || other.id == id) &&
             (identical(other.username, username) ||
                 other.username == username) &&
@@ -161,42 +290,59 @@ class _$SuggestedConnectionImpl
                 other.avatarName == avatarName));
   }
 
-  @JsonKey(ignore: true)
+  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(runtimeType, id, username, avatarName);
 
-  @JsonKey(ignore: true)
   @override
-  @pragma('vm:prefer-inline')
-  _$$SuggestedConnectionImplCopyWith<_$SuggestedConnectionImpl> get copyWith =>
-      __$$SuggestedConnectionImplCopyWithImpl<_$SuggestedConnectionImpl>(
-          this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$SuggestedConnectionImplToJson(
-      this,
-    );
+  String toString() {
+    return 'SuggestedConnection(id: $id, username: $username, avatarName: $avatarName)';
   }
 }
 
-abstract class _SuggestedConnection implements SuggestedConnection {
-  const factory _SuggestedConnection(
-      {required final String id,
-      required final String username,
-      required final String avatarName}) = _$SuggestedConnectionImpl;
-
-  factory _SuggestedConnection.fromJson(Map<String, dynamic> json) =
-      _$SuggestedConnectionImpl.fromJson;
-
+/// @nodoc
+abstract mixin class _$SuggestedConnectionCopyWith<$Res>
+    implements $SuggestedConnectionCopyWith<$Res> {
+  factory _$SuggestedConnectionCopyWith(_SuggestedConnection value,
+          $Res Function(_SuggestedConnection) _then) =
+      __$SuggestedConnectionCopyWithImpl;
   @override
-  String get id;
-  @override
-  String get username;
-  @override
-  String get avatarName;
-  @override
-  @JsonKey(ignore: true)
-  _$$SuggestedConnectionImplCopyWith<_$SuggestedConnectionImpl> get copyWith =>
-      throw _privateConstructorUsedError;
+  @useResult
+  $Res call({String id, String username, String avatarName});
 }
+
+/// @nodoc
+class __$SuggestedConnectionCopyWithImpl<$Res>
+    implements _$SuggestedConnectionCopyWith<$Res> {
+  __$SuggestedConnectionCopyWithImpl(this._self, this._then);
+
+  final _SuggestedConnection _self;
+  final $Res Function(_SuggestedConnection) _then;
+
+  /// Create a copy of SuggestedConnection
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @pragma('vm:prefer-inline')
+  $Res call({
+    Object? id = null,
+    Object? username = null,
+    Object? avatarName = null,
+  }) {
+    return _then(_SuggestedConnection(
+      id: null == id
+          ? _self.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
+      username: null == username
+          ? _self.username
+          : username // ignore: cast_nullable_to_non_nullable
+              as String,
+      avatarName: null == avatarName
+          ? _self.avatarName
+          : avatarName // ignore: cast_nullable_to_non_nullable
+              as String,
+    ));
+  }
+}
+
+// dart format on

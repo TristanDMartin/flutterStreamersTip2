@@ -8,13 +8,14 @@ import '../models/home_video.dart';
 import '../models/video_clip.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart';
+import '../models/user_count_fields.dart';
 import '../services/logging_service.dart';
 import '../services/real_user_data_service.dart';
 
 part 'discover_provider.freezed.dart';
 
 @freezed
-class DiscoverState with _$DiscoverState {
+sealed class DiscoverState with _$DiscoverState {
   const factory DiscoverState({
     @Default([]) List<TrendingCreator> trendingCreators,
     @Default([]) List<Category> categories,
@@ -29,7 +30,7 @@ class DiscoverState with _$DiscoverState {
 }
 
 @freezed
-class SearchResult with _$SearchResult {
+sealed class SearchResult with _$SearchResult {
   const factory SearchResult({
     required String id,
     required String title,
@@ -44,6 +45,8 @@ enum ResultType { creator, category, content }
 
 class DiscoverNotifier extends StateNotifier<DiscoverState> {
   final RealUserDataService _userDataService = RealUserDataService();
+  final Map<String, DocumentSnapshot<Map<String, dynamic>>?>
+      _categoryVideoCursors = {};
 
   DiscoverNotifier() : super(const DiscoverState()) {
     _loadInitialData();
@@ -74,19 +77,9 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
           .orderBy('score', descending: true)
           .limit(10);
 
-      // Pagination: start after last doc id if provided in state.lowViewedRatio map as a temp store
-      final String cursorKey = 'cursor_$categoryId';
-      final String? lastId = state.lowViewedRatio[cursorKey]?.toString();
-      if (lastId != null && lastId.isNotEmpty) {
-        try {
-          final lastDoc = await FirebaseFirestore.instance
-              .collection('videos')
-              .doc(lastId)
-              .get();
-          if (lastDoc.exists) {
-            query = query.startAfterDocument(lastDoc);
-          }
-        } catch (_) {}
+      final lastDoc = _categoryVideoCursors[categoryId];
+      if (lastDoc != null) {
+        query = query.startAfterDocument(lastDoc);
       }
 
       final QuerySnapshot<Map<String, dynamic>> snapshot = await query.get();
@@ -103,8 +96,14 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
           hashtags: List<String>.from(
               (data['creator_hashtags'] as List?) ?? const <String>[]),
           postCount: (data['creator_post_count'] ?? 0) as int,
-          followerCount: (data['creator_follower_count'] ?? 0) as int,
-          followingCount: (data['creator_following_count'] ?? 0) as int,
+          followerCount: UserCountFields.readFollowersCount(<String, dynamic>{
+            'followerCount': data['creator_follower_count'],
+            'followersCount': data['creator_followers_count'],
+          }),
+          followingCount: UserCountFields.readFollowingCount(<String, dynamic>{
+            'followingCount': data['creator_following_count'],
+            'followingsCount': data['creator_followings_count'],
+          }),
         );
 
         // Create thumbnails object from legacy thumbnailURL
@@ -140,15 +139,10 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
         );
       }).toList();
 
-      // Store new cursor (last doc id) in lowViewedRatio map as lightweight storage
       if (snapshot.docs.isNotEmpty) {
-        final String newCursor = snapshot.docs.last.id;
-        state = state.copyWith(
-          lowViewedRatio: {
-            ...state.lowViewedRatio,
-            cursorKey: double.tryParse(newCursor) ?? 0.0,
-          },
-        );
+        _categoryVideoCursors[categoryId] = snapshot.docs.last;
+      } else {
+        _categoryVideoCursors.remove(categoryId);
       }
 
       return videos;
@@ -239,14 +233,14 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .timeout(timeout);
           for (final d in qs1.docs) {
             final data = d.data();
+            final followersCount = UserCountFields.readFollowersCount(data);
             results.add(SearchResult(
               id: d.id,
               title: (data['displayName'] ?? data['username'] ?? 'User')
                   .toString(),
               subtitle: '@${(data['username'] ?? '').toString()}',
-              metadata: data['followersCount'] != null
-                  ? '${data['followersCount']} followers'
-                  : null,
+              metadata:
+                  followersCount > 0 ? '$followersCount followers' : null,
               imageURL: data['avatarURL'] as String?,
               type: ResultType.creator,
             ));
@@ -268,14 +262,14 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
               .timeout(timeout);
           for (final d in qs2.docs) {
             final data = d.data();
+            final followersCount = UserCountFields.readFollowersCount(data);
             results.add(SearchResult(
               id: d.id,
               title: (data['displayName'] ?? data['username'] ?? 'User')
                   .toString(),
               subtitle: '@${(data['username'] ?? '').toString()}',
-              metadata: data['followersCount'] != null
-                  ? '${data['followersCount']} followers'
-                  : null,
+              metadata:
+                  followersCount > 0 ? '$followersCount followers' : null,
               imageURL: data['avatarURL'] as String?,
               type: ResultType.creator,
             ));
@@ -528,6 +522,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
         categoryId: 0.5, // Reset to default balance
       },
     );
+    _categoryVideoCursors.remove(categoryId);
 
     LoggingService.instance.debug(
         'Reset user behavior for category $categoryId',

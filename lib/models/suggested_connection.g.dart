@@ -6,16 +6,15 @@ part of 'suggested_connection.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-_$SuggestedConnectionImpl _$$SuggestedConnectionImplFromJson(
-        Map<String, dynamic> json) =>
-    _$SuggestedConnectionImpl(
+_SuggestedConnection _$SuggestedConnectionFromJson(Map<String, dynamic> json) =>
+    _SuggestedConnection(
       id: json['id'] as String,
       username: json['username'] as String,
       avatarName: json['avatarName'] as String,
     );
 
-Map<String, dynamic> _$$SuggestedConnectionImplToJson(
-        _$SuggestedConnectionImpl instance) =>
+Map<String, dynamic> _$SuggestedConnectionToJson(
+        _SuggestedConnection instance) =>
     <String, dynamic>{
       'id': instance.id,
       'username': instance.username,

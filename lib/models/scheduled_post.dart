@@ -4,7 +4,7 @@ part 'scheduled_post.freezed.dart';
 part 'scheduled_post.g.dart';
 
 @freezed
-class ScheduledPost with _$ScheduledPost {
+sealed class ScheduledPost with _$ScheduledPost {
   const factory ScheduledPost({
     required String id,
     required String authorId,
@@ -26,7 +26,7 @@ class ScheduledPost with _$ScheduledPost {
 }
 
 @freezed
-class PostMedia with _$PostMedia {
+sealed class PostMedia with _$PostMedia {
   const factory PostMedia({
     required String id,
     required MediaType type,
@@ -41,7 +41,7 @@ class PostMedia with _$PostMedia {
 }
 
 @freezed
-class MediaVariant with _$MediaVariant {
+sealed class MediaVariant with _$MediaVariant {
   const factory MediaVariant({
     required String platform,
     required String src,
@@ -55,7 +55,7 @@ class MediaVariant with _$MediaVariant {
 }
 
 @freezed
-class PlatformConfig with _$PlatformConfig {
+sealed class PlatformConfig with _$PlatformConfig {
   const factory PlatformConfig({
     required String key,
     required bool enabled,
@@ -70,7 +70,7 @@ class PlatformConfig with _$PlatformConfig {
 }
 
 @freezed
-class PostSchedule with _$PostSchedule {
+sealed class PostSchedule with _$PostSchedule {
   const factory PostSchedule({
     required DateTime scheduledAtUtc,
     required String timezone,
@@ -84,7 +84,7 @@ class PostSchedule with _$PostSchedule {
 }
 
 @freezed
-class PlatformSchedule with _$PlatformSchedule {
+sealed class PlatformSchedule with _$PlatformSchedule {
   const factory PlatformSchedule({
     required DateTime scheduledAtUtc,
     String? timezone,

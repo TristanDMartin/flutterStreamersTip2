@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'dart:ui';
 import 'dart:async';
-import 'widgets/app_startup_wrapper.dart';
 import 'services/analytics_service.dart';
 import 'services/error_handler_service.dart';
 import 'utils/performance_utils.dart';
@@ -18,14 +17,17 @@ import 'services/firebase_ios_service.dart';
 import 'services/firestore_optimization_service.dart';
 import 'services/firestore_cache_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/global_playback_manager.dart';
 import 'services/performance_emergency_service.dart';
 // import 'services/global_post_count_fix.dart'; // ❌ REMOVED: Interferes with PostCounterService
 import 'services/navigation_observer.dart';
+import 'routing/app_routes.dart';
 import 'widgets/ios_minimal_startup.dart';
 import 'providers/service_providers.dart';
 import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'constants/app_colors.dart';
 
 void main() async {
   final appStartTime = DateTime.now();
@@ -289,6 +291,7 @@ class PerformanceObserver extends WidgetsBindingObserver {
         // Full cleanup when app is detached
         MemoryOptimizationService().clearAll();
         PerformanceUtils.cleanup();
+        GlobalPlaybackManager.instance.dispose();
         break;
       default:
         break;
@@ -317,16 +320,17 @@ class MyApp extends ConsumerWidget {
       title: 'StreamersTip',
       navigatorKey: nav.NavigationService.navigatorKey,
       navigatorObservers: [AppNavigationObserver()],
+      onGenerateRoute: AppRoutes.onGenerateRoute,
+      initialRoute: AppRoutes.root,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF1C135D),
+        scaffoldBackgroundColor: AppColors.supportBackground,
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF6137EB),
-          surface: Color(0xFF1C135D),
+          primary: AppColors.supportTopSurface,
+          surface: AppColors.supportBackground,
         ),
       ),
-      home: const AppStartupWrapper(),
       debugShowCheckedModeBanner: false,
     );
   }

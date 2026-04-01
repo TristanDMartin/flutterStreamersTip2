@@ -4,10 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/comment.dart';
 import '../models/user.dart' as app_user;
 import '../services/comments_service.dart';
+import '../services/discussion_author_service.dart';
+import '../widgets/threads/create_thread_from_comment_screen.dart';
+import '../widgets/threads/thread_detail_screen.dart';
 import 'optimized_comment_tile.dart';
 
 /// CommentsView2 - StreamersTip Comments Overlay
@@ -46,14 +48,17 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
+  final DiscussionAuthorService _discussionAuthorService =
+      DiscussionAuthorService();
 
   // State variables
   bool _isLoading = false;
   String? _errorMessage;
   String? _currentUserAvatarUrl;
   Comment? _replyingTo;
-  StreamSubscription<QuerySnapshot>? _commentsSubscription;
+  StreamSubscription<VideoCommentsSnapshot>? _commentsSubscription;
   CommentSortOption _sortOption = CommentSortOption.newest;
+  final Map<String, String> _linkedThreadIds = <String, String>{};
 
   @override
   void initState() {
@@ -78,49 +83,23 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   void _setupRealtimeComments() {
     setState(() => _isLoading = true);
 
-    _commentsSubscription = FirebaseFirestore.instance
-        .collection('videos')
-        .doc(widget.videoId)
-        .collection('comments')
-        .orderBy('timestamp', descending: true)
-        .snapshots()
+    _commentsSubscription = CommentsService()
+        .watchCommentsForVideo(widget.videoId)
         .listen(
       (snapshot) async {
         try {
-          final List<Comment> updatedComments = [];
-          final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-
-          for (final doc in snapshot.docs) {
-            final data = doc.data();
-            app_user.User user = app_user.User.fromMap(data['user']);
-
-            // Enrich avatar from Firestore
-            user = await _enrichUserAvatar(user);
-
-            // Check if current user liked this comment
-            final likedBy =
-                (data['likedBy'] as List<dynamic>?)?.cast<String>() ?? [];
-            final isLiked =
-                currentUser != null && likedBy.contains(currentUser.uid);
-
-            updatedComments.add(Comment(
-              id: doc.id,
-              user: user,
-              text: data['text'] ?? '',
-              timestamp: (data['timestamp'] as Timestamp).toDate(),
-              likeCount: data['likeCount'] ?? 0,
-              isLiked: isLiked,
-              replies: (data['replies'] as List<dynamic>?)
-                  ?.map((reply) => Comment.fromJson(reply))
-                  .toList(),
-            ));
-          }
+          final enrichedComments = await Future.wait(
+            snapshot.comments.map(_enrichCommentTree),
+          );
 
           if (mounted) {
             setState(() {
               _comments
                 ..clear()
-                ..addAll(updatedComments);
+                ..addAll(enrichedComments);
+              _linkedThreadIds
+                ..clear()
+                ..addAll(snapshot.linkedThreadIds);
               _applySorting();
               _isLoading = false;
               _errorMessage = null;
@@ -146,43 +125,19 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     );
   }
 
+  Future<Comment> _enrichCommentTree(Comment comment) async {
+    final enrichedUser = await _enrichUserAvatar(comment.user);
+    final replies = comment.replies == null
+        ? null
+        : await Future.wait(comment.replies!.map(_enrichCommentTree));
+    return comment.copyWith(
+      user: enrichedUser,
+      replies: replies,
+    );
+  }
+
   Future<app_user.User> _enrichUserAvatar(app_user.User user) async {
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.id)
-          .get();
-      if (userDoc.exists && userDoc.data() != null) {
-        final userData = userDoc.data()!;
-        final currentAvatarUrl = userData['avatarURL'] as String?;
-
-        // ✅ Get online status (check multiple fields for compatibility)
-        final onlineStatus = userData['status'] as String? ??
-            userData['userStatus'] as String? ??
-            userData['onlineStatus'] as String? ??
-            (userData['isOnline'] == true ? 'online' : 'offline');
-
-        if (currentAvatarUrl != null && currentAvatarUrl.isNotEmpty) {
-          return app_user.User(
-            id: user.id,
-            username: user.username,
-            displayName: user.displayName,
-            bio: user.bio,
-            avatarURL: currentAvatarUrl,
-            onlineStatus: onlineStatus, // ✅ Use enriched online status
-            hashtags: user.hashtags,
-            aiSelf: user.aiSelf,
-            postCount: user.postCount,
-            followerCount: user.followerCount,
-            followingCount: user.followingCount,
-            calendarEvents: user.calendarEvents,
-          );
-        }
-      }
-    } catch (e) {
-      // Silent fail - use original user data
-    }
-    return user;
+    return _discussionAuthorService.enrichCommentUser(user);
   }
 
   // ============================================================================
@@ -193,19 +148,12 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-      if (doc.exists && doc.data() != null && mounted) {
-        final data = doc.data()!;
-        setState(() {
-          _currentUserAvatarUrl = data['avatarURL'] as String?;
-        });
-      }
-    } catch (e) {
-      // Silent fail
+    final avatarUrl =
+        await _discussionAuthorService.loadAvatarUrl(currentUser.uid);
+    if (avatarUrl != null && mounted) {
+      setState(() {
+        _currentUserAvatarUrl = avatarUrl;
+      });
     }
   }
 
@@ -259,6 +207,27 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
 
   void _cancelReply() {
     setState(() => _replyingTo = null);
+  }
+
+  void _openCreateThreadModal(Comment comment) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreateThreadFromCommentScreen(
+          videoId: widget.videoId,
+          comment: comment,
+        ),
+      ),
+    );
+  }
+
+  void _openLinkedThread(String threadId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => ThreadDetailScreen(postId: threadId),
+      ),
+    );
   }
 
   Future<void> _deleteComment(Comment comment) async {
@@ -358,12 +327,9 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     if (currentUser == null) return _fallbackUser();
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
+      final data =
+          await _discussionAuthorService.loadUserData(currentUser.uid);
+      if (data != null) {
         return app_user.User(
           id: currentUser.uid,
           username:
@@ -371,7 +337,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
           displayName: data['displayName'] as String? ??
               currentUser.displayName ??
               'User',
-          avatarURL: data['avatarURL'] as String?,
+          avatarURL: data['avatarURL'] as String? ?? data['avatarUrl'] as String?,
           bio: data['bio'] as String? ?? '',
           followerCount: data['followerCount'] as int? ?? 0,
           followingCount: data['followingCount'] as int? ?? 0,
@@ -591,9 +557,18 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         return OptimizedCommentTile(
           comment: comment,
           videoId: widget.videoId,
+          videoOwnerId: widget.videoOwnerId,
           onReply: () => _startReply(comment),
           onDelete:
               _canDeleteComment(comment) ? () => _deleteComment(comment) : null,
+          onDeleteReply: _deleteComment,
+          onCreateThread: _linkedThreadIds.containsKey(comment.id)
+              ? null
+              : () => _openCreateThreadModal(comment),
+          linkedThreadId: _linkedThreadIds[comment.id],
+          onOpenLinkedThread: _linkedThreadIds.containsKey(comment.id)
+              ? () => _openLinkedThread(_linkedThreadIds[comment.id]!)
+              : null,
         );
       },
     );

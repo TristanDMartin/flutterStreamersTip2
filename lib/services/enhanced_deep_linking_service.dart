@@ -1,8 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../models/chat.dart';
+import '../models/home_video.dart';
+import '../models/user_count_fields.dart';
+import '../models/user.dart' as app_user;
+import '../routing/app_routes.dart';
+import '../services/pending_auth_redirect_service.dart';
+import 'profile_link_service.dart';
+import '../utils/video_url_resolver.dart';
+import '../widgets/player_screen.dart';
 import 'logging_service.dart';
 
 class EnhancedDeepLinkingService {
@@ -12,7 +20,8 @@ class EnhancedDeepLinkingService {
   EnhancedDeepLinkingService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final firebase_auth.FirebaseAuth _auth =
+      firebase_auth.FirebaseAuth.instance;
 
   // Stream controller for deep link events
   final StreamController<DeepLinkEvent> _deepLinkController =
@@ -107,7 +116,7 @@ class EnhancedDeepLinkingService {
         await _storePendingInviteCode(inviteCode);
 
         if (context.mounted) {
-          context.go('/login?invite=$inviteCode');
+          _replaceWithNamedRoute(context, AppRoutes.auth);
         }
         return;
       }
@@ -121,10 +130,14 @@ class EnhancedDeepLinkingService {
             context,
             'Welcome! You\'ve joined with an invite code.',
           );
-          context.go('/home');
+          if (context.mounted) {
+            _replaceWithNamedRoute(context, AppRoutes.home);
+          }
         } else {
           await _showDeepLinkError(context, 'Invalid or expired invite code');
-          context.go('/home');
+          if (context.mounted) {
+            _replaceWithNamedRoute(context, AppRoutes.home);
+          }
         }
       }
     } catch (e, stackTrace) {
@@ -165,10 +178,18 @@ class EnhancedDeepLinkingService {
         throw Exception('User not found');
       }
 
-      final userId = userQuery.docs.first.id;
+      final userDoc = userQuery.docs.first;
+      final userId = userDoc.id;
+      final user = _buildUser(userDoc.data(), userId);
 
       if (context.mounted) {
-        context.go('/profile/$userId');
+        Navigator.of(context).pushNamed(
+          AppRoutes.profile,
+          arguments: ProfileRouteArgs(
+            user: user,
+            isCurrentUser: _auth.currentUser?.uid == userId,
+          ),
+        );
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -216,8 +237,18 @@ class EnhancedDeepLinkingService {
       // Track video view from deep link
       await _trackVideoViewFromDeepLink(videoId, queryParams);
 
+      final homeVideo = _buildHomeVideo(videoData, videoId);
+
       if (context.mounted) {
-        context.go('/video/$videoId');
+        Navigator.of(context).pushNamed(
+          AppRoutes.player,
+          arguments: PlayerRouteArgs(
+            mode: PlayerMode.homeFeed,
+            initialIndex: 0,
+            videoIds: [videoId],
+            videos: [homeVideo],
+          ),
+        );
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -247,7 +278,7 @@ class EnhancedDeepLinkingService {
       );
 
       if (context.mounted) {
-        context.go('/discover?hashtag=${Uri.encodeComponent(hashtag)}');
+        Navigator.of(context).pushNamed(AppRoutes.discover);
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -276,8 +307,21 @@ class EnhancedDeepLinkingService {
         tag: 'EnhancedDeepLinkingService',
       );
 
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        throw Exception('Profile not found');
+      }
+
+      final user = _buildUser(userDoc.data()!, userDoc.id);
+
       if (context.mounted) {
-        context.go('/profile/$userId');
+        Navigator.of(context).pushNamed(
+          AppRoutes.profile,
+          arguments: ProfileRouteArgs(
+            user: user,
+            isCurrentUser: _auth.currentUser?.uid == userId,
+          ),
+        );
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -310,13 +354,62 @@ class EnhancedDeepLinkingService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         if (context.mounted) {
-          context.go('/login?redirect=/chat/$chatId');
+          PendingAuthRedirectService.instance.setAction((redirectContext) {
+            return _handleChatLink('/chat/$chatId', queryParams, redirectContext);
+          });
+          if (context.mounted) {
+            _replaceWithNamedRoute(context, AppRoutes.auth);
+          }
         }
         return;
       }
 
+      final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+      if (!chatDoc.exists) {
+        throw Exception('Chat not found');
+      }
+
+      final chat = Chat.fromJson({
+        ...chatDoc.data()!,
+        'id': chatDoc.id,
+      });
+
+      final otherUserId = chat.participants.firstWhere(
+        (participantId) => participantId != currentUser.uid,
+        orElse: () => currentUser.uid,
+      );
+
+      String otherUserName = 'Messages';
+      String? otherUserAvatarUrl;
+      bool otherUserIsOnline = false;
+
+      if (otherUserId != currentUser.uid) {
+        final otherUserDoc =
+            await _firestore.collection('users').doc(otherUserId).get();
+        final otherUserData = otherUserDoc.data();
+        if (otherUserData != null) {
+          otherUserName = (otherUserData['displayName'] ??
+                  otherUserData['username'] ??
+                  'Messages')
+              .toString();
+          otherUserAvatarUrl =
+              (otherUserData['avatarURL'] ?? otherUserData['userAvatarUrl'])
+                  ?.toString();
+          otherUserIsOnline = otherUserData['onlineStatus'] == 'online';
+        }
+      }
+
       if (context.mounted) {
-        context.go('/chat/$chatId');
+        Navigator.of(context).pushNamed(
+          AppRoutes.chat,
+          arguments: ChatRouteArgs(
+            chat: chat,
+            otherUserId: otherUserId,
+            otherUserName: otherUserName,
+            otherUserAvatarUrl: otherUserAvatarUrl,
+            otherUserIsOnline: otherUserIsOnline,
+          ),
+        );
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -341,7 +434,7 @@ class EnhancedDeepLinkingService {
       );
 
       if (context.mounted) {
-        context.go('/discover');
+        Navigator.of(context).pushNamed(AppRoutes.discover);
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -384,7 +477,7 @@ class EnhancedDeepLinkingService {
 
       // Default to home
       if (context.mounted) {
-        context.go('/home');
+        _replaceWithNamedRoute(context, AppRoutes.home);
       }
     } catch (e, stackTrace) {
       LoggingService.instance.error(
@@ -394,7 +487,7 @@ class EnhancedDeepLinkingService {
         stackTrace: stackTrace,
       );
       if (context.mounted) {
-        context.go('/home');
+        _replaceWithNamedRoute(context, AppRoutes.home);
       }
     }
   }
@@ -570,8 +663,9 @@ class EnhancedDeepLinkingService {
     required String id,
     Map<String, String>? queryParams,
   }) {
-    final baseUrl = 'https://streamerstip.com';
-    final path = '/$type/$id';
+    final normalizedType = type == 'user' ? 'profile' : type;
+    final baseUrl = ProfileLinkService.webBaseUrl;
+    final path = '/$normalizedType/$id';
 
     if (queryParams != null && queryParams.isNotEmpty) {
       final queryString = queryParams.entries
@@ -589,8 +683,9 @@ class EnhancedDeepLinkingService {
     required String id,
     Map<String, String>? queryParams,
   }) {
-    final baseUrl = 'streamerstip://';
-    final path = '$type/$id';
+    final normalizedType = type == 'user' ? 'profile' : type;
+    final baseUrl = ProfileLinkService.appScheme;
+    final path = '$normalizedType/$id';
 
     if (queryParams != null && queryParams.isNotEmpty) {
       final queryString = queryParams.entries
@@ -600,6 +695,48 @@ class EnhancedDeepLinkingService {
     }
 
     return '$baseUrl$path';
+  }
+
+  void _replaceWithNamedRoute(BuildContext context, String routeName) {
+    Navigator.of(context).pushNamedAndRemoveUntil(routeName, (route) => false);
+  }
+
+  app_user.User _buildUser(Map<String, dynamic> data, String userId) {
+    return app_user.User.fromMap({
+      ...data,
+      'id': userId,
+      'uid': userId,
+    });
+  }
+
+  HomeVideo _buildHomeVideo(Map<String, dynamic> data, String videoId) {
+    final followerCount = UserCountFields.readFollowersCount(data);
+    final followingCount = UserCountFields.readFollowingCount(data);
+    return HomeVideo(
+      id: videoId,
+      creator: _buildUser({
+        'id': data['userId'] ?? '',
+        'uid': data['userId'] ?? '',
+        'displayName': data['displayName'] ?? 'Unknown',
+        'username': data['username'] ?? 'unknown',
+        'avatarURL': data['userAvatarUrl'] ?? data['avatarURL'],
+        'bio': data['bio'] ?? '',
+        'onlineStatus': data['onlineStatus'] ?? 'offline',
+        'hashtags': data['hashtags'] ?? const <String>[],
+        'followerCount': followerCount,
+        'followersCount': followerCount,
+        'followingCount': followingCount,
+        'postCount': data['postCount'] ?? 0,
+      }, data['userId'] ?? ''),
+      videoURL: resolveVideoUrl(data),
+      thumbnailURL: data['thumbnailUrl'] ?? data['thumbnailURL'],
+      likes: data['likeCount'] ?? 0,
+      comments: data['commentCount'] ?? 0,
+      views: data['viewCount'] ?? 0,
+      caption: data['caption'] ?? '',
+      categoryId: data['category'] ?? 'general',
+      createdAt: data['timestamp'] as Timestamp?,
+    );
   }
 
   /// Dispose resources
