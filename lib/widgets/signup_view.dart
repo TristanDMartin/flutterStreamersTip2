@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/pending_auth_redirect_service.dart';
 import '../services/robust_auth_service.dart';
 import 'email_verification_view.dart';
 import 'email_login_view.dart';
@@ -148,8 +149,11 @@ class _SignupViewState extends ConsumerState<SignupView> {
     final authService = ref.watch(robustAuthServiceProvider);
     ref.listen(robustAuthServiceProvider, (previous, next) {
       if (next.isLoggedIn && mounted) {
-        debugPrint("✅ User registered and authenticated");
-        Navigator.of(context).pop();
+        debugPrint("✅ User authenticated, resolving post-auth destination");
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          PendingAuthRedirectService.instance.consumeOrGoHome(context);
+        });
       }
     });
 

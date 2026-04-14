@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:equatable/equatable.dart';
 import 'user_count_fields.dart';
+import '../utils/avatar_url_resolver.dart';
 import '../utils/data_parsing_utils.dart';
 
 /// User Model - Complete implementation matching SwiftUI User class
@@ -46,7 +47,7 @@ class User extends Equatable {
       username: data['username'] ?? '',
       displayName: data['displayName'] ?? '',
       bio: data['bio'],
-      avatarURL: data['avatarURL'],
+      avatarURL: resolveAvatarUrl(data),
       platforms: (data['platforms'] as List<dynamic>?)
           ?.map((p) => Platform.fromMap(p as Map<String, dynamic>))
           .toList() ?? [],

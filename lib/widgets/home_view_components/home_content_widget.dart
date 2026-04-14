@@ -11,6 +11,7 @@ import 'feed_selector_widget.dart';
 import 'video_page_view_widget.dart';
 import 'loading_state_widget.dart';
 import '../../widgets/threads/threads_list_view.dart';
+import '../../features/gamification/widgets/creator_progression_panel.dart';
 
 /// Main content widget for HomeView (combines all components)
 class HomeContentWidget extends ConsumerStatefulWidget {
@@ -54,12 +55,12 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     try {
       final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
       final feedTab = switch (activeTab) {
-        'For You' => FeedTab.forYou,
-        'Following' => FeedTab.following,
+        _ when activeTab == FeedTab.forYou.displayName => FeedTab.forYou,
+        _ when activeTab == FeedTab.following.displayName => FeedTab.following,
         _ => FeedTab.threads,
       };
 
-      if (feedTab == FeedTab.threads) {
+      if (feedTab == FeedTab.threads || feedTab == FeedTab.following) {
         return;
       }
       
@@ -70,9 +71,7 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       if (mounted) {
         // Notify GlobalPlaybackManager to update index 0 with new video
         final homeState = ref.read(hp.homeProvider);
-        final videos = feedTab == FeedTab.forYou
-            ? homeState.forYouVideos
-            : homeState.followingVideos;
+        final videos = homeState.forYouVideos;
         
         if (videos.isNotEmpty) {
           final newTopVideo = videos[0];
@@ -90,8 +89,9 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
   Widget build(BuildContext context) {
     final homeState = ref.watch(hp.homeProvider);
     final activeFeed = switch (widget.activeTab) {
-      'For You' => FeedTab.forYou,
-      'Following' => FeedTab.following,
+      _ when widget.activeTab == FeedTab.forYou.displayName => FeedTab.forYou,
+      _ when widget.activeTab == FeedTab.following.displayName =>
+        FeedTab.following,
       _ => FeedTab.threads,
     };
 
@@ -132,9 +132,7 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           child: _buildVideoContent(videos, isLoading, hasError),
         ),
 
-        if (activeFeed == FeedTab.forYou &&
-            hasError &&
-            videos.isNotEmpty)
+        if (activeFeed == FeedTab.forYou && hasError && videos.isNotEmpty)
           Positioned(
             top: MediaQuery.of(context).padding.top + 68,
             left: 16,
@@ -157,17 +155,15 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
             activeTab: widget.activeTab,
             onForYouTap: () {
               log('🔘 HomeContent: For You tapped, current tab: ${widget.activeTab}');
-              widget.onTabChange('For You');
+              widget.onTabChange(FeedTab.forYou.displayName);
             },
-            onFollowingTap: () {
-              log('🔘 HomeContent: Following tapped, current tab: ${widget.activeTab}');
-              debugPrint(
-                  '🔘 HomeContent: Following tapped, calling onTabChange');
-              widget.onTabChange('Following');
+            onProgressionTap: () {
+              log('🔘 HomeContent: Progression tapped, current tab: ${widget.activeTab}');
+              widget.onTabChange(FeedTab.following.displayName);
             },
             onThreadsTap: () {
               log('🔘 HomeContent: Threads tapped, current tab: ${widget.activeTab}');
-              widget.onTabChange('Threads');
+              widget.onTabChange(FeedTab.threads.displayName);
             },
             onDiscoverTap: widget.onDiscoverTap,
           ),
@@ -220,15 +216,17 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       List<HomeVideo> videos, bool isLoading, bool hasError) {
     final homeState = ref.read(hp.homeProvider);
     final activeFeed = switch (widget.activeTab) {
-      'For You' => FeedTab.forYou,
-      'Following' => FeedTab.following,
+      _ when widget.activeTab == FeedTab.forYou.displayName => FeedTab.forYou,
+      _ when widget.activeTab == FeedTab.following.displayName =>
+        FeedTab.following,
       _ => FeedTab.threads,
     };
-    final String? followingErrorMessage = homeState.followingSlice?.error;
-    final String? followingEmptyMessage = homeState.followingSlice?.emptyMessage;
+    if (activeFeed == FeedTab.following) {
+      return const CreatorProgressionPanel();
+    }
 
     // Threads tab: Show threads list view
-    if (widget.activeTab == 'Threads') {
+    if (activeFeed == FeedTab.threads) {
       return const ThreadsListView();
     }
 
@@ -259,10 +257,7 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
         );
       }
       return ErrorStateWidget(
-        message: activeFeed == FeedTab.following
-            ? (followingErrorMessage ??
-                'Failed to load Following feed. Please try again.')
-            : (homeState.error ?? 'Failed to load videos. Please try again.'),
+        message: homeState.error ?? 'Failed to load videos. Please try again.',
         onRetry: () {
           log('🔄 HomeContent: Retrying ${activeFeed.displayName} feed');
           final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
@@ -276,19 +271,14 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     }
 
     if (isLoading && videos.isEmpty) {
-      return LoadingStateWidget(
-        message: activeFeed == FeedTab.following
-            ? 'Loading your Following feed...'
-            : 'Loading videos...',
+      return const LoadingStateWidget(
+        message: 'Loading videos...',
       );
     }
 
     if (videos.isEmpty) {
       return LoadingStateWidget(
-        message: activeFeed == FeedTab.following
-            ? (followingEmptyMessage ??
-                'Your Following feed is waiting for fresh posts.')
-            : 'No videos available',
+        message: 'No videos available',
         showProgress: false,
       );
     }

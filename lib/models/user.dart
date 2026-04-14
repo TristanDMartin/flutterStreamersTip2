@@ -1,6 +1,7 @@
 import 'calendar_event.dart';
 import 'user_count_fields.dart';
 import '../utils/data_parsing_utils.dart';
+import '../utils/avatar_url_resolver.dart';
 
 class User {
   final String id;
@@ -43,7 +44,7 @@ class User {
       username: data['username'] ?? '',
       displayName: data['displayName'] ?? '',
       bio: data['bio'],
-      avatarURL: data['avatarURL'],
+      avatarURL: resolveAvatarUrl(data),
       onlineStatus: data['onlineStatus'] ?? 'online',
       hashtags: parseStringList(data['hashtags']),
       aiSelf: data['aiSelf'] ?? '',

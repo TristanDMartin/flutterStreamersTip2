@@ -26,6 +26,9 @@ This document provides comprehensive documentation for the **For You page**, **F
 - **Comments View**: Real-time comment system with replies and thread creation
 - **Thread System**: Forum threads created from video comments with video embedding
 
+### Related Documentation
+- **Avatar sync (web + app + Firestore)**: `docs/AVATAR_UPLOAD_APP_WEBSITE_SYNC.md`
+
 ---
 
 ## For You Page
@@ -976,4 +979,3 @@ This documentation ensures:
 5. **Real-time Updates**: Firestore listeners for live data
 
 **Before implementing new features, always check this document and existing code to avoid duplicates.**
-

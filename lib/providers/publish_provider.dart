@@ -309,6 +309,10 @@ class PublishProvider extends ChangeNotifier {
               caption: request.caption,
               videoId: videoId,
               scheduleAt: request.scheduleAt,
+              requiresWatermark: request.requiresWatermark,
+              watermarkConfig: request.watermarkConfig,
+              watermarkAsset: request.watermarkAsset,
+              subscriptionTier: request.subscriptionTier,
             ),
           )
           .toList(),
@@ -363,6 +367,10 @@ class PublishProvider extends ChangeNotifier {
             enabled: true,
             payload: {
               'caption': request.caption,
+              'requiresWatermark': request.requiresWatermark,
+              'watermarkConfig': request.watermarkConfig,
+              'watermarkAsset': request.watermarkAsset,
+              'subscriptionTier': request.subscriptionTier,
             },
             status: PlatformStatus.pending,
             error: null,

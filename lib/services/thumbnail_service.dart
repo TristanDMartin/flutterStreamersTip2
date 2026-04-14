@@ -9,7 +9,7 @@ class ThumbnailService {
   ThumbnailService._internal();
 
   // Available thumbnail sizes (width in pixels)
-  static const List<int> _thumbnailSizes = [360, 540, 720];
+  static const List<int> _thumbnailSizes = [360, 540, 720, 1080, 1440];
 
   // Cache for device pixel ratio to avoid repeated MediaQuery calls
   double? _cachedDevicePixelRatio;
@@ -92,6 +92,33 @@ class ThumbnailService {
     debugPrint(
         '🖼️ ThumbnailService: No thumbnail URL available - returning null');
     return null;
+  }
+
+  /// Get the best display-ready thumbnail URL, upgrading supported providers
+  /// like Mux when the fallback URL would otherwise be too soft.
+  String? getDisplayReadyThumbnailUrl({
+    required VideoThumbnails? thumbnails,
+    required double containerWidth,
+    required double devicePixelRatio,
+    String? fallbackUrl,
+  }) {
+    final resolvedUrl = getOptimalThumbnailUrlWithFallback(
+      thumbnails: thumbnails,
+      containerWidth: containerWidth,
+      devicePixelRatio: devicePixelRatio,
+      fallbackUrl: fallbackUrl,
+    );
+
+    if (resolvedUrl == null || resolvedUrl.isEmpty) {
+      return null;
+    }
+
+    final requestedWidth =
+        (containerWidth * devicePixelRatio).round().clamp(360, 1440);
+    return _upgradeMuxThumbnailUrl(
+      resolvedUrl,
+      requestedWidth: requestedWidth,
+    );
   }
 
   /// Build a responsive thumbnail widget with proper sizing and fallbacks
@@ -239,5 +266,26 @@ class ThumbnailService {
   void clearCache() {
     clearDevicePixelRatioCache();
     debugPrint('🖼️ ThumbnailService: Cache cleared');
+  }
+
+  String _upgradeMuxThumbnailUrl(
+    String url, {
+    required int requestedWidth,
+  }) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host != 'image.mux.com') {
+      return url;
+    }
+
+    final currentWidth = int.tryParse(uri.queryParameters['width'] ?? '');
+    final resolvedWidth = currentWidth == null
+        ? requestedWidth
+        : (currentWidth > requestedWidth ? currentWidth : requestedWidth);
+
+    final updatedParams = Map<String, String>.from(uri.queryParameters);
+    updatedParams['width'] = resolvedWidth.toString();
+    updatedParams.putIfAbsent('time', () => '0');
+
+    return uri.replace(queryParameters: updatedParams).toString();
   }
 }

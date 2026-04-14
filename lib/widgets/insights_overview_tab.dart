@@ -29,12 +29,12 @@ class InsightsOverviewTab extends StatelessWidget {
           const SizedBox(height: 24),
           
           // Retention rate section
-          _buildRetentionSection(),
+          _buildRetentionSection(context),
           
           const SizedBox(height: 24),
           
           // Traffic sources section
-          _buildTrafficSourcesSection(),
+          _buildTrafficSourcesSection(context),
           
           const SizedBox(height: 24),
           
@@ -108,6 +108,12 @@ class InsightsOverviewTab extends StatelessWidget {
                 icon: Icons.visibility,
                 title: 'Views',
                 value: _formatNumber(insights.overview.totalViews),
+                subtitle: _describeCount(
+                  insights.overview.totalViews,
+                  zero: 'Waiting for discovery',
+                  low: 'Early audience traction',
+                  active: 'Consistent reach so far',
+                ),
                 color: const Color(0xFF40DCD1),
               ),
             ),
@@ -117,6 +123,12 @@ class InsightsOverviewTab extends StatelessWidget {
                 icon: Icons.watch_later,
                 title: 'Watch Time',
                 value: _formatDuration(insights.overview.totalWatchTime),
+                subtitle: _describeDuration(
+                  insights.overview.totalWatchTime,
+                  zero: 'No meaningful watch time yet',
+                  low: 'First minutes are coming in',
+                  active: 'Audience is staying engaged',
+                ),
                 color: const Color(0xFF9248D2),
               ),
             ),
@@ -130,6 +142,12 @@ class InsightsOverviewTab extends StatelessWidget {
                 icon: Icons.share,
                 title: 'Shares',
                 value: _formatNumber(insights.overview.shares),
+                subtitle: _describeCount(
+                  insights.overview.shares,
+                  zero: 'No shares recorded yet',
+                  low: 'A few viewers are passing it on',
+                  active: 'This content is getting circulated',
+                ),
                 color: const Color(0xFF1670DE),
               ),
             ),
@@ -139,6 +157,12 @@ class InsightsOverviewTab extends StatelessWidget {
                 icon: Icons.comment,
                 title: 'Comments',
                 value: _formatNumber(insights.overview.comments),
+                subtitle: _describeCount(
+                  insights.overview.comments,
+                  zero: 'No discussion yet',
+                  low: 'Conversation is starting',
+                  active: 'Viewers are actively responding',
+                ),
                 color: const Color(0xFFE91E63),
               ),
             ),
@@ -152,12 +176,20 @@ class InsightsOverviewTab extends StatelessWidget {
     required IconData icon,
     required String title,
     required String value,
+    required String subtitle,
     required Color color,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.14),
+            color.withValues(alpha: 0.12),
+          ],
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.2),
@@ -186,20 +218,31 @@ class InsightsOverviewTab extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
             value,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            title,
+            subtitle,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 13,
               fontWeight: FontWeight.w500,
+              height: 1.3,
             ),
           ),
         ],
@@ -207,16 +250,38 @@ class InsightsOverviewTab extends StatelessWidget {
     );
   }
 
-  Widget _buildRetentionSection() {
+  Widget _buildRetentionSection(BuildContext context) {
+    final retentionStatus = _getRetentionStatus();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Retention Rate',
+        Row(
+          children: [
+            const Text(
+              'Retention Rate',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildMetricInfoChip(
+              context,
+              label: 'How we read this',
+              title: 'About retention rate',
+              message:
+                  'Retention estimates how much of the video viewers keep watching on average. Newer videos can move quickly, so lower-volume posts are labeled more cautiously until more viewers have watched.',
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Measures how long viewers stay with this video',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+            color: Colors.white.withValues(alpha: 0.72),
+            fontSize: 13,
           ),
         ),
         const SizedBox(height: 16),
@@ -246,13 +311,13 @@ class InsightsOverviewTab extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF40DCD1).withValues(alpha: 0.2),
+                      color: retentionStatus.color.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Text(
-                      'Good',
+                    child: Text(
+                      retentionStatus.label,
                       style: TextStyle(
-                        color: Color(0xFF40DCD1),
+                        color: retentionStatus.color,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -266,7 +331,7 @@ class InsightsOverviewTab extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'Average time viewers spend watching your video',
+                retentionStatus.description,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 14,
@@ -280,17 +345,31 @@ class InsightsOverviewTab extends StatelessWidget {
     );
   }
 
-  Widget _buildTrafficSourcesSection() {
+  Widget _buildTrafficSourcesSection(BuildContext context) {
+    final trafficSources = insights.overview.trafficSources;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Traffic Sources',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          children: [
+            const Text(
+              'Traffic Sources',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildMetricInfoChip(
+              context,
+              label: 'What this means',
+              title: 'About traffic sources',
+              message:
+                  'Traffic sources show where viewers discovered this video, such as profile visits, search, or recommendation surfaces. These breakdowns become more useful as the video reaches a wider audience.',
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Container(
@@ -305,13 +384,20 @@ class InsightsOverviewTab extends StatelessWidget {
           ),
           child: Column(
             children: [
-              TrafficSourcesChart(
-                sources: insights.overview.trafficSources,
-              ),
-              const SizedBox(height: 16),
-              ...insights.overview.trafficSources.map((source) =>
-                _buildTrafficSourceItem(source),
-              ),
+              if (trafficSources.isEmpty)
+                _buildSectionEmptyState(
+                  icon: Icons.traffic_outlined,
+                  title: 'No traffic source breakdown yet',
+                  message:
+                      'Traffic source attribution will appear once this video has enough discovery data.',
+                )
+              else ...[
+                TrafficSourcesChart(
+                  sources: trafficSources,
+                ),
+                const SizedBox(height: 16),
+                ...trafficSources.map((source) => _buildTrafficSourceItem(source)),
+              ],
             ],
           ),
         ),
@@ -363,6 +449,8 @@ class InsightsOverviewTab extends StatelessWidget {
   }
 
   Widget _buildSearchQueriesSection() {
+    final searchQueries = insights.overview.searchQueries;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -406,15 +494,174 @@ class InsightsOverviewTab extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              ...insights.overview.searchQueries.asMap().entries.map((entry) {
-                final index = entry.key;
-                final query = entry.value;
-                return _buildSearchQueryItem(index + 1, query);
-              }),
+              if (searchQueries.isEmpty)
+                _buildSectionEmptyState(
+                  icon: Icons.manage_search_outlined,
+                  title: 'No search query data yet',
+                  message:
+                      'Search keywords will show up here once viewers start finding this video through search.',
+                )
+              else
+                ...searchQueries.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final query = entry.value;
+                  return _buildSearchQueryItem(index + 1, query);
+                }),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSectionEmptyState({
+    required IconData icon,
+    required String title,
+    required String message,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.72), size: 28),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricInfoChip(
+    BuildContext context, {
+    required String label,
+    required String title,
+    required String message,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => _showMetricInfo(context, title: title, message: message),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.14),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.78),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMetricInfo(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1C135D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Metric guide',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    fontSize: 15,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -479,5 +726,78 @@ class InsightsOverviewTab extends StatelessWidget {
     } else {
       return '${duration.inMinutes}m';
     }
+  }
+
+  String _describeCount(
+    int count, {
+    required String zero,
+    required String low,
+    required String active,
+  }) {
+    if (count <= 0) {
+      return zero;
+    }
+    if (count < 10) {
+      return low;
+    }
+    return active;
+  }
+
+  String _describeDuration(
+    Duration duration, {
+    required String zero,
+    required String low,
+    required String active,
+  }) {
+    if (duration.inSeconds <= 0) {
+      return zero;
+    }
+    if (duration.inMinutes < 10) {
+      return low;
+    }
+    return active;
+  }
+
+  ({String label, String description, Color color}) _getRetentionStatus() {
+    final views = insights.overview.totalViews;
+    final retentionRate = insights.overview.retentionRate;
+
+    if (views == 0) {
+      return (
+        label: 'No Signal Yet',
+        description: 'Retention will become meaningful once this video has viewers to measure.',
+        color: Colors.white70,
+      );
+    }
+
+    if (views < 25) {
+      return (
+        label: 'Early Signal',
+        description: 'This retention rate is based on a small audience so far and may move quickly.',
+        color: Colors.orange,
+      );
+    }
+
+    if (retentionRate >= 0.60) {
+      return (
+        label: 'Holding Strong',
+        description: 'Viewers are staying with this video longer than average.',
+        color: const Color(0xFF40DCD1),
+      );
+    }
+
+    if (retentionRate >= 0.35) {
+      return (
+        label: 'Promising',
+        description: 'Retention looks healthy and there is a solid base to build on.',
+        color: const Color(0xFF9248D2),
+      );
+    }
+
+    return (
+      label: 'Needs Testing',
+      description: 'Viewers are dropping earlier, so the opening may need a stronger hook.',
+      color: const Color(0xFFE91E63),
+    );
   }
 }

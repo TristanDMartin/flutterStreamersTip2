@@ -1,0 +1,352 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../constants/app_colors.dart';
+import '../../models/user_status.dart' show UserPresence, UserStatus;
+import '../../providers/status_provider.dart';
+import '../../utils/avatar_url_resolver.dart';
+import '../edit_profile_view.dart';
+import '../share_profile_view.dart';
+import '../user_stats_row.dart';
+import 'user_status_color.dart';
+
+/// Avatar, name, stats card, and primary actions for the profile header.
+class ProfileViewHeaderSection extends StatelessWidget {
+  const ProfileViewHeaderSection({
+    super.key,
+    required this.userData,
+    required this.profileUserId,
+    required this.isCurrentUser,
+  });
+
+  final Map<String, dynamic> userData;
+  final String profileUserId;
+  final bool isCurrentUser;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        _ProfileAvatarRing(
+          userData: userData,
+          isCurrentUser: isCurrentUser,
+        ),
+        const SizedBox(height: 18),
+        _ProfileNameAndHandle(userData: userData),
+        const SizedBox(height: 22),
+        _ProfileStatsSystemCard(
+          userData: userData,
+          profileUserId: profileUserId,
+          isCurrentUser: isCurrentUser,
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileAvatarRing extends StatelessWidget {
+  const _ProfileAvatarRing({
+    required this.userData,
+    required this.isCurrentUser,
+  });
+
+  final Map<String, dynamic> userData;
+  final bool isCurrentUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = resolveAvatarUrl(userData);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        Container(
+          width: 112,
+          height: 112,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: SweepGradient(
+              colors: <Color>[
+                Color(0xFFFF6CAB),
+                Color(0xFF8E54E9),
+                Color(0xFF3D99F7),
+                Color(0xFFFF6CAB),
+              ],
+            ),
+          ),
+          child: Center(
+            child: Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.2),
+              ),
+              child: ClipOval(
+                child: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? Image.network(
+                        avatarUrl,
+                        key: ValueKey<String>(avatarUrl),
+                        fit: BoxFit.cover,
+                        errorBuilder:
+                            (BuildContext c, Object e, StackTrace? s) =>
+                                const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+              ),
+            ),
+          ),
+        ),
+        if (isCurrentUser)
+          Consumer(
+            builder:
+                (BuildContext context, WidgetRef ref, Widget? child) {
+              final AsyncValue<UserPresence> statusAsync = ref.watch(
+                userStatusProvider(userData['id'] ?? ''),
+              );
+              return statusAsync.when(
+                data: (UserPresence presence) {
+                  if (presence.status == UserStatus.offline) {
+                    return const SizedBox.shrink();
+                  }
+                  final Color c = profileUserStatusColor(presence.status);
+                  return Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: c,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: c.withValues(alpha: 0.5),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (Object e, StackTrace s) => const SizedBox.shrink(),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _ProfileNameAndHandle extends StatelessWidget {
+  const _ProfileNameAndHandle({required this.userData});
+
+  final Map<String, dynamic> userData;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        Text(
+          userData['displayName'] as String? ?? 'Unknown User',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 34,
+            fontWeight: FontWeight.w900,
+            height: 1.0,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '@${userData['username'] ?? 'unknown'}',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.75),
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            height: 1.0,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileStatsSystemCard extends StatelessWidget {
+  const _ProfileStatsSystemCard({
+    required this.userData,
+    required this.profileUserId,
+    required this.isCurrentUser,
+  });
+
+  final Map<String, dynamic> userData;
+  final String profileUserId;
+  final bool isCurrentUser;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.14),
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: <Widget>[
+          UserStatsRow(
+            userId: profileUserId,
+            spacing: 28,
+            valueTextStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              height: 1.0,
+            ),
+            labelTextStyle: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.0,
+            ),
+          ),
+          if (isCurrentUser) ...<Widget>[
+            const SizedBox(height: 18),
+            Container(
+              height: 1,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+            const SizedBox(height: 18),
+            _ProfilePrimaryButtonsRow(userData: userData),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfilePrimaryButtonsRow extends StatelessWidget {
+  const _ProfilePrimaryButtonsRow({required this.userData});
+
+  final Map<String, dynamic> userData;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: _ProfileHeaderActionButton(
+            text: 'Edit Profile',
+            icon: Icons.edit_outlined,
+            isPrimary: true,
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => EditProfileView(
+                    user: userData,
+                    onUserUpdated: (Map<String, dynamic> updatedUser) {
+                      HapticFeedback.lightImpact();
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _ProfileHeaderActionButton(
+            text: 'Share Profile',
+            icon: Icons.ios_share_rounded,
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => ShareProfileView(
+                    user: userData,
+                    dismiss: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileHeaderActionButton extends StatelessWidget {
+  const _ProfileHeaderActionButton({
+    required this.text,
+    required this.icon,
+    required this.onPressed,
+    this.isPrimary = false,
+  });
+
+  final String text;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool isPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        height: 50,
+        decoration: BoxDecoration(
+          gradient: isPrimary
+              ? const LinearGradient(
+                  colors: AppColors.supportAccentGradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                )
+              : null,
+          color: isPrimary ? null : Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: isPrimary
+                ? Colors.white.withValues(alpha: 0.10)
+                : Colors.white.withValues(alpha: 0.14),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

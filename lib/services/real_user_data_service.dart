@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/avatar_url_resolver.dart';
 import '../utils/video_url_resolver.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user_count_fields.dart';
@@ -293,7 +294,7 @@ class RealUserDataService {
           id: doc.id,
           username: data['username'] ?? 'Unknown',
           displayName: data['displayName'],
-          avatarURL: data['avatarURL'],
+          avatarURL: resolveAvatarUrl(data),
           followerCount: UserCountFields.readFollowersCount(data),
           isActive: (data['onlineStatus'] ?? 'offline') == 'online',
         );
@@ -322,7 +323,7 @@ class RealUserDataService {
         final query = _firestore
             .collection('videos')
             .where(ownerField, isEqualTo: userId)
-            .where('status', whereIn: ['published', 'ready'])
+            .where('status', whereIn: ['published', 'ready', 'active'])
             .orderBy('createdAt', descending: true)
             .limit(limit);
         final snapshot = await query.get();
@@ -406,8 +407,8 @@ class RealUserDataService {
     try {
       Query<Map<String, dynamic>> query = _firestore
           .collection('videos')
-          .where('status', isEqualTo: 'published')
-          .where('privacy', isEqualTo: 'Everyone')
+          .where('status', whereIn: ['published', 'ready', 'active'])
+          .where('privacy', whereIn: ['Everyone', 'Public'])
           .orderBy('score', descending: true)
           .limit(limit);
 
@@ -485,8 +486,8 @@ class RealUserDataService {
       final snapshot = await _firestore
           .collection('videos')
           .where('userId', whereIn: followingIds)
-          .where('status', isEqualTo: 'published')
-          .where('privacy', whereIn: ['Everyone', 'Connections'])
+          .where('status', whereIn: ['published', 'ready', 'active'])
+          .where('privacy', whereIn: ['Everyone', 'Public', 'Connections'])
           .orderBy('createdAt', descending: true)
           .limit(limit)
           .get();

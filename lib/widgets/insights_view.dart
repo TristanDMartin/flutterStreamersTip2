@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/insights_data.dart';
 import '../models/profile_video.dart';
 import '../services/insights_firebase_service.dart';
@@ -12,6 +13,8 @@ import 'insights_engagement_tab.dart';
 import 'video_selector_widget.dart';
 
 /// Main Insights View with tabbed interface for video analytics
+enum _InsightsLoadState { loading, ready, empty, error }
+
 class InsightsView extends ConsumerStatefulWidget {
   final String videoId;
   final String videoTitle;
@@ -29,8 +32,9 @@ class InsightsView extends ConsumerStatefulWidget {
 class _InsightsViewState extends ConsumerState<InsightsView>
     with TickerProviderStateMixin {
   late TabController _tabController;
-  late InsightsData _insightsData;
-  bool _isLoading = true;
+  InsightsData? _insightsData;
+  _InsightsLoadState _loadState = _InsightsLoadState.loading;
+  String? _errorMessage;
   ProfileVideo? _selectedVideo;
   StreamSubscription<InsightsData?>? _insightsSubscription;
 
@@ -40,6 +44,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     debugPrint(
         '🔍 InsightsView initState called for videoId: ${widget.videoId}');
     _tabController = TabController(length: 3, vsync: this);
+    _startRealTimeInsights(widget.videoId);
     _loadInsightsData();
   }
 
@@ -56,6 +61,13 @@ class _InsightsViewState extends ConsumerState<InsightsView>
 
     debugPrint('🔍 InsightsView: Loading insights for videoId: $videoId');
 
+    if (mounted) {
+      setState(() {
+        _loadState = _InsightsLoadState.loading;
+        _errorMessage = null;
+      });
+    }
+
     try {
       // First, trigger aggregation to ensure we have the latest data
       final aggregationService = VideoAnalyticsAggregationService();
@@ -70,158 +82,41 @@ class _InsightsViewState extends ConsumerState<InsightsView>
             debugPrint(
                 '✅ InsightsView: Real data loaded - Views: ${insights.overview.totalViews}, Likes: ${insights.engagement.likes}');
             _insightsData = insights;
+            _loadState = _InsightsLoadState.ready;
           } else {
             debugPrint(
-                '⚠️ InsightsView: No analytics data found, using real-time data from video document');
-            // Fallback to generating data from video document stats
-            _insightsData = _generateMockData();
+                '⚠️ InsightsView: No analytics data found for video: $videoId');
+            _insightsData = null;
+            _loadState = _InsightsLoadState.empty;
           }
-          _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           debugPrint('❌ InsightsView: Error loading insights: $e');
-          // Fallback to mock data on error
-          _insightsData = _generateMockData();
-          _isLoading = false;
+          _insightsData = null;
+          _errorMessage = e.toString();
+          _loadState = _InsightsLoadState.error;
         });
       }
       debugPrint('Error loading insights: $e');
     }
   }
 
-  InsightsData _generateMockData() {
-    final videoId = _selectedVideo?.id ?? widget.videoId;
-    return InsightsData(
-      videoId: videoId,
-      dateRange: DateTime.now().subtract(const Duration(days: 7)),
-      overview: OverviewMetrics(
-        totalViews: 125000,
-        totalWatchTime: const Duration(hours: 2500),
-        shares: 3200,
-        comments: 890,
-        retentionRate: 0.78,
-        trafficSources: [
-          TrafficSource(source: 'For You Page', views: 85000, percentage: 68.0),
-          TrafficSource(source: 'Profile', views: 25000, percentage: 20.0),
-          TrafficSource(source: 'Search', views: 15000, percentage: 12.0),
-        ],
-        searchQueries: [
-          'gaming tips',
-          'streaming setup',
-          'best games 2024',
-          'how to stream',
-        ],
-      ),
-      viewers: ViewerMetrics(
-        totalViews: 125000,
-        uniqueViewers: 98000,
-        viewerTypes: ViewerTypes(
-          newViewers: 75000,
-          returningViewers: 23000,
-        ),
-        genderBreakdown: GenderBreakdown(
-          male: 65000,
-          female: 45000,
-          other: 10000,
-          unknown: 5000,
-        ),
-        ageGroups: [
-          AgeGroup(range: '13-17', count: 15000, percentage: 12.0),
-          AgeGroup(range: '18-24', count: 45000, percentage: 36.0),
-          AgeGroup(range: '25-34', count: 35000, percentage: 28.0),
-          AgeGroup(range: '35-44', count: 20000, percentage: 16.0),
-          AgeGroup(range: '45+', count: 10000, percentage: 8.0),
-        ],
-        topLocations: [
-          Location(name: 'United States', views: 45000, percentage: 36.0),
-          Location(name: 'United Kingdom', views: 18000, percentage: 14.4),
-          Location(name: 'Canada', views: 15000, percentage: 12.0),
-          Location(name: 'Australia', views: 12000, percentage: 9.6),
-          Location(name: 'Germany', views: 10000, percentage: 8.0),
-        ],
-      ),
-      engagement: EngagementMetrics(
-        likes: 8900,
-        shares: 3200,
-        comments: 890,
-        favorites: 2100,
-        engagementRate: 0.12,
-        trends: [
-          EngagementTrend(
-            date: DateTime.now().subtract(const Duration(days: 6)),
-            likes: 1200,
-            shares: 400,
-            comments: 120,
-            favorites: 280,
-          ),
-          EngagementTrend(
-            date: DateTime.now().subtract(const Duration(days: 5)),
-            likes: 1500,
-            shares: 500,
-            comments: 150,
-            favorites: 350,
-          ),
-          EngagementTrend(
-            date: DateTime.now().subtract(const Duration(days: 4)),
-            likes: 1800,
-            shares: 600,
-            comments: 180,
-            favorites: 420,
-          ),
-          EngagementTrend(
-            date: DateTime.now().subtract(const Duration(days: 3)),
-            likes: 1600,
-            shares: 550,
-            comments: 160,
-            favorites: 380,
-          ),
-          EngagementTrend(
-            date: DateTime.now().subtract(const Duration(days: 2)),
-            likes: 1400,
-            shares: 480,
-            comments: 140,
-            favorites: 320,
-          ),
-          EngagementTrend(
-            date: DateTime.now().subtract(const Duration(days: 1)),
-            likes: 1100,
-            shares: 380,
-            comments: 110,
-            favorites: 250,
-          ),
-        ],
-      ),
-    );
-  }
-
   void _onVideoSelected(ProfileVideo video) {
     setState(() {
       _selectedVideo = video;
-      _isLoading = true;
+      _insightsData = null;
+      _loadState = _InsightsLoadState.loading;
+      _errorMessage = null;
     });
 
     // Cancel previous subscription
     _insightsSubscription?.cancel();
 
-    // Check if video is too new for insights
-    final now = DateTime.now();
-    final hoursSinceUpload = now.difference(video.createdAt).inHours;
-
-    if (hoursSinceUpload < 24) {
-      // Don't load insights data for videos that are too new
-      setState(() {
-        _isLoading = false;
-      });
-    } else {
-      // Start real-time listening for insights updates
-      _startRealTimeInsights(video.id);
-
-      // Also load initial data
-      _loadInsightsData();
-    }
+    _startRealTimeInsights(video.id);
+    _loadInsightsData();
   }
 
   void _startRealTimeInsights(String videoId) {
@@ -233,14 +128,16 @@ class _InsightsViewState extends ConsumerState<InsightsView>
         if (mounted && insights != null) {
           setState(() {
             _insightsData = insights;
-            _isLoading = false;
+            _loadState = _InsightsLoadState.ready;
+            _errorMessage = null;
           });
         }
       },
       onError: (error) {
         if (mounted) {
           setState(() {
-            _isLoading = false;
+            _loadState = _InsightsLoadState.error;
+            _errorMessage = error.toString();
           });
         }
         debugPrint('Real-time insights error: $error');
@@ -267,18 +164,7 @@ class _InsightsViewState extends ConsumerState<InsightsView>
               _buildVideoSelector(),
               _buildTabBar(),
               Expanded(
-                child: _isLoading
-                    ? _buildLoadingState()
-                    : _isVideoTooNewForInsights()
-                        ? _buildDataCollectingState()
-                        : TabBarView(
-                            controller: _tabController,
-                            children: [
-                              InsightsOverviewTab(insights: _insightsData),
-                              InsightsViewersTab(insights: _insightsData),
-                              InsightsEngagementTab(insights: _insightsData),
-                            ],
-                          ),
+                child: _buildBody(),
               ),
             ],
           ),
@@ -382,50 +268,80 @@ class _InsightsViewState extends ConsumerState<InsightsView>
   }
 
   Widget _buildTabBar() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 1,
+    return Opacity(
+      opacity: _loadState == _InsightsLoadState.ready ? 1 : 0.65,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
+          ),
         ),
-      ),
-      child: TabBar(
-        controller: _tabController,
-        indicator: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(12),
+        child: TabBar(
+          controller: _tabController,
+          indicator: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          indicatorSize: TabBarIndicatorSize.tab,
+          indicatorPadding: const EdgeInsets.all(4),
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white.withValues(alpha: 0.6),
+          labelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          tabs: const [
+            Tab(text: 'Overview'),
+            Tab(text: 'Viewers'),
+            Tab(text: 'Engagement'),
+          ],
         ),
-        indicatorSize: TabBarIndicatorSize.tab,
-        indicatorPadding: const EdgeInsets.all(4),
-        labelColor: Colors.white,
-        unselectedLabelColor: Colors.white.withValues(alpha: 0.6),
-        labelStyle: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-        tabs: const [
-          Tab(text: 'Overview'),
-          Tab(text: 'Viewers'),
-          Tab(text: 'Engagement'),
-        ],
       ),
     );
   }
 
-  bool _isVideoTooNewForInsights() {
-    // DISABLED: We now track analytics in real-time, so insights are available immediately
-    // if (_selectedVideo == null) return false;
-    // final now = DateTime.now();
-    // final hoursSinceUpload = now.difference(_selectedVideo!.createdAt).inHours;
-    // return hoursSinceUpload < 24;
-    return false; // Always show insights (real-time tracking enabled)
+  Widget _buildBody() {
+    switch (_loadState) {
+      case _InsightsLoadState.loading:
+        return _buildLoadingState();
+      case _InsightsLoadState.error:
+        return _buildErrorState();
+      case _InsightsLoadState.empty:
+        return _isLikelyCollectingFreshData()
+            ? _buildDataCollectingState()
+            : _buildNoDataState();
+      case _InsightsLoadState.ready:
+        final insights = _insightsData;
+        if (insights == null) {
+          return _buildNoDataState();
+        }
+        return TabBarView(
+          controller: _tabController,
+          children: [
+            InsightsOverviewTab(insights: insights),
+            InsightsViewersTab(insights: insights),
+            InsightsEngagementTab(insights: insights),
+          ],
+        );
+    }
+  }
+
+  bool _isLikelyCollectingFreshData() {
+    final video = _selectedVideo;
+    if (video == null) {
+      return false;
+    }
+
+    final hoursSinceUpload = DateTime.now().difference(video.createdAt).inHours;
+    return hoursSinceUpload < 24;
   }
 
   Widget _buildDataCollectingState() {
@@ -579,12 +495,154 @@ class _InsightsViewState extends ConsumerState<InsightsView>
     );
   }
 
-  void _shareInsights() {
-    // Sharing insights functionality - placeholder for future implementation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Sharing insights...'),
-        backgroundColor: Colors.green,
+  Widget _buildNoDataState() {
+    return _buildStatusCard(
+      icon: Icons.insights_outlined,
+      title: 'No Insights Yet',
+      message:
+          'This video does not have enough processed analytics to show a breakdown yet. Check back after views and engagement start coming in.',
+      accentColor: const Color(0xFF40DCD1),
+      actionLabel: 'Refresh',
+      onAction: _loadInsightsData,
+    );
+  }
+
+  Widget _buildErrorState() {
+    return _buildStatusCard(
+      icon: Icons.cloud_off_outlined,
+      title: 'Insights Unavailable',
+      message:
+          'We couldn\'t load analytics for this video right now. No placeholder data is being shown.',
+      detail: _errorMessage,
+      accentColor: Colors.orange,
+      actionLabel: 'Try Again',
+      onAction: _loadInsightsData,
+    );
+  }
+
+  Widget _buildStatusCard({
+    required IconData icon,
+    required String title,
+    required String message,
+    required Color accentColor,
+    String? detail,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 520),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.16),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.16),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: accentColor, size: 32),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.82),
+                  fontSize: 15,
+                  height: 1.45,
+                ),
+              ),
+              if (detail != null && detail.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    detail,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+              if (actionLabel != null && onAction != null) ...[
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: onAction,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF1C135D),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
+                  ),
+                  icon: const Icon(Icons.refresh),
+                  label: Text(actionLabel),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareInsights() async {
+    final insights = _insightsData;
+    if (insights == null || _loadState != _InsightsLoadState.ready) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Insights can be shared once analytics are available.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final shareText = StringBuffer()
+      ..writeln('Video insights for "${widget.videoTitle}"')
+      ..writeln()
+      ..writeln('Views: ${insights.overview.totalViews}')
+      ..writeln('Watch time: ${insights.overview.totalWatchTime.inMinutes} min')
+      ..writeln('Retention: ${(insights.overview.retentionRate * 100).toStringAsFixed(1)}%')
+      ..writeln('Likes: ${insights.engagement.likes}')
+      ..writeln('Comments: ${insights.engagement.comments}')
+      ..writeln('Shares: ${insights.engagement.shares}')
+      ..writeln('Unique viewers: ${insights.viewers.uniqueViewers}');
+
+    await SharePlus.instance.share(
+      ShareParams(
+        text: shareText.toString(),
+        subject: 'Video insights for ${widget.videoTitle}',
       ),
     );
   }

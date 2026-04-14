@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/connection.dart';
 import '../providers/shared_draft_provider.dart';
+import '../services/user_blocking_service.dart';
 
 class ShareSheet extends ConsumerWidget {
   final String videoId;
@@ -21,6 +22,7 @@ class ShareSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connectionsAsync = ref.watch(sharedDraftConnectionsProvider);
+    final blockingService = UserBlockingService();
 
     return Container(
       decoration: const BoxDecoration(
@@ -44,10 +46,22 @@ class ShareSheet extends ConsumerWidget {
           _buildHeader(context),
 
           // Quick Share to Friends (Row 1)
-          connectionsAsync.when(
-            data: (connections) => _buildQuickShareRow(context, connections),
-            loading: () => _buildLoadingConnections(),
-            error: (error, stack) => _buildErrorConnections(),
+          ValueListenableBuilder<int>(
+            valueListenable: blockingService.blockListRevision,
+            builder: (context, _, __) => connectionsAsync.when(
+              data: (connections) => FutureBuilder<List<String>>(
+                future: blockingService.getBlockedUsers(),
+                builder: (context, snapshot) {
+                  final blockedUserIds = snapshot.data?.toSet() ?? const <String>{};
+                  final visibleConnections = connections
+                      .where((connection) => !blockedUserIds.contains(connection.id))
+                      .toList();
+                  return _buildQuickShareRow(context, visibleConnections);
+                },
+              ),
+              loading: () => _buildLoadingConnections(),
+              error: (error, stack) => _buildErrorConnections(),
+            ),
           ),
 
           const SizedBox(height: 24),

@@ -168,7 +168,6 @@ class UnifiedBookmarkService extends ChangeNotifier {
           'favoriteCount': FieldValue.increment(1),
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
-        debugPrint('✅ UnifiedBookmarkService: Bookmark added for $videoId');
       } else {
         batch.delete(favoriteDocRef);
         batch.set(videoDocRef, {
@@ -176,10 +175,15 @@ class UnifiedBookmarkService extends ChangeNotifier {
           'favoriteCount': FieldValue.increment(-1),
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
-        debugPrint('✅ UnifiedBookmarkService: Bookmark removed for $videoId');
       }
 
       await batch.commit();
+
+      debugPrint(
+        isBookmarking
+            ? '✅ UnifiedBookmarkService: Bookmark saved for $videoId'
+            : '✅ UnifiedBookmarkService: Bookmark removed for $videoId',
+      );
 
       return BookmarkResult.success(isBookmarking);
     } catch (e) {

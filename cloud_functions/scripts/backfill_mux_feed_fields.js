@@ -21,8 +21,35 @@ function isPublicVideo(data) {
   );
 }
 
+function normalizeMuxHlsUrl(url) {
+  if (typeof url !== 'string' || !url.trim()) return null;
+  const trimmed = url.trim();
+  if (!trimmed.includes('stream.mux.com')) return trimmed;
+
+  try {
+    const parsed = new URL(trimmed);
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length === 0) return trimmed;
+
+    const first = segments[0]
+      .replace('.m3u8', '')
+      .replace('/high', '')
+      .replace('/medium', '')
+      .replace('/low', '');
+
+    if (!first) return trimmed;
+    return `https://stream.mux.com/${first}.m3u8`;
+  } catch (_) {
+    return trimmed;
+  }
+}
+
+function buildMuxThumbnail(playbackId, width) {
+  return `https://image.mux.com/${playbackId}/thumbnail.jpg?width=${width}&time=0`;
+}
+
 function resolvePlayableUrl(data) {
-  return (
+  const playable = (
     data.canonicalPlaybackUrl ||
     data.hlsUrl ||
     data.hls_url ||
@@ -30,6 +57,7 @@ function resolvePlayableUrl(data) {
     data.videoURL ||
     null
   );
+  return normalizeMuxHlsUrl(playable);
 }
 
 function buildBackfillUpdate(data) {
@@ -75,6 +103,33 @@ function buildBackfillUpdate(data) {
 
   if (!data.canonicalPlaybackUrl && playableUrl) {
     update.canonicalPlaybackUrl = playableUrl;
+  }
+
+  if (playableUrl) {
+    update.hlsUrl = playableUrl;
+    update.hls_url = playableUrl;
+  }
+
+  if (muxPlaybackId) {
+    update.muxAdaptiveHlsUrl = `https://stream.mux.com/${muxPlaybackId}.m3u8`;
+    update.muxHighHlsUrl = `https://stream.mux.com/${muxPlaybackId}/high.m3u8`;
+
+    const thumb360 = buildMuxThumbnail(muxPlaybackId, 360);
+    const thumb540 = buildMuxThumbnail(muxPlaybackId, 540);
+    const thumb720 = buildMuxThumbnail(muxPlaybackId, 720);
+    const thumb1080 = buildMuxThumbnail(muxPlaybackId, 1080);
+
+    update.thumbnailUrl = data.thumbnailUrl || data.thumbnailURL || thumb720;
+    update.thumbnailURL = data.thumbnailURL || data.thumbnailUrl || thumb720;
+    update.thumbnails = {
+      urls: {
+        360: thumb360,
+        540: thumb540,
+        720: thumb720,
+        1080: thumb1080,
+      },
+      migratedAt: FieldValue.serverTimestamp(),
+    };
   }
 
   return update;

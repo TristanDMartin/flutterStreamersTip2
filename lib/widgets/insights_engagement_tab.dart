@@ -19,7 +19,7 @@ class InsightsEngagementTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Engagement rate card
-          _buildEngagementRateCard(),
+          _buildEngagementRateCard(context),
           
           const SizedBox(height: 24),
           
@@ -42,7 +42,9 @@ class InsightsEngagementTab extends StatelessWidget {
     );
   }
 
-  Widget _buildEngagementRateCard() {
+  Widget _buildEngagementRateCard(BuildContext context) {
+    final engagementStatus = _getEngagementStatus();
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -81,20 +83,42 @@ class InsightsEngagementTab extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Engagement Rate',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        const Text(
+                          'Engagement Rate',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildMetricInfoChip(
+                          context,
+                          label: 'How we read this',
+                          title: 'About engagement rate',
+                          message:
+                              'Engagement rate compares likes, comments, shares, and favorites to overall viewing activity. Smaller sample sizes are marked as early signals because a few actions can move the rate a lot.',
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 6),
                     Text(
                       'How much your audience interacts with your content',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.8),
+                        color: Colors.white.withValues(alpha: 0.72),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      engagementStatus.description,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.82),
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
+                        height: 1.35,
                       ),
                     ),
                   ],
@@ -117,13 +141,13 @@ class InsightsEngagementTab extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _getEngagementRateColor().withValues(alpha: 0.2),
+                  color: engagementStatus.color.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  _getEngagementRateLabel(),
+                  engagementStatus.label,
                   style: TextStyle(
-                    color: _getEngagementRateColor(),
+                    color: engagementStatus.color,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -156,6 +180,12 @@ class InsightsEngagementTab extends StatelessWidget {
                 icon: Icons.favorite,
                 title: 'Likes',
                 value: _formatNumber(insights.engagement.likes),
+                subtitle: _describeCount(
+                  insights.engagement.likes,
+                  zero: 'No likes yet',
+                  low: 'Appreciation is beginning',
+                  active: 'Strong positive response',
+                ),
                 color: const Color(0xFFE91E63),
               ),
             ),
@@ -165,6 +195,12 @@ class InsightsEngagementTab extends StatelessWidget {
                 icon: Icons.share,
                 title: 'Shares',
                 value: _formatNumber(insights.engagement.shares),
+                subtitle: _describeCount(
+                  insights.engagement.shares,
+                  zero: 'No shares yet',
+                  low: 'A few viewers are sharing',
+                  active: 'This is being passed around',
+                ),
                 color: const Color(0xFF1670DE),
               ),
             ),
@@ -178,6 +214,12 @@ class InsightsEngagementTab extends StatelessWidget {
                 icon: Icons.comment,
                 title: 'Comments',
                 value: _formatNumber(insights.engagement.comments),
+                subtitle: _describeCount(
+                  insights.engagement.comments,
+                  zero: 'No comments yet',
+                  low: 'Conversation is starting',
+                  active: 'Viewers are actively responding',
+                ),
                 color: const Color(0xFF40DCD1),
               ),
             ),
@@ -187,6 +229,12 @@ class InsightsEngagementTab extends StatelessWidget {
                 icon: Icons.bookmark,
                 title: 'Favorites',
                 value: _formatNumber(insights.engagement.favorites),
+                subtitle: _describeCount(
+                  insights.engagement.favorites,
+                  zero: 'Not saved yet',
+                  low: 'A few saves are appearing',
+                  active: 'Viewers want to revisit this',
+                ),
                 color: const Color(0xFF9248D2),
               ),
             ),
@@ -200,12 +248,20 @@ class InsightsEngagementTab extends StatelessWidget {
     required IconData icon,
     required String title,
     required String value,
+    required String subtitle,
     required Color color,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.14),
+            color.withValues(alpha: 0.12),
+          ],
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.2),
@@ -234,20 +290,31 @@ class InsightsEngagementTab extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
             value,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
-            title,
+            subtitle,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 13,
               fontWeight: FontWeight.w500,
+              height: 1.3,
             ),
           ),
         ],
@@ -256,6 +323,8 @@ class InsightsEngagementTab extends StatelessWidget {
   }
 
   Widget _buildEngagementTrendsSection() {
+    final trends = insights.engagement.trends;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -280,18 +349,27 @@ class InsightsEngagementTab extends StatelessWidget {
           ),
           child: Column(
             children: [
-              EngagementTrendsChart(
-                trends: insights.engagement.trends,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Daily engagement over the past week',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontSize: 14,
+              if (trends.isEmpty)
+                _buildSectionEmptyState(
+                  icon: Icons.show_chart_outlined,
+                  title: 'No engagement trend line yet',
+                  message:
+                      'Daily trend data will appear once we have multiple days of engagement activity to compare.',
+                )
+              else ...[
+                EngagementTrendsChart(
+                  trends: trends,
                 ),
-                textAlign: TextAlign.center,
-              ),
+                const SizedBox(height: 16),
+                Text(
+                  'Daily engagement over the past week',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 14,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ],
           ),
         ),
@@ -329,49 +407,209 @@ class InsightsEngagementTab extends StatelessWidget {
           ),
           child: Column(
             children: [
-              EngagementBreakdownChart(
-                likes: insights.engagement.likes,
-                shares: insights.engagement.shares,
-                comments: insights.engagement.comments,
-                favorites: insights.engagement.favorites,
-              ),
-              const SizedBox(height: 20),
-              Column(
-                children: [
-                  _buildEngagementBreakdownItem(
-                    'Likes',
-                    insights.engagement.likes,
-                    totalEngagements,
-                    const Color(0xFFE91E63),
-                    Icons.favorite,
-                  ),
-                  _buildEngagementBreakdownItem(
-                    'Shares',
-                    insights.engagement.shares,
-                    totalEngagements,
-                    const Color(0xFF1670DE),
-                    Icons.share,
-                  ),
-                  _buildEngagementBreakdownItem(
-                    'Comments',
-                    insights.engagement.comments,
-                    totalEngagements,
-                    const Color(0xFF40DCD1),
-                    Icons.comment,
-                  ),
-                  _buildEngagementBreakdownItem(
-                    'Favorites',
-                    insights.engagement.favorites,
-                    totalEngagements,
-                    const Color(0xFF9248D2),
-                    Icons.bookmark,
-                  ),
-                ],
-              ),
+              if (totalEngagements == 0)
+                _buildSectionEmptyState(
+                  icon: Icons.favorite_border,
+                  title: 'No engagement breakdown yet',
+                  message:
+                      'Likes, comments, shares, and favorites will be broken down here as viewers start interacting.',
+                )
+              else ...[
+                EngagementBreakdownChart(
+                  likes: insights.engagement.likes,
+                  shares: insights.engagement.shares,
+                  comments: insights.engagement.comments,
+                  favorites: insights.engagement.favorites,
+                ),
+                const SizedBox(height: 20),
+                Column(
+                  children: [
+                    _buildEngagementBreakdownItem(
+                      'Likes',
+                      insights.engagement.likes,
+                      totalEngagements,
+                      const Color(0xFFE91E63),
+                      Icons.favorite,
+                    ),
+                    _buildEngagementBreakdownItem(
+                      'Shares',
+                      insights.engagement.shares,
+                      totalEngagements,
+                      const Color(0xFF1670DE),
+                      Icons.share,
+                    ),
+                    _buildEngagementBreakdownItem(
+                      'Comments',
+                      insights.engagement.comments,
+                      totalEngagements,
+                      const Color(0xFF40DCD1),
+                      Icons.comment,
+                    ),
+                    _buildEngagementBreakdownItem(
+                      'Favorites',
+                      insights.engagement.favorites,
+                      totalEngagements,
+                      const Color(0xFF9248D2),
+                      Icons.bookmark,
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSectionEmptyState({
+    required IconData icon,
+    required String title,
+    required String message,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.72), size: 28),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricInfoChip(
+    BuildContext context, {
+    required String label,
+    required String title,
+    required String message,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => _showMetricInfo(context, title: title, message: message),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.14),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.78),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMetricInfo(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1C135D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Metric guide',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    fontSize: 15,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -461,30 +699,6 @@ class InsightsEngagementTab extends StatelessWidget {
     );
   }
 
-  Color _getEngagementRateColor() {
-    if (insights.engagement.engagementRate >= 0.15) {
-      return const Color(0xFF40DCD1); // Excellent
-    } else if (insights.engagement.engagementRate >= 0.10) {
-      return const Color(0xFF9248D2); // Good
-    } else if (insights.engagement.engagementRate >= 0.05) {
-      return Colors.orange; // Average
-    } else {
-      return const Color(0xFFE91E63); // Needs improvement
-    }
-  }
-
-  String _getEngagementRateLabel() {
-    if (insights.engagement.engagementRate >= 0.15) {
-      return 'Excellent';
-    } else if (insights.engagement.engagementRate >= 0.10) {
-      return 'Good';
-    } else if (insights.engagement.engagementRate >= 0.05) {
-      return 'Average';
-    } else {
-      return 'Needs Improvement';
-    }
-  }
-
   String _formatNumber(int number) {
     if (number >= 1000000) {
       return '${(number / 1000000).toStringAsFixed(1)}M';
@@ -493,5 +707,74 @@ class InsightsEngagementTab extends StatelessWidget {
     } else {
       return number.toString();
     }
+  }
+
+  String _describeCount(
+    int count, {
+    required String zero,
+    required String low,
+    required String active,
+  }) {
+    if (count <= 0) {
+      return zero;
+    }
+    if (count < 10) {
+      return low;
+    }
+    return active;
+  }
+
+  ({String label, String description, Color color}) _getEngagementStatus() {
+    final totalEngagements = insights.engagement.likes +
+        insights.engagement.shares +
+        insights.engagement.comments +
+        insights.engagement.favorites;
+    final engagementRate = insights.engagement.engagementRate;
+
+    if (totalEngagements == 0) {
+      return (
+        label: 'No Signal Yet',
+        description: 'Audience interaction will start showing up here as people engage with this video.',
+        color: Colors.white70,
+      );
+    }
+
+    if (totalEngagements < 10) {
+      return (
+        label: 'Early Signal',
+        description: 'This engagement rate is based on a small number of actions and may shift quickly.',
+        color: Colors.orange,
+      );
+    }
+
+    if (engagementRate >= 0.15) {
+      return (
+        label: 'Highly Active',
+        description: 'Viewers are interacting at a strong rate across likes, shares, comments, and saves.',
+        color: const Color(0xFF40DCD1),
+      );
+    }
+
+    if (engagementRate >= 0.10) {
+      return (
+        label: 'Healthy Response',
+        description: 'Audience interaction looks solid and the content is resonating.',
+        color: const Color(0xFF9248D2),
+      );
+    }
+
+    if (engagementRate >= 0.05) {
+      return (
+        label: 'Building Momentum',
+        description: 'Engagement is present, with room to strengthen the call-to-action or hook.',
+        color: Colors.orange,
+      );
+    }
+
+    return (
+      label: 'Needs a Stronger Hook',
+      description: 'Viewers are watching but not interacting much yet, so the post may need a sharper payoff.',
+      color: const Color(0xFFE91E63),
+    );
   }
 }

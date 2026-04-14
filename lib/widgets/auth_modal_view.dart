@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,11 +25,19 @@ class AuthModalView extends ConsumerStatefulWidget {
 class _AuthModalViewState extends ConsumerState<AuthModalView> {
   bool _showAlert = false;
   String _alertMessage = "";
+  bool _isContentVisible = false;
 
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlayStyle();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _isContentVisible = true;
+        });
+      }
+    });
   }
 
   void _setSystemUIOverlayStyle() {
@@ -80,33 +90,54 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
         body: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF6137EB), Color(0xFF1C135D)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF6D43F3), Color(0xFF2A1A77), Color(0xFF150E46)],
             ),
           ),
           child: Stack(
             children: [
+              _buildBackgroundDecor(),
               SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    children: [
-                      // Header
-                      _buildHeader(),
-                      const Spacer(),
-                      // App Logo/Title
-                      _buildAppLogoSection(),
-                      const Spacer(),
-                      // Authentication Buttons
-                      _buildAuthButtons(authService),
-                      const Spacer(),
-                      // Terms and Privacy
-                      _buildTermsAndPrivacy(),
-                      // Sign Up
-                      _buildSignUpSection(),
-                      const SizedBox(height: 16),
-                    ],
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeOut,
+                  opacity: _isContentVisible ? 1 : 0,
+                  child: AnimatedSlide(
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                    offset: _isContentVisible
+                        ? Offset.zero
+                        : const Offset(0, 0.03),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        children: [
+                          _buildHeader(),
+                          const Spacer(),
+                          _buildAnimatedSection(
+                            delay: 0,
+                            child: _buildAppLogoSection(),
+                          ),
+                          const Spacer(),
+                          _buildAnimatedSection(
+                            delay: 80,
+                            child: _buildAuthButtons(authService),
+                          ),
+                          const Spacer(),
+                          _buildAnimatedSection(
+                            delay: 140,
+                            child: Column(
+                              children: [
+                                _buildTermsAndPrivacy(),
+                                _buildSignUpSection(),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -191,7 +222,10 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           onPressed: widget.dismiss,
           child: const Text(
             "Cancel",
-            style: TextStyle(color: Colors.blue),
+            style: TextStyle(
+              color: Color(0xFFC6D4FF),
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         const Spacer(),
@@ -214,93 +248,141 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 
   Widget _buildAppLogoSection() {
-    return Column(
-      children: [
-        Image.asset(
-          'assets/logo.png',
-          width: 120,
-          height: 120,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) {
-            debugPrint('❌ Error loading logo: $error');
-            debugPrint('❌ Stack trace: $stackTrace');
-            // Fallback to gradient icon if logo fails to load
-            return ShaderMask(
-              shaderCallback: (Rect rect) {
-                return const LinearGradient(
-                  colors: [
-                    Color(0xFF9248D2),
-                    Color(0xFF7768DF),
-                    Color(0xFF1670DE),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ).createShader(rect);
-              },
-              blendMode: BlendMode.srcIn,
-              child: const Icon(
-                Icons.play_circle_filled,
-                size: 120,
-                color: Colors.white,
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          "StreamersTip",
-          style: TextStyle(
-            fontSize: 34,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+    return _buildGlassPanel(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      child: Column(
+        children: [
+          Container(
+            width: 120,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.bolt_rounded, color: Color(0xFFFFD76A), size: 16),
+                SizedBox(width: 6),
+                Text(
+                  "Welcome Back",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          "Connect with your favorite streamers",
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.grey,
+          const SizedBox(height: 22),
+          Image.asset(
+            'assets/logo.png',
+            width: 120,
+            height: 120,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              debugPrint('❌ Error loading logo: $error');
+              debugPrint('❌ Stack trace: $stackTrace');
+              return ShaderMask(
+                shaderCallback: (Rect rect) {
+                  return const LinearGradient(
+                    colors: [
+                      Color(0xFFFFD76A),
+                      Color(0xFF9F80FF),
+                      Color(0xFF52B6FF),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ).createShader(rect);
+                },
+                blendMode: BlendMode.srcIn,
+                child: const Icon(
+                  Icons.play_circle_filled,
+                  size: 120,
+                  color: Colors.white,
+                ),
+              );
+            },
           ),
-          textAlign: TextAlign.center,
-        ),
-      ],
+          const SizedBox(height: 18),
+          const Text(
+            "StreamersTip",
+            style: TextStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            "Connect with your favorite streamers, communities, and live moments in one place.",
+            style: TextStyle(
+              fontSize: 16,
+              color: Color(0xFFE1E6FF),
+              height: 1.45,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildAuthButtons(RobustAuthenticationService authService) {
-    return Column(
-      children: [
-        // Email/Username Button
-        _buildAuthButton(
-          icon: Icons.person,
-          text: "Sign in with Email/Username",
-          backgroundColor: Colors.white,
-          textColor: Colors.black,
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => EmailLoginView(
-                  dismiss: () => Navigator.of(context).pop(),
+    return _buildGlassPanel(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            "Choose a sign-in method",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            "Pick email for account access or Google for the fastest setup.",
+            style: TextStyle(
+              color: Color(0xCCDFE5FF),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 18),
+          _buildAuthButton(
+            icon: Icons.person,
+            text: "Sign in with Email/Username",
+            backgroundColor: Colors.white,
+            textColor: Colors.black,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => EmailLoginView(
+                    dismiss: () => Navigator.of(context).pop(),
+                  ),
                 ),
-              ),
-            );
-          },
-          disabled: authService.shouldShowLoading,
-        ),
-        const SizedBox(height: 16),
-
-        // Google Button
-        _buildAuthButton(
-          icon: Icons.language,
-          text: "Continue with Google",
-          backgroundColor: Colors.white,
-          textColor: Colors.black,
-          onTap: _signInWithGoogle,
-          disabled: authService.shouldShowLoading,
-        ),
-        const SizedBox(height: 16),
-      ],
+              );
+            },
+            disabled: authService.shouldShowLoading,
+          ),
+          const SizedBox(height: 14),
+          _buildAuthButton(
+            icon: Icons.language,
+            text: "Continue with Google",
+            backgroundColor: Colors.white,
+            textColor: Colors.black,
+            onTap: _signInWithGoogle,
+            disabled: authService.shouldShowLoading,
+          ),
+        ],
+      ),
     );
   }
 
@@ -314,22 +396,26 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }) {
     return Opacity(
       opacity: disabled ? 0.5 : 1.0,
-      child: GestureDetector(
-        onTap: disabled ? null : onTap,
+      child: _PressableAuthButton(
+        enabled: !disabled,
+        onTap: onTap,
         child: Container(
           width: double.infinity,
-          height: 48, // Match ProfileView button height
+          height: 48,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [
-                Color(0xFF955CFF),
-                Color(0xFF3D99F7)
-              ], // Match ProfileView gradient
+              colors: [Color(0xFF955CFF), Color(0xFF3D99F7)],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
-            borderRadius:
-                BorderRadius.circular(24), // Match ProfileView pill shape
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x332C8FFF),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
           ),
           child: Center(
             child: Row(
@@ -340,14 +426,109 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
                 Text(
                   text,
                   style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
                     color: Colors.white,
                   ),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedSection({
+    required Widget child,
+    required int delay,
+  }) {
+    final duration = Duration(milliseconds: 420 + delay);
+    return AnimatedOpacity(
+      duration: duration,
+      curve: Curves.easeOut,
+      opacity: _isContentVisible ? 1 : 0,
+      child: AnimatedSlide(
+        duration: duration,
+        curve: Curves.easeOutCubic,
+        offset: _isContentVisible ? Offset.zero : const Offset(0, 0.05),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildBackgroundDecor() {
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: -80,
+            right: -30,
+            child: _buildGlowOrb(
+              size: 220,
+              colors: const [Color(0x55B27BFF), Color(0x00B27BFF)],
+            ),
+          ),
+          Positioned(
+            top: 180,
+            left: -70,
+            child: _buildGlowOrb(
+              size: 180,
+              colors: const [Color(0x4447C4FF), Color(0x0047C4FF)],
+            ),
+          ),
+          Positioned(
+            bottom: -60,
+            right: -10,
+            child: _buildGlowOrb(
+              size: 180,
+              colors: const [Color(0x33FF6DB2), Color(0x00FF6DB2)],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGlowOrb({
+    required double size,
+    required List<Color> colors,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: colors),
+      ),
+    );
+  }
+
+  Widget _buildGlassPanel({
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(16),
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          width: double.infinity,
+          padding: padding,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            color: Colors.white.withValues(alpha: 0.08),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x26000000),
+                blurRadius: 32,
+                offset: Offset(0, 18),
+              ),
+            ],
+          ),
+          child: child,
         ),
       ),
     );
@@ -360,7 +541,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           "By continuing, you agree to our",
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey,
+            color: Color(0xBFD6DBFF),
           ),
         ),
         const SizedBox(height: 8),
@@ -384,7 +565,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
               "and",
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey,
+                color: Color(0xBFD6DBFF),
               ),
             ),
             TextButton(
@@ -414,7 +595,7 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
           "Don't have an account?",
           style: TextStyle(
             fontSize: 14,
-            color: Colors.white,
+            color: Color(0xFFDDE3FF),
           ),
         ),
         SizedBox(width: 4),
@@ -428,8 +609,16 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
     debugPrint("🟢 Google sign-in tapped");
     try {
       final authService = ref.read(robustAuthServiceProvider);
-      await authService.debouncedSignInWithGoogle();
-      // Success - the auth state listener will handle navigation
+      final result = await authService.debouncedSignInWithGoogle();
+      if (!result.success && mounted) {
+        debugPrint("❌ Google sign-in failed: ${result.error}");
+        setState(() {
+          _alertMessage = _getUserFriendlyErrorMessage(result.error ?? '');
+          _showAlert = true;
+        });
+        return;
+      }
+
       debugPrint("✅ Google sign-in completed successfully");
     } catch (e) {
       debugPrint("❌ Google sign-in error: $e");
@@ -477,6 +666,48 @@ class _AuthModalViewState extends ConsumerState<AuthModalView> {
   }
 }
 
+class _PressableAuthButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  final bool enabled;
+
+  const _PressableAuthButton({
+    required this.child,
+    required this.onTap,
+    this.enabled = true,
+  });
+
+  @override
+  State<_PressableAuthButton> createState() => _PressableAuthButtonState();
+}
+
+class _PressableAuthButtonState extends State<_PressableAuthButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (!widget.enabled) return;
+    setState(() {
+      _pressed = value;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedScale(
+      scale: _pressed ? 0.985 : 1,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: GestureDetector(
+        onTap: widget.enabled ? widget.onTap : null,
+        onTapDown: (_) => _setPressed(true),
+        onTapUp: (_) => _setPressed(false),
+        onTapCancel: () => _setPressed(false),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 class _SignupLink extends StatelessWidget {
   const _SignupLink();
 
@@ -492,7 +723,8 @@ class _SignupLink extends StatelessWidget {
         "Sign up",
         style: TextStyle(
           fontSize: 14,
-          color: Colors.pink,
+          color: Color(0xFFFF6AA2),
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

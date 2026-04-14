@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/two_factor_settings_view.dart';
 import '../widgets/tiktok_account_switcher_modal.dart';
 import '../services/tiktok_account_switcher.dart';
+import '../utils/avatar_url_resolver.dart';
 
 class ManageAccountView extends ConsumerStatefulWidget {
   const ManageAccountView({super.key});
@@ -503,7 +504,7 @@ class _ManageAccountViewState extends ConsumerState<ManageAccountView> {
   }
 
   Widget _buildProfileHeader(firebase_auth.User? user) {
-    final avatarURL = _userData?['avatarURL'] as String?;
+    final avatarURL = resolveAvatarUrl(_userData);
     final displayName = _userData?['displayName'] as String? ?? user?.displayName ?? 'User';
     final username = _userData?['username'] as String? ?? 'username';
 

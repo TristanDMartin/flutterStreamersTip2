@@ -5,6 +5,7 @@ import '../models/chat.dart' as app_chat;
 import '../models/shared_draft.dart';
 import '../models/user.dart' as app_user;
 import '../models/user_count_fields.dart';
+import '../utils/avatar_url_resolver.dart';
 import 'logging_service.dart';
 
 class InboxServiceOptimized {
@@ -541,7 +542,7 @@ class InboxServiceOptimized {
       displayName: data['displayName'] ?? 'User',
       username: data['username'] ?? 'user',
       bio: data['bio'],
-      avatarURL: data['avatarURL'],
+      avatarURL: resolveAvatarUrl(data),
       onlineStatus: data['onlineStatus'] ?? 'offline',
       hashtags: data['hashtags'] is List ? List<String>.from(data['hashtags']) : [],
       aiSelf: data['aiSelf'] ?? '',

@@ -8,6 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../models/calendar_event.dart';
+import '../utils/avatar_url_resolver.dart';
 import 'auth_rate_limiting_service.dart';
 import 'tiktok_account_switcher.dart';
 import 'google_services_fix.dart';
@@ -492,12 +493,20 @@ class RobustAuthenticationService extends ChangeNotifier {
             await _authInstance.signInWithCredential(credential);
 
         if (userCredential.user != null) {
-          // print("✅ Firebase authentication successful for: ${userCredential.user!.email}");
-          // The auth state listener will handle the rest
+          debugPrint(
+              "✅ Firebase authentication successful for: ${userCredential.user!.email}");
+
+          // Update local auth state immediately instead of waiting only on the
+          // auth state stream, which can lag on some Android Google Sign-In flows.
+          await _handleUserSignIn(userCredential.user!);
+          _isLoggedIn = true;
+          _isCheckingAuth = false;
+          notifyListeners();
+
           return AuthRequestResult(
             requestId: requestId,
             success: true,
-            user: _currentUser,
+            user: _currentUser ?? _mapFirebaseUserToFallback(userCredential.user!),
           );
         } else {
           return AuthRequestResult(
@@ -525,6 +534,25 @@ class RobustAuthenticationService extends ChangeNotifier {
         error: errorMessage,
       );
     }
+  }
+
+  User _mapFirebaseUserToFallback(firebase_auth.User firebaseUser) {
+    return User(
+      id: firebaseUser.uid,
+      username:
+          firebaseUser.displayName?.toLowerCase().replaceAll(' ', '') ??
+              firebaseUser.email?.split('@').first ??
+              'user',
+      displayName:
+          firebaseUser.displayName ?? firebaseUser.email?.split('@').first ?? 'User',
+      bio: '',
+      avatarURL: firebaseUser.photoURL,
+      onlineStatus: 'online',
+      hashtags: const [],
+      postCount: 0,
+      followerCount: 0,
+      followingCount: 0,
+    );
   }
 
   /// Public debounced methods
@@ -882,7 +910,7 @@ class RobustAuthenticationService extends ChangeNotifier {
           username: data['username'] ?? 'user',
           displayName: data['displayName'] ?? 'User',
           bio: data['bio'],
-          avatarURL: data['avatarURL'],
+          avatarURL: resolveAvatarUrl(data),
           onlineStatus: data['onlineStatus'] ?? 'online',
           hashtags: hashtags,
           aiSelf: aiSelf,
@@ -988,7 +1016,7 @@ class RobustAuthenticationService extends ChangeNotifier {
         final data = snapshot.data()!;
 
         // Check if avatar URL has changed
-        final newAvatarURLString = data['avatarURL'] as String? ?? '';
+        final newAvatarURLString = resolveAvatarUrl(data) ?? '';
         final currentAvatarURLString = _currentUser!.avatarURL ?? '';
 
         if (newAvatarURLString != currentAvatarURLString &&

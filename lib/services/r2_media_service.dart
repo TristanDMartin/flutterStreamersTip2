@@ -40,34 +40,59 @@ class R2MediaService {
     if (idToken == null || idToken.isEmpty) {
       throw Exception('Failed to get auth token');
     }
-    final uri = Uri.parse('$_workerBaseUrl/media/upload');
-    final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(
-        file.path,
-        filename: file.path.split('/').last,
-      ),
-    });
-    final response = await _dio.post<Map<String, dynamic>>(
-      uri.toString(),
-      data: formData,
-      options: Options(
-        headers: {
-          'Authorization': 'Bearer ${idToken.trim()}',
-          'X-Upload-Type': type,
-        },
-      ),
+    final headers = {
+      'Authorization': 'Bearer ${idToken.trim()}',
+      'X-Upload-Type': type,
+    };
+
+    final uploadPaths = ['/api/media/upload', '/media/upload'];
+    Object? lastError;
+
+    for (final path in uploadPaths) {
+      final uri = Uri.parse('$_workerBaseUrl$path');
+      try {
+        final formData = FormData.fromMap({
+          'file': await MultipartFile.fromFile(
+            file.path,
+            filename: file.path.split('/').last,
+          ),
+        });
+        final response = await _dio.post<Map<String, dynamic>>(
+          uri.toString(),
+          data: formData,
+          options: Options(headers: headers),
+        );
+        final data = response.data;
+        if (data == null) {
+          throw Exception('Empty response from media upload');
+        }
+        final url = data['url'] as String?;
+        if (url == null || url.isEmpty) {
+          throw Exception(data['error'] as String? ?? 'No URL returned');
+        }
+        if (kDebugMode) {
+          debugPrint('R2MediaService: Uploaded $type via $path, URL: $url');
+        }
+        return url;
+      } on DioException catch (e) {
+        lastError = e;
+        final statusCode = e.response?.statusCode;
+        // Try the alternate endpoint only when route is missing.
+        if (statusCode == 404) {
+          if (kDebugMode) {
+            debugPrint('R2MediaService: $path returned 404, trying fallback path');
+          }
+          continue;
+        }
+        rethrow;
+      } catch (e) {
+        lastError = e;
+        rethrow;
+      }
+    }
+
+    throw Exception(
+      'Media upload endpoint not found (tried ${uploadPaths.join(', ')}). Last error: $lastError',
     );
-    final data = response.data;
-    if (data == null) {
-      throw Exception('Empty response from media upload');
-    }
-    final url = data['url'] as String?;
-    if (url == null || url.isEmpty) {
-      throw Exception(data['error'] as String? ?? 'No URL returned');
-    }
-    if (kDebugMode) {
-      debugPrint('R2MediaService: Uploaded $type, URL: $url');
-    }
-    return url;
   }
 }

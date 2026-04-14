@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Purple splash screen with composite image (logo + text) -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Composite splash image with logo and text -->
     <item>
+        <color android:color="#1C135D" />
+    </item>
+    <item
+        android:width="164dp"
+        android:height="164dp"
+        android:gravity="center">
         <bitmap
-            android:gravity="fill"
-            android:src="@drawable/splash_composite" />
+            android:gravity="center"
+            android:src="@drawable/splash_logo" />
     </item>
 </layer-list>

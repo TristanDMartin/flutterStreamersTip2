@@ -14,7 +14,9 @@ import '../services/local_draft_service.dart';
 import '../services/optimistic_video_service.dart';
 import '../models/optimistic_video.dart';
 import '../providers/video_service_provider.dart' as providers;
+import 'profile_view/profile_post_count_reconcile.dart';
 import '../routing/app_navigator.dart';
+import '../utils/avatar_url_resolver.dart';
 import 'player_screen.dart';
 import 'optimized_thumbnail.dart';
 import 'video_publishing_screen.dart';
@@ -58,6 +60,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   Future<List<Map<String, dynamic>>>? _draftsFuture;
   List<Map<String, dynamic>> _lastResolvedDrafts = const <Map<String, dynamic>>[];
   bool _bootstrapLoadScheduled = false;
+  String? _mergedProfileVideosForUserId;
   Set<String> _lastSyncedListenerVideoIds = const <String>{};
 
   bool get _isViewingOwnProfile {
@@ -79,8 +82,21 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       if (!_isViewingOwnProfile) return;
 
       _resetCachedFutures();
+      _mergedProfileVideosForUserId = null;
       ref.invalidate(userVideosProvider(widget.userId ?? ''));
       ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
+      final String? uid = widget.userId;
+      if (uid != null && uid.isNotEmpty) {
+        ref
+            .read(providers.videoServiceStateProvider.notifier)
+            .mergeProfileVideosForUser(uid)
+            .then((_) async {
+          if (!mounted) {
+            return;
+          }
+          await ProfilePostCountReconcile.afterProfileVideoMerge(uid);
+        });
+      }
     });
   }
 
@@ -91,6 +107,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         oldWidget.feedType != widget.feedType) {
       _resetCachedFutures();
       _bootstrapLoadScheduled = false;
+      _mergedProfileVideosForUserId = null;
       _lastSyncedListenerVideoIds = const <String>{};
       _primeProfileVideoTab();
     }
@@ -129,6 +146,39 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _ensureVideoServiceLoaded();
+      _mergeProfileVideosForGridIfNeeded();
+    });
+  }
+
+  void _mergeProfileVideosForGridIfNeeded() {
+    if (widget.feedType != ProfileVideoFeedType.videos) {
+      return;
+    }
+    final String? uid = widget.userId;
+    if (uid == null || uid.isEmpty) {
+      return;
+    }
+    if (_mergedProfileVideosForUserId == uid) {
+      return;
+    }
+    _mergedProfileVideosForUserId = uid;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        return;
+      }
+      try {
+        await ref
+            .read(providers.videoServiceStateProvider.notifier)
+            .mergeProfileVideosForUser(uid);
+        if (mounted && _isViewingOwnProfile) {
+          await ProfilePostCountReconcile.afterProfileVideoMerge(uid);
+        }
+      } catch (e, stackTrace) {
+        if (kDebugMode) {
+          debugPrint('❌ ProfileView: mergeProfileVideosForUser failed: $e');
+          debugPrint('$stackTrace');
+        }
+      }
     });
   }
 
@@ -1415,7 +1465,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         final videosSnapshot = await FirebaseFirestore.instance
             .collection('videos')
             .where(FieldPath.documentId, whereIn: batch)
-            .where('status', isEqualTo: 'published') // Only published videos
+            .where('status', whereIn: ['published', 'ready', 'active'])
             .get();
 
         for (final doc in videosSnapshot.docs) {
@@ -1443,8 +1493,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                 creatorData['username'] ??
                 'Unknown',
             'creatorUsername': creatorData['username'] ?? 'unknown',
-            'creatorAvatar':
-                creatorData['avatarURL'] ?? creatorData['avatarUrl'] ?? '',
+            'creatorAvatar': resolveAvatarUrl(creatorData) ?? '',
             'likes': data['likes'] ?? data['likeCount'] ?? 0,
             'comments': data['comments'] ?? data['commentCount'] ?? 0,
             'views': data['views'] ?? data['viewCount'] ?? 0,

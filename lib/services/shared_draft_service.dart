@@ -214,11 +214,13 @@ class SharedDraftService {
     required int draftDuration,
     String? message,
   }) {
-    return _draftSharingService.shareDraftWithConnections(
+    return _draftSharingService
+        .shareDraftWithConnections(
       draftId: draftId,
       connectionIds: [receiverId],
       message: message,
-    );
+    )
+        .then((result) => result.isSuccess);
   }
 
   Future<void> markAsViewed(String sharedDraftId) async {

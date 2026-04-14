@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../models/connection_lite.dart';
 import '../services/connections_service.dart';
+import '../services/user_blocking_service.dart';
 
 /// ConnectionsSearchOverlay - Full-screen search for connections
 ///
@@ -25,6 +26,7 @@ class ConnectionsSearchOverlay extends StatefulWidget {
 
 class _ConnectionsSearchOverlayState extends State<ConnectionsSearchOverlay> {
   final ConnectionsService _connectionsService = ConnectionsService();
+  final UserBlockingService _blockingService = UserBlockingService();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
@@ -38,6 +40,7 @@ class _ConnectionsSearchOverlayState extends State<ConnectionsSearchOverlay> {
   void initState() {
     super.initState();
     _loadInitialConnections();
+    _blockingService.blockListRevision.addListener(_handleBlockListChanged);
 
     // Auto-focus search field
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -47,6 +50,7 @@ class _ConnectionsSearchOverlayState extends State<ConnectionsSearchOverlay> {
 
   @override
   void dispose() {
+    _blockingService.blockListRevision.removeListener(_handleBlockListChanged);
     _searchController.dispose();
     _searchFocusNode.dispose();
     _debounceTimer?.cancel();
@@ -61,8 +65,9 @@ class _ConnectionsSearchOverlayState extends State<ConnectionsSearchOverlay> {
     try {
       final connections =
           await _connectionsService.getConnectionsPreview(limit: 20);
+      final visibleConnections = await _filterBlockedConnections(connections);
       setState(() {
-        _searchResults = connections;
+        _searchResults = visibleConnections;
         _isSearching = false;
       });
     } catch (e) {
@@ -92,10 +97,11 @@ class _ConnectionsSearchOverlayState extends State<ConnectionsSearchOverlay> {
         query: _currentQuery,
         limit: 20,
       );
+      final visibleResults = await _filterBlockedConnections(results);
 
       if (mounted) {
         setState(() {
-          _searchResults = results;
+          _searchResults = visibleResults;
           _isSearching = false;
         });
       }
@@ -106,6 +112,26 @@ class _ConnectionsSearchOverlayState extends State<ConnectionsSearchOverlay> {
         });
       }
     }
+  }
+
+  Future<List<ConnectionLite>> _filterBlockedConnections(
+    List<ConnectionLite> connections,
+  ) async {
+    final blockedUserIds = (await _blockingService.getBlockedUsers()).toSet();
+    if (blockedUserIds.isEmpty) {
+      return connections;
+    }
+    return connections
+        .where((connection) => !blockedUserIds.contains(connection.userId))
+        .toList();
+  }
+
+  void _handleBlockListChanged() {
+    if (_currentQuery.isEmpty) {
+      _loadInitialConnections();
+      return;
+    }
+    _performSearch(_currentQuery);
   }
 
   Future<void> _shareToConnection(ConnectionLite connection) async {
@@ -249,7 +275,7 @@ class _ConnectionsSearchOverlayState extends State<ConnectionsSearchOverlay> {
             Text(
               _currentQuery.isEmpty
                   ? 'No connections found'
-                  : 'No results for "${_currentQuery}"',
+                  : 'No results for "$_currentQuery"',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Colors.white.withValues(alpha: 0.7),
                   ),

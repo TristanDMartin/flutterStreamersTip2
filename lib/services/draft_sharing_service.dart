@@ -9,6 +9,61 @@ import 'package:path_provider/path_provider.dart';
 import 'local_draft_service.dart';
 import 'chat_service.dart';
 
+enum DraftShareFailureReason {
+  unauthenticated,
+  missingDraftId,
+  noRecipients,
+  recipientNotFound,
+  draftNotFound,
+  mediaPersistenceFailed,
+  firestoreWriteFailed,
+  unexpected,
+}
+
+class DraftShareResult {
+  final bool isSuccess;
+  final List<String> verifiedRecipientIds;
+  final List<String> failedRecipientIds;
+  final String? sharedDraftId;
+  final DraftShareFailureReason? failureReason;
+  final String? message;
+
+  const DraftShareResult._({
+    required this.isSuccess,
+    this.verifiedRecipientIds = const [],
+    this.failedRecipientIds = const [],
+    this.sharedDraftId,
+    this.failureReason,
+    this.message,
+  });
+
+  const DraftShareResult.success({
+    required String sharedDraftId,
+    required List<String> verifiedRecipientIds,
+    List<String> failedRecipientIds = const [],
+    String? message,
+  }) : this._(
+          isSuccess: true,
+          sharedDraftId: sharedDraftId,
+          verifiedRecipientIds: verifiedRecipientIds,
+          failedRecipientIds: failedRecipientIds,
+          message: message,
+        );
+
+  const DraftShareResult.failure({
+    required DraftShareFailureReason reason,
+    String? message,
+    List<String> verifiedRecipientIds = const [],
+    List<String> failedRecipientIds = const [],
+  }) : this._(
+          isSuccess: false,
+          failureReason: reason,
+          message: message,
+          verifiedRecipientIds: verifiedRecipientIds,
+          failedRecipientIds: failedRecipientIds,
+        );
+}
+
 /// Draft Sharing Service - Handles sharing drafts with connection network
 ///
 /// Features:
@@ -28,7 +83,7 @@ class DraftSharingService {
   final ChatService _chatService = ChatService.shared;
 
   /// Share a local draft with connection network
-  Future<bool> shareDraftWithConnections({
+  Future<DraftShareResult> shareDraftWithConnections({
     required String draftId,
     required List<String> connectionIds,
     String? message,
@@ -40,20 +95,29 @@ class DraftSharingService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         debugPrint('❌ User not authenticated');
-        return false;
+        return const DraftShareResult.failure(
+          reason: DraftShareFailureReason.unauthenticated,
+          message: 'You need to sign in before sharing drafts.',
+        );
       }
 
       // Validate draft ID
       if (draftId.isEmpty) {
         debugPrint('❌ Draft ID is empty');
-        return false;
+        return const DraftShareResult.failure(
+          reason: DraftShareFailureReason.missingDraftId,
+          message: 'This draft is missing its ID.',
+        );
       }
 
       // Filter out empty connection IDs
       final validConnectionIds = connectionIds.where((id) => id.isNotEmpty).toList();
       if (validConnectionIds.isEmpty) {
         debugPrint('❌ No valid connection IDs provided');
-        return false;
+        return const DraftShareResult.failure(
+          reason: DraftShareFailureReason.noRecipients,
+          message: 'Choose at least one valid person to share with.',
+        );
       }
 
       // Verify all recipient users exist in Firestore before sharing
@@ -74,7 +138,10 @@ class DraftSharingService {
 
       if (verifiedConnectionIds.isEmpty) {
         debugPrint('❌ No valid users found to share with (all users may not exist in Firestore)');
-        return false;
+        return const DraftShareResult.failure(
+          reason: DraftShareFailureReason.recipientNotFound,
+          message: 'The selected person is not available for draft sharing yet.',
+        );
       }
 
       if (verifiedConnectionIds.length < validConnectionIds.length) {
@@ -90,7 +157,10 @@ class DraftSharingService {
 
       if (draft.isEmpty) {
         debugPrint('❌ Draft not found locally: $draftId');
-        return false;
+        return const DraftShareResult.failure(
+          reason: DraftShareFailureReason.draftNotFound,
+          message: 'This draft is no longer available on this device.',
+        );
       }
 
       // 2. Persist the draft media to a canonical storage path before sharing.
@@ -102,14 +172,20 @@ class DraftSharingService {
 
       if (persistedAssets['videoUrl']?.isNotEmpty != true) {
         debugPrint('❌ Failed to persist shared draft media');
-        return false;
+        return const DraftShareResult.failure(
+          reason: DraftShareFailureReason.mediaPersistenceFailed,
+          message: 'We could not prepare the draft media for sharing.',
+        );
       }
 
       // 3. Create shared draft document in Firestore (only with verified recipients)
       final sharedDraftId = _generateSharedDraftId();
       if (sharedDraftId.isEmpty) {
         debugPrint('❌ Failed to generate shared draft ID');
-        return false;
+        return const DraftShareResult.failure(
+          reason: DraftShareFailureReason.unexpected,
+          message: 'We could not create a share record for this draft.',
+        );
       }
 
       final duration = _resolveDraftDuration(draft);
@@ -147,10 +223,19 @@ class DraftSharingService {
       };
 
       // 4. Save shared draft to Firestore
-      await _firestore
-          .collection('shared_drafts')
-          .doc(sharedDraftId)
-          .set(sharedDraftData);
+      try {
+        await _firestore
+            .collection('shared_drafts')
+            .doc(sharedDraftId)
+            .set(sharedDraftData);
+      } catch (e) {
+        debugPrint('❌ Failed to save shared draft to Firestore: $e');
+        return DraftShareResult.failure(
+          reason: DraftShareFailureReason.firestoreWriteFailed,
+          message: 'We could not save the shared draft right now.',
+          verifiedRecipientIds: verifiedConnectionIds,
+        );
+      }
 
       // 5. Update local draft to mark as shared
       await _localDraftService.shareDraftWithConnections(
@@ -193,7 +278,14 @@ class DraftSharingService {
       await _createShareNotifications(sharedDraftId, verifiedConnectionIds, message);
 
       debugPrint('✅ Draft shared successfully with ${verifiedConnectionIds.length} verified connections');
-      return true;
+      return DraftShareResult.success(
+        sharedDraftId: sharedDraftId,
+        verifiedRecipientIds: verifiedConnectionIds,
+        failedRecipientIds: failedRecipients,
+        message: failedRecipients.isEmpty
+            ? null
+            : 'Draft shared, but ${failedRecipients.length} chat thread(s) could not be created automatically.',
+      );
     } catch (e, stackTrace) {
       debugPrint('❌ Error sharing draft: $e');
       debugPrint('❌ Stack trace: $stackTrace');
@@ -207,7 +299,10 @@ class DraftSharingService {
         debugPrint('❌ Invalid argument - check user IDs');
       }
       
-      return false;
+      return DraftShareResult.failure(
+        reason: DraftShareFailureReason.unexpected,
+        message: e.toString(),
+      );
     }
   }
 

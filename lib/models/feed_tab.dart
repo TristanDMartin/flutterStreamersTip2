@@ -4,7 +4,7 @@ enum FeedTab {
   /// For You feed - shows algorithmically curated videos
   forYou,
 
-  /// Following feed - shows videos from users the current user follows
+  /// Progression — creator gamification (reads shared Firestore summary; not a video feed)
   following,
 
   /// Threads feed - shows forum-style discussion threads
@@ -18,7 +18,7 @@ extension FeedTabExtension on FeedTab {
       case FeedTab.forYou:
         return 'For You';
       case FeedTab.following:
-        return 'Following';
+        return 'Progression';
       case FeedTab.threads:
         return 'Threads';
     }
@@ -29,7 +29,7 @@ extension FeedTabExtension on FeedTab {
       case FeedTab.forYou:
         return 'home/forYou';
       case FeedTab.following:
-        return 'home/following';
+        return 'home/progression';
       case FeedTab.threads:
         return 'home/threads';
     }

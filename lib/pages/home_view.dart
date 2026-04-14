@@ -51,7 +51,7 @@ class _HomeViewState extends ConsumerState<HomeView>
   // Using direct controller creation for better memory management
   // GlobalPlaybackCoordinator removed - merged into GlobalPlaybackManager
 
-  // Feed selector (For You / Following) - now managed by feed_state_provider
+  // Feed selector (For You / Progression / Threads) via feed_state_provider
   // Remove local state to use single source of truth
 
   // StreamerCard modal state
@@ -573,8 +573,8 @@ class _HomeViewState extends ConsumerState<HomeView>
     // Restore the user's last position for each feed to keep switches sticky.
     _controller.restoreFeedIndex(newTab);
 
-    if (newTab == FeedTab.threads) {
-      log('✅ HomeView: Threads tab active - skipping video focus');
+    if (newTab == FeedTab.threads || newTab == FeedTab.following) {
+      log('✅ HomeView: ${newTab.displayName} tab — skipping video focus');
       return;
     }
 
@@ -786,9 +786,9 @@ class _HomeViewState extends ConsumerState<HomeView>
                     activeTab: activeFeed.displayName,
                     currentIndex: controllerState.currentIndex,
                     onTabChange: (tab) {
-                      final newTab = tab == 'For You'
+                      final FeedTab newTab = tab == FeedTab.forYou.displayName
                           ? FeedTab.forYou
-                          : tab == 'Following'
+                          : tab == FeedTab.following.displayName
                               ? FeedTab.following
                               : FeedTab.threads;
                       _handleFeedTabChange(newTab);

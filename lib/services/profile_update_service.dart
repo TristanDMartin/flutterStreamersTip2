@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import '../utils/avatar_url_resolver.dart';
 
 /// Service to handle profile updates across all views
 /// This ensures that ProfileView, ProfileBackView, StreamerCardView, and StreamerCardBackView
@@ -82,8 +83,8 @@ class ProfileUpdateService extends ChangeNotifier {
             final newData = snapshot.data()!;
 
             // Check if avatar URL changed
-            final newAvatarURL = newData['avatarURL'] as String?;
-            final currentAvatarURL = _userData?['avatarURL'] as String?;
+            final newAvatarURL = resolveAvatarUrl(newData);
+            final currentAvatarURL = resolveAvatarUrl(_userData);
 
             // Only notify if data has actually changed
             if (_userData == null || !_mapsEqual(_userData!, newData)) {
@@ -123,14 +124,21 @@ class ProfileUpdateService extends ChangeNotifier {
     if (_currentUser == null) return;
 
     try {
+      final normalizedUpdates = <String, dynamic>{...updates};
+      final resolvedAvatar = resolveAvatarUrl(updates);
+      if (resolvedAvatar != null) {
+        normalizedUpdates['avatarURL'] = resolvedAvatar;
+        normalizedUpdates['photoURL'] = resolvedAvatar;
+      }
+
       // Update Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(_currentUser!.uid)
-          .update(updates);
+          .update(normalizedUpdates);
 
       // Update local data
-      _userData = {...?_userData, ...updates};
+      _userData = {...?_userData, ...normalizedUpdates};
 
       // Notify all listeners
       notifyAllListeners();

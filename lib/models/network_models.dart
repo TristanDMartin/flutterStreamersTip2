@@ -1,4 +1,5 @@
 import 'user_count_fields.dart';
+import '../utils/avatar_url_resolver.dart';
 
 // Network Models for NetworkView - relationship management, user connections,
 // and network analytics.
@@ -76,7 +77,7 @@ class UserConnection {
       userId: data['userId'] ?? '',
       displayName: data['displayName'] ?? '',
       username: data['username'] ?? '',
-      avatarURL: data['avatarURL'],
+      avatarURL: resolveAvatarUrl(data),
       onlineStatus: OnlineStatus.values.firstWhere(
         (e) => e.value == data['onlineStatus'],
         orElse: () => OnlineStatus.offline,

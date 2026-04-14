@@ -25,12 +25,20 @@ class CrossPostRequest {
   final String caption;
   final String? videoId;
   final DateTime? scheduleAt;
+  final bool requiresWatermark;
+  final Map<String, dynamic>? watermarkConfig;
+  final String? watermarkAsset;
+  final String? subscriptionTier;
 
   const CrossPostRequest({
     required this.platformName,
     required this.caption,
     this.videoId,
     this.scheduleAt,
+    this.requiresWatermark = false,
+    this.watermarkConfig,
+    this.watermarkAsset,
+    this.subscriptionTier,
   });
 }
 
@@ -81,6 +89,13 @@ class CrossPostService {
           if (userId != null) 'userId': userId,
           if (request.scheduleAt != null)
             'scheduleAt': request.scheduleAt!.toIso8601String(),
+          'requiresWatermark': request.requiresWatermark,
+          if (request.subscriptionTier != null)
+            'subscriptionTier': request.subscriptionTier,
+          if (request.watermarkAsset != null)
+            'watermarkAsset': request.watermarkAsset,
+          if (request.watermarkConfig != null)
+            'watermarkConfig': request.watermarkConfig,
         },
       );
       return CrossPostResult(

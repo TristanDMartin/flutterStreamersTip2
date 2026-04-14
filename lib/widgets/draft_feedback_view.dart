@@ -38,14 +38,44 @@ class DraftFeedbackView extends ConsumerStatefulWidget {
 }
 
 class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
+  static final List<({IconData icon, String label, String prompt})>
+      _defaultFeedbackPrompts = [
+    (
+      icon: Icons.flash_on_outlined,
+      label: 'Hook',
+      prompt:
+          'The opening could be stronger. I would try a clearer first-second hook so viewers know why to keep watching.',
+    ),
+    (
+      icon: Icons.content_cut_outlined,
+      label: 'Pacing',
+      prompt:
+          'The pacing feels a little slow in the middle. I would tighten a few cuts so the energy stays up.',
+    ),
+    (
+      icon: Icons.record_voice_over_outlined,
+      label: 'Voiceover',
+      prompt:
+          'The message is strong. I would make the voiceover a bit clearer or punchier so the main point lands faster.',
+    ),
+    (
+      icon: Icons.auto_awesome_outlined,
+      label: 'Highlight',
+      prompt:
+          'This draft already has a strong moment. I would lean into that highlight earlier because it is the most memorable part.',
+    ),
+  ];
+
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
   final DraftSharingService _draftSharingService = DraftSharingService();
   VideoPlayerController? _videoController;
+  bool _isInitializingVideo = true;
   bool _isVideoInitialized = false;
   bool _isVideoPlaying = false;
   Duration _videoPosition = Duration.zero;
   Duration _videoDuration = Duration.zero;
+  String? _videoErrorMessage;
 
   @override
   void initState() {
@@ -64,6 +94,13 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
   }
 
   Future<void> _initializeVideo() async {
+    if (mounted) {
+      setState(() {
+        _isInitializingVideo = true;
+        _videoErrorMessage = null;
+      });
+    }
+
     try {
       final videoUrl = widget.sharedDraft['videoUrl'] as String?;
       if (videoUrl != null && videoUrl.isNotEmpty) {
@@ -98,11 +135,25 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
           }
         }
         debugPrint('⚠️ No valid video path found for draft');
+        if (mounted) {
+          setState(() {
+            _isInitializingVideo = false;
+            _videoErrorMessage =
+                'Preview unavailable. The shared draft is missing a playable video source.';
+          });
+        }
         return;
       }
       await _loadVideo(videoPath);
     } catch (e) {
       debugPrint('❌ Error initializing video: $e');
+      if (mounted) {
+        setState(() {
+          _isInitializingVideo = false;
+          _videoErrorMessage =
+              'We couldn\'t prepare the draft preview right now.';
+        });
+      }
     }
   }
 
@@ -126,13 +177,26 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
       }
       await _videoController!.initialize();
       _videoController!.addListener(_handleVideoUpdate);
-      setState(() {
-        _isVideoInitialized = true;
-        _videoDuration = _videoController!.value.duration;
-        _videoPosition = _videoController!.value.position;
-      });
+      if (mounted) {
+        setState(() {
+          _isInitializingVideo = false;
+          _isVideoInitialized = true;
+          _videoErrorMessage = null;
+          _videoDuration = _videoController!.value.duration;
+          _videoPosition = _videoController!.value.position;
+        });
+      }
     } catch (e) {
       debugPrint('❌ Error loading video: $e');
+      if (mounted) {
+        setState(() {
+          _isInitializingVideo = false;
+          _isVideoInitialized = false;
+          _videoErrorMessage = isRemote
+              ? 'We couldn\'t load the remote draft preview.'
+              : 'We couldn\'t open the local draft preview.';
+        });
+      }
     }
   }
 
@@ -189,8 +253,10 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
 
     try {
       final chatNotifier = ref.read(chatProvider(widget.chat).notifier);
+      chatNotifier.updateComposedText(text);
       await chatNotifier.send();
       _textController.clear();
+      chatNotifier.updateComposedText('');
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
@@ -275,7 +341,7 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
               child: Consumer(
                 builder: (context, ref, child) {
                   final chatState = ref.watch(chatProvider(widget.chat));
-                  if (chatState.isLoading) {
+                  if (chatState.isLoading && chatState.messages.isEmpty) {
                     return const Center(
                       child: CircularProgressIndicator(
                         color: Colors.white,
@@ -453,14 +519,11 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
               ],
             ),
           ),
-          if (widget.otherUserAvatarURL != null)
-            CircleAvatar(
-              radius: 16,
-              backgroundImage: CachedNetworkImageProvider(
-                widget.otherUserAvatarURL!,
-              ),
-              onBackgroundImageError: (_, __) {},
-            ),
+          _buildUserAvatar(
+            imageUrl: widget.otherUserAvatarURL,
+            name: widget.otherUserName,
+            radius: 16,
+          ),
         ],
       ),
     );
@@ -500,7 +563,9 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
               fit: StackFit.expand,
               alignment: Alignment.center,
               children: [
-                if (_isVideoInitialized && _videoController != null)
+                if (_isInitializingVideo)
+                  _buildPreviewLoadingState()
+                else if (_isVideoInitialized && _videoController != null)
                   GestureDetector(
                     onTap: _toggleVideoPlayback,
                     child: FittedBox(
@@ -546,14 +611,7 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                     },
                   )
                 else
-                  Container(
-                    color: AppColors.card,
-                    child: const Icon(
-                      Icons.video_library,
-                      color: AppColors.textTertiary,
-                      size: 48,
-                    ),
-                  ),
+                  _buildPreviewFallbackState(),
                 Positioned(
                   top: 14,
                   left: 14,
@@ -759,26 +817,13 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isFromCurrentUser) ...[
-            Container(
-              width: 32,
-              height: 32,
-              margin: const EdgeInsets.only(right: 8),
-              child: widget.otherUserAvatarURL != null
-                  ? CircleAvatar(
-                      radius: 16,
-                      backgroundImage: CachedNetworkImageProvider(
-                        widget.otherUserAvatarURL!,
-                      ),
-                      onBackgroundImageError: (_, __) {},
-                    )
-                  : const CircleAvatar(
-                      radius: 16,
-                      child: Icon(
-                        Icons.person,
-                        size: 16,
-                        color: Colors.white70,
-                      ),
-                    ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _buildUserAvatar(
+                imageUrl: widget.otherUserAvatarURL,
+                name: widget.otherUserName,
+                radius: 16,
+              ),
             ),
             Flexible(
               child: Container(
@@ -899,22 +944,13 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
             SizedBox(
               width: 32,
               height: 32,
-              child: FirebaseAuth.instance.currentUser?.photoURL != null
-                  ? CircleAvatar(
-                      radius: 16,
-                      backgroundImage: CachedNetworkImageProvider(
-                        FirebaseAuth.instance.currentUser!.photoURL!,
-                      ),
-                      onBackgroundImageError: (_, __) {},
-                    )
-                  : const CircleAvatar(
-                      radius: 16,
-                      child: Icon(
-                        Icons.person,
-                        size: 16,
-                        color: Colors.white70,
-                      ),
-                    ),
+              child: _buildUserAvatar(
+                imageUrl: FirebaseAuth.instance.currentUser?.photoURL,
+                name: FirebaseAuth.instance.currentUser?.displayName ??
+                    FirebaseAuth.instance.currentUser?.email ??
+                    'You',
+                radius: 16,
+              ),
             ),
           ],
         ],
@@ -923,8 +959,10 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
   }
 
   Widget _buildInputArea() {
+    final chatState = ref.watch(chatProvider(widget.chat));
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final isSending = chatState.isLoading && chatState.messages.isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -984,7 +1022,11 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                   ),
                   const Spacer(),
                   Text(
-                    hasText ? 'Ready to send' : 'Add a note or suggestion',
+                    isSending
+                        ? 'Sending...'
+                        : hasText
+                            ? 'Ready to send'
+                            : 'Add a note or suggestion',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.56),
                       fontSize: 12,
@@ -992,6 +1034,11 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              _buildPromptChips(
+                hasText: hasText,
+                isSending: isSending,
               ),
               const SizedBox(height: 12),
               Row(
@@ -1015,6 +1062,7 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                       ),
                       child: TextField(
                         controller: _textController,
+                        enabled: !isSending,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           hintText:
@@ -1031,7 +1079,10 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                         ),
                         maxLines: null,
                         textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendFeedback(),
+                        onChanged: (text) => ref
+                            .read(chatProvider(widget.chat).notifier)
+                            .updateComposedText(text),
+                        onSubmitted: (_) => isSending ? null : _sendFeedback(),
                         textCapitalization: TextCapitalization.sentences,
                         keyboardType: TextInputType.multiline,
                       ),
@@ -1039,27 +1090,27 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(
-                    onTap: hasText ? _sendFeedback : null,
+                    onTap: hasText && !isSending ? _sendFeedback : null,
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        gradient: hasText
+                        gradient: hasText && !isSending
                             ? const LinearGradient(
                                 colors: AppColors.supportAccentGradient,
                               )
                             : null,
-                        color: hasText
+                        color: hasText && !isSending
                             ? null
                             : Colors.white.withValues(alpha: 0.10),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: hasText
+                          color: hasText && !isSending
                               ? Colors.white.withValues(alpha: 0.18)
                               : Colors.white.withValues(alpha: 0.12),
                         ),
-                        boxShadow: hasText
+                        boxShadow: hasText && !isSending
                             ? [
                                 BoxShadow(
                                   color:
@@ -1070,13 +1121,22 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
                               ]
                             : null,
                       ),
-                      child: Icon(
-                        Icons.send_rounded,
-                        color: hasText
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.38),
-                        size: 20,
-                      ),
+                      child: isSending
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Icon(
+                              Icons.send_rounded,
+                              color: hasText
+                                  ? Colors.white
+                                  : Colors.white.withValues(alpha: 0.38),
+                              size: 20,
+                            ),
                     ),
                   ),
                 ],
@@ -1086,6 +1146,273 @@ class _DraftFeedbackViewState extends ConsumerState<DraftFeedbackView> {
         },
       ),
     );
+  }
+
+  Widget _buildPromptChips({
+    required bool hasText,
+    required bool isSending,
+  }) {
+    final prompts = _contextAwarePrompts();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          hasText
+              ? 'Quick prompts to reshape your note'
+              : 'Tap a prompt to start with polished feedback',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.58),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: prompts.map((prompt) {
+            return InkWell(
+              onTap: isSending ? null : () => _applyPrompt(prompt.prompt),
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      prompt.icon,
+                      size: 14,
+                      color: Colors.white.withValues(alpha: 0.82),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      prompt.label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  void _applyPrompt(String prompt) {
+    final existing = _textController.text.trim();
+    final nextText = existing.isEmpty ? prompt : '$existing\n\n$prompt';
+    _textController.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextText.length),
+    );
+    ref.read(chatProvider(widget.chat).notifier).updateComposedText(nextText);
+  }
+
+  List<({IconData icon, String label, String prompt})> _contextAwarePrompts() {
+    final caption = (widget.sharedDraft['caption'] as String?)?.trim() ?? '';
+    final hashtags = (widget.sharedDraft['hashtags'] as List<dynamic>? ?? [])
+        .whereType<Object>()
+        .map((tag) => tag.toString().trim())
+        .where((tag) => tag.isNotEmpty)
+        .toList();
+
+    final videoSourceDurationMs =
+        (widget.sharedDraft['durationMs'] as num?)?.toInt() ??
+            (widget.sharedDraft['duration'] as num?)?.toInt();
+    final effectiveDurationMs =
+        _videoDuration.inMilliseconds > 0 ? _videoDuration.inMilliseconds : videoSourceDurationMs;
+
+    final prompts = <({IconData icon, String label, String prompt})>[];
+
+    if (caption.isEmpty) {
+      prompts.add((
+        icon: Icons.closed_caption_off_outlined,
+        label: 'Caption',
+        prompt:
+            'I would add a clearer caption so the takeaway lands even if someone watches without sound.',
+      ));
+    } else if (caption.length < 35) {
+      prompts.add((
+        icon: Icons.short_text_outlined,
+        label: 'Clarity',
+        prompt:
+            'The caption is concise, but I would make the promise a little clearer so viewers instantly understand the payoff.',
+      ));
+    }
+
+    if (hashtags.isEmpty) {
+      prompts.add((
+        icon: Icons.tag_outlined,
+        label: 'Hashtags',
+        prompt:
+            'I would add a few targeted hashtags so the draft has better context for discovery once it is posted.',
+      ));
+    } else if (hashtags.length < 3) {
+      prompts.add((
+        icon: Icons.sell_outlined,
+        label: 'Discovery',
+        prompt:
+            'The hashtag set feels light. I would test a few more specific tags that match the niche and the audience intent.',
+      ));
+    }
+
+    if (effectiveDurationMs != null && effectiveDurationMs > 0) {
+      final durationSeconds = effectiveDurationMs / 1000;
+      if (durationSeconds < 8) {
+        prompts.add((
+          icon: Icons.timer_outlined,
+          label: 'Length',
+          prompt:
+              'This draft is very short, so every second matters. I would make sure the opening frame and closing payoff are both crystal clear.',
+        ));
+      } else if (durationSeconds > 45) {
+        prompts.add((
+          icon: Icons.compress_outlined,
+          label: 'Trim',
+          prompt:
+              'This draft runs a bit long for a quick-scroll format. I would tighten the middle and get to the payoff faster.',
+        ));
+      }
+    }
+
+    prompts.addAll(_defaultFeedbackPrompts);
+
+    final seenLabels = <String>{};
+    return prompts.where((prompt) => seenLabels.add(prompt.label)).take(5).toList();
+  }
+
+  Widget _buildPreviewLoadingState() {
+    return Container(
+      color: AppColors.card,
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Preparing draft preview...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreviewFallbackState() {
+    return Container(
+      color: AppColors.card,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.video_library_outlined,
+                  color: Colors.white70,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Preview unavailable',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _videoErrorMessage ??
+                    'This draft was shared without a playable preview.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.68),
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserAvatar({
+    required String? imageUrl,
+    required String name,
+    required double radius,
+  }) {
+    final initials = _initialsFor(name);
+
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: CachedNetworkImageProvider(imageUrl),
+        onBackgroundImageError: (_, __) {},
+        backgroundColor: Colors.white.withValues(alpha: 0.10),
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.white.withValues(alpha: 0.10),
+      child: Text(
+        initials,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  String _initialsFor(String value) {
+    final parts = value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) {
+      return '?';
+    }
+    if (parts.length == 1) {
+      return parts.first.characters.first.toUpperCase();
+    }
+    return '${parts.first.characters.first}${parts.last.characters.first}'
+        .toUpperCase();
   }
 
   String _formatMessageTime(DateTime? timestamp) {

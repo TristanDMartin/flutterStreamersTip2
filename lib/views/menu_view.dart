@@ -9,6 +9,7 @@ import 'manage_posts_view.dart';
 import 'contact_support_view.dart';
 import '../constants/app_colors.dart';
 import 'upgrade_view.dart';
+import '../utils/avatar_url_resolver.dart';
 
 class MenuView extends ConsumerStatefulWidget {
   const MenuView({super.key});
@@ -153,7 +154,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
 
   Widget _buildProfileSection(BuildContext context) {
     final user = fa.FirebaseAuth.instance.currentUser;
-    final avatarURL = _userData?['avatarURL'] as String?;
+    final avatarURL = resolveAvatarUrl(_userData);
     final displayName = _userData?['displayName'] as String? ?? user?.displayName ?? 'User';
     final username = _userData?['username'] as String? ?? user?.email?.split('@')[0] ?? 'username';
 

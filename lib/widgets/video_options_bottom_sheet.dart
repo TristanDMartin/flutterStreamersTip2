@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/home_video.dart';
 import '../models/user.dart';
 import '../services/video_actions_service.dart';
+import '../utils/avatar_url_resolver.dart';
 import 'streamer_card_view.dart';
 import 'dart:developer' as developer;
 
@@ -643,7 +644,7 @@ class _EditCaptionDialogState extends State<_EditCaptionDialog> {
             'userId': taggedUserId,
             'username': userData['username'] ?? 'unknown',
             'displayName': userData['displayName'] ?? userData['username'] ?? 'Unknown',
-            'avatarURL': userData['avatarURL'] ?? userData['avatarUrl'] ?? '',
+            'avatarURL': resolveAvatarUrl(userData) ?? '',
           });
         }
       }

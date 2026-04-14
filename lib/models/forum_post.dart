@@ -7,7 +7,10 @@ class ForumPost {
   final String id;
   final String title;
   final String content;
+  /// `forumCategories` document id (used for queries).
   final String category;
+  /// Resolved label for UI; never show [category] raw in the app.
+  final String? categoryDisplayName;
   final List<String> tags;
   final ForumAuthor author;
   final String visibility;
@@ -28,6 +31,7 @@ class ForumPost {
     required this.title,
     required this.content,
     required this.category,
+    this.categoryDisplayName,
     required this.tags,
     required this.author,
     required this.visibility,
@@ -52,7 +56,8 @@ class ForumPost {
       id: doc.id,
       title: data['title'] as String,
       content: data['content'] as String,
-      category: data['category'] as String,
+      category: data['category'] as String? ?? '',
+      categoryDisplayName: data['categoryName'] as String?,
       tags: List<String>.from(data['tags'] ?? []),
       author: ForumAuthor.fromMap(data['author'] as Map<String, dynamic>),
       visibility: data['visibility'] as String? ?? 'public',

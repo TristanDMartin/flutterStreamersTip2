@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/avatar_url_resolver.dart';
 import '../utils/video_url_resolver.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../models/user.dart' as app_user;
@@ -278,7 +279,7 @@ class ProfileServiceOptimized {
       id: id,
       displayName: (data['displayName'] ?? 'User').toString(),
       username: (data['username'] ?? 'user').toString(),
-      avatarURL: data['avatarURL'] as String?,
+      avatarURL: resolveAvatarUrl(data),
       onlineStatus: (data['onlineStatus'] ?? 'offline').toString(),
       hashtags: List<String>.from(data['hashtags'] ?? []),
       aiSelf: data['aiSelf']?.toString() ?? '',

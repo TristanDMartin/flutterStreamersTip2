@@ -13,6 +13,8 @@ import '../services/offline_inbox_service.dart';
 import '../services/chat_service.dart';
 import '../services/draft_sharing_service.dart';
 import '../services/local_draft_service.dart';
+import '../services/user_blocking_service.dart';
+import '../utils/avatar_url_resolver.dart';
 import '../providers/unread_messages_provider.dart';
 import '../routing/app_navigator.dart';
 import 'new_message_view.dart';
@@ -31,6 +33,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   late TabController _tabController;
   final InboxServiceOptimized _inboxService = InboxServiceOptimized();
   final OfflineInboxService _offlineService = OfflineInboxService();
+  final UserBlockingService _blockingService = UserBlockingService();
   final TextEditingController _searchController = TextEditingController();
   bool _isNavigating = false;
 
@@ -63,6 +66,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     _tabController = TabController(length: 2, vsync: this);
 
     _initializeRealTimeUpdates();
+    _blockingService.blockListRevision.addListener(_handleBlockListChanged);
 
     // Mark all messages as read when InboxView is opened
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -77,6 +81,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     _tabController.dispose();
     _searchController.dispose();
     _inboxService.stopRealTimeListeners();
+    _blockingService.blockListRevision.removeListener(_handleBlockListChanged);
     // Cancel all unread count subscriptions
     for (final subscription in _unreadCountSubscriptions.values) {
       subscription.cancel();
@@ -98,7 +103,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     _inboxService.startRealTimeListeners(
       onChatsUpdate: (chats) async {
         // Filter out invalid chats (with empty participant IDs)
-        final validChats = _filterValidChats(chats);
+        final validChats = await _filterVisibleChats(chats);
 
         // Set up real-time unread count listeners for each chat
         _setupUnreadCountListeners(validChats);
@@ -207,7 +212,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             displayName: data['displayName'] ?? 'User',
             username: data['username'] ?? 'user',
             bio: data['bio'],
-            avatarURL: data['avatarURL'],
+            avatarURL: resolveAvatarUrl(data),
             onlineStatus: data['onlineStatus'] ?? 'offline',
             hashtags: data['hashtags'] is List
                 ? List<String>.from(data['hashtags'])
@@ -244,7 +249,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             await _offlineService.getCachedOnlineStatus();
 
         // Filter out invalid chats (with empty participant IDs)
-        final validCachedChats = _filterValidChats(cachedChats);
+        final validCachedChats = await _filterVisibleChats(cachedChats);
 
         if (mounted) {
           setState(() {
@@ -283,7 +288,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final drafts = results[1] as List<SharedDraft>;
 
       // Filter out invalid chats (with empty participant IDs)
-      final validChats = _filterValidChats(allChats);
+      final validChats = await _filterVisibleChats(allChats);
 
       // Load user profiles and unread counts for each chat
       await _loadUserDataForChats(validChats);
@@ -317,6 +322,25 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           .where((id) => id.isNotEmpty && id != currentUser.uid)
           .toList();
       return validParticipants.isNotEmpty;
+    }).toList();
+  }
+
+  Future<List<app_chat.Chat>> _filterVisibleChats(List<app_chat.Chat> chats) async {
+    final validChats = _filterValidChats(chats);
+    final blockedUserIds = (await _blockingService.getBlockedUsers()).toSet();
+    if (blockedUserIds.isEmpty) {
+      return validChats;
+    }
+
+    final currentUser = _inboxService.auth.currentUser;
+    if (currentUser == null) return validChats;
+
+    return validChats.where((chat) {
+      final otherUserId = chat.participants.firstWhere(
+        (id) => id.isNotEmpty && id != currentUser.uid,
+        orElse: () => '',
+      );
+      return otherUserId.isNotEmpty && !blockedUserIds.contains(otherUserId);
     }).toList();
   }
 
@@ -387,6 +411,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   Future<void> _refreshData() async {
     await _loadData();
+  }
+
+  void _handleBlockListChanged() {
+    unawaited(_refreshData());
   }
 
   void _onSearchChanged(String query) {

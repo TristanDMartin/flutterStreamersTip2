@@ -301,7 +301,7 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Insights available 24 hours after upload',
+                      'Analytics update automatically as activity comes in',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.7),
                         fontSize: 12,
@@ -514,14 +514,10 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _isVideoTooNewForInsights(_videos[_currentIndex])
-                        ? Colors.orange.withValues(alpha: 0.2)
-                        : Colors.green.withValues(alpha: 0.2),
+                    color: Colors.green.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: _isVideoTooNewForInsights(_videos[_currentIndex])
-                          ? Colors.orange.withValues(alpha: 0.5)
-                          : Colors.green.withValues(alpha: 0.5),
+                      color: Colors.green.withValues(alpha: 0.5),
                       width: 1,
                     ),
                   ),
@@ -529,22 +525,15 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _isVideoTooNewForInsights(_videos[_currentIndex])
-                            ? Icons.schedule
-                            : Icons.analytics,
-                        color: _isVideoTooNewForInsights(_videos[_currentIndex])
-                            ? Colors.orange
-                            : Colors.green,
+                        Icons.analytics,
+                        color: Colors.green,
                         size: 14,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         _getInsightsAvailabilityMessage(_videos[_currentIndex]),
                         style: TextStyle(
-                          color:
-                              _isVideoTooNewForInsights(_videos[_currentIndex])
-                                  ? Colors.orange
-                                  : Colors.green,
+                          color: Colors.green,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -596,25 +585,14 @@ class _VideoSelectorWidgetState extends ConsumerState<VideoSelectorWidget> {
     }
   }
 
-  bool _isVideoTooNewForInsights(ProfileVideo video) {
-    final now = DateTime.now();
-    final hoursSinceUpload = now.difference(video.createdAt).inHours;
-    return hoursSinceUpload < 24;
-  }
-
   String _getInsightsAvailabilityMessage(ProfileVideo video) {
-    final now = DateTime.now();
-    final hoursSinceUpload = now.difference(video.createdAt).inHours;
-
-    if (hoursSinceUpload < 24) {
-      final remainingHours = 24 - hoursSinceUpload;
-      if (remainingHours > 1) {
-        return 'Insights available in ${remainingHours.toInt()} hours';
-      } else {
-        final remainingMinutes = (remainingHours * 60).toInt();
-        return 'Insights available in $remainingMinutes minutes';
-      }
+    final age = DateTime.now().difference(video.createdAt);
+    if (age.inHours < 1) {
+      return 'Early analytics are still populating';
     }
-    return 'Insights available';
+    if (age.inHours < 24) {
+      return 'Analytics may still be filling in';
+    }
+    return 'Analytics available';
   }
 }

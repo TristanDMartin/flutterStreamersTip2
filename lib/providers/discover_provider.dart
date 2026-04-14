@@ -73,7 +73,7 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('videos')
           .where('category_id', isEqualTo: categoryId)
-          .where('status', isEqualTo: 'published')
+          .where('status', whereIn: ['published', 'ready', 'active'])
           .orderBy('score', descending: true)
           .limit(10);
 
@@ -167,24 +167,25 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
       // Use real user data service
       final trending = await _userDataService.getTrendingCreators(limit: 10);
 
-      // Use sample data if no trending creators found (for UI testing)
-      final finalTrending =
-          trending.isEmpty ? TrendingCreator.samples : trending;
-
       state = state.copyWith(
-          trendingCreators: finalTrending, isLoadingTrendingCreators: false);
+        trendingCreators: trending,
+        isLoadingTrendingCreators: false,
+      );
       LoggingService.instance.info(
-          'Successfully loaded ${finalTrending.length} trending creators',
+          'Successfully loaded ${trending.length} trending creators',
           tag: 'DiscoverProvider');
     } catch (e, stackTrace) {
       LoggingService.instance.error('Error loading trending creators',
           tag: 'DiscoverProvider', error: e, stackTrace: stackTrace);
-      // Fallback to sample data
       state = state.copyWith(
-        trendingCreators: TrendingCreator.samples,
         isLoadingTrendingCreators: false,
       );
     }
+  }
+
+  Future<void> refreshDiscoverData() async {
+    _categoryVideoCursors.clear();
+    await loadTrendingCreators();
   }
 
   /// 🔥 FIX: Update trending creators from real-time stream

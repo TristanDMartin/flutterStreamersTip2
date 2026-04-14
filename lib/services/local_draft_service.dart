@@ -29,6 +29,7 @@ class LocalDraftService {
     required String privacy,
     required bool allowComments,
     String? category,
+    String? existingDraftId,
     Map<String, dynamic>? additionalMetadata,
   }) async {
     try {
@@ -42,8 +43,12 @@ class LocalDraftService {
         ...?additionalMetadata,
       };
 
-      // 1. Generate unique draft ID
-      final draftId = _generateDraftId();
+      final existingDraft = existingDraftId == null
+          ? null
+          : await _findDraftById(existingDraftId);
+      final draftId = existingDraftId?.isNotEmpty == true
+          ? existingDraftId!
+          : _generateDraftId();
 
       // 2. Save video file locally
       final localVideoPath = await _saveVideoFileLocally(videoFile, draftId);
@@ -66,20 +71,24 @@ class LocalDraftService {
         'privacy': privacy,
         'allowComments': allowComments,
         'category': category ?? 'general',
-        'createdAt': DateTime.now().toIso8601String(),
+        'createdAt':
+            existingDraft?['createdAt'] ?? DateTime.now().toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
         'status': 'draft',
-        'isSharedWithConnections': false,
-        'sharedConnections': <String>[],
-        'sharedDraftId': metadata['sharedDraftId'],
-        'canonicalDraftId': metadata['canonicalDraftId'],
+        'isSharedWithConnections':
+            existingDraft?['isSharedWithConnections'] ?? false,
+        'sharedConnections':
+            existingDraft?['sharedConnections'] ?? <String>[],
+        'sharedDraftId':
+            metadata['sharedDraftId'] ?? existingDraft?['sharedDraftId'],
+        'canonicalDraftId':
+            metadata['canonicalDraftId'] ?? existingDraft?['canonicalDraftId'],
         'videoUrl': metadata['videoUrl'],
         'thumbnailUrl': metadata['thumbnailUrl'],
         'metadata': metadata,
       };
 
-      // 5. Save to SharedPreferences (@AppStorage equivalent)
-      await _saveDraftToPreferences(draft);
+      await _upsertDraftInPreferences(draft);
 
       debugPrint('✅ Draft saved successfully with ID: $draftId');
       return true;
@@ -383,10 +392,20 @@ class LocalDraftService {
 
   // Private helper methods
 
-  Future<void> _saveDraftToPreferences(Map<String, dynamic> draft) async {
+  Future<void> _upsertDraftInPreferences(Map<String, dynamic> draft) async {
     final drafts = await getAllDrafts();
-    drafts.insert(0, draft); // Add to beginning (newest first)
+    final draftId = draft['id'];
+    drafts.removeWhere((existing) => existing['id'] == draftId);
+    drafts.insert(0, draft);
     await _saveDraftsToPreferences(drafts);
+  }
+
+  Future<Map<String, dynamic>?> _findDraftById(String draftId) async {
+    final drafts = await getAllDrafts();
+    for (final draft in drafts) {
+      if (draft['id'] == draftId) return draft;
+    }
+    return null;
   }
 
   Future<void> _saveDraftsToPreferences(

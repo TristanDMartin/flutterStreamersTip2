@@ -47,22 +47,43 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final timeUntilPublish = _isScheduled
+        ? _selectedDateTime.difference(DateTime.now())
+        : Duration.zero;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.11),
+            Colors.white.withValues(alpha: 0.06),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
+          color: Colors.white.withValues(alpha: 0.18),
           width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF9248D2).withValues(alpha: 0.10),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(),
           if (_isScheduled) ...[
-            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: _buildScheduleHero(timeUntilPublish),
+            ),
             _buildDateTimePicker(),
             const SizedBox(height: 12),
             _buildTimezoneSelector(),
@@ -78,24 +99,51 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Row(
         children: [
-          const Icon(
-            Icons.schedule,
-            color: Colors.white,
-            size: 20,
-          ),
-          const SizedBox(width: 8),
-          const Text(
-            'Schedule Post',
-            style: TextStyle(
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              color: const Color(0xFF9248D2).withValues(alpha: 0.18),
+              border: Border.all(
+                color: const Color(0xFF9248D2).withValues(alpha: 0.32),
+              ),
+            ),
+            child: const Icon(
+              Icons.schedule,
               color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+              size: 20,
             ),
           ),
-          const Spacer(),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Schedule Post',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _isScheduled
+                      ? 'Publishing across ${widget.selectedPlatforms.length} platform${widget.selectedPlatforms.length == 1 ? '' : 's'}'
+                      : 'Turn this on to publish later instead of right away',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.66),
+                    fontSize: 12.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Switch(
             value: _isScheduled,
             onChanged: (value) {
@@ -110,6 +158,91 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
             },
             activeColor: const Color(0xFF9248D2),
             inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScheduleHero(Duration timeUntilPublish) {
+    final isSoon = timeUntilPublish.inMinutes >= 0 && timeUntilPublish.inHours < 24;
+    final summaryText = _formatScheduleSummary();
+    final helperText = widget.selectedPlatforms.isEmpty
+        ? 'Choose at least one platform to make scheduling actionable.'
+        : isSoon
+            ? 'Your post is lined up soon. You can fine-tune each platform below.'
+            : 'Keep the cadence steady and let StreamersTip handle the timing.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF9248D2).withValues(alpha: 0.24),
+            const Color(0xFF2F8FFF).withValues(alpha: 0.18),
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.14),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildSummaryChip(Icons.schedule_send, summaryText),
+              _buildSummaryChip(
+                Icons.public,
+                _selectedTimezone.displayName,
+              ),
+              if (widget.selectedPlatforms.isNotEmpty)
+                _buildSummaryChip(
+                  Icons.apps_rounded,
+                  '${widget.selectedPlatforms.length} destination${widget.selectedPlatforms.length == 1 ? '' : 's'}',
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            helperText,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.86),
+              fontSize: 13.5,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -134,12 +267,12 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
           GestureDetector(
             onTap: _selectDateTime,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white.withValues(alpha: 0.14),
                   width: 1,
                 ),
               ),
@@ -191,12 +324,12 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
           GestureDetector(
             onTap: _selectTimezone,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white.withValues(alpha: 0.14),
                   width: 1,
                 ),
               ),
@@ -233,32 +366,61 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
   Widget _buildBestTimeSuggestion() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Checkbox(
-            value: _suggestBestTime,
-            onChanged: (value) {
-              setState(() {
-                _suggestBestTime = value ?? false;
-                if (_suggestBestTime) {
-                  _applyBestTimeSuggestion();
-                }
-              });
-            },
-            activeColor: const Color(0xFF9248D2),
-            checkColor: Colors.white,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.10),
           ),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text(
-              'Suggest best time based on analytics',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
+        ),
+        child: Row(
+          children: [
+            Checkbox(
+              value: _suggestBestTime,
+              onChanged: widget.selectedPlatforms.isEmpty
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _suggestBestTime = value ?? false;
+                        if (_suggestBestTime) {
+                          _applyBestTimeSuggestion();
+                        }
+                      });
+                    },
+              activeColor: const Color(0xFF9248D2),
+              checkColor: Colors.white,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Suggest best time',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.selectedPlatforms.isEmpty
+                        ? 'Select a destination platform first.'
+                        : 'Use an analytics-style default slot to get started faster.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.70),
+                      fontSize: 12.5,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -281,7 +443,7 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -303,6 +465,24 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
   }
 
   Widget _buildPlatformOverrides() {
+    if (widget.selectedPlatforms.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          'Add a platform above to unlock per-platform scheduling.',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.70),
+            fontSize: 12.5,
+          ),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -326,8 +506,17 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
     final isOverride = overrideTime != null;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Row(
         children: [
           SizedBox(
             width: 20,
@@ -351,9 +540,10 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
           const SizedBox(width: 8),
           Text(
             platformName,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
+            style: TextStyle(
+              color: isOverride ? Colors.white : Colors.white70,
+              fontSize: 12.5,
+              fontWeight: isOverride ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
           if (isOverride) ...[
@@ -363,20 +553,22 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   _formatDateTime(overrideTime),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
             ),
           ],
         ],
+      ),
       ),
     );
   }
@@ -416,6 +608,24 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
     final timeStr =
         '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
     return '$dateStr at $timeStr';
+  }
+
+  String _formatScheduleSummary() {
+    final difference = _selectedDateTime.difference(DateTime.now());
+    if (difference.inMinutes < 0) return 'Schedule needs updating';
+    if (difference.inMinutes < 60) {
+      return 'In ${difference.inMinutes} min';
+    }
+    if (difference.inHours < 24) {
+      final hours = difference.inHours;
+      final minutes = difference.inMinutes.remainder(60);
+      if (minutes == 0) return 'In $hours hr';
+      return 'In ${hours}h ${minutes}m';
+    }
+    if (difference.inDays < 7) {
+      return 'In ${difference.inDays} day${difference.inDays == 1 ? '' : 's'}';
+    }
+    return _formatDateTime(_selectedDateTime);
   }
 
   Future<void> _selectDateTime() async {
@@ -464,14 +674,15 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
       );
 
       if (time != null) {
+        final selected = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          time.hour,
+          time.minute,
+        );
         setState(() {
-          _selectedDateTime = DateTime(
-            date.year,
-            date.month,
-            date.day,
-            time.hour,
-            time.minute,
-          );
+          _selectedDateTime = _normalizeMinimumTime(selected);
         });
         _updateSchedule();
       }
@@ -571,12 +782,14 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
 
       if (time != null) {
         setState(() {
-          _platformOverrides[platform.name] = DateTime(
-            date.year,
-            date.month,
-            date.day,
-            time.hour,
-            time.minute,
+          _platformOverrides[platform.name] = _normalizeMinimumTime(
+            DateTime(
+              date.year,
+              date.month,
+              date.day,
+              time.hour,
+              time.minute,
+            ),
           );
         });
         _updateSchedule();
@@ -596,9 +809,17 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
     );
 
     setState(() {
-      _selectedDateTime = bestTime;
+      _selectedDateTime = _normalizeMinimumTime(bestTime);
     });
     _updateSchedule();
+  }
+
+  DateTime _normalizeMinimumTime(DateTime value) {
+    final minimum = DateTime.now().add(const Duration(minutes: 5));
+    if (value.isBefore(minimum)) {
+      return minimum;
+    }
+    return value;
   }
 
   void _updateSchedule() {
@@ -607,14 +828,19 @@ class _SchedulePostWidgetState extends State<SchedulePostWidget> {
       return;
     }
 
+    final scheduledAt = _normalizeMinimumTime(_selectedDateTime);
+    if (scheduledAt != _selectedDateTime) {
+      _selectedDateTime = scheduledAt;
+    }
+
     final schedule = PostSchedule(
-      scheduledAtUtc: _selectedDateTime.toUtc(),
+      scheduledAtUtc: scheduledAt.toUtc(),
       timezone: _selectedTimezone.name,
       perPlatform: _platformOverrides.map(
         (key, value) => MapEntry(
           key,
           PlatformSchedule(
-            scheduledAtUtc: value.toUtc(),
+            scheduledAtUtc: _normalizeMinimumTime(value).toUtc(),
             timezone: _selectedTimezone.name,
           ),
         ),

@@ -325,7 +325,10 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
       // Update all profile views through ProfileUpdateService
       try {
         final profileUpdateService = ProfileUpdateService();
-        await profileUpdateService.updateUserData({'avatarURL': downloadUrl});
+        await profileUpdateService.updateUserData({
+          'avatarURL': downloadUrl,
+          'photoURL': downloadUrl,
+        });
 
         if (!mounted) return; // ✅ FIX #4: Check mounted after await
 

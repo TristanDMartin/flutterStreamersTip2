@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/optimistic_video.dart';
+import '../utils/category_schema.dart';
 
 class OptimisticVideoService extends ChangeNotifier {
   static final OptimisticVideoService _instance =
@@ -83,19 +84,17 @@ class OptimisticVideoService extends ChangeNotifier {
     debugPrint(
         '🔥 OptimisticVideoService: UIDs match: ${user.uid == video.ownerId}');
 
+    final rawCategory = video.categories.isNotEmpty ? video.categories.first : 'gaming';
+    final categoryFields = buildCanonicalCategoryFields(rawCategory);
+    final canonicalCategory = categoryFields['category'] as String;
+
     final videoData = {
       'userId': video.ownerId,
       'creatorId': video.ownerId, // Add for web/cross-platform compatibility
       'creator_id':
           video.ownerId, // Snake case variant for website compatibility
       'caption': video.caption,
-      'categories': video.categories,
-      'category': video.categories.isNotEmpty
-          ? video.categories.first
-          : 'gaming', // Add singular category for DiscoverView
-      'categoryId': video.categories.isNotEmpty
-          ? video.categories.first
-          : 'gaming', // Alternative field name
+      ...categoryFields,
       'createdAt': video.createdAt,
       'status': 'processing',
       'thumbnailUrl': video.localThumbnailPath, // Use local thumbnail initially
@@ -103,7 +102,11 @@ class OptimisticVideoService extends ChangeNotifier {
       'hlsUrl': null,
       'duration': video.duration ?? 0,
       'fileSize': video.fileSize ?? 0,
-      'metadata': video.metadata ?? {},
+      'metadata': {
+        ...(video.metadata ?? {}),
+        'categoryOriginal': rawCategory,
+        'categoryCanonical': canonicalCategory,
+      },
     };
 
     debugPrint(

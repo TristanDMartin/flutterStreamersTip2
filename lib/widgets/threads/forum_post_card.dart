@@ -67,7 +67,7 @@ class ForumPostCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (post.category.isNotEmpty) ...[
+                    if ((post.categoryDisplayName ?? '').isNotEmpty) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -81,7 +81,7 @@ class ForumPostCard extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          post.category,
+                          post.categoryDisplayName!,
                           style: TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 11,
@@ -153,53 +153,6 @@ class ForumPostCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  // Stats
-                  if (post.likes > 0 || post.commentCount > 0) ...[
-                    if (post.likes > 0) ...[
-                      Icon(
-                        Icons.favorite,
-                        size: 14,
-                        color: AppColors.primary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatCount(post.likes),
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                    if (post.likes > 0 && post.commentCount > 0)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Container(
-                          width: 3,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                      ),
-                    if (post.commentCount > 0) ...[
-                      Icon(
-                        Icons.comment_outlined,
-                        size: 14,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatCount(post.commentCount),
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ],
                 ],
               ),
             ),
@@ -260,14 +213,5 @@ class ForumPostCard extends StatelessWidget {
         color: AppColors.primary,
       ),
     );
-  }
-
-  String _formatCount(int count) {
-    if (count >= 1000000) {
-      return '${(count / 1000000).toStringAsFixed(1)}M';
-    } else if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(1)}K';
-    }
-    return count.toString();
   }
 }

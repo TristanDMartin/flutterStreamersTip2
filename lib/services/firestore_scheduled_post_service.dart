@@ -1,9 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:developer' as developer;
+import '../features/gamification/emit_gamification_event.dart';
+import '../features/gamification/gamification_event_types.dart';
 import '../models/scheduled_post.dart';
-import 'post_counter_service.dart';
+import '../utils/category_schema.dart';
 import 'cross_post_service.dart';
+import 'post_counter_service.dart';
 
 /// Firestore-based service for managing scheduled posts
 class FirestoreScheduledPostService {
@@ -34,6 +37,7 @@ class FirestoreScheduledPostService {
       if (currentUser == null) {
         throw Exception('User not authenticated');
       }
+      final canonicalCategory = normalizeCategoryId(category);
 
       final scheduledPostId =
           'scheduled_${DateTime.now().millisecondsSinceEpoch}';
@@ -67,7 +71,7 @@ class FirestoreScheduledPostService {
         'videoId': videoId,
         'videoUrl': videoUrl,
         'thumbnailUrl': thumbnailUrl,
-        'category': category,
+        'category': canonicalCategory,
         'privacy': privacy,
         'allowComments': allowComments,
         'schedule': scheduleData,
@@ -93,7 +97,11 @@ class FirestoreScheduledPostService {
         ],
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-        'metadata': metadata,
+        'metadata': {
+          ...metadata,
+          'categoryOriginal': category,
+          'categoryCanonical': canonicalCategory,
+        },
       };
 
       await _firestore
@@ -170,6 +178,10 @@ class FirestoreScheduledPostService {
             'enabled': true,
             'payload': {
               'caption': request.caption,
+              'requiresWatermark': request.requiresWatermark,
+              'watermarkConfig': request.watermarkConfig,
+              'watermarkAsset': request.watermarkAsset,
+              'subscriptionTier': request.subscriptionTier,
             },
             'status': status.name,
             'error': result?.errorMessage,
@@ -445,11 +457,9 @@ class FirestoreScheduledPostService {
         'scheduledAtUtc': FieldValue.delete(),
       };
 
-      // Ensure category/categoryId is set for VideoService (it looks for both)
+      // Keep category fields aligned with the canonical upload schema.
       if (category != null && category.isNotEmpty) {
-        updateData['category'] = category;
-        updateData['categoryId'] =
-            category; // VideoService might look for this too
+        updateData.addAll(buildCanonicalCategoryFields(category));
       }
 
       await _firestore.collection('videos').doc(videoId).update(updateData);
@@ -474,6 +484,15 @@ class FirestoreScheduledPostService {
                   caption: (platform.payload?['caption'] as String?) ??
                       (data['caption'] as String? ?? ''),
                   videoId: videoId,
+                  requiresWatermark:
+                      platform.payload?['requiresWatermark'] == true,
+                  watermarkConfig:
+                      (platform.payload?['watermarkConfig'] as Map?)?.map(
+                    (key, value) => MapEntry(key.toString(), value),
+                  ),
+                  watermarkAsset: platform.payload?['watermarkAsset'] as String?,
+                  subscriptionTier:
+                      platform.payload?['subscriptionTier'] as String?,
                 ),
               )
               .toList(),
@@ -492,7 +511,11 @@ class FirestoreScheduledPostService {
         developer.log('⚠️ Failed to update PostCounterService: $e',
             name: 'FirestoreScheduledPostService');
       }
-
+      scheduleGamificationEvent(
+        GamificationEventTypes.contentPublished,
+        entityType: 'video',
+        entityId: videoId,
+      );
       // Update scheduled post status to published
       await updateScheduledPostStatus(
         scheduledPostId,
@@ -796,6 +819,15 @@ class FirestoreScheduledPostService {
                 caption: platform.payload?['caption'] as String? ?? caption,
                 videoId: videoId,
                 scheduleAt: platform.scheduledAtUtc,
+                requiresWatermark:
+                    platform.payload?['requiresWatermark'] == true,
+                watermarkConfig:
+                    (platform.payload?['watermarkConfig'] as Map?)?.map(
+                  (key, value) => MapEntry(key.toString(), value),
+                ),
+                watermarkAsset: platform.payload?['watermarkAsset'] as String?,
+                subscriptionTier:
+                    platform.payload?['subscriptionTier'] as String?,
               ),
             )
             .toList(),

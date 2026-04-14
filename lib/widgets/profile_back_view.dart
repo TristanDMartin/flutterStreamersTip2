@@ -9,6 +9,7 @@ import '../constants/app_colors.dart';
 import '../services/robust_auth_service.dart';
 import '../services/profile_update_service.dart';
 import '../services/calendar_cleanup_service.dart';
+import '../utils/avatar_url_resolver.dart';
 import 'brand_icons.dart';
 
 class ProfileBackView extends ConsumerStatefulWidget {
@@ -168,7 +169,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       }
 
       return _buildContent(events, platforms);
-    } catch (e, stackTrace) {
+    } catch (e) {
       return _buildErrorState(e);
     }
   }
@@ -307,7 +308,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _SmallAvatar(imageUrl: _currentUserData['avatarURL']),
+          _SmallAvatar(imageUrl: resolveAvatarUrl(_currentUserData)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

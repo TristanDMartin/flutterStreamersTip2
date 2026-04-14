@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/avatar_url_resolver.dart';
 import '../utils/video_url_resolver.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
@@ -308,10 +309,11 @@ class FollowingFeedService {
         (data['creatorUsername'] ?? data['username'] ?? '').toString();
     final embeddedDisplayName =
         (data['creatorDisplayName'] ?? data['displayName'] ?? '').toString();
-    final embeddedAvatarUrl = (data['creatorProfileImageURL'] ??
-            data['creatorAvatarURL'] ??
-            data['avatarURL'])
-        ?.toString();
+    final embeddedAvatarUrl = resolveAvatarUrl(<String, dynamic>{
+          'avatarURL': data['creatorAvatarURL'] ?? data['avatarURL'],
+          'profileImageURL': data['creatorProfileImageURL'],
+          'avatarUrl': data['creatorAvatar'],
+        });
 
     User creator;
     User? hydratedCreator;

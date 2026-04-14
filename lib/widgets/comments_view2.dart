@@ -8,8 +8,10 @@ import '../models/comment.dart';
 import '../models/user.dart' as app_user;
 import '../services/comments_service.dart';
 import '../services/discussion_author_service.dart';
+import '../constants/app_colors.dart';
 import '../widgets/threads/create_thread_from_comment_screen.dart';
 import '../widgets/threads/thread_detail_screen.dart';
+import '../utils/avatar_url_resolver.dart';
 import 'optimized_comment_tile.dart';
 
 /// CommentsView2 - StreamersTip Comments Overlay
@@ -234,26 +236,39 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: AppColors.supportBackground,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Colors.white.withValues(alpha: 0.12),
+          ),
+        ),
         title: const Text(
           'Delete Comment',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         content: const Text(
           'Are you sure you want to delete this comment?',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+            ),
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.error,
             ),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -337,7 +352,7 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
           displayName: data['displayName'] as String? ??
               currentUser.displayName ??
               'User',
-          avatarURL: data['avatarURL'] as String? ?? data['avatarUrl'] as String?,
+          avatarURL: resolveAvatarUrl(data),
           bio: data['bio'] as String? ?? '',
           followerCount: data['followerCount'] as int? ?? 0,
           followingCount: data['followingCount'] as int? ?? 0,
@@ -417,10 +432,8 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Color(0xFF6633CC)
-                      .withValues(alpha: 0.3), // Much more transparent purple
-                  Color(0xFF1A1A4D).withValues(
-                      alpha: 0.4), // Much more transparent dark purple
+                  AppColors.primary.withValues(alpha: 0.28),
+                  AppColors.supportBackground.withValues(alpha: 0.42),
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -450,8 +463,19 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
       height: 4,
       margin: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.grey[600],
         borderRadius: BorderRadius.circular(2),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withValues(alpha: 0.55),
+            AppColors.secondary.withValues(alpha: 0.45),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.25),
+            blurRadius: 6,
+          ),
+        ],
       ),
     );
   }
@@ -504,7 +528,12 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
               ? Colors.white.withValues(alpha: 0.2)
               : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
-          border: isSelected ? Border.all(color: Colors.white, width: 1) : null,
+          border: Border.all(
+            color: isSelected
+                ? AppColors.primary.withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -528,14 +557,45 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
   Widget _buildCommentList() {
     if (_isLoading) {
       return const Center(
-          child: CircularProgressIndicator(color: Colors.white));
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
     }
     if (_errorMessage != null) {
       return Center(
-        child: Text(
-          'Error: $_errorMessage',
-          style: const TextStyle(color: Colors.red),
-          textAlign: TextAlign.center,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.error.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AppColors.error.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  color: AppColors.error.withValues(alpha: 0.95),
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: AppColors.error.withValues(alpha: 0.92),
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
+                    textAlign: TextAlign.start,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -629,13 +689,17 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          const Icon(Icons.reply, color: Colors.blue, size: 16),
+          Icon(
+            Icons.reply,
+            color: AppColors.accent.withValues(alpha: 0.9),
+            size: 16,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               'Replying to ${_replyingTo!.user.username}',
-              style: const TextStyle(
-                color: Colors.blue,
+              style: TextStyle(
+                color: AppColors.accent.withValues(alpha: 0.92),
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -674,10 +738,10 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         shape: BoxShape.circle,
         gradient: SweepGradient(
           colors: [
-            Color(0xFFFF6CAB),
-            Color(0xFF8E54E9),
-            Color(0xFF3D99F7),
-            Color(0xFFFF6CAB),
+            AppColors.primary,
+            AppColors.secondary,
+            AppColors.tertiary,
+            AppColors.primary,
           ],
         ),
       ),
@@ -744,9 +808,16 @@ class _CommentsView2State extends ConsumerState<CommentsView2> {
         height: 40,
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF6633CC), Color(0xFF9966FF)],
+            colors: AppColors.commentsSendGradient,
           ),
           borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.35),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: const Icon(Icons.send, color: Colors.white, size: 20),
       ),

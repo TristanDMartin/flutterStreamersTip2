@@ -27,6 +27,7 @@ import '../providers/video_service_provider.dart' as video_providers;
 import '../routing/app_navigator.dart';
 import '../widgets/platform_row.dart';
 import '../constants/app_colors.dart';
+import '../utils/category_schema.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:developer' as developer;
@@ -64,6 +65,8 @@ class VideoPublishingScreen extends ConsumerStatefulWidget {
   final List<String> hashtags;
   final VoidCallback onPublish;
   final VoidCallback onCancel;
+  final String? draftId;
+  final Map<String, dynamic>? draftData;
 
   const VideoPublishingScreen({
     super.key,
@@ -72,6 +75,8 @@ class VideoPublishingScreen extends ConsumerStatefulWidget {
     required this.hashtags,
     required this.onPublish,
     required this.onCancel,
+    this.draftId,
+    this.draftData,
   });
 
   @override
@@ -97,6 +102,11 @@ class VideoCategory {
 }
 
 class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
+  static const Set<String> _bypassStudioUids = {
+    'bU0RxyZ2L4ULAv1Co5L4f825yV73',
+    'jsmbQMLQjoUyC5cUFvkrRbi9mkp1',
+  };
+
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
@@ -219,6 +229,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   bool _showScheduleOptions = false;
   final Set<String> _selectedPlatforms = <String>{};
   PostSchedule? _schedule;
+  String _subscriptionTier = VideoWatermarkService.starterTier;
+  bool _isLoadingSubscriptionTier = true;
 
   // Cross-posting state
   /// Platforms from user's profile (display-linked, shown for cross-posting).
@@ -242,6 +254,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     super.initState();
     _caption = widget.caption;
     _hashtags = List.from(widget.hashtags);
+    _hydrateFromDraftData();
 
     // Initialize text controller with the caption
     _captionController = TextEditingController(text: _caption);
@@ -254,7 +267,125 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     _scrollController.addListener(_onScroll);
 
     _initializeVideo();
+    _loadSubscriptionTier();
     _loadConnectedPlatforms();
+  }
+
+  bool get _isEditingDraft => widget.draftId?.isNotEmpty == true;
+
+  void _hydrateFromDraftData() {
+    final draft = widget.draftData;
+    if (draft == null) return;
+
+    final draftPrivacy = draft['privacy'] as String?;
+    if (draftPrivacy != null && draftPrivacy.isNotEmpty) {
+      _selectedPrivacy = draftPrivacy;
+    }
+
+    final draftCategory = draft['category'] as String?;
+    if (draftCategory != null && draftCategory.isNotEmpty) {
+      _selectedCategory = draftCategory;
+    }
+
+    final draftAllowComments = draft['allowComments'];
+    if (draftAllowComments is bool) {
+      _allowComments = draftAllowComments;
+    }
+
+    final metadata = draft['metadata'];
+    if (metadata is Map) {
+      final scheduledAtRaw = metadata['scheduled_at_utc']?.toString();
+      final timezone = metadata['schedule_timezone']?.toString();
+      final scheduledAt =
+          scheduledAtRaw == null ? null : DateTime.tryParse(scheduledAtRaw);
+      if (scheduledAt != null && timezone != null && timezone.isNotEmpty) {
+        _schedule = PostSchedule(
+          scheduledAtUtc: scheduledAt.toUtc(),
+          timezone: timezone,
+          createdAtUtc: scheduledAt.toUtc(),
+          updatedAtUtc: DateTime.now().toUtc(),
+        );
+      }
+    }
+  }
+
+  Set<String> get _effectiveSelectedPlatforms => _platformEnabled.entries
+      .where((entry) => entry.value)
+      .map((entry) => entry.key)
+      .toSet();
+
+  int get _selectedPlatformCount => _effectiveSelectedPlatforms.length;
+
+  int get _maxCrossPostPlatforms =>
+      _watermarkService.maxPlatformsForTier(_subscriptionTier);
+
+  bool get _requiresCrossPostWatermark =>
+      _watermarkService.shouldApplyWatermarkForTier(
+        _subscriptionTier,
+        _effectiveSelectedPlatforms,
+      );
+
+  String get _subscriptionPlanLabel =>
+      _watermarkService.planLabel(_subscriptionTier);
+
+  void _syncSelectedPlatforms() {
+    _selectedPlatforms
+      ..clear()
+      ..addAll(_effectiveSelectedPlatforms);
+  }
+
+  Future<void> _loadSubscriptionTier() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      setState(() {
+        _subscriptionTier = VideoWatermarkService.starterTier;
+        _isLoadingSubscriptionTier = false;
+      });
+      return;
+    }
+
+    try {
+      if (_bypassStudioUids.contains(user.uid)) {
+        if (!mounted) return;
+        setState(() {
+          _subscriptionTier = VideoWatermarkService.studioTier;
+          _isLoadingSubscriptionTier = false;
+        });
+        return;
+      }
+
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final data = doc.data() ?? const <String, dynamic>{};
+      final rawTier = (data['subscriptionTier'] as String?)?.toLowerCase();
+      final status = (data['subscriptionStatus'] as String?)?.toLowerCase();
+      const validTiers = {
+        VideoWatermarkService.starterTier,
+        VideoWatermarkService.proTier,
+        VideoWatermarkService.studioTier,
+      };
+      const activeStatuses = {'active', 'trialing'};
+
+      final resolvedTier = validTiers.contains(rawTier) &&
+              activeStatuses.contains(status)
+          ? rawTier!
+          : VideoWatermarkService.starterTier;
+
+      if (!mounted) return;
+      setState(() {
+        _subscriptionTier = resolvedTier;
+        _isLoadingSubscriptionTier = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _subscriptionTier = VideoWatermarkService.starterTier;
+        _isLoadingSubscriptionTier = false;
+      });
+    }
   }
 
   Future<void> _loadConnectedPlatforms() async {
@@ -282,9 +413,18 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       setState(() {
         _connectedPlatforms = loaded;
         for (final p in loaded) {
-          _platformEnabled[p.name] = false; // Default OFF (spec #7)
+          final draftSelections = widget.draftData?['metadata']
+              is Map<String, dynamic>
+              ? ((widget.draftData!['metadata']
+                          as Map<String, dynamic>)['cross_platform_sharing']
+                      as List<dynamic>?)
+                  ?.map((e) => e.toString())
+                  .toSet()
+              : null;
+          _platformEnabled[p.name] = draftSelections?.contains(p.name) ?? false;
           _platformCaptions[p.name] = _caption;
         }
+        _syncSelectedPlatforms();
       });
     } catch (_) {
       // No platforms available — section hidden
@@ -348,6 +488,82 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         }
       }
     });
+  }
+
+  String _crossPostPlanDescription() {
+    if (_isLoadingSubscriptionTier) {
+      return 'Checking your creator plan...';
+    }
+
+    switch (_subscriptionTier) {
+      case VideoWatermarkService.proTier:
+        return 'Pro includes up to 5 connected destinations with no StreamersTip watermark.';
+      case VideoWatermarkService.studioTier:
+        return 'Studio includes unlimited connected destinations with no StreamersTip watermark.';
+      case VideoWatermarkService.starterTier:
+      default:
+        return 'Free includes 1 connected destination, and StreamersTip branding stays on the exported post.';
+    }
+  }
+
+  void _showCrossPostLimitNotice() {
+    final message = _subscriptionTier == VideoWatermarkService.starterTier
+        ? 'Free includes 1 connected platform with a StreamersTip watermark. Upgrade for more destinations.'
+        : '$_subscriptionPlanLabel includes up to $_maxCrossPostPlatforms connected platforms.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFF2B1A6B),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _handlePlatformToggle(String platformName, bool enabled) {
+    final isCurrentlyEnabled = _platformEnabled[platformName] ?? false;
+    if (!enabled) {
+      setState(() {
+        _platformEnabled[platformName] = false;
+        _syncSelectedPlatforms();
+      });
+      return;
+    }
+
+    if (!isCurrentlyEnabled && _selectedPlatformCount >= _maxCrossPostPlatforms) {
+      _showCrossPostLimitNotice();
+      return;
+    }
+
+    setState(() {
+      _platformEnabled[platformName] = true;
+      _syncSelectedPlatforms();
+    });
+  }
+
+  CrossPostRequest _buildCrossPostRequestForPlatform(
+    String platformName, {
+    DateTime? scheduleAt,
+    String? videoId,
+  }) {
+    final requiresWatermark = _watermarkService.shouldApplyWatermarkForTier(
+      _subscriptionTier,
+      {platformName},
+    );
+
+    return CrossPostRequest(
+      platformName: platformName,
+      caption: _platformCaptions[platformName] ?? _caption,
+      videoId: videoId,
+      scheduleAt: scheduleAt,
+      requiresWatermark: requiresWatermark,
+      subscriptionTier: _subscriptionTier,
+      watermarkAsset: requiresWatermark
+          ? VideoWatermarkService.defaultWatermarkAsset
+          : null,
+      watermarkConfig: requiresWatermark
+          ? _watermarkService.getWatermarkConfig(platformName)
+          : null,
+    );
   }
 
   void _onScroll() {
@@ -654,6 +870,11 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     const SizedBox(height: 12),
                   ],
 
+                  if (_isEditingDraft) ...[
+                    _buildDraftContextBanner(),
+                    const SizedBox(height: 12),
+                  ],
+
                   // Caption (most important — first)
                   _buildCaptionSection(),
 
@@ -704,8 +925,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     title: 'Cross-posting',
                     subtitle: _connectedPlatforms.isEmpty
                         ? 'No linked platforms yet'
-                        : _platformEnabled.values.any((v) => v)
-                            ? '${_platformEnabled.values.where((v) => v).length} platform${_platformEnabled.values.where((v) => v).length == 1 ? '' : 's'} selected'
+                        : _selectedPlatformCount > 0
+                            ? '$_selectedPlatformCount platform${_selectedPlatformCount == 1 ? '' : 's'} selected'
                             : 'Optional: also share to linked platforms',
                     isExpanded: _showCrossPostOptions,
                     onToggle: () => setState(
@@ -906,15 +1127,17 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             icon: const Icon(Icons.close, color: Colors.white, size: 22),
           ),
           const Expanded(
-            child: Text(
-              'New Post',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600),
-            ),
+            child: SizedBox.shrink(),
           ),
+          Text(
+            _isEditingDraft ? 'Finish Draft' : 'New Post',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w600),
+          ),
+          const Expanded(child: SizedBox.shrink()),
           // Draft / status
           if (_isModerating)
             Padding(
@@ -951,7 +1174,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             TextButton(
               onPressed: _hasError ? null : _saveAsDraft,
               child: Text(
-                'Draft',
+                _isEditingDraft ? 'Update Draft' : 'Draft',
                 style: TextStyle(
                   color: _hasError
                       ? Colors.white24
@@ -963,6 +1186,102 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildDraftContextBanner() {
+    final updatedAt = DateTime.tryParse(
+      widget.draftData?['updatedAt']?.toString() ?? '',
+    );
+    final hasCrossPostDraft =
+        (_effectiveSelectedPlatforms.isNotEmpty) ||
+        ((((widget.draftData?['metadata'] as Map?)?['cross_platform_sharing'])
+                    as List?)
+                ?.isNotEmpty ==
+            true);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF9248D2).withValues(alpha: 0.20),
+            const Color(0xFF2E8DFF).withValues(alpha: 0.12),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.drafts_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Continuing a saved draft',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  updatedAt == null
+                      ? 'Your previous caption and posting settings are loaded and ready to finish.'
+                      : 'Last saved ${_formatDraftRelativeTime(updatedAt)}. Caption, privacy, category, and linked destinations are restored.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.80),
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
+                ),
+                if (hasCrossPostDraft) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Cross-post selections from this draft are already waiting below.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDraftRelativeTime(DateTime dateTime) {
+    final difference = DateTime.now().difference(dateTime);
+    if (difference.inMinutes < 1) return 'just now';
+    if (difference.inHours < 1) return '${difference.inMinutes}m ago';
+    if (difference.inDays < 1) return '${difference.inHours}h ago';
+    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
   }
 
   Widget _buildVideoPreview() {
@@ -1444,6 +1763,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Widget _buildPlatformSelectorSection() {
+    final limitReached = _selectedPlatformCount >= _maxCrossPostPlatforms;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1466,7 +1786,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     fontWeight: FontWeight.bold),
               ),
               const Spacer(),
-              if (_platformEnabled.values.any((v) => v))
+              if (_selectedPlatformCount > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 3),
@@ -1475,7 +1795,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    '${_platformEnabled.values.where((v) => v).length} on',
+                    '$_selectedPlatformCount on',
                     style: const TextStyle(
                         color: Color(0xFF9248D2), fontSize: 11),
                   ),
@@ -1484,24 +1804,146 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Publish once — reach all your audiences.',
+            _crossPostPlanDescription(),
             style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
           ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF9248D2).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _subscriptionPlanLabel,
+                    style: const TextStyle(
+                      color: Color(0xFFB98FFF),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _subscriptionTier == VideoWatermarkService.studioTier
+                        ? 'Unlimited connected platforms'
+                        : 'Up to $_maxCrossPostPlatforms connected platform${_maxCrossPostPlatforms == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_requiresCrossPostWatermark) ...[
+            const SizedBox(height: 12),
+            _buildWatermarkPreviewCard(),
+          ],
           const SizedBox(height: 12),
           ..._connectedPlatforms.map((p) => PlatformRow(
                 platformName: p.name,
                 platformIcon: p.icon,
                 platformColor: p.color,
                 isEnabled: _platformEnabled[p.name] ?? false,
+                isLocked: !(_platformEnabled[p.name] ?? false) && limitReached,
                 initialCaption: _platformCaptions[p.name] ?? _caption,
                 characterLimit:
                     PlatformCharacterLimits.limitFor(p.name),
-                onToggle: (enabled) => setState(
-                    () => _platformEnabled[p.name] = enabled),
+                trailingLabel:
+                    _subscriptionTier == VideoWatermarkService.starterTier &&
+                            _requiresCrossPostWatermark
+                        ? 'Watermark'
+                        : null,
+                lockedReason: !(_platformEnabled[p.name] ?? false) && limitReached
+                    ? _subscriptionTier == VideoWatermarkService.starterTier
+                        ? 'Free includes 1 destination. Upgrade to Pro or Studio to unlock more.'
+                        : '$_subscriptionPlanLabel includes up to $_maxCrossPostPlatforms destinations.'
+                    : null,
+                onToggle: (enabled) => _handlePlatformToggle(p.name, enabled),
                 onCaptionChanged: (text) =>
                     _platformCaptions[p.name] = text,
               )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWatermarkPreviewCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF9248D2).withValues(alpha: 0.16),
+            const Color(0xFF4E9FD4).withValues(alpha: 0.12),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.branding_watermark_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Floating StreamersTip watermark',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Free cross-posts keep a TikTok-style floating mark using your StreamersTip logo so exports stay branded.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1832,6 +2274,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
       selectedPlatforms: selectedPlatformKeys,
       caption: _caption,
       media: media,
+      initialSchedule: _schedule,
       onScheduleChanged: (schedule) {
         setState(() {
           _schedule = schedule;
@@ -2234,18 +2677,23 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
 
       // 2. Generate video ID and create optimistic video
       final videoId = _generateVideoId();
+      _syncSelectedPlatforms();
+      final selectedPlatforms = _effectiveSelectedPlatforms;
       debugPrint(
           '🎬 VideoPublishingScreen: Creating optimistic video: $videoId');
 
       // Apply watermark if cross-platform sharing is selected
       File videoFileToUpload = widget.videoFile;
-      if (_watermarkService.shouldApplyWatermark(_selectedPlatforms)) {
+      if (_watermarkService.shouldApplyWatermarkForTier(
+        _subscriptionTier,
+        selectedPlatforms,
+      )) {
         debugPrint(
             '🎬 VideoPublishingScreen: Applying watermark for cross-platform sharing...');
         final watermarkedFile = await _watermarkService.addWatermarkToVideo(
           videoFile: widget.videoFile,
-          selectedPlatforms: _selectedPlatforms,
-          logoPath: 'assets/logo.png',
+          selectedPlatforms: selectedPlatforms,
+          logoPath: VideoWatermarkService.defaultWatermarkAsset,
         );
         if (watermarkedFile != null) {
           videoFileToUpload = watermarkedFile;
@@ -2265,9 +2713,12 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         metadata: {
           'privacy': _selectedPrivacy,
           'allowComments': _allowComments,
-          'cross_platform_sharing': _selectedPlatforms.toList(),
-          'watermark_applied':
-              _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+          'cross_platform_sharing': selectedPlatforms.toList(),
+          'watermark_applied': _watermarkService.shouldApplyWatermarkForTier(
+            _subscriptionTier,
+            selectedPlatforms,
+          ),
+          'cross_post_subscription_tier': _subscriptionTier,
           'moderation_confidence': moderationResult.confidence,
           'moderation_checked_at': DateTime.now().toIso8601String(),
           'duration': 0, // Will be calculated during processing
@@ -2311,13 +2762,13 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             name: 'VideoPublishingScreen');
 
         final fileSize = await videoFileToUpload.length();
+        final canonicalCategory = normalizeCategoryId(_selectedCategory);
 
         // Build cross-post requests for selected platforms.
         final crossPostRequests = _connectedPlatforms
             .where((p) => _platformEnabled[p.name] == true)
-            .map((p) => CrossPostRequest(
-                  platformName: p.name,
-                  caption: _platformCaptions[p.name] ?? _caption,
+            .map((p) => _buildCrossPostRequestForPlatform(
+                  p.name,
                   scheduleAt: _schedule?.scheduledAtUtc,
                 ))
             .toList();
@@ -2332,12 +2783,15 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             allowComments: _allowComments,
             crossPostRequests: crossPostRequests,
             additionalMetadata: {
-              'category': _selectedCategory,
+              'category': canonicalCategory,
               'cross_platform_sharing': crossPostRequests
                   .map((r) => r.platformName)
                   .toList(),
-              'watermark_applied':
-                  _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+              'watermark_applied': _watermarkService.shouldApplyWatermarkForTier(
+                _subscriptionTier,
+                selectedPlatforms,
+              ),
+              'cross_post_subscription_tier': _subscriptionTier,
               'moderation_confidence': moderationResult.confidence,
               'moderation_checked_at': DateTime.now().toIso8601String(),
               'duration': 0,
@@ -2594,6 +3048,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }
 
   Future<void> _saveAsDraft() async {
+    _syncSelectedPlatforms();
+    final selectedPlatforms = _effectiveSelectedPlatforms;
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.0;
@@ -2609,10 +3065,17 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         privacy: _selectedPrivacy,
         allowComments: _allowComments,
         category: _selectedCategory,
+        existingDraftId: widget.draftId,
         additionalMetadata: {
-          'cross_platform_sharing': _selectedPlatforms.toList(),
-          'watermark_applied':
-              _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+          'cross_platform_sharing': selectedPlatforms.toList(),
+          'watermark_applied': _watermarkService.shouldApplyWatermarkForTier(
+            _subscriptionTier,
+            selectedPlatforms,
+          ),
+          'cross_post_subscription_tier': _subscriptionTier,
+          'scheduled_at_utc': _schedule?.scheduledAtUtc.toIso8601String(),
+          'schedule_timezone': _schedule?.timezone,
+          'is_scheduled': _schedule != null,
         },
       );
 
@@ -2682,6 +3145,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
     required User currentUser,
     required VideoModerationResult moderationResult,
   }) async {
+    _syncSelectedPlatforms();
+    final selectedPlatforms = _effectiveSelectedPlatforms;
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.0;
@@ -2725,7 +3190,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           thumbnailUrl: thumbnailUrl,
           caption: _caption,
           hashtags: _hashtags,
-          category: _selectedCategory,
+          category: normalizeCategoryId(_selectedCategory),
           privacy: _selectedPrivacy,
           allowComments: _allowComments,
           schedule: _schedule!,
@@ -2734,15 +3199,17 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
             'moderation_checked_at': DateTime.now().toIso8601String(),
             'duration': _videoDuration?.inSeconds ?? 0,
             'fileSize': await videoFileToUpload.length(),
-            'cross_platform_sharing': _selectedPlatforms.toList(),
-            'watermark_applied':
-                _watermarkService.shouldApplyWatermark(_selectedPlatforms),
+            'cross_platform_sharing': selectedPlatforms.toList(),
+            'watermark_applied': _watermarkService.shouldApplyWatermarkForTier(
+              _subscriptionTier,
+              selectedPlatforms,
+            ),
+            'cross_post_subscription_tier': _subscriptionTier,
           },
           crossPostRequests: _connectedPlatforms
               .where((p) => _platformEnabled[p.name] == true)
-              .map((p) => CrossPostRequest(
-                    platformName: p.name,
-                    caption: _platformCaptions[p.name] ?? _caption,
+              .map((p) => _buildCrossPostRequestForPlatform(
+                    p.name,
                     scheduleAt: _schedule?.scheduledAtUtc,
                   ))
               .toList(),
@@ -2849,6 +3316,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
   }) async {
     try {
       final firestore = FirebaseFirestore.instance;
+      final categoryFields = buildCanonicalCategoryFields(_selectedCategory);
+      final canonicalCategory = categoryFields['category'] as String;
       final videoData = {
         'id': videoId,
         'userId': currentUser.uid,
@@ -2860,7 +3329,7 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
         'hashtags': _hashtags,
         'privacy': _selectedPrivacy,
         'allowComments': _allowComments,
-        'category': _selectedCategory,
+        ...categoryFields,
         'status': 'scheduled', // NOT 'published' - will be updated when scheduled time arrives
         'scheduledAtUtc': Timestamp.fromDate(_schedule!.scheduledAtUtc),
         'views': 0,
@@ -2883,6 +3352,8 @@ class _VideoPublishingScreenState extends ConsumerState<VideoPublishingScreen> {
           'uploadedAt': FieldValue.serverTimestamp(),
           'moderation_confidence': moderationResult.confidence,
           'moderation_checked_at': DateTime.now().toIso8601String(),
+          'categoryOriginal': _selectedCategory,
+          'categoryCanonical': canonicalCategory,
         },
       };
 

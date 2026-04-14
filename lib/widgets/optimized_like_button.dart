@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../services/tiktok_like_service.dart';
+import '../services/streamers_tip_like_service.dart';
 import 'heart_animation_widget.dart';
 
 class OptimizedLikeButton extends StatefulWidget {
@@ -64,7 +64,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
 
   /// Add listener to TikTokLikeService for real-time updates
   void _addServiceListener() {
-    final service = TikTokLikeService();
+    final service = StreamersTipLikeService();
     service.addListener(_onServiceStateChanged);
   }
 
@@ -78,7 +78,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
 
   /// Sync with TikTokLikeService state
   void _syncWithTikTokService() {
-    final service = TikTokLikeService();
+    final service = StreamersTipLikeService();
     final state = service.getLikeState(widget.videoId);
 
     debugPrint(
@@ -112,7 +112,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
   void dispose() {
     _animationController.dispose();
     // Remove listener
-    final service = TikTokLikeService();
+    final service = StreamersTipLikeService();
     service.removeListener(_onServiceStateChanged);
     super.dispose();
   }
@@ -120,8 +120,12 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
   /// Load persistent state from local storage
   Future<void> _loadPersistentState() async {
     try {
-      final likeService = TikTokLikeService();
-      final isLiked = await likeService.isVideoLiked(widget.videoId);
+      final likeService = StreamersTipLikeService();
+      final currentUser = FirebaseAuth.instance.currentUser;
+      final cachedState = likeService.getLikeState(widget.videoId);
+      final isLiked = currentUser != null
+          ? await likeService.isVideoLikedByUser(widget.videoId, currentUser.uid)
+          : cachedState.isLiked;
 
       debugPrint(
           '📱 OptimizedLikeButton: Loading persistent state - videoId: ${widget.videoId}, isLiked: $isLiked');
@@ -194,7 +198,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
       HapticFeedback.lightImpact();
 
       // Get current state from service
-      final service = TikTokLikeService();
+      final service = StreamersTipLikeService();
       final currentState = service.getLikeState(widget.videoId);
       final willBeLiked = !currentState.isLiked;
 
@@ -232,8 +236,8 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
         return;
       }
 
-      // Use TikTokLikeService for proper Firebase persistence
-      final service = TikTokLikeService();
+      // Use the same service as startup preload and double-tap likes.
+      final service = StreamersTipLikeService();
 
       // Use the intended state (what we want to achieve)
       if (_isLiked) {
@@ -303,7 +307,7 @@ class _OptimizedLikeButtonState extends State<OptimizedLikeButton>
   Widget build(BuildContext context) {
     // Use local state that gets synced with TikTokLikeService
     // This ensures consistent state between widget and service
-    final service = TikTokLikeService();
+    final service = StreamersTipLikeService();
     final currentState = service.getLikeState(widget.videoId);
     final isLiked = _isLiked; // Use local state, not service state directly
     final likeCount = currentState.likeCount;

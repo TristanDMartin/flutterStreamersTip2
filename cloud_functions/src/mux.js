@@ -3,6 +3,21 @@ const admin = require('firebase-admin');
 const MUX_API = 'https://api.mux.com';
 const MUX_STREAM_BASE = 'https://stream.mux.com';
 
+function buildMuxPlaybackUrls(playbackId) {
+  const safePlaybackId = String(playbackId || '').trim();
+  if (!safePlaybackId) {
+    return {
+      adaptiveHlsUrl: '',
+      highHlsUrl: '',
+    };
+  }
+
+  return {
+    adaptiveHlsUrl: `${MUX_STREAM_BASE}/${safePlaybackId}.m3u8`,
+    highHlsUrl: `${MUX_STREAM_BASE}/${safePlaybackId}/high.m3u8`,
+  };
+}
+
 function getMuxCredentials() {
   const tokenId = process.env.MUX_TOKEN_ID;
   const tokenSecret = process.env.MUX_TOKEN_SECRET;
@@ -77,7 +92,8 @@ async function handleMuxWebhook(payload) {
   }
 
   const playbackId = publicPlayback.id;
-  const hlsUrl = `${MUX_STREAM_BASE}/${playbackId}/high.m3u8`;
+  const { adaptiveHlsUrl, highHlsUrl } = buildMuxPlaybackUrls(playbackId);
+  const hlsUrl = adaptiveHlsUrl;
   const thumbnailUrl =
     `https://image.mux.com/${playbackId}/thumbnail.jpg?width=720&time=0`;
   const duration = data.duration != null ? Math.round(data.duration) : null;
@@ -93,7 +109,9 @@ async function handleMuxWebhook(payload) {
   const updates = {
     hlsUrl,
     hls_url: hlsUrl,
-    mp4_720_url: hlsUrl,
+    muxAdaptiveHlsUrl: adaptiveHlsUrl,
+    muxHighHlsUrl: highHlsUrl,
+    mp4_720_url: highHlsUrl,
     videoUrl: hlsUrl,
     videoURL: hlsUrl,
     canonicalPlaybackUrl: hlsUrl,

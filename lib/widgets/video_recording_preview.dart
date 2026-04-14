@@ -3,16 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
 
+enum VideoRecordingPreviewAction {
+  retake,
+  useVideo,
+}
+
 class VideoRecordingPreview extends StatefulWidget {
   final File videoFile;
-  final VoidCallback onRetake;
-  final VoidCallback onUseVideo;
 
   const VideoRecordingPreview({
     super.key,
     required this.videoFile,
-    required this.onRetake,
-    required this.onUseVideo,
   });
 
   @override
@@ -138,14 +139,14 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
       _controller.pause();
     }
 
-    // Navigate to next screen with video data
-    widget.onUseVideo();
+    if (!mounted) return;
+    Navigator.of(context).pop(VideoRecordingPreviewAction.useVideo);
   }
 
   Future<void> _handleRetake() async {
     final shouldDiscard = await _showDiscardDialog();
-    if (shouldDiscard == true) {
-      widget.onRetake();
+    if (shouldDiscard == true && mounted) {
+      Navigator.of(context).pop(VideoRecordingPreviewAction.retake);
     }
   }
 
@@ -180,6 +181,13 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
         ],
       ),
     );
+  }
+
+  String _formatDuration(Duration duration) {
+    final totalSeconds = duration.inSeconds;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -257,6 +265,26 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
               ),
             ),
 
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.48),
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.72),
+                    ],
+                    stops: const [0.0, 0.18, 0.58, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
           // Top Controls
           _buildTopControls(),
 
@@ -268,10 +296,22 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
             Center(
               child: GestureDetector(
                 onTap: _togglePlayPause,
-                child: Icon(
-                  _isPlaying ? Icons.pause : Icons.play_arrow,
-                  color: Colors.white,
-                  size: 60,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.28),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.16),
+                    ),
+                  ),
+                  child: Icon(
+                    _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 52,
+                  ),
                 ),
               ),
             ),
@@ -282,107 +322,278 @@ class _VideoRecordingPreviewState extends State<VideoRecordingPreview> {
 
   Widget _buildTopControls() {
     return Positioned(
-      top: MediaQuery.of(context).padding.top + 16,
+      top: MediaQuery.of(context).padding.top + 12,
       left: 16,
       right: 16,
-      child: const Center(
-        child: Text(
-          'Preview',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _handleRetake,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.28),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                ),
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
           ),
-        ),
+          const Expanded(
+            child: Column(
+              children: [
+                Text(
+                  'Preview',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Check the framing before you post',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_videoDuration != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                ),
+              ),
+              child: Text(
+                _formatDuration(_videoDuration!),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          else
+            const SizedBox(width: 44),
+        ],
       ),
     );
   }
 
   Widget _buildBottomControls() {
     return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 32,
-      left: 0,
-      right: 0,
+      bottom: MediaQuery.of(context).padding.bottom + 18,
+      left: 16,
+      right: 16,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Row(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
           children: [
-            // Left: Retake button
-            GestureDetector(
-              onTap: _handleRetake,
-              child: Container(
-                width: 68,
-                height: 68,
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.9),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.red.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _errorMessage == null
+                        ? const Color(0xFF1FBF75).withValues(alpha: 0.18)
+                        : Colors.red.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: _errorMessage == null
+                          ? const Color(0xFF1FBF75).withValues(alpha: 0.35)
+                          : Colors.red.withValues(alpha: 0.35),
                     ),
-                  ],
+                  ),
+                  child: Text(
+                    _errorMessage == null ? 'Ready to post' : 'Needs attention',
+                    style: TextStyle(
+                      color: _errorMessage == null
+                          ? const Color(0xFF7FF0B7)
+                          : const Color(0xFFFFA6A6),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-                child: const Icon(
-                  Icons.refresh,
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ),
+                const Spacer(),
+                if (_videoDuration != null)
+                  Text(
+                    'Duration ${_formatDuration(_videoDuration!)}',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+              ],
             ),
-
-            // Center: Spacer for visual balance
-            const Expanded(child: SizedBox()),
-
-            // Right: Confirm button
-            GestureDetector(
-              onTap: _isReady && !_isSubmitting ? _handleConfirm : null,
-              child: Container(
-                width: 68,
-                height: 68,
-                decoration: BoxDecoration(
-                  gradient: _isReady && !_isSubmitting
-                      ? const LinearGradient(
-                          colors: [Color(0xFF9248D2), Color(0xFF1670DE)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                      : LinearGradient(
-                          colors: [
-                            Colors.grey.withValues(alpha: 0.3),
-                            Colors.grey.withValues(alpha: 0.3),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F1322).withValues(alpha: 0.90),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.24),
+                    blurRadius: 24,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _handleRetake,
+                      child: Container(
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.07),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.refresh_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'Retake',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ],
                         ),
-                  shape: BoxShape.circle,
-                  boxShadow: _isReady && !_isSubmitting
-                      ? [
-                          BoxShadow(
-                            color:
-                                const Color(0xFF9248D2).withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : Icon(
-                        Icons.check,
-                        color: _isReady ? Colors.white : Colors.grey,
-                        size: 32,
                       ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _isReady && !_isSubmitting ? _handleConfirm : null,
+                      child: Container(
+                        height: 58,
+                        decoration: BoxDecoration(
+                          gradient: _isReady && !_isSubmitting
+                              ? const LinearGradient(
+                                  colors: [
+                                    Color(0xFF9248D2),
+                                    Color(0xFF1670DE),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : LinearGradient(
+                                  colors: [
+                                    Colors.grey.withValues(alpha: 0.25),
+                                    Colors.grey.withValues(alpha: 0.25),
+                                  ],
+                                ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: _isReady && !_isSubmitting
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF9248D2)
+                                        .withValues(alpha: 0.30),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Center(
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Use video',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    SizedBox(width: 10),
+                                    Icon(
+                                      Icons.arrow_forward_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.30),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.red.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
           ],
         ),
       ),

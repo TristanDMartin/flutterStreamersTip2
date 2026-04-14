@@ -271,39 +271,8 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       // Haptic feedback
       HapticFeedback.lightImpact();
 
-      // Navigate to VideoRecordingPreview
       if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => VideoRecordingPreview(
-              videoFile: File(videoFile.path),
-              onRetake: () => Navigator.of(context).pop(),
-              onUseVideo: () {
-                // Close VideoRecordingPreview and navigate directly to Publishing
-                Navigator.of(context).pop(); // Close VideoRecordingPreview
-                Navigator.of(context).pop(); // Close CameraView
-                // Navigate directly to VideoPublishingScreen
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => VideoPublishingScreen(
-                      videoFile: File(videoFile.path),
-                      caption:
-                          '', // Empty caption - user can add in publishing screen
-                      hashtags: const [], // Empty hashtags - user can add in publishing screen
-                      onPublish: () {
-                        // Handle successful publishing
-                        Navigator.of(context).pop(); // Close publishing screen
-                      },
-                      onCancel: () {
-                        Navigator.of(context).pop(); // Go back to camera
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
+        await _openPreviewAndMaybePublish(File(videoFile.path));
       }
 
       log('✅ Video recording stopped: ${videoFile.path}');
@@ -409,44 +378,46 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
       if (video != null && mounted) {
         log('📱 Video selected from gallery: ${video.path}');
         HapticFeedback.lightImpact();
-
-        // Navigate to VideoRecordingPreview
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => VideoRecordingPreview(
-              videoFile: File(video.path),
-              onRetake: () => Navigator.of(context).pop(),
-              onUseVideo: () {
-                // Close VideoRecordingPreview and navigate directly to Publishing
-                Navigator.of(context).pop(); // Close VideoRecordingPreview
-                Navigator.of(context).pop(); // Close CameraView
-                // Navigate directly to VideoPublishingScreen
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => VideoPublishingScreen(
-                      videoFile: File(video.path),
-                      caption:
-                          '', // Empty caption - user can add in publishing screen
-                      hashtags: const [], // Empty hashtags - user can add in publishing screen
-                      onPublish: () {
-                        // Handle successful publishing
-                        Navigator.of(context).pop(); // Close publishing screen
-                      },
-                      onCancel: () {
-                        Navigator.of(context).pop(); // Go back to camera
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
+        await _openPreviewAndMaybePublish(File(video.path));
       }
     } catch (e) {
       log('❌ Error picking video from gallery: $e');
       _showErrorDialog('Error selecting video: ${e.toString()}');
     }
+  }
+
+  Future<void> _openPreviewAndMaybePublish(File videoFile) async {
+    final previewAction =
+        await Navigator.of(context).push<VideoRecordingPreviewAction>(
+      MaterialPageRoute(
+        builder: (context) => VideoRecordingPreview(
+          videoFile: videoFile,
+        ),
+      ),
+    );
+
+    if (!mounted || previewAction != VideoRecordingPreviewAction.useVideo) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => VideoPublishingScreen(
+          videoFile: videoFile,
+          caption: '',
+          hashtags: const [],
+          onPublish: () {
+            Navigator.of(context).pop();
+          },
+          onCancel: () {
+            Navigator.of(context).pop();
+          },
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    log('🎬 TikTokCameraView: Returned from publishing flow');
   }
 
   /// Show error dialog
@@ -739,41 +710,49 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   /// Build top controls
   Widget _buildTopControls() {
     return Positioned(
-      top: MediaQuery.of(context).padding.top + 16,
+      top: MediaQuery.of(context).padding.top + 12,
       left: 16,
       right: 16,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Close button
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.close, color: Colors.white, size: 28),
+          _buildGlassIconButton(
+            icon: Icons.close_rounded,
+            onTap: () => Navigator.of(context).pop(),
           ),
-
-          // Right side controls
+          const Expanded(
+            child: Column(
+              children: [
+                Text(
+                  'Create',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Capture something worth posting',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Row(
             children: [
-              // Grid toggle
-              IconButton(
-                onPressed: _toggleGrid,
-                icon: Icon(
-                  _showGrid ? Icons.grid_on : Icons.grid_off,
-                  color: Colors.white,
-                  size: 24,
-                ),
+              _buildModeChip(
+                _showGrid ? 'Grid on' : 'Grid off',
+                icon: _showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded,
+                onTap: _toggleGrid,
               ),
-
               const SizedBox(width: 8),
-
-              // Quality info toggle
-              IconButton(
-                onPressed: _toggleQualityInfo,
-                icon: const Icon(
-                  Icons.info_outline,
-                  color: Colors.white,
-                  size: 24,
-                ),
+              _buildGlassIconButton(
+                icon: Icons.info_outline_rounded,
+                onTap: _toggleQualityInfo,
               ),
             ],
           ),
@@ -785,55 +764,167 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   /// Build bottom controls
   Widget _buildBottomControls() {
     return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 40,
-      left: 0,
-      right: 0,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      bottom: MediaQuery.of(context).padding.bottom + 18,
+      left: 16,
+      right: 16,
+      child: Column(
         children: [
-          // Gallery button
-          IconButton(
-            onPressed: _pickFromGallery,
-            icon:
-                const Icon(Icons.photo_library, color: Colors.white, size: 28),
-          ),
-
-          // Record button
-          GestureDetector(
-            onTapDown: (_) => _startRecording(),
-            onTapUp: (_) => _stopRecording(),
-            onTapCancel: () => _stopRecording(),
-            child: Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: _isRecording ? Colors.red : Colors.white,
-                  width: 4,
-                ),
+          Row(
+            children: [
+              _buildStatusChip(
+                _isRecording ? 'Recording' : 'Ready',
                 color: _isRecording
-                    ? Colors.red.withValues(alpha: 0.3)
-                    : Colors.transparent,
+                    ? const Color(0xFFFF5F57)
+                    : const Color(0xFF1FBF75),
               ),
-              child: Center(
-                child: Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _isRecording ? Colors.red : Colors.white,
+              const Spacer(),
+              Text(
+                _isRecording ? _formatDuration(_recordingDuration) : 'Hold to record',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F1322).withValues(alpha: 0.90),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.24),
+                  blurRadius: 24,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _pickFromGallery,
+                    child: Container(
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.photo_library_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Gallery',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTapDown: (_) => _startRecording(),
+                  onTapUp: (_) => _stopRecording(),
+                  onTapCancel: () => _stopRecording(),
+                  child: Container(
+                    width: 92,
+                    height: 92,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _isRecording
+                            ? const Color(0xFFFF5F57)
+                            : Colors.white,
+                        width: 4,
+                      ),
+                      color: _isRecording
+                          ? const Color(0xFFFF5F57).withValues(alpha: 0.22)
+                          : Colors.transparent,
+                      boxShadow: _isRecording
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFFFF5F57)
+                                    .withValues(alpha: 0.28),
+                                blurRadius: 18,
+                                offset: const Offset(0, 8),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        width: _isRecording ? 34 : 68,
+                        height: _isRecording ? 34 : 68,
+                        decoration: BoxDecoration(
+                          color: _isRecording
+                              ? const Color(0xFFFF5F57)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(
+                            _isRecording ? 12 : 34,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _switchCamera,
+                    child: Container(
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.flip_camera_ios_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Flip',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-
-          // Switch camera button
-          IconButton(
-            onPressed: _switchCamera,
-            icon: const Icon(Icons.flip_camera_ios,
-                color: Colors.white, size: 28),
           ),
         ],
       ),
@@ -843,7 +934,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
   /// Build recording indicator
   Widget _buildRecordingIndicator() {
     return Positioned(
-      top: MediaQuery.of(context).padding.top + 16,
+      top: MediaQuery.of(context).padding.top + 84,
       left: 0,
       right: 0,
       child: Center(
@@ -875,6 +966,88 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlassIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.28),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: Colors.white,
+          size: 22,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeChip(
+    String label, {
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.28),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 16),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(String label, {required Color color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: color.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color == const Color(0xFF1FBF75)
+              ? const Color(0xFF7FF0B7)
+              : const Color(0xFFFFB2AD),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

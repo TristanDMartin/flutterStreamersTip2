@@ -29,23 +29,36 @@ class DraftsSheetView extends StatefulWidget {
 class _DraftsSheetViewState extends State<DraftsSheetView> {
   List<Map<String, dynamic>> _drafts = [];
   bool _isLoading = true;
+  String? _busyDraftId;
 
   @override
   void initState() {
     super.initState();
+    _drafts = List<Map<String, dynamic>>.from(widget.drafts);
     _loadDrafts();
   }
 
+  @override
+  void didUpdateWidget(covariant DraftsSheetView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.drafts != oldWidget.drafts && !_isLoading) {
+      _drafts = List<Map<String, dynamic>>.from(widget.drafts);
+    }
+  }
+
   Future<void> _loadDrafts() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final drafts = await LocalDraftService().getAllDrafts();
+      if (!mounted) return;
       setState(() {
         _drafts = drafts;
         _isLoading = false;
       });
     } catch (e) {
       debugPrint('❌ Error loading drafts: $e');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
@@ -83,11 +96,18 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
     );
 
     if (confirmed == true) {
-      await widget.onDelete(draft);
-      await _loadDrafts();
-      if (mounted && _drafts.isEmpty) {
-        // If no drafts left, pop back to profile
-        Navigator.of(context).pop();
+      final draftId = draft['id']?.toString();
+      setState(() => _busyDraftId = draftId);
+      try {
+        await widget.onDelete(draft);
+        await _loadDrafts();
+        if (mounted && _drafts.isEmpty) {
+          Navigator.of(context).pop();
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _busyDraftId = null);
+        }
       }
     }
   }
@@ -109,7 +129,13 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
         return;
       }
 
+      if (mounted) {
+        setState(() => _busyDraftId = draftId);
+      }
       final videoFile = await localDraftService.ensureLocalVideoFile(draftId);
+      if (mounted) {
+        setState(() => _busyDraftId = null);
+      }
       if (videoFile == null || !videoFile.existsSync()) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -134,6 +160,8 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
               videoFile: videoFile,
               caption: draft['caption'] ?? '',
               hashtags: hashtags,
+              draftId: draftId,
+              draftData: draft,
               onPublish: () async {
                 // Delete draft after successful publish
                 await LocalDraftService().deleteDraft(draft['id']);
@@ -151,6 +179,9 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
     } catch (e) {
       debugPrint('❌ Error editing draft: $e');
       if (mounted) {
+        setState(() => _busyDraftId = null);
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error opening draft: ${e.toString()}'),
@@ -164,9 +195,9 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF090312),
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF090312),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.white),
@@ -182,15 +213,42 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
         ),
         centerTitle: true,
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF9248D2),
-              ),
-            )
-          : _drafts.isEmpty
-              ? _buildEmptyState()
-              : _buildDraftsGrid(),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF170726),
+              Color(0xFF090312),
+              Color(0xFF040106),
+            ],
+          ),
+        ),
+        child: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF9248D2),
+                ),
+              )
+            : _drafts.isEmpty
+                ? _buildEmptyState()
+                : RefreshIndicator(
+                    color: const Color(0xFF9248D2),
+                    backgroundColor: const Color(0xFF16101F),
+                    onRefresh: _loadDrafts,
+                    child: CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverToBoxAdapter(child: _buildOverviewHeader()),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          sliver: _buildDraftsGrid(),
+                        ),
+                      ],
+                    ),
+                  ),
+      ),
     );
   }
 
@@ -215,7 +273,7 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Your draft videos will appear here',
+            'Your saved edits, captions, and upload prep will appear here',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.6),
               fontSize: 16,
@@ -226,20 +284,78 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
     );
   }
 
+  Widget _buildOverviewHeader() {
+    final count = _drafts.length;
+    final latestCreatedAt = _drafts
+        .map((draft) => DateTime.tryParse(draft['createdAt']?.toString() ?? ''))
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (latest, value) {
+      if (latest == null || value.isAfter(latest)) return value;
+      return latest;
+    });
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xCC8F48FF),
+              Color(0xCC2E8DFF),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF8F48FF).withValues(alpha: 0.22),
+              blurRadius: 28,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$count draft${count == 1 ? '' : 's'} ready',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              latestCreatedAt == null
+                  ? 'Pick up where you left off, or share a draft for feedback before publishing.'
+                  : 'Last updated ${_formatRelativeTime(latestCreatedAt)}. Tap any draft to keep editing or post it.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.86),
+                fontSize: 14,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDraftsGrid() {
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
+    return SliverGrid(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
         childAspectRatio: 9 / 16,
       ),
-      itemCount: _drafts.length,
-      itemBuilder: (context, index) {
+      delegate: SliverChildBuilderDelegate((context, index) {
         final draft = _drafts[index];
         return _buildDraftCard(draft);
-      },
+      }, childCount: _drafts.length),
     );
   }
 
@@ -286,6 +402,10 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
             ? draft['thumbnailPath'] as String
             : (draft['thumbnailUrl'] as String?) ?? '';
     final draftId = draft['id'] ?? 'draft';
+    final isBusy = _busyDraftId == draftId;
+    final createdAt = DateTime.tryParse(draft['createdAt']?.toString() ?? '');
+    final caption = (draft['caption'] as String?)?.trim() ?? '';
+    final statusChips = _buildDraftStatusChips(draft);
 
     debugPrint('🎬 DraftCard: Building draft $draftId');
     debugPrint('  - videoSource: $videoSource');
@@ -371,13 +491,65 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
         else
           GestureDetector(
             onTap: () => _handleEditDraft(draft),
-            child: GridThumbnail(
-              video: draftVideo,
-              onTap: () => _handleEditDraft(draft),
-              showDraftBadge: true,
-              showDurationBadge: false,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: GridThumbnail(
+                video: draftVideo,
+                onTap: () => _handleEditDraft(draft),
+                showDraftBadge: true,
+                showDurationBadge: false,
+              ),
             ),
           ),
+        Positioned(
+          left: 10,
+          right: 10,
+          bottom: 10,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.62),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  caption.isEmpty ? 'Untitled draft' : caption,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (createdAt != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Saved ${_formatRelativeTime(createdAt)}',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+                if (statusChips.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: statusChips,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
         // Share button
         Positioned(
           top: 8,
@@ -387,7 +559,7 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.6),
+                color: Colors.black.withValues(alpha: 0.72),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -407,7 +579,7 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.6),
+                color: Colors.black.withValues(alpha: 0.72),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -418,8 +590,142 @@ class _DraftsSheetViewState extends State<DraftsSheetView> {
             ),
           ),
         ),
+        if (isBusy)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
+  }
+
+  String _formatRelativeTime(DateTime dateTime) {
+    final difference = DateTime.now().difference(dateTime);
+    if (difference.inMinutes < 1) return 'just now';
+    if (difference.inHours < 1) return '${difference.inMinutes}m ago';
+    if (difference.inDays < 1) return '${difference.inHours}h ago';
+    if (difference.inDays < 7) return '${difference.inDays}d ago';
+    return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
+  }
+
+  List<Widget> _buildDraftStatusChips(Map<String, dynamic> draft) {
+    final metadata = draft['metadata'] is Map
+        ? Map<String, dynamic>.from(draft['metadata'] as Map)
+        : const <String, dynamic>{};
+    final chips = <Widget>[];
+
+    final scheduledAtRaw = metadata['scheduled_at_utc']?.toString();
+    final scheduledAt =
+        scheduledAtRaw == null ? null : DateTime.tryParse(scheduledAtRaw);
+    if (scheduledAt != null) {
+      chips.add(
+        _buildStatusChip(
+          label: 'Scheduled',
+          icon: Icons.schedule_rounded,
+          color: const Color(0xFFFFB454),
+        ),
+      );
+    } else {
+      chips.add(
+        _buildStatusChip(
+          label: 'Ready',
+          icon: Icons.check_circle_outline_rounded,
+          color: const Color(0xFF59D890),
+        ),
+      );
+    }
+
+    final crossPlatforms = (metadata['cross_platform_sharing'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .where((e) => e.isNotEmpty)
+            .toList() ??
+        const <String>[];
+    if (crossPlatforms.isNotEmpty) {
+      chips.add(
+        _buildStatusChip(
+          label: crossPlatforms.length == 1
+              ? 'Cross-posting'
+              : '${crossPlatforms.length} destinations',
+          icon: Icons.share_rounded,
+          color: const Color(0xFF62B7FF),
+        ),
+      );
+    }
+
+    final category = (draft['category'] as String?)?.trim();
+    if (category != null && category.isNotEmpty && category != 'general') {
+      chips.add(
+        _buildStatusChip(
+          label: _formatCategoryLabel(category),
+          icon: Icons.sell_outlined,
+          color: const Color(0xFFC895FF),
+        ),
+      );
+    }
+
+    return chips;
+  }
+
+  Widget _buildStatusChip({
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 104),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: color.withValues(alpha: 0.28),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.92),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatCategoryLabel(String raw) {
+    return raw
+        .split(RegExp(r'[-_]'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
   }
 
   Future<String?> _generateThumbnailIfMissing(String draftId, String videoPath) async {

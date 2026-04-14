@@ -75,6 +75,19 @@ class AppColors {
     Color(0xFF4897D2), // Lightest Blue
   ];
 
+  /// Home feed: bottom scrim for caption + actions (purple-tinted dark).
+  static const List<Color> homeFeedBottomScrim = [
+    Color(0x00000000),
+    Color(0x66000000),
+    Color(0xB3000000),
+    Color(0xE61C135D),
+  ];
+
+  static const List<double> homeFeedBottomScrimStops = [0.0, 0.45, 0.78, 1.0];
+
+  /// Send / CTA in comments: same family as [supportAccentGradient].
+  static const List<Color> commentsSendGradient = supportAccentGradient;
+
   static const List<Color> secondaryGradient = [
     Color(0xFF66FCF1), // Cyan
     Color(0xFF45B7D1), // Blue-Cyan

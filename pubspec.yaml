@@ -106,13 +106,13 @@ flutter:
   
   assets:
     - assets/
+    - assets/share_icons/
 
 # Flutter Launcher Icons Configuration
 # Note: Not using adaptive icons to avoid circular mask
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/logo1-0.PNG"
+  image_path: "assets/091225_ST_logo_white.PNG"
   min_sdk_android: 21
   remove_alpha_ios: true
-

@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../utils/public_video_count_rules.dart';
+
 /// Post Counter Reconciliation Service
 ///
 /// This service reconciles existing posts with the post counter system
@@ -14,27 +16,6 @@ class PostCounterReconciliation {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  /// Post counting rules (same as PostCounterService)
-  static const List<String> _countableStatuses = [
-    'published',
-    'public',
-  ];
-
-  static const List<String> _excludedStatuses = [
-    'draft',
-    'scheduled',
-    'archived',
-    'deleted',
-    'hidden',
-    'moderation',
-    'private',
-  ];
-
-  static const List<String> _countablePrivacyLevels = [
-    'public',
-    'followers',
-  ];
 
   /// Reconcile post count for current user
   Future<int> reconcileCurrentUserPosts() async {
@@ -56,29 +37,46 @@ class PostCounterReconciliation {
         debugPrint('🔧 Reconciling post count for user: $userId');
       }
 
-      // Count actual countable posts
-      final querySnapshot = await _firestore
-          .collection('videos')
-          .where('userId', isEqualTo: userId)
-          .get();
+      final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
+          <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      for (final String ownerField in <String>['userId', 'user_id']) {
+        final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+            .collection('videos')
+            .where(ownerField, isEqualTo: userId)
+            .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs) {
+          docMap[doc.id] = doc;
+        }
+      }
 
       int actualCount = 0;
-      final List<Map<String, dynamic>> countablePosts = [];
+      final List<Map<String, dynamic>> countablePosts =
+          <Map<String, dynamic>>[];
 
-      for (final doc in querySnapshot.docs) {
-        final data = doc.data();
-        final status = data['status'] as String? ?? 'draft';
-        final privacy = data['privacy'] as String? ?? 'private';
-
-        if (_shouldCountPost(status, privacy)) {
-          actualCount++;
-          countablePosts.add({
-            'id': doc.id,
-            'status': status,
-            'privacy': privacy,
-            'caption': data['caption'] ?? 'No caption',
-          });
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in docMap.values) {
+        final Map<String, dynamic> data = doc.data();
+        if (!videoOwnerIsUser(data, userId)) {
+          continue;
         }
+        if (!videoCountsAsPublicPostForStats(data)) {
+          continue;
+        }
+        try {
+          if (!await videoIsPlayableForProfileCount(doc.id, data)) {
+            continue;
+          }
+        } catch (_) {
+          continue;
+        }
+        actualCount++;
+        countablePosts.add(<String, dynamic>{
+          'id': doc.id,
+          'status': data['status'],
+          'privacy': data['privacy'],
+          'caption': data['caption'] ?? 'No caption',
+        });
       }
 
       // Update the counter with the actual count
@@ -86,7 +84,7 @@ class PostCounterReconciliation {
         'postCount': actualCount,
         'lastPostCountReconciliation': FieldValue.serverTimestamp(),
         'reconciliationDetails': {
-          'totalVideosFound': querySnapshot.docs.length,
+          'totalVideosFound': docMap.length,
           'countablePosts': actualCount,
           'reconciledAt': FieldValue.serverTimestamp(),
         },
@@ -95,7 +93,7 @@ class PostCounterReconciliation {
       if (kDebugMode) {
         debugPrint(
             '✅ Reconciled post count for user $userId: $actualCount posts');
-        debugPrint('📊 Total videos found: ${querySnapshot.docs.length}');
+        debugPrint('📊 Total videos found: ${docMap.length}');
         debugPrint('📊 Countable posts: $actualCount');
 
         if (countablePosts.isNotEmpty) {
@@ -160,31 +158,45 @@ class PostCounterReconciliation {
   /// Get detailed post analysis for a user
   Future<Map<String, dynamic>> analyzeUserPosts(String userId) async {
     try {
-      final querySnapshot = await _firestore
-          .collection('videos')
-          .where('userId', isEqualTo: userId)
-          .get();
+      final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
+          <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      for (final String ownerField in <String>['userId', 'user_id']) {
+        final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+            .collection('videos')
+            .where(ownerField, isEqualTo: userId)
+            .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs) {
+          docMap[doc.id] = doc;
+        }
+      }
 
-      final Map<String, int> statusCounts = {};
-      final Map<String, int> privacyCounts = {};
+      final Map<String, int> statusCounts = <String, int>{};
+      final Map<String, int> privacyCounts = <String, int>{};
       int countablePosts = 0;
-      int totalPosts = querySnapshot.docs.length;
+      final int totalPosts = docMap.length;
 
-      for (final doc in querySnapshot.docs) {
-        final data = doc.data();
-        final status = data['status'] as String? ?? 'draft';
-        final privacy = data['privacy'] as String? ?? 'private';
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in docMap.values) {
+        final Map<String, dynamic> data = doc.data();
+        final String status = data['status'] as String? ?? 'draft';
+        final String privacy = data['privacy'] as String? ?? 'private';
 
-        // Count by status
         statusCounts[status] = (statusCounts[status] ?? 0) + 1;
 
-        // Count by privacy
         privacyCounts[privacy] = (privacyCounts[privacy] ?? 0) + 1;
 
-        // Check if countable
-        if (_shouldCountPost(status, privacy)) {
-          countablePosts++;
+        if (!videoOwnerIsUser(data, userId)) {
+          continue;
         }
+        if (!videoCountsAsPublicPostForStats(data)) {
+          continue;
+        }
+        try {
+          if (await videoIsPlayableForProfileCount(doc.id, data)) {
+            countablePosts++;
+          }
+        } catch (_) {}
       }
 
       return {
@@ -216,16 +228,6 @@ class PostCounterReconciliation {
     } catch (e) {
       return 0;
     }
-  }
-
-  /// Check if a post should be counted
-  bool _shouldCountPost(String status, String privacy) {
-    final statusLower = status.toLowerCase();
-    final privacyLower = privacy.toLowerCase();
-
-    return _countableStatuses.contains(statusLower) &&
-        !_excludedStatuses.contains(statusLower) &&
-        _countablePrivacyLevels.contains(privacyLower);
   }
 
   /// Quick fix for current user (call this to fix your profile)

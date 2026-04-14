@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../models/forum_post.dart';
 import '../models/forum_comment.dart';
 import '../models/forum_category.dart';
 import '../models/forum_author.dart';
+import '../utils/avatar_url_resolver.dart';
 import 'discussion_author_service.dart';
 
 /// Thread sort options
@@ -28,6 +30,54 @@ class ForumService {
       DiscussionAuthorService();
 
   ForumService._internal();
+
+  /// [ForumPost.category] stores a `forumCategories` doc id; resolve labels for UI.
+  Future<List<ForumPost>> _attachCategoryDisplayNames(
+    List<ForumPost> posts,
+  ) async {
+    if (posts.isEmpty) {
+      return posts;
+    }
+    try {
+      final List<ForumCategory> categories = await getCategories();
+      final Map<String, String> idToName = <String, String>{
+        for (final ForumCategory c in categories) c.id: c.name,
+      };
+      return posts.map((ForumPost p) {
+        final String? resolved = idToName[p.category]?.trim();
+        final String? name = (resolved != null && resolved.isNotEmpty)
+            ? resolved
+            : p.categoryDisplayName?.trim();
+        if (name == null || name.isEmpty) {
+          return p;
+        }
+        return ForumPost(
+          id: p.id,
+          title: p.title,
+          content: p.content,
+          category: p.category,
+          categoryDisplayName: name,
+          tags: p.tags,
+          author: p.author,
+          visibility: p.visibility,
+          likes: p.likes,
+          commentCount: p.commentCount,
+          likedBy: p.likedBy,
+          bookmarkedBy: p.bookmarkedBy,
+          followedBy: p.followedBy,
+          linkedVideoId: p.linkedVideoId,
+          linkedCommentId: p.linkedCommentId,
+          sourceComment: p.sourceComment,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+          deleted: p.deleted,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error resolving category names: $e');
+      return posts;
+    }
+  }
 
   /// Get threads with filters
   Future<List<ForumPost>> getPosts({
@@ -72,13 +122,14 @@ class ForumService {
       query = query.limit(pageSize);
 
       final snapshot = await query.get();
-      final posts =
+      final List<ForumPost> posts =
           snapshot.docs.map((doc) => ForumPost.fromFirestore(doc)).toList();
 
       // TEMPORARILY DISABLED: Avatar enrichment causes memory issues
       // TODO: Re-enable with proper caching and pagination
       // final enrichedPosts = await _enrichPostsWithUserAvatars(posts);
-      final enrichedPosts = posts;
+      final List<ForumPost> enrichedPosts =
+          await _attachCategoryDisplayNames(posts);
 
       // Apply search query filter if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -91,6 +142,25 @@ class ForumService {
       }
 
       return enrichedPosts;
+    } on FirebaseException catch (e) {
+      if (e.code == 'failed-precondition' &&
+          (sortBy == ThreadSortBy.activeNow ||
+              sortBy == ThreadSortBy.popular)) {
+        debugPrint(
+          '⚠️ forumPosts index not ready for $sortBy (${e.message}); '
+          'using recent',
+        );
+        return getPosts(
+          categoryId: categoryId,
+          searchQuery: searchQuery,
+          sortBy: ThreadSortBy.recent,
+          pageSize: pageSize,
+          startAfterDoc: startAfterDoc,
+          currentUserId: currentUserId,
+        );
+      }
+      debugPrint('❌ Error fetching threads: $e');
+      rethrow;
     } catch (e) {
       debugPrint('❌ Error fetching threads: $e');
       rethrow;
@@ -104,7 +174,10 @@ class ForumService {
       if (!doc.exists || (doc.data()?['deleted'] as bool? ?? false)) {
         return null;
       }
-      return ForumPost.fromFirestore(doc);
+      final ForumPost post = ForumPost.fromFirestore(doc);
+      final List<ForumPost> withNames =
+          await _attachCategoryDisplayNames(<ForumPost>[post]);
+      return withNames.first;
     } catch (e) {
       debugPrint('❌ Error fetching thread: $e');
       rethrow;
@@ -669,7 +742,7 @@ class ForumService {
         for (var doc in userDocs) {
           if (doc.exists && doc.data() != null) {
             final userData = doc.data()!;
-            final avatarUrl = userData['avatarURL'] as String?;
+            final avatarUrl = resolveAvatarUrl(userData);
             if (avatarUrl != null && avatarUrl.isNotEmpty) {
               avatarMap[doc.id] = avatarUrl;
             }
@@ -695,6 +768,7 @@ class ForumService {
             title: post.title,
             content: post.content,
             category: post.category,
+            categoryDisplayName: post.categoryDisplayName,
             tags: post.tags,
             author: updatedAuthor,
             visibility: post.visibility,
@@ -761,7 +835,7 @@ class ForumService {
 
         for (final doc in usersSnapshot.docs) {
           final userData = doc.data();
-          final avatarUrl = userData['avatarURL'] as String?;
+          final avatarUrl = resolveAvatarUrl(userData);
           if (avatarUrl != null && avatarUrl.isNotEmpty) {
             currentAvatarUrls[doc.id] = avatarUrl;
           }

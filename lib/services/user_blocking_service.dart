@@ -10,6 +10,13 @@ class UserBlockingService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final ValueNotifier<int> _blockListRevision = ValueNotifier<int>(0);
+
+  ValueListenable<int> get blockListRevision => _blockListRevision;
+
+  void _notifyBlockListChanged() {
+    _blockListRevision.value++;
+  }
 
   /// Block a user
   Future<void> blockUser({
@@ -39,6 +46,7 @@ class UserBlockingService {
         'blockedUsers': FieldValue.arrayUnion([targetUserId]),
       });
 
+      _notifyBlockListChanged();
       debugPrint('✅ User blocked: $targetUserId');
     } catch (e) {
       debugPrint('❌ Error blocking user: $e');
@@ -70,6 +78,7 @@ class UserBlockingService {
         'blockedUsers': FieldValue.arrayRemove([targetUserId]),
       });
 
+      _notifyBlockListChanged();
       debugPrint('✅ User unblocked: $targetUserId');
     } catch (e) {
       debugPrint('❌ Error unblocking user: $e');

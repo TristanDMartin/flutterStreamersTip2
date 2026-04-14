@@ -10,6 +10,7 @@ import '../services/logging_service.dart';
 import '../services/analytics_service.dart';
 import '../services/error_handler_service.dart';
 import '../services/profile_link_service.dart';
+import '../services/user_blocking_service.dart';
 import 'brand_icons.dart';
 import 'video_qr_code_dialog.dart';
 
@@ -153,34 +154,45 @@ class StreamerShareSheet extends ConsumerWidget {
 
   Widget _buildSendToCarousel(BuildContext context, WidgetRef ref) {
     final relationshipState = ref.watch(relationshipServiceProvider);
-    final connections = relationshipState.connections;
 
-    // If no connections, don't show the carousel
-    if (connections.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    return ValueListenableBuilder<int>(
+      valueListenable: UserBlockingService().blockListRevision,
+      builder: (context, _, __) {
+        return FutureBuilder<List<String>>(
+          future: UserBlockingService().getBlockedUsers(),
+          builder: (context, snapshot) {
+            final blockedUserIds = snapshot.data?.toSet() ?? const <String>{};
+            final visibleConnections = relationshipState.connections
+                .where((connection) => !blockedUserIds.contains(connection.id))
+                .take(10)
+                .toList();
 
-    // Limit to first 10 connections for performance
-    final limitedConnections = connections.take(10).toList();
+            if (visibleConnections.isEmpty) {
+              return const SizedBox.shrink();
+            }
 
-    return SizedBox(
-      height: 100,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        itemCount: limitedConnections.length,
-        cacheExtent: 200, // Cache items for smooth scrolling
-        itemBuilder: (context, index) {
-          final contact = limitedConnections[index];
-          return _buildContactItem(
-            context,
-            contact.displayName.isNotEmpty
-                ? contact.displayName
-                : contact.username,
-            contact.avatarURL,
-          );
-        },
-      ),
+            return SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                itemCount: visibleConnections.length,
+                cacheExtent: 200,
+                itemBuilder: (context, index) {
+                  final contact = visibleConnections[index];
+                  return _buildContactItem(
+                    context,
+                    contact.displayName.isNotEmpty
+                        ? contact.displayName
+                        : contact.username,
+                    contact.avatarURL,
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

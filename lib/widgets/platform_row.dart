@@ -26,8 +26,11 @@ class PlatformRow extends StatefulWidget {
   final IconData platformIcon;
   final Color platformColor;
   final bool isEnabled;
+  final bool isLocked;
   final String initialCaption;
   final int characterLimit;
+  final String? lockedReason;
+  final String? trailingLabel;
   final ValueChanged<bool> onToggle;
   final ValueChanged<String> onCaptionChanged;
 
@@ -37,8 +40,11 @@ class PlatformRow extends StatefulWidget {
     required this.platformIcon,
     required this.platformColor,
     required this.isEnabled,
+    this.isLocked = false,
     required this.initialCaption,
     required this.characterLimit,
+    this.lockedReason,
+    this.trailingLabel,
     required this.onToggle,
     required this.onCaptionChanged,
   });
@@ -98,12 +104,16 @@ class _PlatformRowState extends State<PlatformRow> {
       decoration: BoxDecoration(
         color: widget.isEnabled
             ? Colors.white.withValues(alpha: 0.07)
-            : Colors.white.withValues(alpha: 0.03),
+            : widget.isLocked
+                ? Colors.white.withValues(alpha: 0.02)
+                : Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: widget.isEnabled
               ? widget.platformColor.withValues(alpha: 0.5)
-              : Colors.white.withValues(alpha: 0.1),
+              : widget.isLocked
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.white.withValues(alpha: 0.1),
         ),
       ),
       child: Column(
@@ -132,15 +142,41 @@ class _PlatformRowState extends State<PlatformRow> {
                   child: Text(
                     widget.platformName,
                     style: TextStyle(
-                      color: widget.isEnabled ? Colors.white : Colors.white54,
+                      color: widget.isEnabled
+                          ? Colors.white
+                          : widget.isLocked
+                              ? Colors.white38
+                              : Colors.white54,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
+                if (widget.trailingLabel != null) ...[
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: widget.platformColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: widget.platformColor.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Text(
+                      widget.trailingLabel!,
+                      style: TextStyle(
+                        color: widget.platformColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Switch(
                   value: widget.isEnabled,
-                  onChanged: widget.onToggle,
+                  onChanged: widget.isLocked ? null : widget.onToggle,
                   activeThumbColor: widget.platformColor,
                   activeTrackColor: widget.platformColor.withValues(alpha: 0.3),
                   inactiveTrackColor: Colors.white12,
@@ -148,6 +184,32 @@ class _PlatformRowState extends State<PlatformRow> {
               ],
             ),
           ),
+          if (widget.isLocked && widget.lockedReason != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.lock_outline_rounded,
+                    color: Colors.white.withValues(alpha: 0.36),
+                    size: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      widget.lockedReason!,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.42),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           // Caption editor — only when enabled
           if (widget.isEnabled)

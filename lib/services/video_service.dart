@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/home_video.dart';
 import '../models/video_thumbnails.dart';
 import '../models/user.dart' as app_user;
+import '../utils/public_video_count_rules.dart';
 import '../utils/video_url_resolver.dart';
 import '../utils/video_health_gate.dart';
 import 'real_user_data_service.dart';
@@ -19,6 +20,14 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final RealUserDataService _userDataService = RealUserDataService();
+  final Map<String, String?> _legacyOwnerCache = {};
+
+  bool _looksLikeFirebaseUid(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length < 20 || trimmed.length > 40) return false;
+    final uidPattern = RegExp(r'^[A-Za-z0-9]+$');
+    return uidPattern.hasMatch(trimmed);
+  }
 
   void _recordSkip(
     List<String> skippedVideoDetails,
@@ -28,6 +37,92 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   ) {
     skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
     skippedVideoDetails.add('$videoId -> $reason');
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+      _loadFeedCandidateDocs({
+    required int preferredLimit,
+    int unorderedLimit = 100,
+  }) async {
+    final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
+        <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+
+    Future<void> mergeQuery(
+      Future<QuerySnapshot<Map<String, dynamic>>> Function() run,
+      String label,
+    ) async {
+      try {
+        final QuerySnapshot<Map<String, dynamic>> result = await run();
+        debugPrint('🎬 VideoService: ${result.docs.length} videos ($label)');
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in result.docs) {
+          docMap.putIfAbsent(doc.id, () => doc);
+        }
+      } catch (e) {
+        debugPrint('⚠️ VideoService: Feed query failed ($label): $e');
+      }
+    }
+
+    await mergeQuery(
+      () => _firestore
+          .collection('videos')
+          .where('isReadyForFeed', isEqualTo: true)
+          .where('status', isEqualTo: 'active')
+          .where('visibility', isEqualTo: 'public')
+          .orderBy('engagementScore', descending: true)
+          .orderBy('publishedAt', descending: true)
+          .limit(preferredLimit)
+          .get(),
+      'canonical isReadyForFeed query',
+    );
+
+    // If the strict query only returns a partial slice, supplement it with
+    // legacy-compatible candidates instead of stopping at the first non-empty
+    // result set. This keeps mobile aligned with the website's broader
+    // published-video feed while still preferring canonical docs first.
+    if (docMap.length < preferredLimit) {
+      await mergeQuery(
+        () => _firestore
+            .collection('videos')
+            .where('isReadyForFeed', isEqualTo: true)
+            .orderBy('publishedAt', descending: true)
+            .limit(preferredLimit)
+            .get(),
+        'isReadyForFeed, publishedAt fallback',
+      );
+    }
+
+    if (docMap.length < preferredLimit) {
+      await mergeQuery(
+        () => _firestore
+            .collection('videos')
+            .where('status', whereIn: ['published', 'ready', 'active'])
+            .orderBy('createdAt', descending: true)
+            .limit(preferredLimit)
+            .get(),
+        'status whereIn fallback',
+      );
+    }
+
+    if (docMap.length < preferredLimit) {
+      await mergeQuery(
+        () => _firestore
+            .collection('videos')
+            .where('status', whereIn: ['published', 'ready', 'active'])
+            .limit(unorderedLimit)
+            .get(),
+        'status whereIn unordered fallback',
+      );
+    }
+
+    if (docMap.isEmpty) {
+      await mergeQuery(
+        () => _firestore.collection('videos').limit(unorderedLimit).get(),
+        'unordered collection fallback',
+      );
+    }
+
+    return docMap.values.toList();
   }
 
   List<HomeVideo> _applyLightweightFeedDiversity(List<HomeVideo> videos) {
@@ -102,6 +197,139 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
     }
   }
 
+  Future<String?> _resolveLegacyOwnerId(Map<String, dynamic> data) async {
+    final videoId = (data['id'] as String?)?.trim() ??
+        (data['videoId'] as String?)?.trim() ??
+        '';
+    if (videoId.isNotEmpty) {
+      final cacheKey = 'video:$videoId';
+      if (_legacyOwnerCache.containsKey(cacheKey)) {
+        final cached = _legacyOwnerCache[cacheKey];
+        if (cached != null && cached.isNotEmpty) return cached;
+      } else {
+        try {
+          final snapshot = await _firestore
+              .collectionGroup('videos')
+              .where(FieldPath.documentId, isEqualTo: videoId)
+              .limit(10)
+              .get();
+          if (snapshot.docs.isNotEmpty) {
+            String? ownerId;
+            for (final doc in snapshot.docs) {
+              final candidateOwnerId = doc.reference.parent.parent?.id;
+              if (candidateOwnerId != null && candidateOwnerId.trim().isNotEmpty) {
+                ownerId = candidateOwnerId;
+                break;
+              }
+            }
+            final normalizedOwnerId = ownerId?.trim();
+            _legacyOwnerCache[cacheKey] =
+                normalizedOwnerId != null && normalizedOwnerId.isNotEmpty
+                    ? normalizedOwnerId
+                    : null;
+            if (normalizedOwnerId != null && normalizedOwnerId.isNotEmpty) {
+              return normalizedOwnerId;
+            }
+          } else {
+            _legacyOwnerCache[cacheKey] = null;
+          }
+        } catch (_) {
+          _legacyOwnerCache[cacheKey] = null;
+        }
+      }
+
+      final underscoreIndex = videoId.indexOf('_');
+      if (underscoreIndex > 0) {
+        final candidateOwnerId = videoId.substring(0, underscoreIndex).trim();
+        if (_looksLikeFirebaseUid(candidateOwnerId)) {
+          final cacheKey = 'inferred:$candidateOwnerId';
+          if (_legacyOwnerCache.containsKey(cacheKey)) {
+            final cached = _legacyOwnerCache[cacheKey];
+            if (cached != null && cached.isNotEmpty) return cached;
+          } else {
+            try {
+              final userDoc =
+                  await _firestore.collection('users').doc(candidateOwnerId).get();
+              final normalizedOwnerId =
+                  userDoc.exists ? candidateOwnerId : null;
+              _legacyOwnerCache[cacheKey] = normalizedOwnerId;
+              if (normalizedOwnerId != null && normalizedOwnerId.isNotEmpty) {
+                return normalizedOwnerId;
+              }
+            } catch (_) {
+              _legacyOwnerCache[cacheKey] = null;
+            }
+          }
+        }
+      }
+    }
+
+    final usernameCandidates = <String>{
+      (data['creatorUsername'] as String?)?.trim() ?? '',
+      (data['username'] as String?)?.trim() ?? '',
+      (data['creator'] as String?)?.trim() ?? '',
+      (data['handle'] as String?)?.trim() ?? '',
+    }..removeWhere((value) => value.isEmpty);
+
+    for (final username in usernameCandidates) {
+      final cacheKey = 'username:$username';
+      if (_legacyOwnerCache.containsKey(cacheKey)) {
+        final cached = _legacyOwnerCache[cacheKey];
+        if (cached != null && cached.isNotEmpty) return cached;
+        continue;
+      }
+
+      try {
+        final usernameDoc =
+            await _firestore.collection('usernames').doc(username).get();
+        final uid = usernameDoc.data()?['uid'] as String?;
+        final normalizedUid = uid?.trim();
+        _legacyOwnerCache[cacheKey] =
+            normalizedUid != null && normalizedUid.isNotEmpty
+                ? normalizedUid
+                : null;
+        if (normalizedUid != null && normalizedUid.isNotEmpty) {
+          return normalizedUid;
+        }
+      } catch (_) {
+        _legacyOwnerCache[cacheKey] = null;
+      }
+    }
+
+    final displayNameCandidates = <String>{
+      (data['creatorName'] as String?)?.trim() ?? '',
+      (data['displayName'] as String?)?.trim() ?? '',
+      (data['creatorDisplayName'] as String?)?.trim() ?? '',
+    }..removeWhere((value) => value.isEmpty);
+
+    for (final displayName in displayNameCandidates) {
+      final cacheKey = 'display:$displayName';
+      if (_legacyOwnerCache.containsKey(cacheKey)) {
+        final cached = _legacyOwnerCache[cacheKey];
+        if (cached != null && cached.isNotEmpty) return cached;
+        continue;
+      }
+
+      try {
+        final snapshot = await _firestore
+            .collection('users')
+            .where('displayName', isEqualTo: displayName)
+            .limit(1)
+            .get();
+        final uid = snapshot.docs.isNotEmpty ? snapshot.docs.first.id : null;
+        _legacyOwnerCache[cacheKey] =
+            uid != null && uid.isNotEmpty ? uid : null;
+        if (uid != null && uid.isNotEmpty) {
+          return uid;
+        }
+      } catch (_) {
+        _legacyOwnerCache[cacheKey] = null;
+      }
+    }
+
+    return null;
+  }
+
   /// Load all videos from Firestore and store them in memory
   Future<void> loadAllVideos() async {
     try {
@@ -130,62 +358,24 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             '🚫 VideoService: Filtering ${blockedUserIds.length} blocked creators from feed');
       }
 
-      // Canonical feed query — spec §4.
-      // Primary: isReadyForFeed==true, status==active, visibility==public,
-      //          ordered by engagementScore DESC then publishedAt DESC.
-      // Fallback 1: backward-compat status values ('published'/'ready').
-      // Fallback 2: bare createdAt order (no index required).
-      QuerySnapshot<Map<String, dynamic>> snapshot;
       const limitCount = 20;
-      try {
-        snapshot = await _firestore
-            .collection('videos')
-            .where('isReadyForFeed', isEqualTo: true)
-            .where('status', isEqualTo: 'active')
-            .where('visibility', isEqualTo: 'public')
-            .orderBy('engagementScore', descending: true)
-            .orderBy('publishedAt', descending: true)
-            .limit(limitCount)
-            .get();
+      const unorderedLimitCount = 100;
+      final List<QueryDocumentSnapshot<Map<String, dynamic>>> candidateDocs =
+          await _loadFeedCandidateDocs(
+        preferredLimit: limitCount,
+        unorderedLimit: unorderedLimitCount,
+      );
+      if (candidateDocs.isNotEmpty) {
         debugPrint(
-            '🎬 VideoService: ${snapshot.docs.length} videos (canonical isReadyForFeed query)');
-      } catch (_) {
-        // Fallback 1 — legacy status values; covers videos before schema migration.
-        try {
-          snapshot = await _firestore
-              .collection('videos')
-              .where('isReadyForFeed', isEqualTo: true)
-              .orderBy('publishedAt', descending: true)
-              .limit(limitCount)
-              .get();
-          debugPrint(
-              '🎬 VideoService: ${snapshot.docs.length} videos (isReadyForFeed, publishedAt fallback)');
-        } catch (_) {
-          // Fallback 2 — no isReadyForFeed index yet; soft-filter post-fetch.
-          try {
-            snapshot = await _firestore
-                .collection('videos')
-                .where('status', whereIn: ['published', 'ready', 'active'])
-                .orderBy('createdAt', descending: true)
-                .limit(limitCount)
-                .get();
-            debugPrint(
-                '🎬 VideoService: ${snapshot.docs.length} videos (status whereIn fallback)');
-          } catch (_) {
-            snapshot = await _firestore
-                .collection('videos')
-                .orderBy('createdAt', descending: true)
-                .limit(limitCount)
-                .get();
-            debugPrint(
-                '🎬 VideoService: ${snapshot.docs.length} videos (bare createdAt fallback)');
-          }
-        }
+            '🎬 VideoService: ${candidateDocs.length} videos (merged candidate snapshot)');
+      } else {
+        debugPrint('🎬 VideoService: 0 videos (unordered collection fallback)');
       }
 
       // In-memory sort: engagementScore DESC → publishedAt DESC → createdAt DESC.
       // Applies when the fallback query ran without the canonical ordering.
-      final docsList = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.docs);
+      final docsList =
+          List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(candidateDocs);
       docsList.sort((a, b) {
         final aData = a.data();
         final bData = b.data();
@@ -203,6 +393,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       for (int i = 0; i < docsList.length && i < 5; i++) {
         final doc = docsList[i];
         final data = doc.data();
+        data['id'] = doc.id;
         debugPrint(
             '🎬 Video ${i + 1}: ID=${doc.id}, status=${data['status']}, updatedAt=${data['updatedAt'] != null ? 'YES' : 'NO'}, videoUrl=${(data['videoUrl'] ?? data['videoURL'] ?? data['video_url']) != null ? 'YES' : 'NO'}');
       }
@@ -214,6 +405,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
       for (final doc in docsList) {
         final data = doc.data();
+        data['id'] = doc.id;
 
         debugPrint(
             '🎬 VideoService: Processing video ${doc.id}: status=${data['status']}, privacy=${data['privacy']}, ownerId: ${getOwnerId(data)}');
@@ -259,7 +451,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         }
 
         // Canonical owner: single source of truth for filtering
-        final userId = getOwnerId(data);
+        final userId = getOwnerId(data) ?? await _resolveLegacyOwnerId(data);
         if (userId == null) {
           _recordSkip(skippedVideoDetails, skipReasons, doc.id, 'no userId');
           skippedCount++;
@@ -566,7 +758,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         }
 
         // Log count of videos filtered out
-        final totalBeforeFilter = snapshot.docs.length;
+        final totalBeforeFilter = candidateDocs.length;
         final totalAfterFilter = diversifiedVideos.length;
         final filteredOut = totalBeforeFilter - totalAfterFilter;
         if (filteredOut > 0) {
@@ -601,6 +793,216 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
       state = [];
     }
+  }
+
+  /// Fetches all of [profileUserId]'s public feed-eligible videos and merges them
+  /// into [state]. The home feed only loads a small global slice; without this,
+  /// [userVideosProvider] under-counts profile grids vs [reconcilePostCount].
+  Future<void> mergeProfileVideosForUser(String profileUserId) async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        return;
+      }
+      final user = _auth.currentUser;
+      if (user == null) {
+        return;
+      }
+      final List<String> blockedUserIds =
+          await UserBlockingService().getBlockedUsers();
+      if (blockedUserIds.contains(profileUserId)) {
+        return;
+      }
+      final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
+          <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      for (final String field
+          in <String>['userId', 'user_id', 'creatorId']) {
+        final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+            .collection('videos')
+            .where(field, isEqualTo: profileUserId)
+            .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs) {
+          docMap[doc.id] = doc;
+        }
+      }
+      final List<HomeVideo> built = <HomeVideo>[];
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in docMap.values) {
+        final Map<String, dynamic> data = doc.data();
+        if (!videoOwnerIsUser(data, profileUserId)) {
+          continue;
+        }
+        if (!videoCountsAsPublicPostForStats(data)) {
+          continue;
+        }
+        try {
+          if (!await videoIsPlayableForProfileCount(doc.id, data)) {
+            continue;
+          }
+        } catch (_) {
+          continue;
+        }
+        final HomeVideo? video = await _homeVideoFromDocAfterPlayableGate(
+          doc,
+          blockedUserIds,
+        );
+        if (video != null) {
+          built.add(video);
+        }
+      }
+      _mergeProfileVideosIntoState(built);
+      if (kDebugMode) {
+        debugPrint(
+          '🎬 VideoService: mergeProfileVideosForUser($profileUserId) → '
+          '${built.length} videos merged into state (total ${state.length})',
+        );
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ VideoService: mergeProfileVideosForUser failed: $e');
+      debugPrint('$stackTrace');
+    }
+  }
+
+  void _mergeProfileVideosIntoState(List<HomeVideo> profileVideos) {
+    if (profileVideos.isEmpty) {
+      return;
+    }
+    final Map<String, HomeVideo> profileById = <String, HomeVideo>{
+      for (final HomeVideo v in profileVideos) v.id: v,
+    };
+    final List<HomeVideo> next = <HomeVideo>[];
+    final Set<String> seen = <String>{};
+    for (final HomeVideo v in state) {
+      final HomeVideo u = profileById[v.id] ?? v;
+      next.add(u);
+      seen.add(u.id);
+    }
+    for (final HomeVideo v in profileVideos) {
+      if (!seen.contains(v.id)) {
+        next.add(v);
+      }
+    }
+    state = next;
+  }
+
+  Future<HomeVideo?> _homeVideoFromDocAfterPlayableGate(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    List<String> blockedUserIds,
+  ) async {
+    final Map<String, dynamic> data = doc.data();
+    final String? ownerId = getOwnerId(data);
+    if (ownerId == null || blockedUserIds.contains(ownerId)) {
+      return null;
+    }
+    VideoThumbnails? thumbnails;
+    final String? thumbnailUrl =
+        (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
+    final String videoUrl = resolveVideoUrl(data);
+    final dynamic playableResult =
+        await VideoHealthGate.instance.resolvePlayableSource(
+      doc.id,
+      cachedData: data,
+      fallbackUrl: videoUrl.isEmpty ? null : videoUrl,
+    );
+    if (playableResult is! Playable) {
+      return null;
+    }
+    final String playableUrl = playableResult.url;
+    final app_user.User? creator = await _userDataService.getUserById(ownerId);
+    if (creator == null) {
+      final app_user.User placeholderCreator = app_user.User(
+        id: ownerId,
+        username:
+            'user_${ownerId.length > 10 ? ownerId.substring(0, 10) : ownerId}',
+        displayName: 'User',
+        avatarURL: null,
+        bio: null,
+        hashtags: const <String>[],
+      );
+      VideoThumbnails? placeholderThumbnails;
+      if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+        placeholderThumbnails = VideoThumbnails(
+          urls: <int, String>{
+            360: thumbnailUrl,
+            540: thumbnailUrl,
+            720: thumbnailUrl,
+          },
+          generatedAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+        );
+      }
+      return HomeVideo(
+        id: doc.id,
+        creator: placeholderCreator,
+        videoURL: playableUrl,
+        thumbnailURL: thumbnailUrl,
+        thumbnails: placeholderThumbnails,
+        caption: data['caption'] ??
+            data['title'] ??
+            data['description'] ??
+            'Untitled',
+        categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+        views: data['views']?.toInt() ?? 0,
+        likes: data['likes']?.toInt() ?? 0,
+        comments: data['comments']?.toInt() ?? 0,
+        duration: _parseDuration(
+          data['metadata']?['duration'] ?? data['duration'],
+        ),
+        isDraft: false,
+        createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+      );
+    }
+    if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+      thumbnails = VideoThumbnails(
+        urls: <int, String>{
+          360: thumbnailUrl,
+          540: thumbnailUrl,
+          720: thumbnailUrl,
+        },
+        generatedAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+      );
+    }
+    if (thumbnails == null) {
+      final Map<String, dynamic>? thumbnailsData =
+          data['thumbnails'] as Map<String, dynamic>?;
+      if (thumbnailsData != null && thumbnailsData['urls'] != null) {
+        final Map<String, dynamic> urlsData =
+            thumbnailsData['urls'] as Map<String, dynamic>;
+        final Map<int, String> urls = <int, String>{};
+        urlsData.forEach((String key, dynamic value) {
+          final int? intKey = int.tryParse(key);
+          if (intKey != null && value is String) {
+            urls[intKey] = value;
+          }
+        });
+        if (urls.isNotEmpty) {
+          thumbnails = VideoThumbnails(
+            urls: urls,
+            generatedAt: thumbnailsData['generatedAt'] as Timestamp? ??
+                data['createdAt'] as Timestamp? ??
+                Timestamp.now(),
+          );
+        }
+      }
+    }
+    return HomeVideo(
+      id: doc.id,
+      creator: creator,
+      videoURL: playableUrl,
+      thumbnailURL: thumbnailUrl,
+      thumbnails: thumbnails,
+      caption: data['caption'] ??
+          data['title'] ??
+          data['description'] ??
+          'Untitled',
+      categoryId: data['category'] ?? data['categoryId'] ?? 'general',
+      views: data['views']?.toInt() ?? 0,
+      likes: data['likes']?.toInt() ?? 0,
+      comments: data['comments']?.toInt() ?? 0,
+      duration:
+          _parseDuration(data['metadata']?['duration'] ?? data['duration']),
+      isDraft: false,
+      createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
+    );
   }
 
   /// Add a new video to the service (called after upload)

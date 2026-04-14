@@ -12,6 +12,7 @@ import '../models/user_count_fields.dart';
 import '../models/user_status.dart';
 import 'username_lock_service.dart';
 import 'r2_media_service.dart';
+import '../utils/avatar_url_resolver.dart';
 
 class AuthenticationService extends ChangeNotifier {
   final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
@@ -74,7 +75,7 @@ class AuthenticationService extends ChangeNotifier {
           username: data['username'] as String? ?? 'user',
           displayName: data['displayName'] as String? ?? 'User',
           bio: data['bio'] as String? ?? '',
-          avatarURL: data['avatarURL'] as String?,
+          avatarURL: resolveAvatarUrl(data),
           onlineStatus: data['onlineStatus'] as String? ?? 'online',
           hashtags: hashtags,
           postCount: data['postCount'] as int? ?? 0,
@@ -194,6 +195,7 @@ class AuthenticationService extends ChangeNotifier {
         'displayName': user.displayName,
         'bio': user.bio,
         'avatarURL': user.avatarURL,
+        'avatarUrl': user.avatarURL,
         'email': email,
         'onlineStatus': user.onlineStatus,
         'hashtags': user.hashtags,
@@ -232,7 +234,7 @@ class AuthenticationService extends ChangeNotifier {
           displayName:
               data['displayName'] as String? ?? _currentUser!.displayName,
           bio: data['bio'] as String? ?? _currentUser!.bio,
-          avatarURL: data['avatarURL'] as String? ?? _currentUser!.avatarURL,
+          avatarURL: resolveAvatarUrl(data) ?? _currentUser!.avatarURL,
           onlineStatus:
               data['onlineStatus'] as String? ?? _currentUser!.onlineStatus,
           hashtags: _parseHashtags(data['hashtags']) ?? _currentUser!.hashtags,
@@ -562,7 +564,7 @@ class AuthenticationService extends ChangeNotifier {
         username: userData['username'] ?? 'user',
         displayName: userData['displayName'] ?? 'User',
         bio: userData['bio'] ?? '',
-        avatarURL: userData['avatarURL'],
+        avatarURL: resolveAvatarUrl(userData),
         onlineStatus: userData['onlineStatus'] ?? 'online',
         hashtags:
             (userData['hashtags'] as List<dynamic>?)?.cast<String>() ?? [],
@@ -732,18 +734,40 @@ class AuthenticationService extends ChangeNotifier {
           await R2MediaService.instance.uploadAvatar(imageFile);
       debugPrint('✅ Avatar uploaded to R2: $downloadUrl');
 
-      // Update user profile in Firestore
+      // Update user profile in Firestore (website + legacy readers use photoURL)
       debugPrint('💾 Updating user profile in Firestore...');
+      final nowTs = FieldValue.serverTimestamp();
       await _firestore.collection('users').doc(user.uid).update({
         'avatarURL': downloadUrl,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'avatarUrl': downloadUrl,
+        'photoURL': downloadUrl,
+        'avatarUpdatedAt': nowTs,
+        'updatedAt': nowTs,
       });
 
       debugPrint('✅ Firestore profile updated successfully');
 
+      // Best-effort mirror for list/discovery surfaces that read publicUsers.
+      await _syncPublicUserAvatar(user.uid, downloadUrl);
+
+      // Firebase Auth photoURL — web clients often read currentUser.photoURL
+      try {
+        await user.updatePhotoURL(downloadUrl);
+        await user.reload();
+        await user.getIdToken(true);
+        debugPrint('✅ Firebase Auth photoURL + ID token refreshed');
+      } catch (e) {
+        debugPrint(
+          '⚠️ Auth photoURL update failed (Firestore still has new URL): $e',
+        );
+      }
+
       // Update current user profile data
       if (_currentUserProfile != null) {
         _currentUserProfile!['avatarURL'] = downloadUrl;
+        _currentUserProfile!['avatarUrl'] = downloadUrl;
+        _currentUserProfile!['photoURL'] = downloadUrl;
+        _currentUserProfile!['avatarUpdatedAt'] = DateTime.now().toIso8601String();
         _currentUserProfile!['updatedAt'] = DateTime.now().toIso8601String();
       }
 
@@ -798,6 +822,29 @@ class AuthenticationService extends ChangeNotifier {
       throw Exception(errorMessage);
     } finally {
       setLoading(false);
+    }
+  }
+
+  Future<void> _syncPublicUserAvatar(String uid, String avatarUrl) async {
+    try {
+      final displayName = _currentUser?.displayName ?? _currentUserProfile?['displayName'];
+      final username = _currentUser?.username ?? _currentUserProfile?['username'];
+
+      await _firestore.collection('publicUsers').doc(uid).set({
+        'uid': uid,
+        'id': uid,
+        if (displayName != null) 'displayName': displayName,
+        if (username != null) 'username': username,
+        'avatarUrl': avatarUrl,
+        'avatarURL': avatarUrl,
+        'avatarUpdatedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      debugPrint('✅ publicUsers avatar mirror updated successfully');
+    } catch (e) {
+      // Do not fail avatar upload if public mirror is blocked by rules.
+      debugPrint('⚠️ Failed to sync publicUsers avatar mirror: $e');
     }
   }
 

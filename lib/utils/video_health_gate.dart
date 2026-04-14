@@ -222,7 +222,8 @@ class VideoHealthGate {
       if (hlsUrl != null &&
           hlsUrl.toString().trim().isNotEmpty &&
           !containsOriginalMp4(hlsUrl.toString()) &&
-          _isValidUrl(hlsUrl.toString().trim())) {
+          _isValidUrl(normalizeMuxHlsUrl(hlsUrl.toString().trim()))) {
+        final normalizedHlsUrl = normalizeMuxHlsUrl(hlsUrl.toString().trim());
         _logSourceDiagnostics(
           videoId,
           data,
@@ -230,12 +231,13 @@ class VideoHealthGate {
           selectedSourceType: 'hls',
         );
         return _playableIfNotOriginal(
-            hlsUrl.toString().trim(), 'hls', 'hls', videoId, data: data);
+            normalizedHlsUrl, 'hls', 'hls', videoId, data: data);
       }
       final canonical = data['canonicalPlaybackUrl'] as String?;
       if (canonical != null && canonical.trim().isNotEmpty && !containsOriginalMp4(canonical)) {
-        if (_isValidUrl(canonical.trim())) {
-          final canonicalLower = canonical.toLowerCase();
+        final normalizedCanonical = normalizeMuxHlsUrl(canonical.trim());
+        if (_isValidUrl(normalizedCanonical)) {
+          final canonicalLower = normalizedCanonical.toLowerCase();
           if (isLowMemory && canonicalLower.contains('1080')) {
             developer.log('⚠️ VideoHealthGate: Skipping 1080p canonical URL on low-memory device');
           } else {
@@ -246,7 +248,7 @@ class VideoHealthGate {
               selectedSourceType: 'canonical',
             );
             return _playableIfNotOriginal(
-                canonical.trim(), 'canonical', 'canonical', videoId,
+                normalizedCanonical, 'canonical', 'canonical', videoId,
                 data: data);
           }
         }
@@ -258,6 +260,7 @@ class VideoHealthGate {
         // Try 720p first (better quality, still safe for low-memory)
         final url720 = data['mp4_720_url'] as String?;
         if (url720 != null && url720.trim().isNotEmpty && !containsOriginalMp4(url720) && _isValidUrl(url720.trim())) {
+          final normalized720 = normalizeMuxHlsUrl(url720.trim());
           _logSourceDiagnostics(
             videoId,
             data,
@@ -265,10 +268,11 @@ class VideoHealthGate {
             selectedSourceType: '720p',
           );
           return _playableIfNotOriginal(
-              url720.trim(), '720p', '720p', videoId, data: data);
+              normalized720, '720p', '720p', videoId, data: data);
         }
         final url480 = data['mp4_480_url'] as String?;
         if (url480 != null && url480.trim().isNotEmpty && !containsOriginalMp4(url480) && _isValidUrl(url480.trim())) {
+          final normalized480 = normalizeMuxHlsUrl(url480.trim());
           _logSourceDiagnostics(
             videoId,
             data,
@@ -276,11 +280,12 @@ class VideoHealthGate {
             selectedSourceType: '480p',
           );
           return _playableIfNotOriginal(
-              url480.trim(), '480p', '480p', videoId, data: data);
+              normalized480, '480p', '480p', videoId, data: data);
         }
         if (fallbackUrl != null && fallbackUrl.trim().isNotEmpty) {
-          final urlLower = fallbackUrl.toLowerCase();
-          if (!urlLower.contains('1080') && !containsOriginalMp4(fallbackUrl) && _isValidUrl(fallbackUrl.trim())) {
+          final normalizedFallback = normalizeMuxHlsUrl(fallbackUrl.trim());
+          final urlLower = normalizedFallback.toLowerCase();
+          if (!urlLower.contains('1080') && !containsOriginalMp4(normalizedFallback) && _isValidUrl(normalizedFallback)) {
             if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
               _logSourceDiagnostics(
                 videoId,
@@ -289,7 +294,7 @@ class VideoHealthGate {
                 selectedSourceType: 'fallback',
               );
               return _playableIfNotOriginal(
-                fallbackUrl.trim(), 'fallback', 'fallback', videoId);
+                normalizedFallback, 'fallback', 'fallback', videoId);
             }
           }
         }
@@ -309,6 +314,7 @@ class VideoHealthGate {
       
       final url1080 = data['mp4_1080_url'] as String?;
       if (url1080 != null && url1080.trim().isNotEmpty && !containsOriginalMp4(url1080) && _isValidUrl(url1080.trim())) {
+        final normalized1080 = normalizeMuxHlsUrl(url1080.trim());
         _logSourceDiagnostics(
           videoId,
           data,
@@ -316,10 +322,11 @@ class VideoHealthGate {
           selectedSourceType: '1080p',
         );
         return _playableIfNotOriginal(
-            url1080.trim(), '1080p', '1080p', videoId, data: data);
+            normalized1080, '1080p', '1080p', videoId, data: data);
       }
       final url720 = data['mp4_720_url'] as String?;
       if (url720 != null && url720.trim().isNotEmpty && !containsOriginalMp4(url720) && _isValidUrl(url720.trim())) {
+        final normalized720 = normalizeMuxHlsUrl(url720.trim());
         _logSourceDiagnostics(
           videoId,
           data,
@@ -327,10 +334,11 @@ class VideoHealthGate {
           selectedSourceType: '720p',
         );
         return _playableIfNotOriginal(
-            url720.trim(), '720p', '720p', videoId, data: data);
+            normalized720, '720p', '720p', videoId, data: data);
       }
       final url480 = data['mp4_480_url'] as String?;
       if (url480 != null && url480.trim().isNotEmpty && !containsOriginalMp4(url480) && _isValidUrl(url480.trim())) {
+        final normalized480 = normalizeMuxHlsUrl(url480.trim());
         _logSourceDiagnostics(
           videoId,
           data,
@@ -338,7 +346,7 @@ class VideoHealthGate {
           selectedSourceType: '480p',
         );
         return _playableIfNotOriginal(
-            url480.trim(), '480p', '480p', videoId, data: data);
+            normalized480, '480p', '480p', videoId, data: data);
       }
       final legacyKeys = [
         'hlsUrl',
@@ -351,7 +359,8 @@ class VideoHealthGate {
       for (final key in legacyKeys) {
         final url = data[key] as String?;
         if (url != null && url.trim().isNotEmpty && !containsOriginalMp4(url) && _isValidUrl(url.trim())) {
-          final urlLower = url.toLowerCase();
+          final normalizedUrl = normalizeMuxHlsUrl(url.trim());
+          final urlLower = normalizedUrl.toLowerCase();
           if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
             if (isLowMemory && urlLower.contains('1080')) {
               developer.log('⚠️ VideoHealthGate: Skipping 1080p legacy URL on low-memory device');
@@ -364,13 +373,14 @@ class VideoHealthGate {
               selectedSourceType: key,
             );
             return _playableIfNotOriginal(
-                url.trim(), 'legacy', key, videoId, data: data);
+                normalizedUrl, 'legacy', key, videoId, data: data);
           }
         }
       }
       if (fallbackUrl != null && fallbackUrl.trim().isNotEmpty) {
-        if (!containsOriginalMp4(fallbackUrl) && _isValidUrl(fallbackUrl.trim())) {
-          final urlLower = fallbackUrl.toLowerCase();
+        final normalizedFallback = normalizeMuxHlsUrl(fallbackUrl.trim());
+        if (!containsOriginalMp4(normalizedFallback) && _isValidUrl(normalizedFallback)) {
+          final urlLower = normalizedFallback.toLowerCase();
           if (urlLower.contains('.mp4') || urlLower.contains('.m3u8')) {
             if (!(isLowMemory && urlLower.contains('1080'))) {
               _logSourceDiagnostics(
@@ -380,7 +390,7 @@ class VideoHealthGate {
                 selectedSourceType: 'fallback',
               );
               return _playableIfNotOriginal(
-                fallbackUrl.trim(), 'fallback', 'fallback', videoId,
+                normalizedFallback, 'fallback', 'fallback', videoId,
                 data: data);
             }
           }

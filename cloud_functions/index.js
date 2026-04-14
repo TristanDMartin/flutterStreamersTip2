@@ -1589,6 +1589,10 @@ function formatNumber(num) {
 const region = 'us-central1';
 const crypto = require('crypto');
 const { createDirectUpload, handleMuxWebhook } = require('./src/mux');
+const {handleGamificationEvents} = require('./src/gamification/gamification_events_http');
+
+/** Optional fallback only — prefer Cloudflare Worker `POST /gamification/events` (same contract). */
+exports.gamificationEvents = onRequest({region, cors: true}, handleGamificationEvents);
 
 exports.createMuxDirectUpload = onCall({ region }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in');
@@ -1730,6 +1734,112 @@ function buildOAuthRedirect(provider, baseUrl) {
   return `${authUrl}?${params.toString()}`;
 }
 
+function encodeOAuthState(payload) {
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+}
+
+function decodeOAuthState(rawState) {
+  try {
+    if (!rawState) return {};
+    return JSON.parse(Buffer.from(String(rawState), 'base64url').toString('utf8'));
+  } catch (_) {
+    return {};
+  }
+}
+
+function resolveBaseUrl(req) {
+  return req.headers.origin || req.protocol + '://' + req.get('host') || '';
+}
+
+function sanitizeReturnUrl(returnUrl, baseUrl) {
+  if (typeof returnUrl !== 'string' || returnUrl.trim() === '') {
+    return baseUrl;
+  }
+  try {
+    const candidate = new URL(returnUrl, baseUrl);
+    const allowed = new URL(baseUrl);
+    if (candidate.origin !== allowed.origin) {
+      return baseUrl;
+    }
+    return candidate.toString();
+  } catch (_) {
+    return baseUrl;
+  }
+}
+
+async function fetchYoutubeChannelProfile(accessToken) {
+  const fetch = (await import('node-fetch')).default;
+  const res = await fetch(
+    'https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true',
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error?.message || 'Failed to fetch YouTube channel');
+  }
+  return data.items?.[0] || null;
+}
+
+async function persistYoutubeConnection({uid, tokenData, channel}) {
+  if (!uid) return;
+
+  const channelId = channel?.id || '';
+  const snippet = channel?.snippet || {};
+  const stats = channel?.statistics || {};
+  const displayName = snippet.title || 'YouTube';
+  const username =
+    snippet.customUrl ||
+    channelId ||
+    'connected';
+  const url = channelId ? `https://www.youtube.com/channel/${channelId}` : null;
+  const expiresAt = tokenData.expires_in
+    ? new Date(Date.now() + Number(tokenData.expires_in) * 1000)
+    : null;
+
+  await firestore
+    .collection('users')
+    .doc(uid)
+    .collection('platform_auth')
+    .doc('youtube')
+    .set({
+      provider: 'youtube',
+      channelId,
+      channelTitle: displayName,
+      accessToken: tokenData.access_token || null,
+      refreshToken: tokenData.refresh_token || null,
+      scope: tokenData.scope || null,
+      tokenType: tokenData.token_type || 'Bearer',
+      expiresAt: expiresAt || null,
+      updatedAt: FieldValue.serverTimestamp(),
+      connectedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+
+  const userRef = firestore.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const currentPlatforms = Array.isArray(userSnap.data()?.platforms)
+    ? [...userSnap.data().platforms]
+    : [];
+  const nextPlatforms = currentPlatforms.filter((platform) => {
+    const type = String(platform?.type || '').toLowerCase();
+    return type !== 'youtube';
+  });
+  nextPlatforms.push({
+    id: channelId || 'youtube_connected',
+    type: 'youtube',
+    username,
+    followers: Number(stats.subscriberCount || 0),
+    url,
+  });
+  await userRef.set({
+    platforms: nextPlatforms,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
+}
+
 exports.apiKickAuthStart = functions.region(region).https.onRequest((req, res) => {
   const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
   const url = buildOAuthRedirect('kick', baseUrl);
@@ -1826,13 +1936,30 @@ exports.apiTwitchAuthCallback = functions.region(region).https.onRequest(async (
 });
 
 exports.apiYoutubeAuthStart = functions.region(region).https.onRequest((req, res) => {
-  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
+  const baseUrl = resolveBaseUrl(req);
   const clientId = process.env.YOUTUBE_CLIENT_ID || functions.config().youtube?.client_id;
   if (!clientId) {
     res.status(503).json({ error: 'YouTube OAuth not configured' });
     return;
   }
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(baseUrl + '/apiYoutubeAuthCallback')}&response_type=code&scope=https://www.googleapis.com/auth/youtube.readonly`;
+  const state = encodeOAuthState({
+    uid: typeof req.query.uid === 'string' ? req.query.uid : '',
+    returnUrl: sanitizeReturnUrl(
+      typeof req.query.returnUrl === 'string' ? req.query.returnUrl : '',
+      baseUrl
+    ),
+  });
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: `${baseUrl}/apiYoutubeAuthCallback`,
+    response_type: 'code',
+    scope: 'https://www.googleapis.com/auth/youtube.upload',
+    access_type: 'offline',
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+    state,
+  });
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   res.redirect(url);
 });
 
@@ -1842,7 +1969,7 @@ exports.apiYoutubeAuthCallback = functions.region(region).https.onRequest(async 
     res.status(400).send('Missing code');
     return;
   }
-  const baseUrl = req.headers.origin || req.protocol + '://' + req.get('host') || '';
+  const baseUrl = resolveBaseUrl(req);
   const redirectUri = baseUrl + '/apiYoutubeAuthCallback';
   const clientId = process.env.YOUTUBE_CLIENT_ID || functions.config().youtube?.client_id;
   const clientSecret = process.env.YOUTUBE_CLIENT_SECRET || functions.config().youtube?.client_secret;
@@ -1851,6 +1978,10 @@ exports.apiYoutubeAuthCallback = functions.region(region).https.onRequest(async 
     return;
   }
   try {
+    const state = decodeOAuthState(
+      typeof req.query.state === 'string' ? req.query.state : ''
+    );
+    const returnUrl = sanitizeReturnUrl(state.returnUrl, baseUrl);
     const fetch = (await import('node-fetch')).default;
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -1858,7 +1989,39 @@ exports.apiYoutubeAuthCallback = functions.region(region).https.onRequest(async 
       body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
     });
     const tokenData = await tokenRes.json();
-    res.redirect(`${baseUrl}?youtube_connected=1&access_token=${encodeURIComponent(tokenData.access_token || '')}`);
+    if (!tokenRes.ok) {
+      res.status(500).send(tokenData.error_description || tokenData.error || 'OAuth failed');
+      return;
+    }
+    const channel = tokenData.access_token
+      ? await fetchYoutubeChannelProfile(tokenData.access_token).catch((error) => {
+          console.warn('YouTube profile fetch failed:', error.message);
+          return null;
+        })
+      : null;
+    if (state.uid) {
+      await persistYoutubeConnection({
+        uid: state.uid,
+        tokenData,
+        channel,
+      });
+    }
+
+    const redirectTarget = new URL(returnUrl);
+    redirectTarget.searchParams.set('youtube_connected', '1');
+    if (channel?.snippet?.title) {
+      redirectTarget.searchParams.set(
+        'youtube_channel',
+        channel.snippet.title
+      );
+    }
+    if (!state.uid && tokenData.access_token) {
+      redirectTarget.searchParams.set(
+        'access_token',
+        tokenData.access_token
+      );
+    }
+    res.redirect(redirectTarget.toString());
   } catch (e) {
     console.error('YouTube callback error:', e);
     res.status(500).send('OAuth failed');

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'user.dart' as app;
+import '../utils/avatar_url_resolver.dart';
 
 class TimestampConverter implements JsonConverter<DateTime, Object?> {
   const TimestampConverter();
@@ -32,8 +33,7 @@ class UserConverter implements JsonConverter<app.User, Map<String, dynamic>> {
         username: (json['username'] ?? '').toString(),
         displayName: (json['displayName'] ?? '').toString(),
         bio: json['bio'] as String?,
-        // Handle both avatarURL and avatarUrl, and null/empty values
-        avatarURL: _extractAvatarUrl(json),
+        avatarURL: resolveAvatarUrl(json),
         onlineStatus: (json['onlineStatus'] ?? 'online').toString(),
         hashtags:
             List<String>.from((json['hashtags'] as List?) ?? const <String>[]),
@@ -41,24 +41,6 @@ class UserConverter implements JsonConverter<app.User, Map<String, dynamic>> {
         followerCount: (json['followerCount'] ?? 0) as int,
         followingCount: (json['followingCount'] ?? 0) as int,
       );
-
-  /// Extract avatar URL handling all possible field names and null/empty values
-  String? _extractAvatarUrl(Map<String, dynamic> json) {
-    // Try avatarURL first (uppercase)
-    final url1 = json['avatarURL'] as String?;
-    if (url1 != null && url1.isNotEmpty && url1 != 'null') {
-      return url1;
-    }
-
-    // Try avatarUrl (lowercase)
-    final url2 = json['avatarUrl'] as String?;
-    if (url2 != null && url2.isNotEmpty && url2 != 'null') {
-      return url2;
-    }
-
-    // Return null if no valid URL found
-    return null;
-  }
 
   @override
   Map<String, dynamic> toJson(app.User user) => {

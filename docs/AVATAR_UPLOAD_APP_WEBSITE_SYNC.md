@@ -1,246 +1,127 @@
-# Avatar Upload: App & Website Sync
+# Avatar system: web, Firestore, and mobile
 
-Unified avatar upload and sync between the Flutter app and website. Both platforms use the same Cloudflare Worker and R2 storage; Firestore is the single source of truth.
-
----
-
-## Architecture
-
-```
-┌─────────────────┐     ┌──────────────────────┐     ┌─────────────┐
-│  Flutter App    │     │  Cloudflare Worker    │     │  R2 Bucket  │
-│  or Website    │────▶│  POST /media/upload   │────▶│  avatars/   │
-└─────────────────┘     └──────────────────────┘     └─────────────┘
-         │                            │                        │
-         │                            │                        │
-         ▼                            ▼                        │
-┌─────────────────┐                  │                        │
-│  Firestore      │◀─────────────────┴────────────────────────┘
-│  users/{uid}    │   Worker returns URL; client updates doc
-│  avatarURL      │
-└─────────────────┘
-         │
-         │  Real-time listener (both app & website)
-         ▼
-   Avatar displays everywhere
-```
+This document describes how profile avatars are stored, how the website updates everywhere immediately after upload, and what the mobile app should do to stay in sync globally.
 
 ---
 
-## Upload API (Shared)
+## Source of truth
 
-### Endpoint
+| Location | Role |
+|----------|------|
+| **`users/{uid}`** (Firestore) | Canonical profile. Avatar fields: `avatarURL`, `avatarUrl` (duplicate casing for compatibility), optional `avatarPath`, `avatarUpdatedAt`, `updatedAt`. |
+| **`publicUsers/{uid}`** (Firestore) | Denormalized public profile used for feeds, discovery, and lightweight reads. Includes `avatarUrl`. |
+| **Cloudflare R2** (via upload worker) | Binary image storage. The public HTTPS URL returned after upload is what gets written to Firestore. |
 
-```
-POST https://streamerstip-mux-api.streamerstip.workers.dev/media/upload
-```
-
-### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Authorization` | Yes | `Bearer <firebase_id_token>` |
-| `X-Upload-Type` | No | `avatar` (default) or `chat` |
-| `Content-Type` | Auto | `multipart/form-data` |
-
-### Request Body
-
-- **Form field**: `file` — image file (JPEG, PNG, GIF for chat)
-- **Max size**: 5 MB (avatar), 10 MB (chat)
-
-### Response
-
-```json
-{ "url": "https://pub-xxx.r2.dev/avatars/{uid}/{timestamp}.jpg" }
-```
-
-### Errors
-
-| Status | Meaning |
-|--------|---------|
-| 401 | Missing or invalid Firebase token |
-| 400 | Missing file in form data |
-| 413 | File too large |
-| 503 | `MEDIA_PUBLIC_BASE_URL` not configured |
+The mobile app and the website both rely on the **same Firestore documents**. There is no separate "mobile avatar API"—if both clients read `users` / `publicUsers` and listen for updates, avatars stay aligned everywhere.
 
 ---
 
-## App Implementation (Flutter)
+## Upload flow (profile / edit profile)
 
-### Flow
+1. **Auth**  
+   The signed-in user must match the profile being edited (`auth.currentUser.uid === userId`). See `uploadProfileAvatar` in `services/profileEditService.js`.
 
-1. User selects image → `EditProfileView` or `AuthService.uploadAvatar`
-2. `R2MediaService.uploadAvatar(file)` → POST to Worker with `X-Upload-Type: avatar`
-3. Worker uploads to R2, returns public URL
-4. `AuthService` updates Firestore: `users/{uid}.avatarURL = url`
-5. `ProfileUpdateService` notifies listeners; UI refreshes
+2. **Upload**  
+   The image is sent to **Cloudflare R2** through the media upload path (`uploadToR2` in `services/r2Service.ts`):  
+   - Production: worker base URL + `/api/media/upload` with `Authorization: Bearer <Firebase ID token>` and `X-Upload-Type: avatar`.  
+   - Development: same shape via the Next.js API route (`getApiUrl('/api/media/upload')`).  
 
-### Code Locations
+   Validation: image type, max size **5MB** (enforced in `uploadProfileAvatar`).
 
-| Component | Path |
-|-----------|------|
-| Upload service | `lib/services/r2_media_service.dart` |
-| Auth integration | `lib/services/auth_service.dart` → `uploadAvatar()` |
-| Profile edit UI | `lib/widgets/edit_profile_view.dart` |
-| Worker URL | `https://streamerstip-mux-api.streamerstip.workers.dev` |
+3. **Persist URL in Firestore**  
+   After upload, the client writes to **`users/{uid}`**:
+   - `avatarURL` and `avatarUrl` = public URL from R2  
+   - `avatarPath` cleared when using direct URL (`null`)  
+   - `avatarUpdatedAt`, `updatedAt` = server timestamps  
 
-### Example (Flutter)
+4. **Public profile mirror**  
+   `syncPublicUser(uid)` in `services/publicUserSyncService.ts` updates **`publicUsers/{uid}`** with `avatarUrl` (and display name, username, etc.) so listings and other UIs do not need to read the full `users` document for every avatar.
 
-```dart
-final url = await R2MediaService.instance.uploadAvatar(imageFile);
-await FirebaseFirestore.instance.collection('users').doc(uid).update({
-  'avatarURL': url,
-  'updatedAt': FieldValue.serverTimestamp(),
-});
-```
+5. **Google sign-in avatars**  
+   If the profile photo comes from Google, `services/googleAvatarService.ts` can copy it to R2 and then apply the same Firestore fields as a manual upload.
 
 ---
 
-## Website Implementation
+## How the website updates “globally” (instant + durable)
 
-### Flow
+### 1. Instant UI (same tab / session)
 
-1. User selects image in profile/settings
-2. Call Worker `POST /media/upload` with `FormData` and Firebase ID token
-3. Worker returns `{ url }`
-4. Update Firestore `users/{uid}` with `avatarURL` and `updatedAt`
-5. UI reads from Firestore or local state; real-time listener updates when changed elsewhere
+`utils/avatarStore.ts` is a **singleton in-memory cache** plus **localStorage** persistence and cross-tab `storage` events.
 
-### Example (JavaScript/TypeScript)
+- After a successful upload, `EditProfileView` calls **`updateAvatarInstantly(userId, url)`**, which calls `avatarStore.updateAvatar(...)`.
+- **`UserAvatar`** (`components/UserAvatar.tsx`) **subscribes** to `avatarStore` for that `userId`. When the cache updates, every mounted avatar for that user refreshes without waiting on Firestore round-trips.
+- Other entry points (e.g. header, inbox, profile page) also push known URLs into `avatarStore` when they load `publicUsers` data so the cache stays warm.
 
-```typescript
-async function uploadAvatar(file: File): Promise<string> {
-  const user = auth.currentUser;
-  if (!user) throw new Error('Not authenticated');
-  const token = await user.getIdToken(true);
+This matches the intended behavior described in code comments: *instant propagation across the site like common social apps*.
 
-  const formData = new FormData();
-  formData.append('file', file);
+### 2. Durable sync (all tabs, other devices, mobile)
 
-  const res = await fetch(
-    'https://streamerstip-mux-api.streamerstip.workers.dev/media/upload',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Upload-Type': 'avatar',
-      },
-      body: formData,
-    }
-  );
+- **Firestore listeners** on `users` / `publicUsers` (and hooks/services that refetch) pick up the new `avatarURL` / `avatarUrl` / `avatar_url` as soon as the write commits.
+- **`publicUsers`** keeps feed and discovery UIs consistent with a small, stable document.
+- The **mobile app** should:
+  - Use **real-time listeners** (or periodic refetch) on `users/{uid}` and/or `publicUsers/{uid}` for the current user and any visible authors.
+  - Prefer the same field precedence as the web: `avatarURL` / `avatarUrl` / `avatar_url`, then optional `avatarPath` resolution if you still support legacy paths.
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Upload failed: ${res.status}`);
-  }
-
-  const { url } = await res.json();
-  await updateDoc(doc(db, 'users', user.uid), {
-    avatarURL: url,
-    updatedAt: serverTimestamp(),
-  });
-  return url;
-}
-```
+After upload, the web toast copy notes that changes sync to the mobile app—meaning **Firestore is updated**; the native app must subscribe to those documents to reflect changes.
 
 ---
 
-## Firestore Schema
+## Website Avatar Contract (Quick)
 
-### users collection
+Use this as the minimum implementation contract for website parity with mobile.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `avatarURL` | string | Public URL of avatar (R2 or legacy Firebase) |
-| `updatedAt` | timestamp | Last profile update |
+1. **Write targets**
+   - Write avatar updates to `users/{uid}`.
+   - Mirror avatar updates to `publicUsers/{uid}`.
 
-Both app and website must write `avatarURL` when uploading. Use the same field name for cross-platform sync.
+2. **Required fields**
+   - Write `avatarURL`, `avatarUrl`, `avatarUpdatedAt`, `updatedAt`.
+   - If using direct URL uploads, clear legacy `avatarPath` (`null`).
 
----
+3. **Upload path**
+   - Upload image bytes to the R2 worker media endpoint.
+   - Send `Authorization: Bearer <Firebase ID token>`.
+   - Send `X-Upload-Type: avatar`.
 
-## Sync Mechanism
+4. **Read precedence**
+   - Resolve avatar URL in this order:
+     - `avatarURL`
+     - `avatarUrl`
+     - `avatar_url`
+     - then legacy fallbacks such as `avatarPath`/older image fields if supported.
 
-### Source of Truth
-
-- **Firestore** `users/{userId}.avatarURL` is the single source of truth.
-- App and website both **write** to Firestore after a successful upload.
-- Both **listen** to Firestore for real-time updates (e.g. when the other platform changes the avatar).
-
-### App → Website
-
-- App uploads via Worker → updates Firestore.
-- Website uses `onSnapshot(doc(db, 'users', uid))` (or equivalent) to react to `avatarURL` changes.
-
-### Website → App
-
-- Website uploads via Worker → updates Firestore.
-- App uses `FirebaseFirestore.instance.collection('users').doc(uid).snapshots()` (e.g. via `ProfileUpdateService` or `UnifiedAvatarService`) to react to changes.
-
-### Legacy WebsiteSyncService
-
-- `lib/services/website_sync_service.dart` uses an older pattern (base64 + custom API).
-- Prefer the shared Worker + Firestore flow above. The Worker is the canonical upload endpoint for both platforms.
+5. **Real-time sync expectation**
+   - Use real-time listeners (or equivalent frequent refetch) on:
+     - `users/{uid}` for current user/profile.
+     - `publicUsers/{uid}` for feed/discovery/list surfaces.
 
 ---
 
-## R2 Storage Layout
+## Key files (reference)
 
-| Path | Purpose |
+| Area | File(s) |
 |------|---------|
-| `avatars/{uid}/{timestamp}.jpg` | User avatars |
-| `avatars/{uid}/{timestamp}.png` | PNG avatars |
-| `chat/{uid}/{timestamp}.gif` | Chat GIFs |
-
-- `uid`: Firebase Auth UID
-- `timestamp`: `Date.now()` at upload time
-- Extension: `.jpg`, `.png`, or `.gif` based on `Content-Type`
-
----
-
-## CORS
-
-The Worker allows:
-
-- `https://www.streamerstip.com`
-- `https://streamerstip.com`
-- `http://localhost:3000`
-- `http://localhost:5173`
-
-Add other origins in `cloudflare_workers/mux/src/index.js` → `ALLOWED_ORIGINS` if needed.
+| Upload + Firestore write | `services/profileEditService.js` (`uploadProfileAvatar`) |
+| R2 upload | `services/r2Service.ts` (`uploadToR2`) |
+| `publicUsers` sync | `services/publicUserSyncService.ts` (`syncPublicUser`) |
+| Global in-app cache | `utils/avatarStore.ts`, `updateAvatarInstantly` |
+| Avatar UI | `components/UserAvatar.tsx`, `components/EditProfileView.tsx` |
+| Google avatar copy | `services/googleAvatarService.ts` |
+| Hook variant | `hooks/useAvatar.ts` (same Firestore fields after R2 upload) |
 
 ---
 
-## Environment & Secrets
+## Operational notes
 
-### Worker (Cloudflare)
-
-| Secret | Purpose |
-|--------|---------|
-| `MEDIA_PUBLIC_BASE_URL` | R2 public URL (e.g. `https://pub-xxx.r2.dev`) — no trailing slash |
-| `FIREBASE_WEB_API_KEY` | For verifying Firebase ID tokens |
-
-### R2 Bucket
-
-- Name: `streamerstip-media`
-- Public access: Enable Public Development URL or use Custom Domain (`media.streamerstip.com`)
+- **Static export / hosting**: Client-side Firestore updates require **valid Firebase Auth** and **Firestore security rules** allowing the user to write their own `users/{uid}` document (and any rules for `publicUsers` you enforce).
+- **Caching**: Browsers may cache images by URL; changing the stored URL (new upload) avoids stale images. `avatarUpdatedAt` helps clients decide when to bust local caches if needed.
+- **Legacy docs**: Older notes in the repo may mention Firebase Storage paths; current upload path is **R2 + worker** as implemented in `r2Service.ts` and `profileEditService.js`.
 
 ---
 
-## Validation (Both Platforms)
+## Quick checklist for mobile parity
 
-Before upload:
-
-- File exists and is readable
-- Size ≤ 5 MB (avatar) or 10 MB (chat)
-- User is authenticated
-- Valid Firebase ID token
-
----
-
-## Checklist for Website Parity
-
-- [ ] Website uses `POST /media/upload` (same Worker as app)
-- [ ] Website sends `Authorization: Bearer <id_token>` and `X-Upload-Type: avatar`
-- [ ] Website updates Firestore `users/{uid}.avatarURL` after upload
-- [ ] Website listens to Firestore for `avatarURL` changes (app → website sync)
-- [ ] CORS includes website origin in Worker `ALLOWED_ORIGINS`
+1. On avatar change: upload → receive HTTPS URL → **`updateDoc` on `users/{uid}`** with the same fields as the web (or call a shared backend if you centralize writes later).  
+2. Mirror to **`publicUsers/{uid}`** if the app shows lists that read from that collection.  
+3. Subscribe to **`users/{uid}`** or **`publicUsers/{uid}`** so other sessions and the website show the same avatar without a separate sync channel.  
+4. Optionally mirror the **instant** pattern with an in-memory store keyed by `uid` so list screens update immediately after upload.

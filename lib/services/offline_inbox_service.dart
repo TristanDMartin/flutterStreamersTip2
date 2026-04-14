@@ -4,6 +4,7 @@ import '../models/chat.dart' as app_chat;
 import '../models/shared_draft.dart';
 import '../models/user.dart' as app_user;
 import '../models/user_count_fields.dart';
+import '../utils/avatar_url_resolver.dart';
 import 'logging_service.dart';
 
 class OfflineInboxService {
@@ -186,7 +187,7 @@ class OfflineInboxService {
         displayName: userData['displayName'],
         username: userData['username'],
         bio: userData['bio'],
-        avatarURL: userData['avatarURL'],
+        avatarURL: resolveAvatarUrl(Map<String, dynamic>.from(userData)),
         onlineStatus: userData['onlineStatus'],
         hashtags: List<String>.from(userData['hashtags']),
         aiSelf: userData['aiSelf'],

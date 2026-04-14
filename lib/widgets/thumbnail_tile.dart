@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import '../models/home_video.dart';
-// import '../services/thumbnail_service.dart'; // Removed unused import
+import '../services/thumbnail_service.dart';
 
 /// Single source of truth for all video thumbnail rendering
 /// Handles cache busting, fallbacks, and consistent placeholder behavior
@@ -28,10 +28,12 @@ class ThumbnailTile extends StatelessWidget {
     this.showViewsBadge = false,
   });
 
+  static final ThumbnailService _thumbnailService = ThumbnailService();
+
   @override
   Widget build(BuildContext context) {
     // Get the best thumbnail URL with cache busting
-    final thumbnailUrl = _getBestThumbnailUrl();
+    final thumbnailUrl = _getBestThumbnailUrl(context);
     final cacheKey = _getCacheKey();
 
     debugPrint('🖼️ ThumbnailTile: Video ${video.id}');
@@ -61,7 +63,7 @@ class ThumbnailTile extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               // Main thumbnail image or placeholder
-              _buildThumbnailContent(thumbnailUrl, cacheKey),
+              _buildThumbnailContent(context, thumbnailUrl, cacheKey),
 
               // Badges and overlays
               if (showDurationBadge &&
@@ -79,7 +81,11 @@ class ThumbnailTile extends StatelessWidget {
     );
   }
 
-  Widget _buildThumbnailContent(String? thumbnailUrl, String cacheKey) {
+  Widget _buildThumbnailContent(
+    BuildContext context,
+    String? thumbnailUrl,
+    String cacheKey,
+  ) {
     if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
       debugPrint('🖼️ ThumbnailTile: No thumbnail URL, showing placeholder');
       return _buildGradientPlaceholder();
@@ -97,8 +103,13 @@ class ThumbnailTile extends StatelessWidget {
       imageUrl: thumbnailUrl,
       cacheKey: cacheKey,
       fit: BoxFit.cover,
-      memCacheWidth: width?.round(),
-      memCacheHeight: height?.round(),
+      memCacheWidth: ((width ?? 200) *
+              _thumbnailService.getDevicePixelRatio(context))
+          .round(),
+      memCacheHeight: ((height ?? 300) *
+              _thumbnailService.getDevicePixelRatio(context))
+          .round(),
+      filterQuality: FilterQuality.high,
       placeholder: (context, url) {
         debugPrint('🖼️ ThumbnailTile: Loading placeholder for $url');
         return Container(
@@ -269,29 +280,32 @@ class ThumbnailTile extends StatelessWidget {
     );
   }
 
-  String? _getBestThumbnailUrl() {
-    // Priority order for thumbnail URLs
-    if (video.thumbnails != null && video.thumbnails!.urls.isNotEmpty) {
-      // Use the new VideoThumbnails system
-      final urls = video.thumbnails!.urls;
-      final width = this.width ?? 200;
+  String? _getBestThumbnailUrl(BuildContext context) {
+    final resolvedWidth = width ?? 200;
+    final devicePixelRatio = _thumbnailService.getDevicePixelRatio(context);
 
-      // Choose the best size based on width
-      if (width <= 200 && urls.containsKey(360)) {
-        return urls[360];
-      } else if (width <= 400 && urls.containsKey(540)) {
-        return urls[540];
-      } else if (urls.containsKey(720)) {
-        return urls[720];
-      } else {
-        // Fallback to any available size
-        return urls.values.first;
-      }
+    final optimized = _thumbnailService.getDisplayReadyThumbnailUrl(
+      thumbnails: video.thumbnails,
+      containerWidth: resolvedWidth,
+      devicePixelRatio: devicePixelRatio,
+      fallbackUrl: video.thumbnailURL,
+    );
+    if (optimized != null && optimized.isNotEmpty) {
+      return optimized;
     }
 
-    // Fallback to legacy thumbnailURL
-    if (video.thumbnailURL != null && video.thumbnailURL!.isNotEmpty) {
-      return video.thumbnailURL;
+    final videoUrl = video.videoURL;
+    if (videoUrl.contains('stream.mux.com')) {
+      try {
+        final uri = Uri.parse(videoUrl);
+        final segments = uri.pathSegments;
+        if (segments.isNotEmpty) {
+          final playbackId = segments.first.replaceAll('.m3u8', '');
+          final requestedWidth =
+              (resolvedWidth * devicePixelRatio).round().clamp(360, 1440);
+          return 'https://image.mux.com/$playbackId/thumbnail.jpg?width=$requestedWidth&time=0';
+        }
+      } catch (_) {}
     }
 
     return null;

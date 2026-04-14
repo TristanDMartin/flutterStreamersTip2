@@ -26,24 +26,19 @@ class EnhancedShareService {
   // Platform usage tracking for dynamic ranking
   final Map<String, int> _platformUsageCount = {};
 
-  /// Prefetch share data with video thumbnail for instant modal display
+  /// Prefetch share payload immediately; thumbnail generates in background.
   Future<SharePayload> fetchSharePayload(HomeVideo video) async {
-    // Check cache first
     if (_sharePayloadCache.containsKey(video.id)) {
       return _sharePayloadCache[video.id]!;
     }
 
     try {
       LoggingService.instance.info(
-        '🎬 EnhancedShareService: Prefetching share payload for video ${video.id}',
+        '🎬 EnhancedShareService: Building share payload for video ${video.id}',
         tag: 'EnhancedShareService',
       );
 
-      // Generate video thumbnail for preview
-      await _generateVideoThumbnail(video);
-
-      // Build enhanced share payload
-      final payload = SharePayload(
+      final SharePayload payload = SharePayload(
         videoId: video.id,
         links: ShareLinks(
           webShareUrl: _generateShareUrl(video.id),
@@ -70,26 +65,30 @@ class EnhancedShareService {
         platformUsageRanking: Map.from(_platformUsageCount),
       );
 
-      // Cache the payload
       _sharePayloadCache[video.id] = payload;
 
-      // Prefetch connections for connections row (non-blocking)
-      ConnectionsService().getConnectionsPreview().catchError((e) {
+      ConnectionsService().getConnectionsPreview().catchError((Object e) {
         log('⚠️ EnhancedShareService: Failed to prefetch connections: $e');
         return <ConnectionLite>[];
       });
 
+      _generateVideoThumbnail(video).catchError((Object e) {
+        log('⚠️ EnhancedShareService: Background thumbnail: $e');
+        return null;
+      });
+
       LoggingService.instance.info(
-        '✅ EnhancedShareService: Prefetched payload with thumbnail for video ${video.id}',
+        '✅ EnhancedShareService: Payload ready for ${video.id} (thumbnail in background)',
         tag: 'EnhancedShareService',
       );
 
       return payload;
-    } catch (e) {
+    } catch (e, st) {
       LoggingService.instance.error(
         '❌ EnhancedShareService: Error fetching share payload: $e',
         tag: 'EnhancedShareService',
         error: e,
+        stackTrace: st,
       );
       rethrow;
     }
@@ -400,18 +399,22 @@ class EnhancedShareService {
     }
   }
 
-  /// Share to system share sheet with rich content
+  /// Native share sheet: text + subject + canonical URL (better link cards on iOS/Android).
   Future<void> _shareToSystemWithPreview(SharePayload payload) async {
     try {
-      final message = _buildRichShareText(payload);
+      final String message = _buildRichShareText(payload);
+      final Uri? linkUri = Uri.tryParse(payload.links.webShareUrl);
 
-      // Create share parameters with rich content
-      final shareParams = ShareParams(
+      final ShareParams shareParams = ShareParams(
         text: message,
         subject: 'Check out this video on StreamersTip!',
+        uri: linkUri,
       );
 
-      await SharePlus.instance.share(shareParams);
+      final ShareResult result = await SharePlus.instance.share(shareParams);
+      if (result.status == ShareResultStatus.dismissed) {
+        trackShareCancel(payload.videoId);
+      }
     } catch (e) {
       LoggingService.instance.error(
         '❌ EnhancedShareService: Error sharing to system: $e',
@@ -593,13 +596,24 @@ The StreamersTip Team''';
     }
   }
 
-  /// Get ranked share targets based on usage and platform
+  /// TikTok-style row: copy, messages, top social apps, system share.
   List<ShareTarget> getRankedTargets() {
-    final rankedTargets = <ShareTarget>[];
-
-    // Only Copy Link for now
-    rankedTargets.add(ShareTarget.copyLink);
-
-    return rankedTargets;
+    if (Platform.isIOS) {
+      return <ShareTarget>[
+        ShareTarget.copyLink,
+        ShareTarget.sms,
+        ShareTarget.instagramDirect,
+        ShareTarget.whatsapp,
+        ShareTarget.more,
+      ];
+    }
+    return <ShareTarget>[
+      ShareTarget.copyLink,
+      ShareTarget.whatsapp,
+      ShareTarget.sms,
+      ShareTarget.facebook,
+      ShareTarget.instagramDirect,
+      ShareTarget.more,
+    ];
   }
 }

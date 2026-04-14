@@ -24,22 +24,22 @@ class InsightsViewersTab extends StatelessWidget {
           const SizedBox(height: 24),
           
           // Viewer types section
-          _buildViewerTypesSection(),
+          _buildViewerTypesSection(context),
           
           const SizedBox(height: 24),
           
           // Gender breakdown section
-          _buildGenderBreakdownSection(),
+          _buildGenderBreakdownSection(context),
           
           const SizedBox(height: 24),
           
           // Age groups section
-          _buildAgeGroupsSection(),
+          _buildAgeGroupsSection(context),
           
           const SizedBox(height: 24),
           
           // Top locations section
-          _buildTopLocationsSection(),
+          _buildTopLocationsSection(context),
           
           const SizedBox(height: 24),
         ],
@@ -67,7 +67,12 @@ class InsightsViewersTab extends StatelessWidget {
                 icon: Icons.visibility,
                 title: 'Total Views',
                 value: _formatNumber(insights.viewers.totalViews),
-                subtitle: 'All-time views',
+                subtitle: _describeCount(
+                  insights.viewers.totalViews,
+                  zero: 'No audience volume yet',
+                  low: 'First viewers are arriving',
+                  active: 'Reach is building steadily',
+                ),
                 color: const Color(0xFF40DCD1),
               ),
             ),
@@ -77,7 +82,12 @@ class InsightsViewersTab extends StatelessWidget {
                 icon: Icons.people,
                 title: 'Unique Viewers',
                 value: _formatNumber(insights.viewers.uniqueViewers),
-                subtitle: 'Individual people',
+                subtitle: _describeCount(
+                  insights.viewers.uniqueViewers,
+                  zero: 'No distinct viewers yet',
+                  low: 'Audience is still small',
+                  active: 'You are reaching individual viewers',
+                ),
                 color: const Color(0xFF9248D2),
               ),
             ),
@@ -97,7 +107,14 @@ class InsightsViewersTab extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.14),
+            color.withValues(alpha: 0.12),
+          ],
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.2),
@@ -126,29 +143,31 @@ class InsightsViewersTab extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
             value,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 24,
+              fontSize: 26,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.9),
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 6),
           Text(
             subtitle,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 13,
               fontWeight: FontWeight.w500,
+              height: 1.3,
             ),
           ),
         ],
@@ -156,17 +175,32 @@ class InsightsViewersTab extends StatelessWidget {
     );
   }
 
-  Widget _buildViewerTypesSection() {
+  Widget _buildViewerTypesSection(BuildContext context) {
+    final viewerTypes = insights.viewers.viewerTypes;
+    final totalTypes = viewerTypes.newViewers + viewerTypes.returningViewers;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Viewer Types',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          children: [
+            const Text(
+              'Viewer Types',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildMetricInfoChip(
+              context,
+              label: 'What this means',
+              title: 'About viewer types',
+              message:
+                  'New viewers are people who recently discovered this content, while returning viewers have watched your content before. This split becomes more reliable as repeat audience behavior builds up.',
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Container(
@@ -181,32 +215,41 @@ class InsightsViewersTab extends StatelessWidget {
           ),
           child: Column(
             children: [
-              ViewerTypesChart(
-                newViewers: insights.viewers.viewerTypes.newViewers,
-                returningViewers: insights.viewers.viewerTypes.returningViewers,
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildViewerTypeItem(
-                      label: 'New Viewers',
-                      count: insights.viewers.viewerTypes.newViewers,
-                      total: insights.viewers.totalViews,
-                      color: const Color(0xFF9248D2),
+              if (totalTypes == 0)
+                _buildSectionEmptyState(
+                  icon: Icons.groups_2_outlined,
+                  title: 'Viewer type data is still populating',
+                  message:
+                      'We will separate new and returning viewers once enough audience history is available.',
+                )
+              else ...[
+                ViewerTypesChart(
+                  newViewers: viewerTypes.newViewers,
+                  returningViewers: viewerTypes.returningViewers,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildViewerTypeItem(
+                        label: 'New Viewers',
+                        count: viewerTypes.newViewers,
+                        total: insights.viewers.totalViews,
+                        color: const Color(0xFF9248D2),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildViewerTypeItem(
-                      label: 'Returning Viewers',
-                      count: insights.viewers.viewerTypes.returningViewers,
-                      total: insights.viewers.totalViews,
-                      color: const Color(0xFF40DCD1),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildViewerTypeItem(
+                        label: 'Returning Viewers',
+                        count: viewerTypes.returningViewers,
+                        total: insights.viewers.totalViews,
+                        color: const Color(0xFF40DCD1),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -269,17 +312,35 @@ class InsightsViewersTab extends StatelessWidget {
     );
   }
 
-  Widget _buildGenderBreakdownSection() {
+  Widget _buildGenderBreakdownSection(BuildContext context) {
+    final breakdown = insights.viewers.genderBreakdown;
+    final totalGender = breakdown.male +
+        breakdown.female +
+        breakdown.other +
+        breakdown.unknown;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Gender Breakdown',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          children: [
+            const Text(
+              'Gender Breakdown',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildMetricInfoChip(
+              context,
+              label: 'What this means',
+              title: 'About gender breakdown',
+              message:
+                  'Gender data is an aggregate estimate, not individual identity information. It appears only when enough audience data exists to show a broad anonymous trend.',
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Container(
@@ -294,18 +355,27 @@ class InsightsViewersTab extends StatelessWidget {
           ),
           child: Column(
             children: [
-              GenderBreakdownChart(
-                breakdown: insights.viewers.genderBreakdown,
-              ),
-              const SizedBox(height: 20),
-              Column(
-                children: [
-                  _buildGenderItem('Male', insights.viewers.genderBreakdown.male, const Color(0xFF1670DE)),
-                  _buildGenderItem('Female', insights.viewers.genderBreakdown.female, const Color(0xFFE91E63)),
-                  _buildGenderItem('Other', insights.viewers.genderBreakdown.other, const Color(0xFF40DCD1)),
-                  _buildGenderItem('Unknown', insights.viewers.genderBreakdown.unknown, Colors.grey),
-                ],
-              ),
+              if (totalGender == 0)
+                _buildSectionEmptyState(
+                  icon: Icons.person_search_outlined,
+                  title: 'No audience demographic split yet',
+                  message:
+                      'Demographic estimates appear only after enough viewer data has been collected.',
+                )
+              else ...[
+                GenderBreakdownChart(
+                  breakdown: breakdown,
+                ),
+                const SizedBox(height: 20),
+                Column(
+                  children: [
+                    _buildGenderItem('Male', breakdown.male, const Color(0xFF1670DE)),
+                    _buildGenderItem('Female', breakdown.female, const Color(0xFFE91E63)),
+                    _buildGenderItem('Other', breakdown.other, const Color(0xFF40DCD1)),
+                    _buildGenderItem('Unknown', breakdown.unknown, Colors.grey),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -369,17 +439,32 @@ class InsightsViewersTab extends StatelessWidget {
     );
   }
 
-  Widget _buildAgeGroupsSection() {
+  Widget _buildAgeGroupsSection(BuildContext context) {
+    final ageGroups = insights.viewers.ageGroups;
+    final hasAgeData = ageGroups.any((group) => group.count > 0);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Age Groups',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          children: [
+            const Text(
+              'Age Groups',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildMetricInfoChip(
+              context,
+              label: 'What this means',
+              title: 'About age groups',
+              message:
+                  'Age groups are shown as anonymous ranges so you can understand broad audience fit. Small audiences may not generate enough data to display these ranges confidently.',
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Container(
@@ -394,13 +479,20 @@ class InsightsViewersTab extends StatelessWidget {
           ),
           child: Column(
             children: [
-              AgeGroupsChart(
-                ageGroups: insights.viewers.ageGroups,
-              ),
-              const SizedBox(height: 20),
-              ...insights.viewers.ageGroups.map((ageGroup) =>
-                _buildAgeGroupItem(ageGroup),
-              ),
+              if (!hasAgeData)
+                _buildSectionEmptyState(
+                  icon: Icons.cake_outlined,
+                  title: 'No age group breakdown yet',
+                  message:
+                      'Age ranges will appear here once enough viewers can be grouped anonymously.',
+                )
+              else ...[
+                AgeGroupsChart(
+                  ageGroups: ageGroups,
+                ),
+                const SizedBox(height: 20),
+                ...ageGroups.map((ageGroup) => _buildAgeGroupItem(ageGroup)),
+              ],
             ],
           ),
         ),
@@ -475,17 +567,31 @@ class InsightsViewersTab extends StatelessWidget {
     );
   }
 
-  Widget _buildTopLocationsSection() {
+  Widget _buildTopLocationsSection(BuildContext context) {
+    final locations = insights.viewers.topLocations;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Top Locations',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          children: [
+            const Text(
+              'Top Locations',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildMetricInfoChip(
+              context,
+              label: 'What this means',
+              title: 'About top locations',
+              message:
+                  'Top locations show the countries or regions where your viewers are concentrated. This helps identify where your content is resonating geographically as view volume grows.',
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Container(
@@ -519,15 +625,174 @@ class InsightsViewersTab extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              ...insights.viewers.topLocations.asMap().entries.map((entry) {
-                final index = entry.key;
-                final location = entry.value;
-                return _buildLocationItem(index + 1, location);
-              }),
+              if (locations.isEmpty)
+                _buildSectionEmptyState(
+                  icon: Icons.public_off_outlined,
+                  title: 'No location breakdown yet',
+                  message:
+                      'Top countries and regions will show once we have enough location signals from viewers.',
+                )
+              else
+                ...locations.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final location = entry.value;
+                  return _buildLocationItem(index + 1, location);
+                }),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSectionEmptyState({
+    required IconData icon,
+    required String title,
+    required String message,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.72), size: 28),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricInfoChip(
+    BuildContext context, {
+    required String label,
+    required String title,
+    required String message,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => _showMetricInfo(context, title: title, message: message),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.14),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.78),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.78),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMetricInfo(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1C135D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Metric guide',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    fontSize: 15,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -603,5 +868,20 @@ class InsightsViewersTab extends StatelessWidget {
     } else {
       return number.toString();
     }
+  }
+
+  String _describeCount(
+    int count, {
+    required String zero,
+    required String low,
+    required String active,
+  }) {
+    if (count <= 0) {
+      return zero;
+    }
+    if (count < 10) {
+      return low;
+    }
+    return active;
   }
 }

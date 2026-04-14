@@ -2,9 +2,43 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 class VideoWatermarkService {
+  static const String starterTier = 'starter';
+  static const String proTier = 'pro';
+  static const String studioTier = 'studio';
+  static const String defaultWatermarkAsset =
+      'assets/091225_ST_logo_white.PNG';
+
   static final VideoWatermarkService _instance = VideoWatermarkService._internal();
   factory VideoWatermarkService() => _instance;
   VideoWatermarkService._internal();
+
+  int maxPlatformsForTier(String tier) {
+    switch (tier.toLowerCase()) {
+      case proTier:
+        return 5;
+      case studioTier:
+        return 999;
+      case starterTier:
+      default:
+        return 1;
+    }
+  }
+
+  bool requiresWatermarkForTier(String tier) {
+    return tier.toLowerCase() == starterTier;
+  }
+
+  String planLabel(String tier) {
+    switch (tier.toLowerCase()) {
+      case proTier:
+        return 'Pro';
+      case studioTier:
+        return 'Studio';
+      case starterTier:
+      default:
+        return 'Free';
+    }
+  }
 
   /// Adds watermark to video file when cross-platform sharing is enabled
   Future<File?> addWatermarkToVideo({
@@ -38,23 +72,55 @@ class VideoWatermarkService {
   /// Creates a watermark overlay widget
   Widget createWatermarkOverlay({
     required String logoPath,
-    Alignment alignment = Alignment.bottomRight,
     double opacity = 0.8,
-    double size = 60.0,
+    double size = 48.0,
   }) {
     return Positioned(
-      right: 16,
-      bottom: 16,
+      right: 18,
+      bottom: 74,
       child: Opacity(
         opacity: opacity,
         child: Container(
-          width: size,
-          height: size,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage(logoPath),
-              fit: BoxFit.contain,
+            color: Colors.black.withValues(alpha: 0.34),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.18),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.26),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  image: DecorationImage(
+                    image: AssetImage(logoPath),
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'StreamersTip',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -66,36 +132,47 @@ class VideoWatermarkService {
     return selectedPlatforms.isNotEmpty;
   }
 
+  bool shouldApplyWatermarkForTier(String tier, Set<String> selectedPlatforms) {
+    if (selectedPlatforms.isEmpty) {
+      return false;
+    }
+    return requiresWatermarkForTier(tier);
+  }
+
   /// Gets watermark configuration for specific platform
   Map<String, dynamic> getWatermarkConfig(String platform) {
     switch (platform.toLowerCase()) {
       case 'instagram':
         return {
-          'position': 'bottom_right',
-          'size': 0.1, // 10% of video width
-          'opacity': 0.8,
-          'margin': 16,
+          'position': 'lower_float',
+          'size': 0.075,
+          'opacity': 0.88,
+          'marginRight': 18,
+          'marginBottom': 74,
         };
       case 'tiktok':
         return {
-          'position': 'bottom_right',
-          'size': 0.08, // 8% of video width
+          'position': 'lower_float',
+          'size': 0.07,
           'opacity': 0.9,
-          'margin': 12,
+          'marginRight': 18,
+          'marginBottom': 74,
         };
       case 'youtube':
         return {
-          'position': 'bottom_right',
-          'size': 0.12, // 12% of video width
-          'opacity': 0.7,
-          'margin': 20,
+          'position': 'lower_float',
+          'size': 0.08,
+          'opacity': 0.86,
+          'marginRight': 18,
+          'marginBottom': 74,
         };
       default:
         return {
-          'position': 'bottom_right',
-          'size': 0.1,
-          'opacity': 0.8,
-          'margin': 16,
+          'position': 'lower_float',
+          'size': 0.075,
+          'opacity': 0.88,
+          'marginRight': 18,
+          'marginBottom': 74,
         };
     }
   }

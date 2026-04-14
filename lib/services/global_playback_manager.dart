@@ -366,7 +366,7 @@ class GlobalPlaybackManager {
   ///
   /// **Hierarchical Owners:**
   /// Supports hierarchical owners (e.g., 'home/forYou' matches 'home').
-  /// If activeOwner is 'home', then 'home/forYou' and 'home/following' can play.
+  /// If activeOwner is 'home', then 'home/forYou' (and other home/*) can play.
   ///
   /// **Parameters:**
   /// - [owner]: The owner key to check (e.g., 'home', 'home/forYou', 'discover')

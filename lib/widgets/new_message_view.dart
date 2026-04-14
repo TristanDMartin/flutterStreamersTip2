@@ -4,7 +4,8 @@ import '../models/chat.dart' as app_chat;
 import '../models/user.dart' as app_user;
 import '../services/chat_service.dart';
 import '../services/inbox_service_optimized.dart';
-import 'chat_view.dart';
+import '../services/user_blocking_service.dart';
+import 'chat_view_optimized.dart';
 import 'choose_person_view.dart';
 
 class NewMessageView extends ConsumerStatefulWidget {
@@ -18,6 +19,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
   final TextEditingController _searchController = TextEditingController();
   final ChatService _chatService = ChatService.shared;
   final InboxServiceOptimized _inboxService = InboxServiceOptimized();
+  final UserBlockingService _blockingService = UserBlockingService();
   String _searchQuery = '';
   List<app_chat.Chat> _recentChats = [];
   final Map<String, app_user.User> _chatUsers = {};
@@ -27,10 +29,12 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
   void initState() {
     super.initState();
     _loadRecentChats();
+    _blockingService.blockListRevision.addListener(_handleBlockListChanged);
   }
 
   @override
   void dispose() {
+    _blockingService.blockListRevision.removeListener(_handleBlockListChanged);
     _searchController.dispose();
     super.dispose();
   }
@@ -43,7 +47,9 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
     try {
       final chats = await _chatService.getUserChats();
       final currentUserId = _inboxService.auth.currentUser?.uid;
+      final blockedUserIds = (await _blockingService.getBlockedUsers()).toSet();
       final userMap = <String, app_user.User>{};
+      final visibleChats = <app_chat.Chat>[];
 
       for (final chat in chats) {
         final otherUserId = chat.participants.firstWhere(
@@ -51,16 +57,18 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
           orElse: () => '',
         );
         if (otherUserId.isEmpty) continue;
+        if (blockedUserIds.contains(otherUserId)) continue;
 
         final profile = await _inboxService.getUserProfile(otherUserId);
         if (profile != null) {
+          visibleChats.add(chat);
           userMap[chat.id ?? otherUserId] = profile;
         }
       }
 
       if (!mounted) return;
       setState(() {
-        _recentChats = chats;
+        _recentChats = visibleChats;
         _chatUsers
           ..clear()
           ..addAll(userMap);
@@ -74,6 +82,10 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
         _isLoadingRecentChats = false;
       });
     }
+  }
+
+  void _handleBlockListChanged() {
+    _loadRecentChats();
   }
 
   List<app_chat.Chat> get _filteredRecentChats {
@@ -470,7 +482,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => ChatView(
+        builder: (context) => ChatViewOptimized(
           chat: chat,
           otherUserId: otherUserId,
           otherUserName: otherUser?.displayName ?? 'Conversation',

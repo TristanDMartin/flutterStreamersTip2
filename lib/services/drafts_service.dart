@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+
+import '../features/gamification/emit_gamification_event.dart';
+import '../features/gamification/gamification_event_types.dart';
 import 'post_counter_service.dart';
 
 class DraftsService {
@@ -160,6 +163,11 @@ class DraftsService {
           debugPrint('⚠️ Failed to update PostCounterService for draft: $e');
           // Continue anyway, this is not critical
         }
+        scheduleGamificationEvent(
+          GamificationEventTypes.contentPublished,
+          entityType: 'video',
+          entityId: videoId,
+        );
       }
 
       return true;

@@ -5,6 +5,7 @@ import 'dart:developer';
 import '../../models/home_video.dart';
 import '../../widgets/player_screen.dart';
 import '../../constants/app_colors.dart';
+import '../../widgets/thumbnail_tile.dart';
 
 /// RedNote-style grid feed for Following tab
 /// 2-column masonry layout with video cards
@@ -432,50 +433,14 @@ class _FollowingFeedGridWidgetState
   }
 
   Widget _buildThumbnail(HomeVideo video) {
-    final thumbnailUrl = video.thumbnailURL ?? '';
-    
-    if (thumbnailUrl.isNotEmpty) {
-      return Image.network(
-        thumbnailUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: Colors.grey[800],
-          child: const Center(
-            child: Icon(
-              Icons.videocam_off,
-              color: Colors.white54,
-              size: 32,
-            ),
-          ),
-        ),
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            color: Colors.grey[900],
-            child: Center(
-              child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                    : null,
-                strokeWidth: 2,
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9248d2)),
-              ),
-            ),
-          );
-        },
-      );
-    }
-    
-    return Container(
-      color: Colors.grey[800],
-      child: const Center(
-        child: Icon(
-          Icons.videocam_off,
-          color: Colors.white54,
-          size: 32,
-        ),
+    return ThumbnailTile(
+      video: video,
+      borderRadius: const BorderRadius.vertical(
+        top: Radius.circular(12),
       ),
+      showDurationBadge: false,
+      showDraftBadge: false,
+      showViewsBadge: false,
     );
   }
 

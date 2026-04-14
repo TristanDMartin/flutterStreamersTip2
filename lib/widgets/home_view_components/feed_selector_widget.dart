@@ -7,7 +7,7 @@ import 'feed_dropdown_widget.dart';
 class FeedSelectorWidget extends StatefulWidget {
   final String activeTab;
   final VoidCallback onForYouTap;
-  final VoidCallback onFollowingTap;
+  final VoidCallback onProgressionTap;
   final VoidCallback onThreadsTap;
   final VoidCallback onDiscoverTap;
 
@@ -15,7 +15,7 @@ class FeedSelectorWidget extends StatefulWidget {
     super.key,
     required this.activeTab,
     required this.onForYouTap,
-    required this.onFollowingTap,
+    required this.onProgressionTap,
     required this.onThreadsTap,
     required this.onDiscoverTap,
   });
@@ -61,13 +61,13 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
               });
               widget.onForYouTap();
             },
-            onFollowingTap: () {
-              debugPrint('🔘 FeedSelector: Following tapped in overlay');
+            onProgressionTap: () {
+              debugPrint('🔘 FeedSelector: Progression tapped in overlay');
               _removeOverlay();
               setState(() {
                 _isDropdownOpen = false;
               });
-              widget.onFollowingTap();
+              widget.onProgressionTap();
             },
             onThreadsTap: () {
               debugPrint('🔘 FeedSelector: Threads tapped in overlay');
@@ -122,17 +122,29 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(24),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.14),
+                      Colors.white.withValues(alpha: 0.05),
+                    ],
+                  ),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: AppColors.primary.withValues(alpha: 0.35),
                     width: 1.2,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 16,
+                      offset: const Offset(0, 10),
                     ),
                   ],
                 ),
@@ -145,6 +157,7 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -170,11 +183,25 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.12),
+                      Colors.white.withValues(alpha: 0.04),
+                    ],
                   ),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.28),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
                 child: const Icon(
                   Icons.explore_outlined,

@@ -3,6 +3,7 @@ import '../constants/app_colors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/user_blocking_service.dart';
+import '../utils/avatar_url_resolver.dart';
 
 class BlockedAccountsView extends StatefulWidget {
   const BlockedAccountsView({super.key});
@@ -54,7 +55,7 @@ class _BlockedAccountsViewState extends State<BlockedAccountsView> {
               id: userId,
               displayName: userData['displayName'] ?? 'Unknown User',
               username: userData['username'] ?? 'unknown',
-              avatarURL: userData['avatarURL'],
+              avatarURL: resolveAvatarUrl(userData),
               blockedAt: userData['blockedAt'] ?? userDoc.data()!['createdAt'],
             ));
           }

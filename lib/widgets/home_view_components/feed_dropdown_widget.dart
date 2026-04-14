@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 
-/// Feed dropdown widget for HomeView (shows For You / Following / Threads options)
+/// Feed dropdown widget for HomeView (For You / Progression / Threads)
 class FeedDropdownWidget extends StatelessWidget {
   final String activeTab;
   final bool isVisible;
   final VoidCallback onForYouTap;
-  final VoidCallback onFollowingTap;
+  final VoidCallback onProgressionTap;
   final VoidCallback onThreadsTap;
   final VoidCallback onClose;
 
@@ -15,7 +15,7 @@ class FeedDropdownWidget extends StatelessWidget {
     required this.activeTab,
     required this.isVisible,
     required this.onForYouTap,
-    required this.onFollowingTap,
+    required this.onProgressionTap,
     required this.onThreadsTap,
     required this.onClose,
   });
@@ -62,9 +62,9 @@ class FeedDropdownWidget extends StatelessWidget {
                 ),
                 _buildDivider(),
                 _buildDropdownItem(
-                  'Following',
-                  isSelected: activeTab == 'Following',
-                  onTap: onFollowingTap,
+                  'Progression',
+                  isSelected: activeTab == 'Progression',
+                  onTap: onProgressionTap,
                 ),
                 _buildDivider(),
                 _buildDropdownItem(

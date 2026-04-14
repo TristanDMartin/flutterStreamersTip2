@@ -10,6 +10,9 @@ import 'tag_mention_service.dart';
 import 'post_counter_service.dart';
 import 'mux_upload_service.dart';
 import 'cross_post_service.dart';
+import '../features/gamification/emit_gamification_event.dart';
+import '../features/gamification/gamification_event_types.dart';
+import '../utils/category_schema.dart';
 
 class VideoUploadResult {
   final bool success;
@@ -245,9 +248,10 @@ class VideoUploadService {
         debugPrint(
             '🔥 VideoUploadService: Attempting to save video document to Firestore...');
         debugPrint('🔥 VideoUploadService: Video ID: $videoId');
-        debugPrint('🔥 VideoUploadService: Update keys: ${updateData.keys.toList()}');
+        debugPrint(
+            '🔥 VideoUploadService: Update keys: ${updateData.keys.toList()}');
 
-        await _firestore.collection('videos').doc(videoId).update(updateData);
+        await _upsertVideoDocument(videoId: videoId, updateData: updateData);
         debugPrint(
             '✅ VideoUploadService: Video document saved to Firestore successfully');
       } catch (e) {
@@ -361,6 +365,29 @@ class VideoUploadService {
     }
   }
 
+  Future<void> _upsertVideoDocument({
+    required String videoId,
+    required Map<String, dynamic> updateData,
+  }) async {
+    final docRef = _firestore.collection('videos').doc(videoId);
+
+    try {
+      await docRef.update(updateData);
+      return;
+    } catch (e) {
+      final isNotFound = e.toString().contains('not-found') ||
+          e.toString().contains('NOT_FOUND');
+      if (!isNotFound) {
+        rethrow;
+      }
+
+      debugPrint(
+          '⚠️ VideoUploadService: Worker-created video doc not ready yet, retrying with merge set...');
+
+      await docRef.set(updateData, SetOptions(merge: true));
+    }
+  }
+
   /// Upload to StreamersTip AND cross-post to external platforms concurrently.
   ///
   /// StreamersTip upload is always primary. Cross-post failures never block it.
@@ -468,6 +495,8 @@ class VideoUploadService {
       'Private' || 'private' => 'private',
       _ => 'public',
     };
+    final categoryFields = buildCanonicalCategoryFields(category);
+    final canonicalCategory = categoryFields['category'] as String;
 
     final data = <String, dynamic>{
       'caption': caption,
@@ -475,9 +504,7 @@ class VideoUploadService {
       'privacy': privacy,         // legacy field — keep for backward compat
       'visibility': visibility,   // spec §2 canonical field
       'allowComments': allowComments,
-      'category': category,
-      'categoryId': category,
-      'categories': [category],
+      ...categoryFields,
       'updatedAt': FieldValue.serverTimestamp(),
       'thumbnailUrl': thumbnailUrl,
       'thumbnails': thumbnails,
@@ -503,6 +530,8 @@ class VideoUploadService {
         'resolution': '1080x1920',
         'format': 'mp4',
         'uploadedAt': FieldValue.serverTimestamp(),
+        'categoryOriginal': category,
+        'categoryCanonical': canonicalCategory,
       },
     };
     final allowedExtras = [
@@ -814,7 +843,11 @@ class VideoUploadService {
       final category = videoData['metadata']?['category'] as String?;
       await _addToFeeds(videoId, videoData['privacy'], user.uid,
           category: category);
-
+      scheduleGamificationEvent(
+        GamificationEventTypes.contentPublished,
+        entityType: 'video',
+        entityId: videoId,
+      );
       return VideoUploadResult(
         success: true,
         videoUrl: videoData['videoUrl'],

@@ -95,7 +95,7 @@ void main() {
 
     test('Active owner stream emits changes', () async {
       const owner1 = 'home/forYou';
-      const owner2 = 'home/following';
+      const owner2 = 'home/progression';
 
       final streamValues = <String?>[];
       final subscription = manager.activeOwnerStream.listen((owner) {

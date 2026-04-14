@@ -2,6 +2,8 @@
 
 Replaces Firebase Cloud Functions `createMuxDirectUpload` and `muxWebhook` with a Cloudflare Worker. No Cloud Run, predictable pricing.
 
+**Gamification:** use this Worker’s **`POST /gamification/events`** as the default path. Prefer **not** deploying the optional Firebase `gamificationEvents` function unless you have a specific reason.
+
 ## Routes
 
 | Method | Path | Auth | Description |
@@ -9,6 +11,7 @@ Replaces Firebase Cloud Functions `createMuxDirectUpload` and `muxWebhook` with 
 | POST | `/mux/direct-upload` | Bearer (Firebase ID token) | Create Mux direct upload, init Firestore doc, return `uploadUrl` + `videoId` |
 | POST | `/webhooks/mux` | Mux-Signature header | Handle `video.asset.ready`, update Firestore with `hlsUrl`, `status: ready` |
 | POST | `/mux/backfill-assets` | X-Backfill-Secret header | Sync Mux assets to Firestore (for assets missed by webhook) |
+| POST | `/gamification/events` | Bearer (Firebase ID token) | Trusted gamification events; idempotent by `eventId` via Firestore `gamification_events` |
 
 ## Setup
 
@@ -32,20 +35,36 @@ routes = [
 
 For testing on workers.dev, uncomment `workers_dev = true`.
 
-### 3. Set secrets
+### 3. Firebase env (prod alignment)
+
+`wrangler.toml` sets **`FIREBASE_PROJECT_ID`** (default `streamerstip-6cfdb`). Change `[vars]` if your deployed project ID differs.
+
+**Secrets** (required for token verification + Firestore REST):
+
+```bash
+wrangler secret put FIREBASE_WEB_API_KEY
+wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON
+```
+
+- **FIREBASE_WEB_API_KEY**: Firebase Console → Project settings → Your apps → Web API key (used with `accounts:lookup` for Bearer tokens).
+- **FIREBASE_SERVICE_ACCOUNT_JSON**: Project settings → Service accounts → Generate new private key; paste full JSON (one line is fine).
+
+**Idempotency:** `POST /gamification/events` uses a **Firestore create** on `gamification_events/{eventId}` (same UUID as the app). No extra Workers KV for that. **`RATE_LIMIT_KV`** is only for `/mux/direct-upload` rate limits.
+
+**`users/{uid}` shape (gamification + missions):** see app doc `lib/features/gamification/firestore_user_shape.md` (Part B). **Deploy / verify / curl / idempotency:** Part D in the same file.
+
+### 4. Other secrets
 
 ```bash
 wrangler secret put MUX_TOKEN_ID
 wrangler secret put MUX_TOKEN_SECRET
 wrangler secret put MUX_WEBHOOK_SECRET
-wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON
 ```
 
 - **MUX_TOKEN_ID** / **MUX_TOKEN_SECRET**: From [Mux Dashboard](https://dashboard.mux.com) → Settings → Access Tokens
 - **MUX_WEBHOOK_SECRET**: From Mux Dashboard → Webhooks → your endpoint → Signing Secret
-- **FIREBASE_SERVICE_ACCOUNT_JSON**: Full JSON from Firebase Console → Project Settings → Service Accounts → Generate new private key. When prompted, paste the entire JSON (minified on one line works best).
 
-### 4. Mux webhook
+### 5. Mux webhook
 
 In Mux Dashboard → Webhooks → Add endpoint:
 
@@ -53,7 +72,7 @@ In Mux Dashboard → Webhooks → Add endpoint:
 - **Events**: `video.asset.ready`
 - Copy the **Signing Secret** and set it as `MUX_WEBHOOK_SECRET`
 
-### 5. Deploy
+### 6. Deploy
 
 ```bash
 npm run deploy

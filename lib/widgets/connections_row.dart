@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/connection_lite.dart';
 import '../services/connections_service.dart';
+import '../services/user_blocking_service.dart';
 
 /// ConnectionsRow - Horizontal scrollable row of user connections
 ///
@@ -28,6 +27,7 @@ class ConnectionsRow extends StatefulWidget {
 
 class _ConnectionsRowState extends State<ConnectionsRow> {
   final ConnectionsService _connectionsService = ConnectionsService();
+  final UserBlockingService _blockingService = UserBlockingService();
   List<ConnectionLite> _connections = [];
   bool _isLoading = true;
   final Set<String> _sentConnections = {};
@@ -37,6 +37,7 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
     super.initState();
     debugPrint('🔗 ConnectionsRow: initState - loading connections...');
     _loadConnections();
+    _blockingService.blockListRevision.addListener(_handleBlockListChanged);
   }
 
   @override
@@ -52,6 +53,7 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
     debugPrint('🔗 ConnectionsRow: _loadConnections called');
     try {
       final connections = await _connectionsService.getConnectionsPreview();
+      final visibleConnections = await _filterBlockedConnections(connections);
       debugPrint('🔗 ConnectionsRow: Loaded ${connections.length} connections');
 
       // Debug each connection's avatar URL
@@ -66,7 +68,7 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
       }
 
       // Use real connections only - no test data fallback
-      List<ConnectionLite> finalConnections = connections;
+      List<ConnectionLite> finalConnections = visibleConnections;
 
       if (mounted) {
         setState(() {
@@ -87,6 +89,28 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
         });
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _blockingService.blockListRevision.removeListener(_handleBlockListChanged);
+    super.dispose();
+  }
+
+  Future<List<ConnectionLite>> _filterBlockedConnections(
+    List<ConnectionLite> connections,
+  ) async {
+    final blockedUserIds = (await _blockingService.getBlockedUsers()).toSet();
+    if (blockedUserIds.isEmpty) {
+      return connections;
+    }
+    return connections
+        .where((connection) => !blockedUserIds.contains(connection.userId))
+        .toList();
+  }
+
+  void _handleBlockListChanged() {
+    _loadConnections();
   }
 
   /// Preload all connection avatars for instant display
@@ -168,13 +192,12 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
     debugPrint(
         '🔗 ConnectionsRow: build() called - _isLoading: $_isLoading, connections: ${_connections.length}');
     return Container(
-      constraints: const BoxConstraints(maxHeight: 100),
+      constraints: const BoxConstraints(maxHeight: 140),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with search icon only
           Row(
             children: [
               const Spacer(),
@@ -196,11 +219,7 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
             ],
           ),
           const SizedBox(height: 4),
-
-          // Connections list
-          Flexible(
-            child: _buildConnectionsList(),
-          ),
+          SizedBox(height: 80, child: _buildConnectionsList()),
         ],
       ),
     );
@@ -293,17 +312,21 @@ class _ConnectionsRowState extends State<ConnectionsRow> {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             Icons.people_outline,
             color: Colors.white.withValues(alpha: 0.5),
-            size: 32,
+            size: 28,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
             'Find creators to connect with',
+            maxLines: 2,
+            textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 11,
                 ),
           ),
         ],

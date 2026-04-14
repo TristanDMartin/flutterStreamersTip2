@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../utils/public_video_count_rules.dart';
+
 /// Post Counter Service - Single source of truth for user post counts
 ///
 /// This service manages post counting according to strict rules:
@@ -14,30 +16,21 @@ class PostCounterService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Post counting rules - what counts as a "post"
-  static const List<String> _countableStatuses = [
-    'published',
-    'public',
-    'ready',
-    'active',
-  ];
+  /// Matches [VideoService] feed: active | published | ready.
+  bool _shouldCountPost(String status) {
+    final String s = status.toLowerCase();
+    return s == 'active' || s == 'published' || s == 'ready';
+  }
 
-  static const List<String> _excludedStatuses = [
-    'draft',
-    'scheduled',
-    'archived',
-    'deleted',
-    'hidden',
-    'moderation',
-    'private',
-  ];
-
-  static const List<String> _countablePrivacyLevels = [
-    'everyone', // Maps to 'Everyone' privacy level
-    'connections', // Maps to 'Connections' privacy level
-    'public', // Legacy support
-    'followers', // Legacy support
-  ];
+  /// Public feed visibility (same strings as feed / web).
+  bool _shouldCountPrivacy(String privacy) {
+    final String p = privacy.trim();
+    if (p.isEmpty) {
+      return false;
+    }
+    final String lower = p.toLowerCase();
+    return lower == 'everyone' || lower == 'public';
+  }
 
   /// Increment post count when a post is published
   Future<bool> incrementPostCount(String userId, {String? postId}) async {
@@ -189,21 +182,37 @@ class PostCounterService {
             '🔧 PostCounterService: Reconciling post count for user: $userId');
       }
 
-      // Count actual countable posts
-      final querySnapshot = await _firestore
-          .collection('videos')
-          .where('userId', isEqualTo: userId)
-          .get();
+      final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
+          <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      for (final String ownerField in <String>['userId', 'user_id']) {
+        final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+            .collection('videos')
+            .where(ownerField, isEqualTo: userId)
+            .get();
+        for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+            in snapshot.docs) {
+          docMap[doc.id] = doc;
+        }
+      }
 
       int actualCount = 0;
-      for (final doc in querySnapshot.docs) {
-        final data = doc.data();
-        final status = data['status'] as String? ?? 'draft';
-        final privacy = data['privacy'] as String? ?? 'private';
-
-        if (_shouldCountPost(status) && _shouldCountPrivacy(privacy)) {
-          actualCount++;
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in docMap.values) {
+        final Map<String, dynamic> data = doc.data();
+        if (!videoOwnerIsUser(data, userId)) {
+          continue;
         }
+        if (!videoCountsAsPublicPostForStats(data)) {
+          continue;
+        }
+        try {
+          if (!await videoIsPlayableForProfileCount(doc.id, data)) {
+            continue;
+          }
+        } catch (_) {
+          continue;
+        }
+        actualCount++;
       }
 
       // Update the counter with the actual count
@@ -245,17 +254,6 @@ class PostCounterService {
     }
 
     return results;
-  }
-
-  /// Check if a post status should be counted
-  bool _shouldCountPost(String status) {
-    return _countableStatuses.contains(status.toLowerCase()) &&
-        !_excludedStatuses.contains(status.toLowerCase());
-  }
-
-  /// Check if a privacy level should be counted
-  bool _shouldCountPrivacy(String privacy) {
-    return _countablePrivacyLevels.contains(privacy.toLowerCase());
   }
 
   /// Ensure post count doesn't go below 0

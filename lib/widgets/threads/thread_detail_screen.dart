@@ -103,6 +103,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
         title: post.title,
         content: post.content,
         category: post.category,
+        categoryDisplayName: post.categoryDisplayName,
         tags: post.tags,
         author: updatedAuthor,
         visibility: post.visibility,
@@ -691,23 +692,25 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              _post!.category.toUpperCase(),
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.78),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
+          if ((_post!.categoryDisplayName ?? '').isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                _post!.categoryDisplayName!.toUpperCase(),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
+          ],
           Text(
             _post!.title,
             style: const TextStyle(

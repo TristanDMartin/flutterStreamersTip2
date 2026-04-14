@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fallback splash screen with logo only (use this if composite image is not available) -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Purple background -->
     <item>
-        <color android:color="#6137EB" />
+        <color android:color="#1C135D" />
     </item>
-    <!-- White logo centered -->
-    <item>
+    <item
+        android:width="164dp"
+        android:height="164dp"
+        android:gravity="center">
         <bitmap
             android:gravity="center"
             android:src="@drawable/splash_logo" />
     </item>
 </layer-list>
-

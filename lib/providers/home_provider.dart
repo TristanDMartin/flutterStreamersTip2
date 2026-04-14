@@ -8,13 +8,11 @@ import '../models/feed_tab.dart';
 import '../models/home_video.dart';
 import '../models/user.dart' as app_user;
 import '../services/video_service.dart' as video_service;
-import '../services/user_service.dart';
 import '../services/favorites_service.dart';
 import '../services/following_feed_service.dart';
 import '../services/comments_service.dart';
 import '../services/unified_avatar_service.dart';
-import '../services/like_service.dart';
-import '../services/enhanced_like_service.dart';
+import '../services/streamers_tip_like_service.dart';
 import 'favorites_provider.dart';
 import 'video_service_provider.dart';
 import '../services/global_playback_manager.dart';
@@ -22,20 +20,17 @@ import '../constants/playback_owners.dart';
 
 class HomeViewModel extends StateNotifier<HomeState> {
   final video_service.VideoService _videoService;
-  final UserService _userService;
   final FavoritesService _favoritesService;
   final FollowingFeedService _followingFeedService;
   final CommentsService _commentsService;
-  final LikeService _likeService = LikeService();
+  final StreamersTipLikeService _likeService = StreamersTipLikeService.instance;
 
   HomeViewModel({
     required video_service.VideoService videoService,
-    required UserService userService,
     required FavoritesService favoritesService,
     FollowingFeedService? followingFeedService,
     CommentsService? commentsService,
   })  : _videoService = videoService,
-        _userService = userService,
         _favoritesService = favoritesService,
         _followingFeedService =
             followingFeedService ?? FollowingFeedService.instance,
@@ -110,24 +105,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
         await _refreshForYou(rid: rid);
         log('✅ For You feed refreshed: ${state.forYouVideos.length} videos');
       } else if (feedTab == FeedTab.following) {
-        final rid = DateTime.now().microsecondsSinceEpoch.toString();
-        state = state.copyWith(
-          activeFeed: FeedTab.following,
-          followingSlice: (state.followingSlice ??
-                  const FeedSlice(
-                    items: <HomeVideo>[],
-                    nextCursor: null,
-                    isLoading: false,
-                  ))
-              .copyWith(
-            isLoading: true,
-            clearError: true,
-            requestId: rid,
-            clearEmptyMessage: true,
-          ),
-        );
-        await _refreshFollowing(rid: rid);
-        log('✅ Following feed refreshed: ${state.followingVideos.length} videos');
+        log('⏭️ Progression tab has no video feed to refresh');
       } else {
         log('⏭️ Threads feed does not support video refresh');
       }
@@ -279,12 +257,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('📱 Loaded ${realVideos.length} real videos from VideoService');
 
       if (realVideos.isEmpty) {
-        log('⚠️ No real videos found, creating sample videos as fallback');
-        final sampleVideos = _createSampleVideos();
+        log('⚠️ No real videos found, keeping feed honest with an empty state');
         state = state.copyWith(
-          forYouVideos: sampleVideos,
-          followingVideos: sampleVideos.take(1).toList(),
+          forYouVideos: const [],
+          followingVideos: const [],
           isLoading: false,
+          error: 'No videos are available right now.',
         );
       } else {
         // VideoService already returns newest first (updatedAt ?? createdAt); do not re-sort by createdAt
@@ -312,49 +290,13 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
         GlobalPlaybackManager.instance.preloadAround(0, state.forYouVideos);
       } else {
-        final sampleVideos = _createSampleVideos();
         state = state.copyWith(
-          forYouVideos: sampleVideos,
-          followingVideos: sampleVideos.take(1).toList(),
+          forYouVideos: const [],
+          followingVideos: const [],
           isLoading: false,
-          error: 'You are offline. Showing fallback videos for now.',
+          error: 'Unable to load videos right now. Please try again.',
         );
-        if (sampleVideos.isNotEmpty) {
-          GlobalPlaybackManager.instance.preloadAround(0, sampleVideos);
-        }
       }
-    }
-  }
-
-  /// INSTANT FOLLOWING: Preload following videos in background for instant tab switching
-  Future<void> _preloadFollowingVideosInBackground() async {
-    try {
-      log('👥 INSTANT FOLLOWING: Starting background preload of following videos...');
-
-      // Get user's following IDs
-      final followingIds = await _userService.getFollowingIds().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          log('⏰ Following IDs fetch timeout - skipping preload');
-          return <String>[];
-        },
-      );
-
-      if (followingIds.isEmpty) {
-        log('👥 INSTANT FOLLOWING: No following users found - skipping preload');
-        return;
-      }
-
-      log('👥 INSTANT FOLLOWING: Found ${followingIds.length} following users - preloading videos...');
-
-      // Preload following videos in background (non-blocking)
-      fetchFollowingVideos(followingIds: followingIds, reset: true).then((_) {
-        log('✅ INSTANT FOLLOWING: Background preload completed - ${state.followingVideos.length} videos ready');
-      }).catchError((e) {
-        log('⚠️ INSTANT FOLLOWING: Background preload failed: $e (non-critical)');
-      });
-    } catch (e) {
-      log('⚠️ INSTANT FOLLOWING: Error in background preload: $e (non-critical)');
     }
   }
 
@@ -430,8 +372,11 @@ class HomeViewModel extends StateNotifier<HomeState> {
         // Load like states for this batch
         for (final video in batch) {
           try {
-            final isLiked = await _likeService.isVideoLiked(video.id);
-            final likeCount = await _likeService.getLikeCount(video.id);
+            final likeState = _likeService.getLikeState(video.id);
+            final isLiked = likeState.isLiked;
+            final likeCount = likeState.likeCount > 0 || isLiked
+                ? likeState.likeCount
+                : video.likes;
 
             updatedVideos.add(video.copyWith(
               isLiked: isLiked,
@@ -479,9 +424,6 @@ class HomeViewModel extends StateNotifier<HomeState> {
       } catch (e) {
         log('⚠️ Background video refresh failed (non-critical): $e');
       }
-
-      // INSTANT FOLLOWING: Preload following videos in background for instant switching
-      _preloadFollowingVideosInBackground();
 
       // Sync like, favorite, and comment states after loading videos (non-blocking)
       try {
@@ -584,65 +526,35 @@ class HomeViewModel extends StateNotifier<HomeState> {
     log('🔄 switchFeed: Called with type: ${type.displayName}');
     state = state.copyWith(activeFeed: type);
     
-    // Threads tab doesn't need video loading
-    if (type == FeedTab.threads) {
-      log('🔄 switchFeed: Switching to Threads feed');
+    // Threads / Progression tabs don't load home video feeds
+    if (type == FeedTab.threads || type == FeedTab.following) {
+      log('🔄 switchFeed: ${type.displayName} — no video feed load');
       return;
     }
 
-    final bool hasCachedVideos = switch (type) {
-      FeedTab.forYou => state.forYouVideos.isNotEmpty,
-      FeedTab.following => state.followingVideos.isNotEmpty,
-      FeedTab.threads => false,
-    };
-    final bool isAlreadyLoading = switch (type) {
-      FeedTab.forYou => state.forYouSlice?.isLoading ?? false,
-      FeedTab.following => state.followingSlice?.isLoading ?? false,
-      FeedTab.threads => false,
-    };
+    final bool hasCachedVideos = state.forYouVideos.isNotEmpty;
+    final bool isAlreadyLoading = state.forYouSlice?.isLoading ?? false;
 
     if (hasCachedVideos || isAlreadyLoading) {
-      log('✅ switchFeed: Reusing cached ${type.displayName} feed');
+      log('✅ switchFeed: Reusing cached For You feed');
       return;
     }
-    
+
     final String rid = DateTime.now().microsecondsSinceEpoch.toString();
-    if (type == FeedTab.forYou) {
-      log('🔄 switchFeed: Switching to For You feed');
-      final FeedSlice slice = (state.forYouSlice ??
-              const FeedSlice(
-                items: <HomeVideo>[],
-                nextCursor: null,
-                isLoading: false,
-              ))
-          .copyWith(
-        isLoading: true,
-        clearError: true,
-        requestId: rid,
-      );
-      state = state.copyWith(forYouSlice: slice);
-      await _refreshForYou(rid: rid);
-    } else {
-      log('🔄 switchFeed: Switching to Following feed');
-      final FeedSlice slice = (state.followingSlice ??
-              const FeedSlice(
-                items: <HomeVideo>[],
-                nextCursor: null,
-                isLoading: false,
-              ))
-          .copyWith(
-        isLoading: true,
-        clearError: true,
-        requestId: rid,
-        clearEmptyMessage: true,
-      );
-      state = state.copyWith(
-        followingSlice: slice,
-      );
-      log('🔄 switchFeed: About to call _refreshFollowing');
-      await _refreshFollowing(rid: rid);
-      log('🔄 switchFeed: _refreshFollowing completed');
-    }
+    log('🔄 switchFeed: Switching to For You feed');
+    final FeedSlice slice = (state.forYouSlice ??
+            const FeedSlice(
+              items: <HomeVideo>[],
+              nextCursor: null,
+              isLoading: false,
+            ))
+        .copyWith(
+      isLoading: true,
+      clearError: true,
+      requestId: rid,
+    );
+    state = state.copyWith(forYouSlice: slice);
+    await _refreshForYou(rid: rid);
   }
 
   Future<void> _refreshForYou({required String rid}) async {
@@ -680,93 +592,6 @@ class HomeViewModel extends StateNotifier<HomeState> {
             ? 'Failed to refresh videos. Check your connection.'
             : 'Connection is unstable. Showing your last loaded feed.',
       );
-    }
-  }
-
-  Future<void> _refreshFollowing({required String rid}) async {
-    try {
-      log('🔄 _refreshFollowing: Starting Following feed refresh - rid: $rid');
-      final String? viewerId = FirebaseAuth.instance.currentUser?.uid;
-      if (viewerId == null) {
-        log('⚠️ _refreshFollowing: No authenticated user, returning empty feed');
-        // Fallback to empty when unauthenticated
-        if (state.followingSlice?.requestId != rid) return;
-        state = state.copyWith(
-          followingVideos: const <HomeVideo>[],
-          lastFollowingDoc: null,
-          followingSlice: state.followingSlice?.copyWith(
-            items: const <HomeVideo>[],
-            nextCursor: null,
-            isLoading: false,
-            clearError: true,
-            emptyMessage: 'Follow creators to build your Following feed.',
-          ),
-        );
-        return;
-      }
-      log('🔄 _refreshFollowing: Fetching Following videos for user: $viewerId');
-      // Fetch videos using connections-based service
-      log('🔄 _refreshFollowing: About to call _followingFeedService.fetchFollowingVideos');
-      final page = await _followingFeedService.fetchFollowingVideos(
-        viewerId: viewerId,
-        limit: 20,
-      );
-      final videos = page['videos'] as List<HomeVideo>;
-      final authorCount = (page['authorCount'] as int?) ?? 0;
-      log('🔄 _refreshFollowing: Fetched ${videos.length} Following videos');
-      if (state.followingSlice?.requestId != rid) {
-        log('⚠️ _refreshFollowing: Request ID mismatch, ignoring stale response');
-        return;
-      }
-      
-      // 🔥 DEDUPLICATE: Remove duplicate videos by videoId
-      final uniqueVideos = <String, HomeVideo>{};
-      for (final video in videos) {
-        if (video.id.isNotEmpty && !uniqueVideos.containsKey(video.id)) {
-          uniqueVideos[video.id] = video;
-        }
-      }
-      final deduplicatedVideos = uniqueVideos.values.toList();
-      
-      if (deduplicatedVideos.length != videos.length) {
-        log('🔄 _refreshFollowing: Deduplicated ${videos.length} videos to ${deduplicatedVideos.length} unique videos');
-      }
-      
-      final updatedSlice = state.followingSlice?.copyWith(
-        items: deduplicatedVideos,
-        nextCursor: page['lastDocument'] == null
-            ? null
-            : <String, dynamic>{'lastDoc': page['lastDocument']},
-        isLoading: false,
-        clearError: true,
-        emptyMessage: deduplicatedVideos.isEmpty
-            ? (authorCount == 0
-                ? 'Follow creators to build your Following feed.'
-                : 'No public videos from your connections yet.')
-            : null,
-        clearEmptyMessage: deduplicatedVideos.isNotEmpty,
-      );
-
-      state = state.copyWith(
-        followingSlice: updatedSlice,
-        followingVideos: deduplicatedVideos,
-        lastFollowingDoc: page['lastDocument'],
-      );
-      log('✅ _refreshFollowing: Following feed updated with ${videos.length} videos');
-    } catch (e, stackTrace) {
-      log('❌ _refreshFollowing: Error fetching Following videos: $e');
-      log('📍 Stack trace: $stackTrace');
-      if (state.followingSlice?.requestId != rid) return;
-      final existingItems = state.followingSlice?.items ?? state.followingVideos;
-      state = state.copyWith(
-        followingVideos: existingItems,
-        followingSlice: state.followingSlice?.copyWith(
-          items: existingItems,
-          isLoading: false,
-          error: 'Following feed unavailable. Please check your connection.',
-        ),
-      );
-      log('⚠️ _refreshFollowing: Preserving cached Following feed during error');
     }
   }
 
@@ -1249,22 +1074,22 @@ class HomeViewModel extends StateNotifier<HomeState> {
   /// Set video like state from enhanced service (for proper sync)
   Future<void> setVideoLikeStateFromService(String videoId) async {
     try {
-      final enhancedLikeService = EnhancedLikeService();
-      final isLiked = await enhancedLikeService.isVideoLiked(videoId);
-      final likeCount = await enhancedLikeService.getLikeCount(videoId);
+      final likeState = _likeService.getLikeState(videoId);
+      final isLiked = likeState.isLiked;
+      final likeCount = likeState.likeCount;
 
       // Update like state in both feeds with correct values
       _updateVideoInFeed(state.forYouVideos, videoId, (video) {
         return video.copyWith(
           isLiked: isLiked,
-          likes: likeCount,
+          likes: likeCount > 0 || isLiked ? likeCount : video.likes,
         );
       });
 
       _updateVideoInFeed(state.followingVideos, videoId, (video) {
         return video.copyWith(
           isLiked: isLiked,
-          likes: likeCount,
+          likes: likeCount > 0 || isLiked ? likeCount : video.likes,
         );
       });
     } catch (e) {
@@ -1549,19 +1374,11 @@ class FeedSlice {
 
 final homeProvider = StateNotifierProvider<HomeViewModel, HomeState>((ref) {
   final videoService = ref.read(videoServiceProvider);
-  final userService = ref.read(userServiceProvider);
   final favoritesService = ref.read(favoritesServiceProvider);
 
   return HomeViewModel(
     videoService: videoService,
-    userService: userService,
     favoritesService: favoritesService,
     followingFeedService: FollowingFeedService.instance,
   );
-});
-
-// MARK: - Service Providers (placeholders)
-
-final userServiceProvider = Provider<UserService>((ref) {
-  return UserService();
 });

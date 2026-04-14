@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fa;
 import '../models/user_count_fields.dart';
 import '../models/network_models.dart';
 import '../models/user.dart';
+import '../utils/avatar_url_resolver.dart';
 
 /// Advanced Network Service
 /// 
@@ -109,7 +110,7 @@ class AdvancedNetworkService extends ChangeNotifier {
           userId: data['followingId'] ?? '',
           displayName: data['displayName'] ?? 'User',
           username: data['username'] ?? 'user',
-          avatarURL: data['avatarURL'],
+          avatarURL: resolveAvatarUrl(data),
           onlineStatus: OnlineStatus.offline,
           relationshipType: RelationshipType.following,
           lastInteraction: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -131,7 +132,7 @@ class AdvancedNetworkService extends ChangeNotifier {
           userId: data['followerId'] ?? '',
           displayName: data['displayName'] ?? 'User',
           username: data['username'] ?? 'user',
-          avatarURL: data['avatarURL'],
+          avatarURL: resolveAvatarUrl(data),
           onlineStatus: OnlineStatus.offline,
           relationshipType: RelationshipType.follower,
           lastInteraction: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),

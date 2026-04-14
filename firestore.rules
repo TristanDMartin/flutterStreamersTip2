@@ -137,22 +137,29 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.userId == request.auth.uid;
       // Owner can update metadata after upload (Worker sets muxPlaybackId/hlsUrl/status:ready)
+      // Viewers may only bump favorite counters (UnifiedBookmarkService batch).
       allow update: if request.auth != null
-        && request.auth.uid == resource.data.userId
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly([
-            'caption','hashtags','privacy','visibility','allowComments',
-            'category','categoryId','categories','updatedAt','thumbnailUrl',
-            'thumbnails','status','moderation','metadata','videoUrl',
-            'sourcePlatform','isMux','muxStatus','muxUploadId',
-            'views','likes','comments','shares','favorites',
-            'favoriteCount','id',
-            'cross_platform_sharing','watermark_applied','moderation_confidence',
-            'moderation_checked_at','duration','fileSize'
-          ])
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
-            || request.resource.data.status != 'ready');
-      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+        && (
+          (
+            isVideoDocumentOwner()
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly([
+                'caption','hashtags','privacy','visibility','allowComments',
+                'category','categoryId','categories','updatedAt','deletedAt',
+                'thumbnailUrl',
+                'thumbnails','status','moderation','metadata','videoUrl',
+                'sourcePlatform','isMux','muxStatus','muxUploadId',
+                'views','likes','comments','shares','favorites',
+                'favoriteCount','id',
+                'cross_platform_sharing','watermark_applied','moderation_confidence',
+                'moderation_checked_at','duration','fileSize'
+              ])
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+                || request.resource.data.status != 'ready')
+          )
+          || isBookmarkFavoriteCountOnlyUpdate()
+        );
+      allow delete: if request.auth != null && isVideoDocumentOwner();
     }
     
     // User favorites collections
@@ -653,6 +660,39 @@ service cloud.firestore {
     }
   }
   
+  // Video doc: bookmark / unbookmark by non-owner (client increment only).
+  function videoIntField(data, field) {
+    return field in data && data[field] is int ? data[field] : 0;
+  }
+
+  // Matches VideoActionsService owner resolution (userId, creatorId, creator_id).
+  function isVideoDocumentOwner() {
+    return request.auth != null
+      && (
+        ('userId' in resource.data && resource.data.userId == request.auth.uid) ||
+        ('creatorId' in resource.data && resource.data.creatorId == request.auth.uid) ||
+        ('creator_id' in resource.data && resource.data.creator_id == request.auth.uid)
+      );
+  }
+
+  function isBookmarkFavoriteCountOnlyUpdate() {
+    return request.auth != null
+      && resource.data.keys().hasAll(['userId'])
+      && request.auth.uid != resource.data.userId
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['favorites', 'favoriteCount', 'updatedAt'])
+      && isFavoriteAndFavoriteCountStepTogether();
+  }
+
+  function isFavoriteAndFavoriteCountStepTogether() {
+    let beforeF = videoIntField(resource.data, 'favorites');
+    let afterF = videoIntField(request.resource.data, 'favorites');
+    let beforeFC = videoIntField(resource.data, 'favoriteCount');
+    let afterFC = videoIntField(request.resource.data, 'favoriteCount');
+    return (afterF == beforeF + 1 && afterFC == beforeFC + 1)
+      || (afterF == beforeF - 1 && afterFC == beforeFC - 1);
+  }
+
   // Validation functions
   function isValidBookmarkUpdate(likedVideos) {
     return likedVideos is list

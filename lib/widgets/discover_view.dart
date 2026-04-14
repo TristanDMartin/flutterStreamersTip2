@@ -10,6 +10,7 @@ import '../providers/discover_provider.dart';
 import '../providers/activity_provider.dart';
 import '../providers/unread_messages_provider.dart';
 import '../models/trending_creator.dart';
+import '../models/category.dart' as discover_models;
 import 'category_card.dart';
 import 'recommended_content_card.dart';
 import '../services/logging_service.dart';
@@ -17,6 +18,7 @@ import '../services/caching_service.dart';
 import '../services/offline_storage_service.dart';
 import '../services/accessibility_service.dart';
 import '../services/global_playback_manager.dart';
+import '../utils/avatar_url_resolver.dart';
 import '../constants/playback_owners.dart';
 import '../constants/app_colors.dart';
 import 'instant_response_button.dart';
@@ -42,7 +44,7 @@ class FieldMapper {
   }
 
   static String getAvatarUrl(Map<String, dynamic> data) {
-    return data['avatarURL'] ?? data['profileImageURL'] ?? '';
+    return resolveAvatarUrl(data) ?? '';
   }
 
   static String getThumbnailUrl(Map<String, dynamic> data) {
@@ -81,25 +83,84 @@ class DiscoverView extends ConsumerStatefulWidget {
 
 class _DiscoverViewState extends ConsumerState<DiscoverView> {
   static const int _videosPerPage = 20;
-  static const List<String> _allowedVideoStatuses = ['published', 'ready'];
+  static const List<String> _allowedVideoStatuses = [
+    'published',
+    'ready',
+    'active',
+  ];
   String? _selectedCategory;
   int _currentCategoryPage = 0;
+  final Map<String, Future<List<Map<String, dynamic>>>> _categoryFeedFutures =
+      {};
 
   static const Map<String, List<String>> _categoryAliases = {
-    'tech': ['tech', 'Tech', 'Technology', 'Technical'],
+    'all': ['all'],
+    'gaming': ['gaming', 'games', 'gameplay'],
+    'art': ['art', 'artist', 'creative'],
+    'music': ['music', 'musician', 'songs'],
+    'tech': ['tech', 'technology', 'technical', 'gadgets'],
+    'sports': ['sports', 'sport', 'athletics'],
+    'food': ['food', 'cooking', 'recipe'],
+    'just-chatting': ['just-chatting', 'just chatting', 'chatting', 'chat'],
+    'tutorials': ['tutorials', 'tutorial', 'how-to', 'how to'],
+    'fitness': ['fitness', 'workout', 'health'],
+    'podcasts': ['podcasts', 'podcast'],
+    'fashion': ['fashion', 'style'],
+    'roleplay': ['roleplay', 'role-play', 'rp'],
   };
 
+  String _normalizeCategoryKey(String value) {
+    final trimmed = value.trim().toLowerCase();
+    final normalizedWhitespace = trimmed.replaceAll(RegExp(r'[\s_]+'), '-');
+    return normalizedWhitespace.replaceAll(RegExp(r'[^a-z0-9-]'), '');
+  }
+
+  Iterable<String> _expandCategoryForms(String value) sync* {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return;
+
+    final normalized = _normalizeCategoryKey(trimmed);
+    final spaced = normalized.replaceAll('-', ' ');
+    final underscored = normalized.replaceAll('-', '_');
+
+    yield trimmed;
+    yield trimmed.toLowerCase();
+    yield normalized;
+    yield spaced;
+    yield underscored;
+    yield normalized.replaceAll('-', '');
+  }
+
+  String? _getCategoryName(String categoryId) {
+    for (final category in discover_models.Category.samples) {
+      if (_normalizeCategoryKey(category.id) == _normalizeCategoryKey(categoryId)) {
+        return category.name;
+      }
+    }
+    return null;
+  }
+
   List<String> _getCategoryQueryValues(String categoryId) {
-    final aliases = _categoryAliases[categoryId];
-    if (aliases != null) return aliases;
-    return [categoryId];
+    final canonicalId = _normalizeCategoryKey(categoryId);
+    final aliases = _categoryAliases[canonicalId] ?? [categoryId];
+    final displayName = _getCategoryName(categoryId);
+    final values = <String>{};
+
+    for (final alias in aliases) {
+      values.addAll(_expandCategoryForms(alias));
+    }
+    if (displayName != null) {
+      values.addAll(_expandCategoryForms(displayName));
+    }
+
+    return values.take(10).toList();
   }
 
   bool _matchesCategory(String? stored, String categoryId) {
     if (stored == null || stored.isEmpty) return false;
-    final storedLower = stored.toString().toLowerCase();
+    final storedNormalized = _normalizeCategoryKey(stored);
     final values = _getCategoryQueryValues(categoryId);
-    return values.any((v) => storedLower == v.toLowerCase());
+    return values.any((v) => storedNormalized == _normalizeCategoryKey(v));
   }
 
   bool _matchesCategoryValue(dynamic stored, String categoryId) {
@@ -113,6 +174,14 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       return false;
     }
     return _matchesCategory(stored.toString(), categoryId);
+  }
+
+  bool _videoMatchesCategory(Map<String, dynamic> data, String categoryId) {
+    return _matchesCategoryValue(data['categories'], categoryId) ||
+        _matchesCategoryValue(
+          data['category'] ?? data['categoryId'] ?? data['category_id'],
+          categoryId,
+        );
   }
 
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _fetchCategoryDocs({
@@ -216,6 +285,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   List<Map<String, dynamic>> _mapVideoDocsToFeedItems(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    String categoryId,
   ) {
     final videos = <Map<String, dynamic>>[];
 
@@ -223,6 +293,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       final data = doc.data();
       final status = data['status'] as String? ?? '';
       if (!_allowedVideoStatuses.contains(status)) {
+        continue;
+      }
+
+      if (!_videoMatchesCategory(data, categoryId)) {
         continue;
       }
 
@@ -302,6 +376,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       if (kDebugMode) {
         debugPrint('❌ DiscoverView initialization error: $e');
       }
+    }
+  }
+
+  Future<void> _refreshDiscoverView() async {
+    _cachingService.clearMemoryCache();
+    _categoryFeedFutures.clear();
+    await ref.read(discoverProvider.notifier).refreshDiscoverData();
+    final selectedCategory = _selectedCategory;
+    if (selectedCategory != null) {
+      _primeCategoryFeed(selectedCategory);
     }
   }
 
@@ -421,6 +505,10 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         );
       },
     );
+  }
+
+  void _primeCategoryFeed(String categoryId) {
+    _categoryFeedFutures[categoryId] = _getCategoryVideosForFeed(categoryId);
   }
 
   // Lazy loading methods
@@ -707,52 +795,17 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         _selectedCategory = categoryId;
         _currentCategoryPage = 0; // Reset pagination
       });
-
-      // Category content is loaded dynamically in _getCategoryVideosForFeed
-
-      // Show visual feedback and fetch content
       if (categoryId != null) {
+        _primeCategoryFeed(categoryId);
         final discoverState = ref.read(discoverProvider);
         final category = discoverState.categories.firstWhere(
           (cat) => cat.id == categoryId,
           orElse: () => discoverState.categories.first,
         );
 
-        // Category content is loaded dynamically in _getCategoryVideos
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Loading ${category.name} content...',
-              style: const TextStyle(color: Colors.white),
-            ),
-            backgroundColor: const Color(0xFF6633CC),
-            duration: const Duration(seconds: 1),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-
         LoggingService.instance.debug(
           'Category selected: ${category.name}',
           tag: 'DiscoverView',
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Showing all content',
-              style: TextStyle(color: Colors.white),
-            ),
-            backgroundColor: const Color(0xFF1A1A4D),
-            duration: const Duration(seconds: 1),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
         );
       }
     } catch (e, stackTrace) {
@@ -944,6 +997,34 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     );
   }
 
+  Widget _buildHeroChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: AppColors.supportAccent, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(followRefreshProvider, (previous, next) {
@@ -951,15 +1032,27 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       ref.read(discoverProvider.notifier).loadTrendingCreators();
     });
 
-    final discoverViewModel = ref.watch(discoverProvider.notifier);
     final discoverState = ref.watch(discoverProvider);
+    final selectedCategory = _selectedCategory == null
+        ? null
+        : discoverState.categories.firstWhere(
+            (cat) => cat.id == _selectedCategory,
+            orElse: () => discoverState.categories.first,
+          );
 
     return Scaffold(
       backgroundColor: AppColors.supportBackground,
       body: Container(
         decoration: const BoxDecoration(color: AppColors.supportBackground),
-        child: CustomScrollView(
-          slivers: [
+        child: RefreshIndicator(
+          color: AppColors.supportAccent,
+          backgroundColor: AppColors.supportBackground,
+          onRefresh: _refreshDiscoverView,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
             // App Bar
             SliverAppBar(
               backgroundColor: AppColors.supportBackground,
@@ -985,61 +1078,130 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: GestureDetector(
-                  onTap: () {
-                    AppNavigator.openSearch(context);
-                  },
-                  child: Container(
-                    height: 52,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: AppColors.supportSurfaceGradient,
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.16),
-                          blurRadius: 18,
-                          offset: const Offset(0, 10),
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: AppColors.supportSurfaceGradient,
                         ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.search,
-                          color: AppColors.supportAccent,
-                          size: 20,
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          width: 1,
                         ),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Text(
-                            'Search creators, videos, hashtags…',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.65),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.18),
+                            blurRadius: 24,
+                            offset: const Offset(0, 14),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          color: Colors.white.withValues(alpha: 0.4),
-                          size: 14,
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            selectedCategory == null
+                                ? 'Find your next rabbit hole'
+                                : 'Locked into ${selectedCategory.name}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            selectedCategory == null
+                                ? 'Creators, categories, and short-form inspiration in one place.'
+                                : 'Swipe into a deeper feed when something grabs you, or pull to refresh for a fresh set.',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.74),
+                              fontSize: 14,
+                              height: 1.35,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _buildHeroChip(
+                                Icons.whatshot_rounded,
+                                '${discoverState.trendingCreators.length} trending',
+                              ),
+                              _buildHeroChip(
+                                Icons.grid_view_rounded,
+                                '${discoverState.categories.length} categories',
+                              ),
+                              _buildHeroChip(
+                                Icons.explore_rounded,
+                                selectedCategory?.name ?? 'Browse all',
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 14),
+                    GestureDetector(
+                      onTap: () {
+                        AppNavigator.openSearch(context);
+                      },
+                      child: Container(
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.16),
+                              blurRadius: 18,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.search,
+                              color: AppColors.supportAccent,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                'Search creators, videos, hashtags…',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.65),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              color: Colors.white.withValues(alpha: 0.4),
+                              size: 14,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1070,21 +1232,25 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                         'People gaining momentum right now',
                       ),
                       const SizedBox(height: 16),
-                      SizedBox(
-                        height: 200,
-                        child: LazyLoadingList<TrendingCreator>(
-                          loadData: _loadTrendingCreators,
-                          itemBuilder: _buildTrendingCreatorCard,
-                          itemsPerPage: 10,
-                          emptyBuilder: (context) =>
-                              _buildEmptyTrendingCreatorsState(),
-                          loadingBuilder: (context) => _buildLoadingState(),
-                          errorBuilder: _buildErrorState,
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                      if (discoverState.isLoadingTrendingCreators &&
+                          discoverState.trendingCreators.isEmpty)
+                        _buildLoadingState()
+                      else
+                        SizedBox(
+                          height: 200,
+                          child: LazyLoadingList<TrendingCreator>(
+                            loadData: _loadTrendingCreators,
+                            itemBuilder: _buildTrendingCreatorCard,
+                            itemsPerPage: 10,
+                            emptyBuilder: (context) =>
+                                _buildEmptyTrendingCreatorsState(),
+                            loadingBuilder: (context) => _buildLoadingState(),
+                            errorBuilder: _buildErrorState,
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -1264,12 +1430,13 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
             ),
             ] else ...[
               // Category selected - show 3-column video grid with tap to open swipeable feed
-              _buildCategoryVideoGridSliver(discoverState, discoverViewModel),
+              _buildCategoryVideoGridSliver(discoverState),
             ],
 
             // Bottom padding for tab bar
             const SliverToBoxAdapter(child: SizedBox(height: 60)),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1302,7 +1469,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   Widget _buildCategoryVideoGridSliver(
     DiscoverState discoverState,
-    DiscoverNotifier discoverViewModel,
   ) {
     if (_selectedCategory == null) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -1346,8 +1512,12 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     String categoryId,
     DiscoverState discoverState,
   ) {
+    final future = _categoryFeedFutures.putIfAbsent(
+      categoryId,
+      () => _getCategoryVideosForFeed(categoryId),
+    );
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _getCategoryVideosForFeed(categoryId),
+      future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -1630,7 +1800,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
         final status = data['status'] as String? ?? '';
         final isValidStatus =
-            status == 'published' || status == 'ready';
+            status == 'published' || status == 'ready' || status == 'active';
         if (!isValidStatus) {
           final videoId =
               videoData['docId'] as String? ?? data['id'] as String?;
@@ -1825,7 +1995,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         'Loading mixed category videos for: $categoryId',
         tag: 'DiscoverView',
       );
-      if (categoryId == 'All' || categoryId == 'all') {
+      if (_normalizeCategoryKey(categoryId) == 'all') {
         return _loadAllVideosNoCategory(startAfter);
       }
       // Load recent videos (last 7 days)
@@ -1842,29 +2012,27 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         tag: 'DiscoverView',
       );
 
-      // Always try to load additional uncategorized videos as fallback
-      // This ensures existing videos without categories also appear
-      LoggingService.instance.debug(
-        'Loading fallback videos for $categoryId to include uncategorized content',
-        tag: 'DiscoverView',
-      );
+      final hasEnoughCategoryMatches =
+          recentVideos.length + trendingVideos.length >= (_videosPerPage ~/ 2);
+      List<Map<String, dynamic>> fallbackVideos = const [];
 
-      final fallbackVideos = await _loadAllCategoryVideos(
-        categoryId,
-        startAfter,
-      );
-      LoggingService.instance.debug(
-        'Fallback query returned ${fallbackVideos.length} videos for $categoryId',
-        tag: 'DiscoverView',
-      );
+      if (!hasEnoughCategoryMatches) {
+        LoggingService.instance.debug(
+          'Category-specific queries were thin for $categoryId, loading broader fallback matches',
+          tag: 'DiscoverView',
+        );
+        fallbackVideos = await _loadAllCategoryVideos(
+          categoryId,
+          startAfter,
+        );
+        LoggingService.instance.debug(
+          'Fallback query returned ${fallbackVideos.length} videos for $categoryId',
+          tag: 'DiscoverView',
+        );
+      }
 
       // If we have categorized videos, combine them with fallback videos
       if (recentVideos.isNotEmpty || trendingVideos.isNotEmpty) {
-        LoggingService.instance.debug(
-          'Combining ${recentVideos.length + trendingVideos.length} categorized videos with ${fallbackVideos.length} fallback videos',
-          tag: 'DiscoverView',
-        );
-
         // Add fallback videos that aren't already in the categorized list
         final existingIds = <String>{};
         for (final video in recentVideos) {
@@ -1885,7 +2053,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         }
 
         LoggingService.instance.debug(
-          'After combining: ${recentVideos.length} total videos for $categoryId',
+          'After combining: ${recentVideos.length} category-aligned videos for $categoryId',
           tag: 'DiscoverView',
         );
       } else if (fallbackVideos.isNotEmpty) {
@@ -1965,7 +2133,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         orderByField: 'createdAt',
         allowOrderlessFallback: true,
       );
-      final videos = _mapVideoDocsToFeedItems(docs)
+      final videos = _mapVideoDocsToFeedItems(docs, categoryId)
           .map((video) => {
                 ...video,
                 'isNew': false,
@@ -1999,11 +2167,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
       final filtered = allVideos.where((v) {
         final data = v['data'] as Map<String, dynamic>?;
         if (data == null) return false;
-        return _matchesCategoryValue(data['categories'], categoryId) ||
-            _matchesCategoryValue(
-              data['category'] ?? data['categoryId'] ?? data['category_id'],
-              categoryId,
-            );
+        return _videoMatchesCategory(data, categoryId);
       }).toList();
       LoggingService.instance.debug(
         'In-memory fallback: ${filtered.length} videos for $categoryId (from ${allVideos.length} total)',
@@ -2086,7 +2250,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         isGreaterThan: sevenDaysAgo,
         orderByField: 'createdAt',
       );
-      final videos = _mapVideoDocsToFeedItems(docs);
+      final videos = _mapVideoDocsToFeedItems(docs, categoryId);
 
       LoggingService.instance.debug(
         'Processed ${videos.length} recent videos for $categoryId (after filtering deleted)',
@@ -2123,7 +2287,7 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         isGreaterThan: 50.0,
         orderByField: 'trendingScore',
       );
-      final videos = _mapVideoDocsToFeedItems(docs);
+      final videos = _mapVideoDocsToFeedItems(docs, categoryId);
 
       LoggingService.instance.debug(
         'Processed ${videos.length} trending videos for $categoryId',

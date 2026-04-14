@@ -31,6 +31,8 @@ import '../services/video_resume_service.dart';
 import '../services/feed_telemetry_service.dart';
 import '../routing/app_navigator.dart';
 import '../utils/video_health_gate.dart';
+import '../constants/app_colors.dart';
+import '../services/thumbnail_service.dart';
 
 class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final HomeVideo video;
@@ -105,7 +107,6 @@ class _VideoPlayerViewOptimizedState
   Timer? _viewCountTimer;
   bool _thumbnailVisible = true;
   Timer? _posterTimer;
-  bool _isBookmarkLoading = false; // Prevent multiple rapid taps
   bool _showPlayPauseIndicatorOverlay =
       false; // Show play/pause indicator animation
   bool _audioUnmuted =
@@ -134,14 +135,18 @@ class _VideoPlayerViewOptimizedState
   // Production-ready controller management
   final VideoControllerRegistry _registry = VideoControllerRegistry();
   final ProductionLoggingService _logger = ProductionLoggingService();
+  final ThumbnailService _thumbnailService = ThumbnailService();
   late UnifiedBookmarkService _bookmarkService;
   final VideoResumeService _resumeService = VideoResumeService();
 
   // Stream subscription for bookmark state changes
   StreamSubscription<BookmarkEvent>? _bookmarkSubscription;
 
-  // Stream subscription for real-time comment count updates
-  StreamSubscription<DocumentSnapshot>? _commentCountSubscription;
+  // Top-level video comments (matches CommentsView2); not denormalized field.
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _commentCountSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _videoDocStatsSubscription;
   int _commentCount = 0; // Real-time comment count
   int _shareCount = 0;
   int _favoriteCount = 0;
@@ -647,52 +652,86 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
-  /// Use video model comment count (Cloud Functions keep it in sync)
+  /// Comment badge = all visible comment docs (top-level + replies), not deleted.
   void _initializeCommentCountListener() {
     _commentCountSubscription?.cancel();
     _commentCountSubscription = null;
+    _videoDocStatsSubscription?.cancel();
+    _videoDocStatsSubscription = null;
 
     _commentCount = widget.video.comments;
     _shareCount = 0;
     _favoriteCount = 0;
 
-    _commentCountSubscription = FirebaseFirestore.instance
-        .collection('videos')
-        .doc(widget.video.id)
+    final DocumentReference<Map<String, dynamic>> videoRef =
+        FirebaseFirestore.instance.collection('videos').doc(widget.video.id);
+
+    _commentCountSubscription = videoRef
+        .collection('comments')
         .snapshots()
-        .listen((snapshot) {
-      if (!mounted || !snapshot.exists) return;
-      final data = snapshot.data();
-      if (data == null) return;
+        .listen(
+      (QuerySnapshot<Map<String, dynamic>> snapshot) {
+        if (!mounted) {
+          return;
+        }
+        final int nextCommentCount = _countVisibleComments(snapshot);
+        if (_commentCount != nextCommentCount) {
+          setState(() {
+            _commentCount = nextCommentCount;
+          });
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (kDebugMode) {
+          debugPrint(
+            'Comment count listener error for ${widget.video.id}: $error',
+          );
+        }
+      },
+      cancelOnError: false,
+    );
 
-      final nextCommentCount = _readStatCount(
-        data,
-        primary: 'comments',
-        fallback: 'commentCount',
-      );
-      final nextShareCount = _readStatCount(
-        data,
-        primary: 'shares',
-        fallback: 'shareCount',
-      );
-      final nextFavoriteCount = _readStatCount(
-        data,
-        primary: 'favorites',
-        fallback: 'favoriteCount',
-      );
+    _videoDocStatsSubscription = videoRef.snapshots().listen(
+      (DocumentSnapshot<Map<String, dynamic>> snapshot) {
+        if (!mounted || !snapshot.exists) {
+          return;
+        }
+        final Map<String, dynamic>? data = snapshot.data();
+        if (data == null) {
+          return;
+        }
+        final int nextShareCount = _readStatCount(
+          data,
+          primary: 'shares',
+          fallback: 'shareCount',
+        );
+        final int nextFavoriteCount = _readStatCount(
+          data,
+          primary: 'favorites',
+          fallback: 'favoriteCount',
+        );
+        if (_shareCount != nextShareCount ||
+            _favoriteCount != nextFavoriteCount) {
+          setState(() {
+            _shareCount = nextShareCount;
+            _favoriteCount = nextFavoriteCount;
+          });
+        }
+      },
+    );
+  }
 
-      if (_commentCount == nextCommentCount &&
-          _shareCount == nextShareCount &&
-          _favoriteCount == nextFavoriteCount) {
-        return;
+  int _countVisibleComments(QuerySnapshot<Map<String, dynamic>> snapshot) {
+    int n = 0;
+    for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+        in snapshot.docs) {
+      final Map<String, dynamic> data = doc.data();
+      final bool deleted = data['deleted'] as bool? ?? false;
+      if (!deleted) {
+        n++;
       }
-
-      setState(() {
-        _commentCount = nextCommentCount;
-        _shareCount = nextShareCount;
-        _favoriteCount = nextFavoriteCount;
-      });
-    });
+    }
+    return n;
   }
 
   int _readStatCount(
@@ -982,6 +1021,8 @@ class _VideoPlayerViewOptimizedState
 
     _commentCountSubscription?.cancel();
     _commentCountSubscription = null;
+    _videoDocStatsSubscription?.cancel();
+    _videoDocStatsSubscription = null;
 
     _activeOwnerSubscription?.cancel();
     _activeOwnerSubscription = null;
@@ -2709,30 +2750,23 @@ class _VideoPlayerViewOptimizedState
   }
 
   Future<void> _handleFavoriteChanged() async {
-    // Production-ready favorite toggle with unified bookmark service
-    if (_isBookmarkLoading) return; // Prevent multiple rapid taps
-
-    setState(() {
-      _isBookmarkLoading = true;
-    });
-
+    final UnifiedBookmarkService bookmarkService =
+        UnifiedBookmarkService.instance;
+    if (bookmarkService.hasPendingOperation(widget.video.id)) {
+      return;
+    }
     try {
-      final bookmarkService = UnifiedBookmarkService.instance;
-      final result = await bookmarkService.toggleBookmark(widget.video.id);
+      final BookmarkResult result =
+          await bookmarkService.toggleBookmark(widget.video.id);
 
       if (result.success) {
-        _isBookmarked = result.isBookmarked!;
-        setState(() {});
-
+        if (mounted) {
+          setState(() {
+            _isBookmarked = result.isBookmarked!;
+          });
+        }
         debugPrint(
             '✅ VideoPlayerView: Bookmark toggled for video ${widget.video.id}: $_isBookmarked');
-
-        // Track analytics
-        // AnalyticsService.instance.trackEvent('bookmark_toggled', parameters: {
-        //   'video_id': widget.video.id,
-        //   'is_favorited': _isBookmarked,
-        //   'creator_id': widget.video.creator.id,
-        // });
       } else {
         // Show user-friendly error message
         if (mounted) {
@@ -2791,12 +2825,6 @@ class _VideoPlayerViewOptimizedState
 
       // Log error for debugging
       log('❌ Error toggling bookmark for video ${widget.video.id}: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBookmarkLoading = false;
-        });
-      }
     }
   }
 
@@ -2927,9 +2955,10 @@ class _VideoPlayerViewOptimizedState
   }
 
   void _handleBookmark() {
-    // Handle bookmark button tap with production-ready error handling
-    if (_isBookmarkLoading) return; // Prevent multiple rapid taps
-
+    if (UnifiedBookmarkService.instance
+        .hasPendingOperation(widget.video.id)) {
+      return;
+    }
     HapticFeedback.lightImpact();
     _handleFavoriteChanged();
   }
@@ -3197,6 +3226,8 @@ class _VideoPlayerViewOptimizedState
                 ),
               ),
 
+              if (widget.showHUD) _buildPremiumFeedScrim(),
+
               // DEBUG: show video id when in debug mode to aid identification
               if (kDebugMode)
                 Positioned(
@@ -3311,20 +3342,39 @@ class _VideoPlayerViewOptimizedState
         ? 'VideoPlayer:${widget.video.id}:${controller.hashCode}:$_surfaceEpoch'
         : 'VideoPlayer:${widget.video.id}:${controller.hashCode}';
 
+    final videoAspectRatio = width / height;
+    final useContainedStage = _shouldUseContainedStage(videoAspectRatio);
+
     return Stack(
       fit: StackFit.expand,
       children: [
+        if (useContainedStage) _buildContainedBackdrop(),
         if (width > 0 && height > 0)
           ClipRect(
             child: FittedBox(
-              fit: BoxFit.cover,
+              fit: useContainedStage ? BoxFit.contain : BoxFit.cover,
               alignment: Alignment.center,
               child: SizedBox(
                 width: width,
                 height: height,
-                child: VideoPlayer(
-                  controller,
-                  key: ValueKey(playerKey),
+                child: ColoredBox(
+                  color: Colors.black,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      VideoPlayer(
+                        controller,
+                        key: ValueKey(playerKey),
+                      ),
+                      AnimatedOpacity(
+                        opacity: _thumbnailVisible ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 400),
+                        child: _buildThumbnailPoster(
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -3336,18 +3386,96 @@ class _VideoPlayerViewOptimizedState
               key: ValueKey(playerKey),
             ),
           ),
-        AnimatedOpacity(
-          opacity: _thumbnailVisible ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 400),
-          child: _buildThumbnailPoster(),
+        if (useContainedStage) _buildContainedStageScrim(),
+      ],
+    );
+  }
+
+  bool _shouldUseContainedStage(double videoAspectRatio) {
+    const double targetVerticalAspectRatio = 9 / 16;
+    const double verticalTolerance = 0.09;
+
+    if (videoAspectRatio <= 0) return false;
+    return (videoAspectRatio - targetVerticalAspectRatio).abs() >
+        verticalTolerance;
+  }
+
+  Widget _buildContainedBackdrop() {
+    final url = _resolveThumbnailUrl(context);
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (url != null)
+          CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black),
+            placeholder: (_, __) => const ColoredBox(color: Colors.black),
+          )
+        else
+          const ColoredBox(color: Colors.black),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.45),
+                const Color(0xFF0B071D).withValues(alpha: 0.78),
+                Colors.black.withValues(alpha: 0.88),
+              ],
+            ),
+          ),
         ),
       ],
     );
   }
 
-  String? _resolveThumbnailUrl() {
+  Widget _buildContainedStageScrim() {
+    return IgnorePointer(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.center,
+            radius: 0.95,
+            colors: [
+              Colors.transparent,
+              Colors.black.withValues(alpha: 0.16),
+              Colors.black.withValues(alpha: 0.34),
+            ],
+            stops: const [0.58, 0.82, 1.0],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String? _resolveThumbnailUrl(BuildContext context) {
+    final mediaQuery = MediaQuery.maybeOf(context);
+    final containerWidth = mediaQuery?.size.width ?? 393;
+    final devicePixelRatio = mediaQuery?.devicePixelRatio ?? 1.0;
+    final fallbackUrl = _buildMuxFallbackThumbnailUrl();
+
+    final optimizedUrl = _thumbnailService.getDisplayReadyThumbnailUrl(
+      thumbnails: widget.video.thumbnails,
+      containerWidth: containerWidth,
+      devicePixelRatio: devicePixelRatio,
+      fallbackUrl: widget.video.thumbnailURL ?? fallbackUrl,
+    );
+
+    if (optimizedUrl != null && optimizedUrl.isNotEmpty) {
+      return optimizedUrl;
+    }
+
     final thumbnailUrl = widget.video.thumbnailURL;
     if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) return thumbnailUrl;
+    return fallbackUrl;
+  }
+
+  String? _buildMuxFallbackThumbnailUrl() {
     final videoUrl = widget.video.videoURL;
     if (videoUrl.contains('stream.mux.com')) {
       final uri = Uri.tryParse(videoUrl);
@@ -3364,16 +3492,41 @@ class _VideoPlayerViewOptimizedState
     return null;
   }
 
-  Widget _buildThumbnailPoster() {
-    final url = _resolveThumbnailUrl();
+  Widget _buildThumbnailPoster({BoxFit fit = BoxFit.cover}) {
+    final url = _resolveThumbnailUrl(context);
     if (url == null) return const ColoredBox(color: Colors.black);
+    final mediaQuery = MediaQuery.maybeOf(context);
+    final containerWidth = mediaQuery?.size.width ?? 393;
+    final containerHeight = mediaQuery?.size.height ?? 852;
+    final devicePixelRatio = mediaQuery?.devicePixelRatio ?? 1.0;
     return CachedNetworkImage(
       imageUrl: url,
-      fit: BoxFit.cover,
+      fit: fit,
       width: double.infinity,
       height: double.infinity,
+      memCacheWidth: (containerWidth * devicePixelRatio).round(),
+      memCacheHeight: (containerHeight * devicePixelRatio).round(),
+      filterQuality: FilterQuality.high,
       errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black),
       placeholder: (_, __) => const ColoredBox(color: Colors.black),
+    );
+  }
+
+  /// Cinematic bottom scrim: improves caption contrast + brand tint.
+  Widget _buildPremiumFeedScrim() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: AppColors.homeFeedBottomScrimStops,
+              colors: AppColors.homeFeedBottomScrim,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -3439,10 +3592,18 @@ class _VideoPlayerViewOptimizedState
                       '@${widget.video.creator.username}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
+                        letterSpacing: 0.2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withValues(alpha: 0.65),
+                            blurRadius: 12,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -3827,7 +3988,7 @@ class _VideoPlayerViewOptimizedState
               iconKey: _likeButtonKey,
               source: 'button',
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
 
             // Comment button with real-time count
             _buildActionButton(
@@ -3835,21 +3996,18 @@ class _VideoPlayerViewOptimizedState
               count: _formatCompactCount(_commentCount),
               onTap: _handleComment,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
 
-            // Bookmark button with loading state
             _buildActionButton(
-              icon: _isBookmarkLoading
-                  ? Icons.hourglass_empty
-                  : (_isBookmarked ? Icons.bookmark : Icons.bookmark_border),
-              count: _isBookmarkLoading
-                  ? '...'
-                  : _formatCompactCount(_favoriteCount),
-              onTap: _isBookmarkLoading ? null : _handleBookmark,
+              icon: _isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+              count: _formatCompactCount(_favoriteCount),
+              onTap: _bookmarkService.hasPendingOperation(widget.video.id)
+                  ? null
+                  : _handleBookmark,
               isActive: _isBookmarked,
-              isLoading: _isBookmarkLoading,
+              isLoading: false,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
 
             // Share button
             _buildActionButton(
@@ -3857,7 +4015,7 @@ class _VideoPlayerViewOptimizedState
               count: _shareCount > 0 ? _formatCompactCount(_shareCount) : 'Share',
               onTap: _handleShare,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
 
             // Creator avatar - Made slightly smaller
             GestureDetector(
@@ -3880,7 +4038,7 @@ class _VideoPlayerViewOptimizedState
     const btnSize = 56.0; // TikTok-style sizing to match _buildActionButtons
     final bool isShareAction = count == 'Share';
     final Color labelColor = isActive
-        ? const Color(0xFFF4E8FF)
+        ? AppColors.textPrimary.withValues(alpha: 0.98)
         : Colors.white.withValues(alpha: 0.92);
 
     return SizedBox(
@@ -3902,31 +4060,61 @@ class _VideoPlayerViewOptimizedState
                     : null,
                 borderRadius: BorderRadius.circular(btnSize / 2),
                 child: Center(
-                  child: isLoading
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              isActive
-                                  ? const Color(0xFF9E63FF)
-                                  : Colors.white.withValues(alpha: 0.9),
-                            ),
-                          ),
-                        )
-                      : Icon(
-                          icon,
-                          color: isActive
-                              ? const Color(0xFF9E63FF)
-                              : Colors.white.withValues(alpha: 0.96),
-                          size: isShareAction ? 30 : 32,
+                  child: Container(
+                    width: btnSize - 4,
+                    height: btnSize - 4,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.16),
+                          Colors.white.withValues(alpha: 0.04),
+                        ],
+                      ),
+                      border: Border.all(
+                        color: isActive
+                            ? AppColors.primary.withValues(alpha: 0.55)
+                            : Colors.white.withValues(alpha: 0.2),
+                        width: 1.1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.14),
+                          blurRadius: 14,
+                          offset: const Offset(0, 8),
                         ),
+                      ],
+                    ),
+                    child: Center(
+                      child: isLoading
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  isActive
+                                      ? AppColors.primary
+                                      : Colors.white.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            )
+                          : Icon(
+                              icon,
+                              color: isActive
+                                  ? AppColors.primary
+                                  : Colors.white.withValues(alpha: 0.96),
+                              size: isShareAction ? 28 : 30,
+                            ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
             switchInCurve: Curves.easeOutCubic,

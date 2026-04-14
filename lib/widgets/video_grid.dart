@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/home_video.dart';
 import '../models/video_clip.dart';
+import 'thumbnail_tile.dart';
 
 class VideoGrid extends StatelessWidget {
   final List<HomeVideo> videos;
@@ -78,38 +79,12 @@ class VideoThumbnail extends StatelessWidget {
             // Thumbnail image
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: _getGradientForCategory(video.categoryId),
-                ),
-                child: (video.thumbnailURL ?? '').isNotEmpty
-                    ? Image.network(
-                        video.thumbnailURL ?? '',
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            decoration: BoxDecoration(
-                              gradient:
-                                  _getGradientForCategory(video.categoryId),
-                            ),
-                            child: Icon(
-                              Icons.photo,
-                              color: Colors.white.withValues(alpha: 0.7),
-                              size: 24,
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        decoration: BoxDecoration(
-                          gradient: _getGradientForCategory(video.categoryId),
-                        ),
-                        child: Icon(
-                          Icons.photo,
-                          color: Colors.white.withValues(alpha: 0.7),
-                          size: 24,
-                        ),
-                      ),
+              child: ThumbnailTile(
+                video: video,
+                borderRadius: BorderRadius.circular(12),
+                showDurationBadge: false,
+                showDraftBadge: false,
+                showViewsBadge: false,
               ),
             ),
 
@@ -153,59 +128,6 @@ class VideoThumbnail extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  LinearGradient _getGradientForCategory(String? categoryId) {
-    final colors = <Color>[];
-    switch (categoryId) {
-      case 'gaming':
-        colors.addAll([Colors.purple, Colors.purple.withValues(alpha: 0.7)]);
-        break;
-      case 'art':
-        colors.addAll([Colors.blue, Colors.blue.withValues(alpha: 0.7)]);
-        break;
-      case 'music':
-        colors.addAll([Colors.pink, Colors.pink.withValues(alpha: 0.7)]);
-        break;
-      case 'tech':
-        colors.addAll([Colors.green, Colors.green.withValues(alpha: 0.7)]);
-        break;
-      case 'sports':
-        colors.addAll([Colors.orange, Colors.orange.withValues(alpha: 0.7)]);
-        break;
-      case 'food':
-        colors.addAll([Colors.red, Colors.red.withValues(alpha: 0.7)]);
-        break;
-      case 'just-chatting':
-        colors.addAll([Colors.cyan, Colors.cyan.withValues(alpha: 0.7)]);
-        break;
-      case 'tutorials':
-        colors.addAll([Colors.indigo, Colors.indigo.withValues(alpha: 0.7)]);
-        break;
-      case 'fitness':
-        colors.addAll([Colors.teal, Colors.teal.withValues(alpha: 0.7)]);
-        break;
-      case 'podcasts':
-        colors.addAll([Colors.brown, Colors.brown.withValues(alpha: 0.7)]);
-        break;
-      case 'fashion':
-        colors.addAll([Colors.purple, Colors.purple.withValues(alpha: 0.7)]);
-        break;
-      case 'roleplay':
-        colors.addAll([Colors.amber, Colors.amber.withValues(alpha: 0.7)]);
-        break;
-      default:
-        colors.addAll([
-          const Color(0xFF2A2A2A),
-          const Color(0xFF1A1A1A),
-        ]);
-    }
-
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: colors,
     );
   }
 }

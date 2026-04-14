@@ -29,6 +29,7 @@ class MediaRouteObserver extends RouteObserver<PageRoute<dynamic>> {
       // 2) dispose all Home-owned controllers
       _playback.disposeControllersForOwner('home/forYou');
       _playback.disposeControllersForOwner('home/following');
+      _playback.disposeControllersForOwner('home/progression');
       _playback.disposeControllersForOwner('home/feed');
 
       // 3) now allow profile/player audio to take over
