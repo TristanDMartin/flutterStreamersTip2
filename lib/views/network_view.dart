@@ -14,7 +14,6 @@ import '../models/user_status.dart';
 import '../services/follows_service.dart';
 import '../services/migration_service.dart';
 import '../services/performance_monitoring_service.dart';
-import '../services/global_playback_manager.dart';
 import '../widgets/status_aware_avatar.dart';
 import '../providers/status_provider.dart';
 import '../routing/app_navigator.dart';
@@ -35,7 +34,6 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   network_models.NetworkTab _selectedTab =
       network_models.NetworkTab.connections;
   final ScrollController _listController = ScrollController();
-  final GlobalPlaybackManager _playbackManager = GlobalPlaybackManager.instance;
   late final AnimationController _contentTransitionController;
   late final Animation<double> _contentFadeAnimation;
   late final Animation<Offset> _contentSlideAnimation;
@@ -101,6 +99,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
   // Error state
   bool _hasShownPermissionError = false;
+  DateTime? _lastFollowListenerErrorSnackAt;
 
   bool get _isFirebaseReady => Firebase.apps.isNotEmpty;
 
@@ -119,38 +118,24 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       parent: _contentTransitionController,
       curve: Curves.easeOutCubic,
     );
-    _contentSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.025),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _contentTransitionController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    _contentSlideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.025), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _contentTransitionController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
     _contentTransitionController.value = 1;
 
-    // 🔊 AUDIO FIX: Block playback IMMEDIATELY (synchronously) when NetworkView opens
-    // This prevents audio bleeding from HomeView - must happen before any widgets build
-    // CRITICAL: This must be synchronous, not in postFrameCallback, to prevent any audio
-    _playbackManager.block(reason: 'networkViewOpened');
-
-    // Step 2: Aggressively mute and pause ALL videos synchronously
-    _playbackManager.pauseAll();
-
     _listController.addListener(_maybeLoadMore);
-
-    if (kDebugMode) {
-      debugPrint(
-          '🔇 NetworkView: Blocked playback and paused all videos IMMEDIATELY');
-    }
 
     // Set initial tab if provided
     if (widget.initialTab != null) {
       _selectedTab = _getTabFromString(widget.initialTab!);
       if (kDebugMode) {
         debugPrint(
-            "🔵 NetworkView: Initialized with tab: ${widget.initialTab} -> ${_selectedTab.name}");
+          "🔵 NetworkView: Initialized with tab: ${widget.initialTab} -> ${_selectedTab.name}",
+        );
       }
     }
 
@@ -173,19 +158,18 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     }
   }
 
-  void _logDriftIfAny({
-    int? followersCountDoc,
-    int? followingCountDoc,
-  }) {
+  void _logDriftIfAny({int? followersCountDoc, int? followingCountDoc}) {
     if (followersCountDoc != null &&
         followersCountDoc != _followersUsers.length) {
       debugPrint(
-          '⚠️ NetworkView: Drift detected - followers doc $followersCountDoc vs list ${_followersUsers.length}');
+        '⚠️ NetworkView: Drift detected - followers doc $followersCountDoc vs list ${_followersUsers.length}',
+      );
     }
     if (followingCountDoc != null &&
         followingCountDoc != _followingUsers.length) {
       debugPrint(
-          '⚠️ NetworkView: Drift detected - following doc $followingCountDoc vs list ${_followingUsers.length}');
+        '⚠️ NetworkView: Drift detected - following doc $followingCountDoc vs list ${_followingUsers.length}',
+      );
     }
   }
 
@@ -208,26 +192,25 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     // Dispose timers
     _searchTimer?.cancel();
 
-    _playbackManager.unblock();
-
     super.dispose();
   }
 
   /// Initialize network connectivity monitoring
   void _initializeConnectivityMonitoring() {
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
-      (List<ConnectivityResult> results) {
-        final hasConnection = results.contains(ConnectivityResult.mobile) ||
-            results.contains(ConnectivityResult.wifi) ||
-            results.contains(ConnectivityResult.ethernet);
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      List<ConnectivityResult> results,
+    ) {
+      final hasConnection =
+          results.contains(ConnectivityResult.mobile) ||
+          results.contains(ConnectivityResult.wifi) ||
+          results.contains(ConnectivityResult.ethernet);
 
-        // Connection status is now handled by the status provider
+      // Connection status is now handled by the status provider
 
-        if (!hasConnection && mounted) {
-          _showNetworkError();
-        }
-      },
-    );
+      if (!hasConnection && mounted) {
+        _showNetworkError();
+      }
+    });
   }
 
   /// Initialize real-time relationship listeners for instant updates (OPTIMIZED)
@@ -235,12 +218,14 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     if (currentUserId == null) {
       debugPrint(
-          '❌ NetworkView: No current user ID, cannot initialize listeners');
+        '❌ NetworkView: No current user ID, cannot initialize listeners',
+      );
       return;
     }
 
     debugPrint(
-        '🔄 NetworkView: Initializing real-time listeners for user: $currentUserId');
+      '🔄 NetworkView: Initializing real-time listeners for user: $currentUserId',
+    );
 
     Timer? debounceTimer;
 
@@ -255,23 +240,33 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       if (kDebugMode) {
         debugPrint('❌ NetworkView: Error in scoped follows listener: $error');
       }
-      final isPermissionDenied =
-          error.toString().toLowerCase().contains('permission');
-      if (mounted && (!_hasShownPermissionError || !isPermissionDenied)) {
-        _hasShownPermissionError =
-            _hasShownPermissionError || isPermissionDenied;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isPermissionDenied
-                  ? 'Cannot load network: missing permissions.'
-                  : 'Network updates failed. Check connection.',
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      if (!mounted) return;
+      final bool isPermissionDenied = error.toString().toLowerCase().contains(
+        'permission',
+      );
+      if (isPermissionDenied) {
+        if (_hasShownPermissionError) return;
+        _hasShownPermissionError = true;
+      } else {
+        final DateTime now = DateTime.now();
+        if (_lastFollowListenerErrorSnackAt != null &&
+            now.difference(_lastFollowListenerErrorSnackAt!) <
+                const Duration(seconds: 4)) {
+          return;
+        }
+        _lastFollowListenerErrorSnackAt = now;
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isPermissionDenied
+                ? 'Cannot load network: missing permissions.'
+                : 'Network updates failed. Check connection.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
 
     _scopedFollowsSubscription1 = FirebaseFirestore.instance
@@ -295,8 +290,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       final connectivityResults = await Connectivity().checkConnectivity();
       final hasConnection =
           connectivityResults.contains(ConnectivityResult.mobile) ||
-              connectivityResults.contains(ConnectivityResult.wifi) ||
-              connectivityResults.contains(ConnectivityResult.ethernet);
+          connectivityResults.contains(ConnectivityResult.wifi) ||
+          connectivityResults.contains(ConnectivityResult.ethernet);
 
       // Connection status is now handled by the status provider
 
@@ -312,8 +307,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-              const Text('No internet connection. Please check your network.'),
+          content: const Text(
+            'No internet connection. Please check your network.',
+          ),
           backgroundColor: Colors.orange.withValues(alpha: 0.8),
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
@@ -355,7 +351,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
     try {
       debugPrint(
-          '🔄 NetworkView: Starting to load users from FollowsService...');
+        '🔄 NetworkView: Starting to load users from FollowsService...',
+      );
 
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
@@ -366,7 +363,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
       // Load all three lists in parallel using the correct tab logic
       debugPrint(
-          '🔄 NetworkView: Loading connections, followers, and following...');
+        '🔄 NetworkView: Loading connections, followers, and following...',
+      );
       final results = await Future.wait([
         followsSvc.getUsersForTab('connections'),
         followsSvc.getUsersForTab('followers'),
@@ -374,7 +372,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       ]);
 
       debugPrint(
-          '📊 NetworkView: Raw results - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}');
+        '📊 NetworkView: Raw results - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}',
+      );
 
       int? followersCountDoc;
       int? followingCountDoc;
@@ -409,7 +408,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       );
 
       debugPrint(
-          '🎯 NetworkView: Final state - Connections: ${_connectionsUsers.length}, Followers: ${_followersUsers.length}, Following: ${_followingUsers.length}');
+        '🎯 NetworkView: Final state - Connections: ${_connectionsUsers.length}, Followers: ${_followersUsers.length}, Following: ${_followingUsers.length}',
+      );
 
       _logDriftIfAny(
         followersCountDoc: followersCountDoc,
@@ -420,19 +420,22 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       debugPrint('🔗 CONNECTIONS (Mutual Follows):');
       for (int i = 0; i < _connectionsUsers.length; i++) {
         debugPrint(
-            '  $i: ${_connectionsUsers[i].displayName} (${_connectionsUsers[i].id})');
+          '  $i: ${_connectionsUsers[i].displayName} (${_connectionsUsers[i].id})',
+        );
       }
 
       debugPrint('👥 FOLLOWERS (They follow you):');
       for (int i = 0; i < _followersUsers.length; i++) {
         debugPrint(
-            '  $i: ${_followersUsers[i].displayName} (${_followersUsers[i].id})');
+          '  $i: ${_followersUsers[i].displayName} (${_followersUsers[i].id})',
+        );
       }
 
       debugPrint('➡️ FOLLOWING (You follow them):');
       for (int i = 0; i < _followingUsers.length; i++) {
         debugPrint(
-            '  $i: ${_followingUsers[i].displayName} (${_followingUsers[i].id})');
+          '  $i: ${_followingUsers[i].displayName} (${_followingUsers[i].id})',
+        );
       }
     } catch (e) {
       debugPrint('❌ Error loading users from follows service: $e');
@@ -444,8 +447,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                const Text('Failed to load network data. Please try again.'),
+            content: const Text(
+              'Failed to load network data. Please try again.',
+            ),
             backgroundColor: Colors.red.withValues(alpha: 0.8),
             duration: const Duration(seconds: 3),
             action: SnackBarAction(
@@ -463,22 +467,27 @@ class _NetworkViewState extends ConsumerState<NetworkView>
   Future<void> _runMigrationIfNeeded() async {
     try {
       // Check if follows collection has any data
-      final followsSnapshot =
-          await FirebaseFirestore.instance.collection('follows').limit(1).get();
+      final followsSnapshot = await FirebaseFirestore.instance
+          .collection('follows')
+          .limit(1)
+          .get();
 
       if (followsSnapshot.docs.isEmpty) {
         debugPrint(
-            '🔄 NetworkView: No follows data found, running migration...');
+          '🔄 NetworkView: No follows data found, running migration...',
+        );
         final migrationSuccess = await MigrationService.runCompleteMigration();
         if (migrationSuccess) {
           debugPrint('✅ NetworkView: Migration completed successfully');
         } else {
           debugPrint(
-              '❌ NetworkView: Migration failed, continuing with empty data');
+            '❌ NetworkView: Migration failed, continuing with empty data',
+          );
         }
       } else {
         debugPrint(
-            '✅ NetworkView: Follows data already exists, skipping migration');
+          '✅ NetworkView: Follows data already exists, skipping migration',
+        );
       }
     } catch (e) {
       debugPrint('❌ NetworkView: Error checking migration status: $e');
@@ -519,9 +528,9 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     try {
       final allUsers = _getAllUsersForSearch();
       final results = allUsers.where((user) {
-        return user.username
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase()) ||
+        return user.username.toLowerCase().contains(
+              _searchQuery.toLowerCase(),
+            ) ||
             user.displayName.toLowerCase().contains(_searchQuery.toLowerCase());
       }).toList();
 
@@ -662,7 +671,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       onPopInvokedWithResult: (bool didPop, dynamic result) {
         if (didPop) {
           debugPrint(
-              '🔄 NetworkView: Popped - letting navigation observer reactivate HomeView');
+            '🔄 NetworkView: Popped - letting navigation observer reactivate HomeView',
+          );
         }
       },
       child: Container(
@@ -671,8 +681,6 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           child: Column(
             children: [
               _buildTopChrome(),
-
-              // Search bar (conditional)
               AnimatedSize(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
@@ -683,11 +691,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                       )
                     : const SizedBox.shrink(),
               ),
-
-              // Tab buttons with swipe functionality
               _buildTabButtons(),
-
-              // Main content area
               Expanded(
                 child: FadeTransition(
                   opacity: _contentFadeAnimation,
@@ -762,9 +766,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.09),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.14),
-          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.12),
@@ -889,9 +891,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: color.withValues(alpha: 0.30),
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1025,9 +1025,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                   end: Alignment.bottomRight,
                 )
               : null,
-          color: isSelected
-              ? null
-              : Colors.white.withValues(alpha: 0.08),
+          color: isSelected ? null : Colors.white.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
@@ -1049,15 +1047,20 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.max,
             children: [
               Container(
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: isSelected ? 0.20 : 0.08),
+                  color: Colors.white.withValues(
+                    alpha: isSelected ? 0.20 : 0.08,
+                  ),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: isSelected ? 0.18 : 0.12),
+                    color: Colors.white.withValues(
+                      alpha: isSelected ? 0.18 : 0.12,
+                    ),
                   ),
                 ),
                 child: Icon(
@@ -1066,34 +1069,36 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                   color: Colors.white.withValues(alpha: isSelected ? 1 : 0.82),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 8),
               Text(
                 title,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: isSelected ? 1 : 0.82),
-                  fontSize: 18,
+                  fontSize: 17,
                   fontWeight: FontWeight.w800,
-                  height: 1,
+                  height: 1.05,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Row(
                 children: [
                   Text(
                     count.toString(),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 26,
+                      fontSize: 24,
                       fontWeight: FontWeight.w900,
                       height: 1,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Text(
                     'people',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.74),
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1145,7 +1150,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         final userId = await _resolveUserDocumentId(user);
         if (userId == null) {
           debugPrint(
-              '❌ NetworkView: Unable to resolve user document for ${user.displayName} (${user.username})');
+            '❌ NetworkView: Unable to resolve user document for ${user.displayName} (${user.username})',
+          );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -1226,8 +1232,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     final statsLabel = _selectedTab == network_models.NetworkTab.followers
         ? '${user.followerCount} followers'
         : _selectedTab == network_models.NetworkTab.following
-            ? '${user.followingCount} following'
-            : '${user.postCount} posts';
+        ? '${user.followingCount} following'
+        : '${user.postCount} posts';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1243,13 +1249,11 @@ class _NetworkViewState extends ConsumerState<NetworkView>
           },
           child: Container(
             width: double.infinity,
-            height: 86,
+            constraints: const BoxConstraints(minHeight: 88),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.09),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.14),
-              ),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.12),
@@ -1273,6 +1277,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           user.displayName,
@@ -1281,6 +1286,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
                           ),
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
@@ -1302,6 +1308,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -1332,13 +1340,13 @@ class _NetworkViewState extends ConsumerState<NetworkView>
     final title = _selectedTab == network_models.NetworkTab.followers
         ? 'No followers yet'
         : _selectedTab == network_models.NetworkTab.following
-            ? 'You are not following anyone yet'
-            : 'No connections yet';
+        ? 'You are not following anyone yet'
+        : 'No connections yet';
     final subtitle = _selectedTab == network_models.NetworkTab.followers
         ? 'Share your profile and keep posting to grow your audience.'
         : _selectedTab == network_models.NetworkTab.following
-            ? 'Find creators and friends from Home or Search, then follow them here.'
-            : 'Follow back people who follow you to turn one-way relationships into connections.';
+        ? 'Find creators and friends from Home or Search, then follow them here.'
+        : 'Follow back people who follow you to turn one-way relationships into connections.';
 
     return Center(
       child: Container(
@@ -1347,9 +1355,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.14),
-          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1566,7 +1572,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
       if (legacyDocs.docs.isEmpty && primaryDocs.docs.isEmpty) {
         debugPrint(
-            '⚠️ No follower docs found to remove for ${user.id}, skipping.');
+          '⚠️ No follower docs found to remove for ${user.id}, skipping.',
+        );
         return false;
       }
 
@@ -1619,7 +1626,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
     if (kDebugMode) {
       debugPrint(
-          "🔵 NetworkView: Navigating to tab: $tabName (${targetTab.name})");
+        "🔵 NetworkView: Navigating to tab: $tabName (${targetTab.name})",
+      );
     }
 
     _selectTab(targetTab);
@@ -1676,7 +1684,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
 
       // Load all three lists in parallel using the correct tab logic
       debugPrint(
-          '🔄 NetworkView: Loading connections, followers, and following...');
+        '🔄 NetworkView: Loading connections, followers, and following...',
+      );
       final results = await Future.wait([
         followsSvc.getUsersForTab('connections'),
         followsSvc.getUsersForTab('followers'),
@@ -1684,7 +1693,8 @@ class _NetworkViewState extends ConsumerState<NetworkView>
       ]);
 
       debugPrint(
-          '📊 NetworkView: Data loaded - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}');
+        '📊 NetworkView: Data loaded - Connections: ${results[0].length}, Followers: ${results[1].length}, Following: ${results[2].length}',
+      );
 
       // Debug: Print user details
       debugPrint('🔗 CONNECTIONS (Mutual Follows):');

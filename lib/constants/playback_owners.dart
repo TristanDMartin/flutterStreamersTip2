@@ -3,4 +3,5 @@ class PlaybackOwners {
   static const discover = 'discover';
   static const player = 'player';
   static const profile = 'profile';
+  static const network = 'network';
 }

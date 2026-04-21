@@ -16,12 +16,10 @@ import '../providers/home_provider.dart';
 import '../providers/feed_state_provider.dart';
 import '../services/global_playback_manager.dart';
 import '../routing/app_routes.dart';
+import '../constants/playback_owners.dart';
 
 class MainTabView extends ConsumerStatefulWidget {
-  const MainTabView({
-    super.key,
-    this.initialTabIndex = 0,
-  });
+  const MainTabView({super.key, this.initialTabIndex = 0});
 
   final int initialTabIndex;
 
@@ -83,13 +81,17 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         try {
           final profileUpdateService = ProfileUpdateService();
           await profileUpdateService.initialize();
-          log('✅ MainTabView: ProfileUpdateService initialized for user: ${authService.currentUser!.displayName}');
+          log(
+            '✅ MainTabView: ProfileUpdateService initialized for user: ${authService.currentUser!.displayName}',
+          );
         } catch (e) {
           log('❌ MainTabView: Error initializing ProfileUpdateService: $e');
         }
 
         // Data sync will be handled by the individual views
-        log('🔄 MainTabView: Starting data sync for user: ${authService.currentUser!.displayName}');
+        log(
+          '🔄 MainTabView: Starting data sync for user: ${authService.currentUser!.displayName}',
+        );
       }
     });
   }
@@ -122,7 +124,9 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     // Silence Home immediately when leaving it for another tab so audio
     // cannot leak during the page animation into Network or other views.
     if (_currentIndex == 0 && index != 0) {
-      _pauseAllHomeViewVideos();
+      _pauseAllHomeViewVideos(
+        nextOwner: index == 1 ? PlaybackOwners.network : null,
+      );
     }
 
     setState(() {
@@ -131,13 +135,13 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
 
     _pageController
         .animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    )
+          index,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        )
         .then((_) {
-      _syncPlaybackForCurrentTab();
-    });
+          _syncPlaybackForCurrentTab();
+        });
   }
 
   void _syncPlaybackForCurrentTab() {
@@ -147,7 +151,7 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
       return;
     }
 
-    playbackManager.block(reason: 'tabSwitch_nonVideoTab');
+    playbackManager.setActiveOwner(PlaybackOwners.network);
   }
 
   void _onUploadTapped() {
@@ -160,10 +164,8 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     _cameraNavTimer = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
       // Navigate directly to StreamersTip camera view
-      Navigator.of(context)
-          .pushNamed(AppRoutes.camera)
-          .then((_) {
-        _requestHomeReactivation('return_from_camera');
+      Navigator.of(context).pushNamed(AppRoutes.camera).then((_) {
+        _syncPlaybackForCurrentTab();
       });
     });
     log('🚨 CAMERA NAVIGATION: Navigator.push completed');
@@ -178,10 +180,8 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     _inboxNavTimer = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
       // Navigate to inbox view as full screen
-      Navigator.of(context)
-          .pushNamed(AppRoutes.inbox)
-          .then((_) {
-        _requestHomeReactivation('return_from_inbox');
+      Navigator.of(context).pushNamed(AppRoutes.inbox).then((_) {
+        _syncPlaybackForCurrentTab();
       });
     });
   }
@@ -195,9 +195,11 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     final authService = ref.read(robustAuthServiceProvider);
     if (authService.currentUser != null) {
       debugPrint(
-          "🔍 MainTabView: Creating User object with ID: ${authService.currentUser!.id}");
+        "🔍 MainTabView: Creating User object with ID: ${authService.currentUser!.id}",
+      );
       debugPrint(
-          "🔍 MainTabView: AuthService currentUser: ${authService.currentUser}");
+        "🔍 MainTabView: AuthService currentUser: ${authService.currentUser}",
+      );
 
       final user = User(
         id: authService.currentUser!.id,
@@ -218,16 +220,16 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         if (!mounted) return;
         Navigator.of(context)
             .push(
-          MaterialPageRoute(
-            builder: (context) =>
-                ProfileViewOptimized(user: user, isCurrentUser: true),
-            fullscreenDialog: true,
-            settings: const RouteSettings(name: '/profile'),
-          ),
-        )
+              MaterialPageRoute(
+                builder: (context) =>
+                    ProfileViewOptimized(user: user, isCurrentUser: true),
+                fullscreenDialog: true,
+                settings: const RouteSettings(name: '/profile'),
+              ),
+            )
             .then((_) {
-          _requestHomeReactivation('return_from_profile');
-        });
+              _syncPlaybackForCurrentTab();
+            });
       });
     }
   }
@@ -249,18 +251,25 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
     }
   }
 
-  void _pauseAllHomeViewVideos() {
+  void _pauseAllHomeViewVideos({String? nextOwner}) {
     try {
       log('🚨 AUDIO FIX: Pausing HomeView videos for tab switch...');
 
       // 🔊 AUDIO FIX: Use GlobalPlaybackManager for consistent audio control
       final playbackManager = ref.read(globalPlaybackManagerProvider);
-      playbackManager.pauseAllForTabSwitch(); // Pause + mute all videos
+      if (nextOwner != null) {
+        playbackManager.setActiveOwner(nextOwner);
+      } else {
+        playbackManager.pauseAllForTabSwitch(); // Pause + mute all videos
+      }
       // ❌ REMOVED: playbackManager.disposeAll() - too aggressive, causes disposal errors
 
-      log('⏸️ MainTabView: Paused all HomeView videos (controllers kept alive)');
+      log(
+        '⏸️ MainTabView: Paused all HomeView videos (controllers kept alive)',
+      );
       debugPrint(
-          '⏸️ MainTabView: Paused all HomeView videos (controllers kept alive)');
+        '⏸️ MainTabView: Paused all HomeView videos (controllers kept alive)',
+      );
     } catch (e) {
       log('❌ MainTabView: Error pausing HomeView videos: $e');
       debugPrint('❌ MainTabView: Error pausing HomeView videos: $e');
@@ -310,13 +319,14 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
             ),
           ),
           // Inbox (handled by navigation)
-          Center(
-            child: Icon(Icons.mail_outline, size: 80, color: Colors.grey),
-          ),
+          Center(child: Icon(Icons.mail_outline, size: 80, color: Colors.grey)),
           // Profile (handled by navigation)
           Center(
-            child: Icon(Icons.account_circle_outlined,
-                size: 80, color: Colors.grey),
+            child: Icon(
+              Icons.account_circle_outlined,
+              size: 80,
+              color: Colors.grey,
+            ),
           ),
         ],
       ),

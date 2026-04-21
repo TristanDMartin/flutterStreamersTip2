@@ -18,6 +18,9 @@ import 'video_service_provider.dart';
 import '../services/global_playback_manager.dart';
 import '../constants/playback_owners.dart';
 
+const Object _homeStateUnset = Object();
+const Object _feedSliceUnset = Object();
+
 class HomeViewModel extends StateNotifier<HomeState> {
   final video_service.VideoService _videoService;
   final FavoritesService _favoritesService;
@@ -30,12 +33,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
     required FavoritesService favoritesService,
     FollowingFeedService? followingFeedService,
     CommentsService? commentsService,
-  })  : _videoService = videoService,
-        _favoritesService = favoritesService,
-        _followingFeedService =
-            followingFeedService ?? FollowingFeedService.instance,
-        _commentsService = commentsService ?? CommentsService(),
-        super(const HomeState()) {
+  }) : _videoService = videoService,
+       _favoritesService = favoritesService,
+       _followingFeedService =
+           followingFeedService ?? FollowingFeedService.instance,
+       _commentsService = commentsService ?? CommentsService(),
+       super(const HomeState()) {
     // Initialize the callbacks
     updateVideoLikeState = _updateVideoLikeState;
     updateVideoFavoriteState = _updateVideoFavoriteState;
@@ -66,6 +69,60 @@ class HomeViewModel extends StateNotifier<HomeState> {
     }
   }
 
+  FeedSlice get _currentForYouSlice =>
+      state.forYouSlice ??
+      const FeedSlice(items: <HomeVideo>[], nextCursor: null, isLoading: false);
+
+  void _updateForYouFeed({
+    required List<HomeVideo> videos,
+    required bool isLoading,
+    Map<String, dynamic>? nextCursor,
+    Object? lastDocument = _homeStateUnset,
+    String? error,
+    bool clearError = false,
+  }) {
+    state = state.copyWith(
+      forYouVideos: videos,
+      isLoading: isLoading,
+      hasMoreContent: nextCursor != null,
+      lastForYouDoc: lastDocument,
+      forYouSlice: _currentForYouSlice.copyWith(
+        items: videos,
+        nextCursor: nextCursor,
+        isLoading: isLoading,
+        error: error,
+        clearError: clearError,
+      ),
+      error: error,
+      clearError: clearError,
+    );
+  }
+
+  FeedSlice get _currentFollowingSlice =>
+      state.followingSlice ??
+      const FeedSlice(items: <HomeVideo>[], nextCursor: null, isLoading: false);
+
+  void _updateFollowingFeed({
+    required List<HomeVideo> videos,
+    required bool isLoading,
+    Map<String, dynamic>? nextCursor,
+    Object? lastDocument = _homeStateUnset,
+    String? error,
+    bool clearError = false,
+  }) {
+    state = state.copyWith(
+      followingVideos: videos,
+      lastFollowingDoc: lastDocument,
+      followingSlice: _currentFollowingSlice.copyWith(
+        items: videos,
+        nextCursor: nextCursor,
+        isLoading: isLoading,
+        error: error,
+        clearError: clearError,
+      ),
+    );
+  }
+
   // MARK: - Initial Load with Instant Play
 
   /// Add new video to feed instantly (no refresh). Used after publish.
@@ -88,19 +145,15 @@ class HomeViewModel extends StateNotifier<HomeState> {
     try {
       if (feedTab == FeedTab.forYou) {
         final rid = DateTime.now().microsecondsSinceEpoch.toString();
+        _updateForYouFeed(
+          videos: state.forYouVideos,
+          isLoading: true,
+          nextCursor: _currentForYouSlice.nextCursor,
+          clearError: true,
+        );
         state = state.copyWith(
           activeFeed: FeedTab.forYou,
-          forYouSlice: (state.forYouSlice ??
-                  const FeedSlice(
-                    items: <HomeVideo>[],
-                    nextCursor: null,
-                    isLoading: false,
-                  ))
-              .copyWith(
-            isLoading: true,
-            clearError: true,
-            requestId: rid,
-          ),
+          forYouSlice: _currentForYouSlice.copyWith(requestId: rid),
         );
         await _refreshForYou(rid: rid);
         log('✅ For You feed refreshed: ${state.forYouVideos.length} videos');
@@ -115,12 +168,6 @@ class HomeViewModel extends StateNotifier<HomeState> {
     }
   }
 
-  /// Set loading state for instant UI feedback
-  void setLoadingState(bool isLoading) {
-    state = state.copyWith(isLoading: isLoading);
-    log('🔄 Loading state set to: $isLoading');
-  }
-
   /// Update For You videos with ranked/personalized feed
   /// 🚀 NEWEST FIRST: Ensures newest videos remain at top even after algorithm ranking
   void updateForYouVideos(List<HomeVideo> videos) {
@@ -133,7 +180,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
     });
 
     state = state.copyWith(forYouVideos: sortedVideos);
-    log('🎯 UnifiedAlgorithm: For You feed updated with ${sortedVideos.length} ranked videos (newest first)');
+    log(
+      '🎯 UnifiedAlgorithm: For You feed updated with ${sortedVideos.length} ranked videos (newest first)',
+    );
   }
 
   /// Update Following videos with ranked/personalized feed
@@ -148,7 +197,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
     });
 
     state = state.copyWith(followingVideos: sortedVideos);
-    log('🎯 UnifiedAlgorithm: Following feed updated with ${sortedVideos.length} ranked videos (newest first)');
+    log(
+      '🎯 UnifiedAlgorithm: Following feed updated with ${sortedVideos.length} ranked videos (newest first)',
+    );
   }
 
   /// Pause all videos (single path via GlobalPlaybackManager)
@@ -172,10 +223,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   Future<void> loadVideos() async {
     log('🔄 loadVideos() called - hasLoaded: ${state.hasLoaded}');
-    log('📊 Current state - forYouVideos: ${state.forYouVideos.length}, followingVideos: ${state.followingVideos.length}');
+    log(
+      '📊 Current state - forYouVideos: ${state.forYouVideos.length}, followingVideos: ${state.followingVideos.length}',
+    );
 
     if (state.hasLoaded && state.forYouVideos.isNotEmpty) {
-      log('⏭️ Videos already loaded (${state.forYouVideos.length} videos), skipping...');
+      log(
+        '⏭️ Videos already loaded (${state.forYouVideos.length} videos), skipping...',
+      );
       return;
     }
 
@@ -234,7 +289,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
     for (int i = 0; i < 50; i++) {
       await Future.delayed(const Duration(milliseconds: 200));
       if (auth.currentUser != null) {
-        log('✅ Authentication ready after ${i * 200}ms: ${auth.currentUser!.uid}');
+        log(
+          '✅ Authentication ready after ${i * 200}ms: ${auth.currentUser!.uid}',
+        );
         return;
       }
     }
@@ -245,7 +302,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
   /// Load cached videos for instant display
   Future<void> _loadCachedVideos() async {
     try {
-      log('🚀 Starting instant play - loading real videos from VideoService...');
+      log(
+        '🚀 Starting instant play - loading real videos from VideoService...',
+      );
 
       // Wait for authentication to be ready
       await _waitForAuthentication();
@@ -258,24 +317,33 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
       if (realVideos.isEmpty) {
         log('⚠️ No real videos found, keeping feed honest with an empty state');
-        state = state.copyWith(
-          forYouVideos: const [],
-          followingVideos: const [],
+        _updateForYouFeed(
+          videos: const <HomeVideo>[],
           isLoading: false,
+          nextCursor: null,
+          lastDocument: null,
           error: 'No videos are available right now.',
         );
+        state = state.copyWith(followingVideos: const []);
       } else {
         // VideoService already returns newest first (updatedAt ?? createdAt); do not re-sort by createdAt
         // or latest website uploads (ready/published) would appear at the end
-        state = state.copyWith(
-          forYouVideos: realVideos,
-          followingVideos: [], // Will be loaded separately for Following feed
+        _updateForYouFeed(
+          videos: realVideos,
           isLoading: false,
+          nextCursor: null,
+          lastDocument: null,
+          clearError: true,
         );
+        state = state.copyWith(followingVideos: const []);
       }
 
-      log('✅ Loaded videos for instant display: ${state.forYouVideos.length} items');
-      log('🎯 Current state - forYouVideos: ${state.forYouVideos.length}, followingVideos: ${state.followingVideos.length}, isLoading: ${state.isLoading}');
+      log(
+        '✅ Loaded videos for instant display: ${state.forYouVideos.length} items',
+      );
+      log(
+        '🎯 Current state - forYouVideos: ${state.forYouVideos.length}, followingVideos: ${state.followingVideos.length}, isLoading: ${state.isLoading}',
+      );
 
       // 🔥 INSTANT PLAY: Preload first video via PlaybackManager (VideoService.preloadVideo is a no-op)
       if (state.forYouVideos.isNotEmpty) {
@@ -290,12 +358,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
         GlobalPlaybackManager.instance.preloadAround(0, state.forYouVideos);
       } else {
-        state = state.copyWith(
-          forYouVideos: const [],
-          followingVideos: const [],
+        _updateForYouFeed(
+          videos: const <HomeVideo>[],
           isLoading: false,
+          nextCursor: null,
+          lastDocument: null,
           error: 'Unable to load videos right now. Please try again.',
         );
+        state = state.copyWith(followingVideos: const []);
       }
     }
   }
@@ -324,12 +394,16 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
       // Preload avatars for instant display with timeout
       if (avatarUrls.isNotEmpty) {
-        await UnifiedAvatarService().preloadAvatars(avatarUrls).timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            log('⏰ Avatar preloading timeout - continuing without preloaded avatars');
-          },
-        );
+        await UnifiedAvatarService()
+            .preloadAvatars(avatarUrls)
+            .timeout(
+              const Duration(seconds: 5),
+              onTimeout: () {
+                log(
+                  '⏰ Avatar preloading timeout - continuing without preloaded avatars',
+                );
+              },
+            );
         log('✅ Preloaded ${avatarUrls.length} avatars for instant display');
       }
     } catch (e) {
@@ -356,11 +430,15 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
   /// Load like states for a specific feed
   Future<void> _loadLikeStatesForFeed(
-      List<HomeVideo> videos, String feedName) async {
+    List<HomeVideo> videos,
+    String feedName,
+  ) async {
     if (videos.isEmpty) return;
 
     try {
-      log('💖 Loading like states for $feedName feed (${videos.length} videos)');
+      log(
+        '💖 Loading like states for $feedName feed (${videos.length} videos)',
+      );
 
       final updatedVideos = <HomeVideo>[];
 
@@ -378,10 +456,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
                 ? likeState.likeCount
                 : video.likes;
 
-            updatedVideos.add(video.copyWith(
-              isLiked: isLiked,
-              likes: likeCount,
-            ));
+            updatedVideos.add(
+              video.copyWith(isLiked: isLiked, likes: likeCount),
+            );
           } catch (e) {
             // If like state loading fails, use the original video
             log('⚠️ Failed to load like state for video ${video.id}: $e');
@@ -402,7 +479,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
         state = state.copyWith(followingVideos: updatedVideos);
       }
 
-      log('✅ Loaded like states for $feedName feed (${updatedVideos.length} videos)');
+      log(
+        '✅ Loaded like states for $feedName feed (${updatedVideos.length} videos)',
+      );
     } catch (e) {
       log('❌ Error loading like states for $feedName feed: $e');
     }
@@ -418,8 +497,16 @@ class HomeViewModel extends StateNotifier<HomeState> {
         await _videoService.refresh();
         final freshVideos = _videoService.getAllVideos();
         if (freshVideos.isNotEmpty) {
-          state = state.copyWith(forYouVideos: freshVideos);
-          log('✅ Background refresh: ${freshVideos.length} videos (incl. new uploads)');
+          _updateForYouFeed(
+            videos: freshVideos,
+            isLoading: false,
+            nextCursor: null,
+            lastDocument: null,
+            clearError: true,
+          );
+          log(
+            '✅ Background refresh: ${freshVideos.length} videos (incl. new uploads)',
+          );
         }
       } catch (e) {
         log('⚠️ Background video refresh failed (non-critical): $e');
@@ -437,19 +524,29 @@ class HomeViewModel extends StateNotifier<HomeState> {
         log('⚠️ Video state sync failed: $e (non-critical)');
       }
 
-      log('✅ Fresh videos loading completed: ${state.forYouVideos.length} forYou, ${state.followingVideos.length} following');
+      log(
+        '✅ Fresh videos loading completed: ${state.forYouVideos.length} forYou, ${state.followingVideos.length} following',
+      );
     } catch (e) {
       log('❌ Error fetching fresh videos: $e');
-      log('💡 HomeProvider: keeping current feed visible during background failure');
+      log(
+        '💡 HomeProvider: keeping current feed visible during background failure',
+      );
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (state.forYouVideos.isEmpty) {
-          state = state.copyWith(
-            forYouVideos: _createSampleVideos(),
+          _updateForYouFeed(
+            videos: _createSampleVideos(),
+            isLoading: false,
+            nextCursor: null,
+            lastDocument: null,
             error: 'You are offline. Showing fallback videos for now.',
           );
           return;
         }
-        state = state.copyWith(
+        _updateForYouFeed(
+          videos: state.forYouVideos,
+          isLoading: false,
+          nextCursor: _currentForYouSlice.nextCursor,
           error: 'Connection is unstable. Showing your last loaded feed.',
         );
       });
@@ -504,28 +601,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
     ];
   }
 
-  /// Force refresh videos from database
-  Future<void> forceRefreshVideos() async {
-    log('🔄 Force refreshing videos...');
-
-    // Reset state to force reload
-    state = state.copyWith(
-      hasLoaded: false,
-      isLoading: true,
-      forYouVideos: [],
-      followingVideos: [],
-    );
-
-    // Reload videos
-    await loadVideos();
-  }
-
   // MARK: - Feed Switching (Hard refresh per feed)
 
   Future<void> switchFeed(FeedTab type) async {
     log('🔄 switchFeed: Called with type: ${type.displayName}');
     state = state.copyWith(activeFeed: type);
-    
+
     // Threads / Progression tabs don't load home video feeds
     if (type == FeedTab.threads || type == FeedTab.following) {
       log('🔄 switchFeed: ${type.displayName} — no video feed load');
@@ -542,18 +623,15 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     final String rid = DateTime.now().microsecondsSinceEpoch.toString();
     log('🔄 switchFeed: Switching to For You feed');
-    final FeedSlice slice = (state.forYouSlice ??
-            const FeedSlice(
-              items: <HomeVideo>[],
-              nextCursor: null,
-              isLoading: false,
-            ))
-        .copyWith(
+    _updateForYouFeed(
+      videos: state.forYouVideos,
       isLoading: true,
+      nextCursor: _currentForYouSlice.nextCursor,
       clearError: true,
-      requestId: rid,
     );
-    state = state.copyWith(forYouSlice: slice);
+    state = state.copyWith(
+      forYouSlice: _currentForYouSlice.copyWith(requestId: rid),
+    );
     await _refreshForYou(rid: rid);
   }
 
@@ -565,29 +643,23 @@ class HomeViewModel extends StateNotifier<HomeState> {
       );
       if (state.forYouSlice?.requestId != rid) return;
       final videos = page['videos'] as List<HomeVideo>;
-      state = state.copyWith(
-        forYouVideos: videos,
-        forYouSlice: state.forYouSlice?.copyWith(
-          items: videos,
-          nextCursor: page['lastDocument'] == null
-              ? null
-              : <String, dynamic>{'lastDoc': page['lastDocument']},
-          isLoading: false,
-          clearError: true,
-        ),
+      final nextCursor = page['lastDocument'] == null
+          ? null
+          : <String, dynamic>{'lastDoc': page['lastDocument']};
+      _updateForYouFeed(
+        videos: videos,
+        isLoading: false,
+        nextCursor: nextCursor,
+        lastDocument: page['lastDocument'],
+        clearError: true,
       );
     } catch (e) {
       if (state.forYouSlice?.requestId != rid) return;
       final existingItems = state.forYouSlice?.items ?? state.forYouVideos;
-      state = state.copyWith(
-        forYouVideos: existingItems,
-        forYouSlice: state.forYouSlice?.copyWith(
-          items: existingItems,
-          isLoading: false,
-          error: existingItems.isEmpty
-              ? 'Failed to refresh videos. Check your connection.'
-              : 'Connection is unstable. Keeping your current feed loaded.',
-        ),
+      _updateForYouFeed(
+        videos: existingItems,
+        isLoading: false,
+        nextCursor: _currentForYouSlice.nextCursor,
         error: existingItems.isEmpty
             ? 'Failed to refresh videos. Check your connection.'
             : 'Connection is unstable. Showing your last loaded feed.',
@@ -598,11 +670,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
   Future<void> fetchMoreActive() async {
     final FeedTab active = state.activeFeed ?? FeedTab.forYou;
     if (active == FeedTab.forYou) {
-      final FeedSlice? s = state.forYouSlice;
-      if (s == null || s.isLoading || s.nextCursor == null) return;
+      final FeedSlice s = _currentForYouSlice;
+      if (s.isLoading || s.nextCursor == null) return;
       final String rid = DateTime.now().microsecondsSinceEpoch.toString();
       state = state.copyWith(
-          forYouSlice: s.copyWith(isLoading: true, requestId: rid));
+        forYouSlice: s.copyWith(isLoading: true, requestId: rid),
+      );
       try {
         final page = await _videoService.fetchForYouVideos(
           pageSize: 10, // Spec: 10 load more
@@ -610,30 +683,23 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
         if (state.forYouSlice?.requestId != rid) return;
         final merged = [...s.items, ...(page['videos'] as List<HomeVideo>)];
-        state = state.copyWith(
-          forYouVideos: merged,
-          forYouSlice: state.forYouSlice?.copyWith(
-            items: merged,
-            nextCursor: page['lastDocument'] == null
-                ? null
-                : <String, dynamic>{'lastDoc': page['lastDocument']},
-            isLoading: false,
-            clearError: true,
-          ),
+        final nextCursor = page['lastDocument'] == null
+            ? null
+            : <String, dynamic>{'lastDoc': page['lastDocument']};
+        _updateForYouFeed(
+          videos: merged,
+          isLoading: false,
+          nextCursor: nextCursor,
+          lastDocument: page['lastDocument'],
+          clearError: true,
         );
       } catch (e) {
         if (state.forYouSlice?.requestId != rid) return;
         final existingItems = state.forYouSlice?.items ?? state.forYouVideos;
-        state = state.copyWith(
-          forYouVideos: existingItems,
-          forYouSlice: state.forYouSlice
-              ?.copyWith(
-                items: existingItems,
-                isLoading: false,
-                error: existingItems.isEmpty
-                    ? 'Failed to load more videos. Check your connection.'
-                    : 'Could not load more videos right now.',
-              ),
+        _updateForYouFeed(
+          videos: existingItems,
+          isLoading: false,
+          nextCursor: s.nextCursor,
           error: existingItems.isEmpty
               ? 'Failed to load more videos. Check your connection.'
               : 'Could not load more videos right now.',
@@ -644,7 +710,8 @@ class HomeViewModel extends StateNotifier<HomeState> {
       if (s == null || s.isLoading || s.nextCursor == null) return;
       final String rid = DateTime.now().microsecondsSinceEpoch.toString();
       state = state.copyWith(
-          followingSlice: s.copyWith(isLoading: true, requestId: rid));
+        followingSlice: s.copyWith(isLoading: true, requestId: rid),
+      );
       try {
         final String? viewerId = FirebaseAuth.instance.currentUser?.uid;
         if (viewerId == null) return;
@@ -681,8 +748,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
       } catch (e) {
         if (state.followingSlice?.requestId != rid) return;
-        final errorSlice = state.followingSlice
-            ?.copyWith(isLoading: false, error: e.toString());
+        final errorSlice = state.followingSlice?.copyWith(
+          isLoading: false,
+          error: e.toString(),
+        );
         state = state.copyWith(
           followingSlice: errorSlice,
           followingVideos: errorSlice?.items ?? state.followingVideos,
@@ -696,29 +765,17 @@ class HomeViewModel extends StateNotifier<HomeState> {
   // MARK: - Fetch Videos
 
   Future<void> fetchForYouVideos({bool reset = false}) async {
+    if (reset) {
+      await refreshFeedByTab(FeedTab.forYou);
+      return;
+    }
+
+    final FeedTab previousFeed = state.activeFeed ?? FeedTab.forYou;
     try {
-      final videos = await _videoService.fetchForYouVideos(
-        pageSize: 10,
-        lastDocument: reset ? null : state.lastForYouDoc,
-      );
-
-      if (reset) {
-        state = state.copyWith(
-          forYouVideos: videos['videos'] as List<HomeVideo>,
-          lastForYouDoc: videos['lastDocument'],
-        );
-      } else {
-        state = state.copyWith(
-          forYouVideos: [
-            ...state.forYouVideos,
-            ...(videos['videos'] as List<HomeVideo>)
-          ],
-          lastForYouDoc: videos['lastDocument'],
-        );
-      }
-
-    } catch (e) {
-      log('Error fetching For You videos: $e');
+      state = state.copyWith(activeFeed: FeedTab.forYou);
+      await fetchMoreActive();
+    } finally {
+      state = state.copyWith(activeFeed: previousFeed);
     }
   }
 
@@ -726,29 +783,39 @@ class HomeViewModel extends StateNotifier<HomeState> {
     required List<String> followingIds,
     bool reset = false,
   }) async {
+    await refreshFollowingFeed(
+      reset: reset,
+      fallbackFollowingIds: followingIds,
+    );
+  }
+
+  Future<void> refreshFollowingFeed({
+    bool reset = true,
+    List<String> fallbackFollowingIds = const <String>[],
+  }) async {
     try {
       final String? viewerId = FirebaseAuth.instance.currentUser?.uid;
       if (viewerId == null) {
-        // fallback to old behavior if not signed in
         final videos = await _videoService.fetchFollowingVideos(
-          followingIds: followingIds,
+          followingIds: fallbackFollowingIds,
           pageSize: 10,
           lastDocument: reset ? null : state.lastFollowingDoc,
         );
-        if (reset) {
-          state = state.copyWith(
-            followingVideos: videos['videos'] as List<HomeVideo>,
-            lastFollowingDoc: videos['lastDocument'],
-          );
-        } else {
-          state = state.copyWith(
-            followingVideos: [
-              ...state.followingVideos,
-              ...(videos['videos'] as List<HomeVideo>)
-            ],
-            lastFollowingDoc: videos['lastDocument'],
-          );
-        }
+        final mergedVideos = reset
+            ? videos['videos'] as List<HomeVideo>
+            : <HomeVideo>[
+                ...state.followingVideos,
+                ...(videos['videos'] as List<HomeVideo>),
+              ];
+        _updateFollowingFeed(
+          videos: mergedVideos,
+          isLoading: false,
+          nextCursor: videos['lastDocument'] == null
+              ? null
+              : <String, dynamic>{'lastDoc': videos['lastDocument']},
+          lastDocument: videos['lastDocument'],
+          clearError: true,
+        );
         return;
       }
 
@@ -756,11 +823,18 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('👥 Fetching Following videos from Connections for user $viewerId');
 
       // Check if user has connections
-      final hasConnections =
-          await _followingFeedService.hasConnections(viewerId);
+      final hasConnections = await _followingFeedService.hasConnections(
+        viewerId,
+      );
       if (!hasConnections) {
         log('👥 No connections found for Following feed');
-        state = state.copyWith(followingVideos: []);
+        _updateFollowingFeed(
+          videos: const <HomeVideo>[],
+          isLoading: false,
+          nextCursor: null,
+          lastDocument: null,
+          clearError: true,
+        );
         return;
       }
 
@@ -771,21 +845,21 @@ class HomeViewModel extends StateNotifier<HomeState> {
       );
       final videos = page['videos'] as List<HomeVideo>;
       final lastDoc = page['lastDocument'];
+      final mergedVideos = reset
+          ? videos
+          : <HomeVideo>[...state.followingVideos, ...videos];
 
-      if (reset) {
-        state = state.copyWith(
-          followingVideos: videos,
-          lastFollowingDoc: lastDoc,
-        );
-      } else {
-        state = state.copyWith(
-          followingVideos: [...state.followingVideos, ...videos],
-          lastFollowingDoc: lastDoc,
-        );
-      }
+      _updateFollowingFeed(
+        videos: mergedVideos,
+        isLoading: false,
+        nextCursor: lastDoc == null
+            ? null
+            : <String, dynamic>{'lastDoc': lastDoc},
+        lastDocument: lastDoc,
+        clearError: true,
+      );
 
       log('✅ Following feed updated: ${videos.length} videos from Connections');
-
     } catch (e) {
       log('Error fetching ranked Following feed: $e');
     }
@@ -843,35 +917,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
     final (arrayType, index) = arrayInfo;
 
-    // Get the video to update (for potential future use)
-    switch (arrayType) {
-      case FeedTab.forYou:
-        // video = forYouVideos[index];
-        break;
-      case FeedTab.following:
-        // video = followingVideos[index];
-        break;
-      case FeedTab.threads:
-        // Threads don't have videos
-        break;
-    }
-
     // Use the new FavoritesService to handle the toggle
     await _favoritesService.toggleFavorite(videoId);
 
     // Update the UI state to match FavoritesService
     final isFavorited = _favoritesService.isFavorited(videoId);
-    switch (arrayType) {
-      case FeedTab.forYou:
-        _updateForYouVideoFavorite(index, isFavorited);
-        break;
-      case FeedTab.following:
-        _updateFollowingVideoFavorite(index, isFavorited);
-        break;
-      case FeedTab.threads:
-        // Threads don't have videos
-        break;
-    }
+    _updateVideoAtIndex(arrayType, index, (video) {
+      return video.copyWith(isFavorited: isFavorited);
+    });
   }
 
   /// Array type detection - matches Swift implementation
@@ -893,26 +946,6 @@ class HomeViewModel extends StateNotifier<HomeState> {
     return null;
   }
 
-  /// Update For You video favorite state
-  void _updateForYouVideoFavorite(int index, bool isFavorited) {
-    if (index >= 0 && index < forYouVideos.length) {
-      final updatedVideos = List<HomeVideo>.from(forYouVideos);
-      updatedVideos[index] =
-          updatedVideos[index].copyWith(isFavorited: isFavorited);
-      state = state.copyWith(forYouVideos: updatedVideos);
-    }
-  }
-
-  /// Update Following video favorite state
-  void _updateFollowingVideoFavorite(int index, bool isFavorited) {
-    if (index >= 0 && index < followingVideos.length) {
-      final updatedVideos = List<HomeVideo>.from(followingVideos);
-      updatedVideos[index] =
-          updatedVideos[index].copyWith(isFavorited: isFavorited);
-      state = state.copyWith(followingVideos: updatedVideos);
-    }
-  }
-
   // MARK: - Sync States
 
   Future<void> syncLikeStates() async {
@@ -925,22 +958,10 @@ class HomeViewModel extends StateNotifier<HomeState> {
     // Sync favorite states from the new FavoritesService
     log('Syncing favorite states from FavoritesService...');
 
-    // Update For You videos
-    final updatedForYouVideos = forYouVideos.map((video) {
+    _replaceVideoFeeds((video) {
       final isFavorited = _favoritesService.isFavorited(video.id);
       return video.copyWith(isFavorited: isFavorited);
-    }).toList();
-
-    // Update Following videos
-    final updatedFollowingVideos = followingVideos.map((video) {
-      final isFavorited = _favoritesService.isFavorited(video.id);
-      return video.copyWith(isFavorited: isFavorited);
-    }).toList();
-
-    state = state.copyWith(
-      forYouVideos: updatedForYouVideos,
-      followingVideos: updatedFollowingVideos,
-    );
+    });
   }
 
   Future<void> syncCommentCounts() async {
@@ -961,8 +982,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
       for (final videoId in videoIds) {
         try {
-          final comments =
-              await _commentsService.fetchCommentsForVideo(videoId);
+          final comments = await _commentsService.fetchCommentsForVideo(
+            videoId,
+          );
           commentCounts[videoId] = comments.length;
         } catch (e) {
           log('Error fetching comments for video $videoId: $e');
@@ -975,38 +997,36 @@ class HomeViewModel extends StateNotifier<HomeState> {
         }
       }
 
-      // Update videos in both feeds with new comment counts
-      final updatedForYouVideos = state.forYouVideos.map((video) {
+      final updatedForYouVideos = _mapVideos(state.forYouVideos, (video) {
         final newCommentCount = commentCounts[video.id] ?? video.comments;
         return video.comments != newCommentCount
             ? video.copyWith(comments: newCommentCount)
             : video;
-      }).toList();
+      });
 
-      final updatedFollowingVideos = state.followingVideos.map((video) {
+      final updatedFollowingVideos = _mapVideos(state.followingVideos, (video) {
         final newCommentCount = commentCounts[video.id] ?? video.comments;
         return video.comments != newCommentCount
             ? video.copyWith(comments: newCommentCount)
             : video;
-      }).toList();
+      });
 
       // Update state if there are changes
-      final hasChanges = updatedForYouVideos.any((video) =>
-              video.comments !=
-              state.forYouVideos
-                  .firstWhere(
-                    (v) => v.id == video.id,
-                    orElse: () => video,
-                  )
-                  .comments) ||
-          updatedFollowingVideos.any((video) =>
-              video.comments !=
-              state.followingVideos
-                  .firstWhere(
-                    (v) => v.id == video.id,
-                    orElse: () => video,
-                  )
-                  .comments);
+      final hasChanges =
+          updatedForYouVideos.any(
+            (video) =>
+                video.comments !=
+                state.forYouVideos
+                    .firstWhere((v) => v.id == video.id, orElse: () => video)
+                    .comments,
+          ) ||
+          updatedFollowingVideos.any(
+            (video) =>
+                video.comments !=
+                state.followingVideos
+                    .firstWhere((v) => v.id == video.id, orElse: () => video)
+                    .comments,
+          );
 
       if (hasChanges) {
         state = state.copyWith(
@@ -1028,23 +1048,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
       final comments = await _commentsService.fetchCommentsForVideo(videoId);
       final newCommentCount = comments.length;
 
-      // Update in both feeds
-      final updatedForYouVideos = state.forYouVideos.map((video) {
-        return video.id == videoId
-            ? video.copyWith(comments: newCommentCount)
-            : video;
-      }).toList();
-
-      final updatedFollowingVideos = state.followingVideos.map((video) {
-        return video.id == videoId
-            ? video.copyWith(comments: newCommentCount)
-            : video;
-      }).toList();
-
-      state = state.copyWith(
-        forYouVideos: updatedForYouVideos,
-        followingVideos: updatedFollowingVideos,
-      );
+      _updateVideoAcrossFeeds(videoId, (video) {
+        return video.copyWith(comments: newCommentCount);
+      });
 
       log('Updated comment count for video $videoId: $newCommentCount');
     } catch (e) {
@@ -1055,15 +1061,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
   // MARK: - Private Methods
 
   void _updateVideoLikeState(String videoId) {
-    // Update like state in both feeds
-    _updateVideoInFeed(state.forYouVideos, videoId, (video) {
-      return video.copyWith(
-        isLiked: !video.isLiked,
-        likes: video.isLiked ? video.likes - 1 : video.likes + 1,
-      );
-    });
-
-    _updateVideoInFeed(state.followingVideos, videoId, (video) {
+    _updateVideoAcrossFeeds(videoId, (video) {
       return video.copyWith(
         isLiked: !video.isLiked,
         likes: video.isLiked ? video.likes - 1 : video.likes + 1,
@@ -1078,15 +1076,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
       final isLiked = likeState.isLiked;
       final likeCount = likeState.likeCount;
 
-      // Update like state in both feeds with correct values
-      _updateVideoInFeed(state.forYouVideos, videoId, (video) {
-        return video.copyWith(
-          isLiked: isLiked,
-          likes: likeCount > 0 || isLiked ? likeCount : video.likes,
-        );
-      });
-
-      _updateVideoInFeed(state.followingVideos, videoId, (video) {
+      _updateVideoAcrossFeeds(videoId, (video) {
         return video.copyWith(
           isLiked: isLiked,
           likes: likeCount > 0 || isLiked ? likeCount : video.likes,
@@ -1100,8 +1090,9 @@ class HomeViewModel extends StateNotifier<HomeState> {
   Future<void> _updateVideoFavoriteState(String videoId) async {
     // Check if video exists in current feeds before attempting optimistic update
     final videoExistsInForYou = state.forYouVideos.any((v) => v.id == videoId);
-    final videoExistsInFollowing =
-        state.followingVideos.any((v) => v.id == videoId);
+    final videoExistsInFollowing = state.followingVideos.any(
+      (v) => v.id == videoId,
+    );
 
     // Store original state for rollback (will be used in catch block if needed)
     bool originalForYouState = false;
@@ -1112,37 +1103,31 @@ class HomeViewModel extends StateNotifier<HomeState> {
         // Video not in current feeds - just update the service without UI changes
         log('⚠️ Video $videoId not in current feeds, updating service only');
         await _favoritesService.toggleFavorite(videoId);
-        log('✅ Successfully toggled favorite for video: $videoId (service only)');
+        log(
+          '✅ Successfully toggled favorite for video: $videoId (service only)',
+        );
         return;
       }
 
       // Get original states for rollback
       originalForYouState = _getVideoFavoriteState(state.forYouVideos, videoId);
-      originalFollowingState =
-          _getVideoFavoriteState(state.followingVideos, videoId);
+      originalFollowingState = _getVideoFavoriteState(
+        state.followingVideos,
+        videoId,
+      );
 
       // Optimistic UI update - update immediately for better UX
       if (videoExistsInForYou) {
-        _updateVideoInFeed(state.forYouVideos, videoId, (video) {
-          return video.copyWith(
-            isFavorited: !video.isFavorited,
-          );
+        _updateVideoInFeedTab(FeedTab.forYou, videoId, (video) {
+          return video.copyWith(isFavorited: !video.isFavorited);
         });
       }
 
       if (videoExistsInFollowing) {
-        _updateVideoInFeed(state.followingVideos, videoId, (video) {
-          return video.copyWith(
-            isFavorited: !video.isFavorited,
-          );
+        _updateVideoInFeedTab(FeedTab.following, videoId, (video) {
+          return video.copyWith(isFavorited: !video.isFavorited);
         });
       }
-
-      // Update state to trigger UI rebuild
-      state = state.copyWith(
-        forYouVideos: List.from(state.forYouVideos),
-        followingVideos: List.from(state.followingVideos),
-      );
 
       // Update the favorites service asynchronously
       await _favoritesService.toggleFavorite(videoId);
@@ -1150,28 +1135,24 @@ class HomeViewModel extends StateNotifier<HomeState> {
       log('✅ Successfully toggled favorite for video: $videoId');
     } catch (e) {
       // Rollback optimistic update on error (only if video exists in feeds)
-      final videoExistsInForYou =
-          state.forYouVideos.any((v) => v.id == videoId);
-      final videoExistsInFollowing =
-          state.followingVideos.any((v) => v.id == videoId);
+      final videoExistsInForYou = state.forYouVideos.any(
+        (v) => v.id == videoId,
+      );
+      final videoExistsInFollowing = state.followingVideos.any(
+        (v) => v.id == videoId,
+      );
 
       if (videoExistsInForYou) {
-        _updateVideoInFeed(state.forYouVideos, videoId, (video) {
+        _updateVideoInFeedTab(FeedTab.forYou, videoId, (video) {
           return video.copyWith(isFavorited: originalForYouState);
         });
       }
 
       if (videoExistsInFollowing) {
-        _updateVideoInFeed(state.followingVideos, videoId, (video) {
+        _updateVideoInFeedTab(FeedTab.following, videoId, (video) {
           return video.copyWith(isFavorited: originalFollowingState);
         });
       }
-
-      // Update state to trigger UI rebuild
-      state = state.copyWith(
-        forYouVideos: List.from(state.forYouVideos),
-        followingVideos: List.from(state.followingVideos),
-      );
 
       log('❌ Error toggling favorite for video $videoId: $e');
       rethrow; // Re-throw to be handled by the calling widget
@@ -1185,26 +1166,76 @@ class HomeViewModel extends StateNotifier<HomeState> {
     } catch (e) {
       // Video not found in current feed arrays - this can happen during feed transitions
       // Return false as default and let the FavoritesService handle the actual state
-      log('⚠️ Video $videoId not found in current feed arrays, using default favorite state');
+      log(
+        '⚠️ Video $videoId not found in current feed arrays, using default favorite state',
+      );
       return false;
     }
   }
 
-  void _updateVideoInFeed(
-    List<HomeVideo> videos,
+  void _updateVideoInFeedTab(
+    FeedTab feed,
     String videoId,
     HomeVideo Function(HomeVideo) update,
   ) {
+    final List<HomeVideo> videos = switch (feed) {
+      FeedTab.forYou => state.forYouVideos,
+      FeedTab.following => state.followingVideos,
+      FeedTab.threads => const <HomeVideo>[],
+    };
     final index = videos.indexWhere((v) => v.id == videoId);
-    if (index != -1) {
-      final updatedVideos = List<HomeVideo>.from(videos);
-      updatedVideos[index] = update(updatedVideos[index]);
+    if (index == -1) return;
 
-      if (videos == state.forYouVideos) {
-        state = state.copyWith(forYouVideos: updatedVideos);
-      } else if (videos == state.followingVideos) {
-        state = state.copyWith(followingVideos: updatedVideos);
-      }
+    _updateVideoAtIndex(feed, index, update);
+  }
+
+  void _updateVideoAcrossFeeds(
+    String videoId,
+    HomeVideo Function(HomeVideo) update,
+  ) {
+    _updateVideoInFeedTab(FeedTab.forYou, videoId, update);
+    _updateVideoInFeedTab(FeedTab.following, videoId, update);
+  }
+
+  void _updateVideoAtIndex(
+    FeedTab feed,
+    int index,
+    HomeVideo Function(HomeVideo) update,
+  ) {
+    final List<HomeVideo> videos = switch (feed) {
+      FeedTab.forYou => state.forYouVideos,
+      FeedTab.following => state.followingVideos,
+      FeedTab.threads => const <HomeVideo>[],
+    };
+    if (index < 0 || index >= videos.length) return;
+
+    final updatedVideos = List<HomeVideo>.from(videos);
+    updatedVideos[index] = update(updatedVideos[index]);
+    _setVideosForFeed(feed, updatedVideos);
+  }
+
+  List<HomeVideo> _mapVideos(
+    List<HomeVideo> videos,
+    HomeVideo Function(HomeVideo) update,
+  ) {
+    return videos.map(update).toList();
+  }
+
+  void _replaceVideoFeeds(HomeVideo Function(HomeVideo) update) {
+    state = state.copyWith(
+      forYouVideos: _mapVideos(state.forYouVideos, update),
+      followingVideos: _mapVideos(state.followingVideos, update),
+    );
+  }
+
+  void _setVideosForFeed(FeedTab feed, List<HomeVideo> videos) {
+    switch (feed) {
+      case FeedTab.forYou:
+        state = state.copyWith(forYouVideos: videos);
+      case FeedTab.following:
+        state = state.copyWith(followingVideos: videos);
+      case FeedTab.threads:
+        return;
     }
   }
 
@@ -1213,23 +1244,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
   Future<void> refreshFeed() async {
     state = state.copyWith(
       hasLoaded: false,
+      forYouSlice: null,
+      followingSlice: null,
       lastForYouDoc: null,
       lastFollowingDoc: null,
     );
-    await loadVideos();
-  }
-
-  /// Reset video state to force reinitialization when returning to HomeView
-  void resetVideoState() {
-    log('🔄 HomeProvider: Resetting video state for seamless return');
-
-    // Reset pause/resume flags to allow fresh initialization
-    state = state.copyWith(
-      shouldPauseAllVideos: false,
-      shouldResumeCurrentVideo: false,
-    );
-
-    log('✅ HomeProvider: Video state reset - ready for reinitialization');
+    await refreshFeedByTab(FeedTab.forYou);
   }
 
   /// Simple retry method for failed video loading
@@ -1238,14 +1258,11 @@ class HomeViewModel extends StateNotifier<HomeState> {
     state = state.copyWith(
       clearError: true,
       hasLoaded: false,
-      isLoading: state.forYouVideos.isEmpty,
+      isLoading: false,
+      forYouSlice: null,
+      lastForYouDoc: null,
     );
     await loadVideos();
-  }
-
-  /// Clear error state
-  void clearError() {
-    state = state.copyWith(clearError: true);
   }
 }
 
@@ -1296,12 +1313,12 @@ class HomeState {
     bool? isLoadingMore,
     bool? hasMoreContent,
     bool? hasLoaded,
-    dynamic lastForYouDoc,
-    dynamic lastFollowingDoc,
-    Map<String, dynamic>? lastFollowingCursor,
-    FeedTab? activeFeed,
-    FeedSlice? forYouSlice,
-    FeedSlice? followingSlice,
+    Object? lastForYouDoc = _homeStateUnset,
+    Object? lastFollowingDoc = _homeStateUnset,
+    Object? lastFollowingCursor = _homeStateUnset,
+    Object? activeFeed = _homeStateUnset,
+    Object? forYouSlice = _homeStateUnset,
+    Object? followingSlice = _homeStateUnset,
     bool? shouldPauseAllVideos,
     bool? shouldResumeCurrentVideo,
     String? error,
@@ -1315,12 +1332,24 @@ class HomeState {
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMoreContent: hasMoreContent ?? this.hasMoreContent,
       hasLoaded: hasLoaded ?? this.hasLoaded,
-      lastForYouDoc: lastForYouDoc ?? this.lastForYouDoc,
-      lastFollowingDoc: lastFollowingDoc ?? this.lastFollowingDoc,
-      lastFollowingCursor: lastFollowingCursor ?? this.lastFollowingCursor,
-      activeFeed: activeFeed ?? this.activeFeed,
-      forYouSlice: forYouSlice ?? this.forYouSlice,
-      followingSlice: followingSlice ?? this.followingSlice,
+      lastForYouDoc: identical(lastForYouDoc, _homeStateUnset)
+          ? this.lastForYouDoc
+          : lastForYouDoc,
+      lastFollowingDoc: identical(lastFollowingDoc, _homeStateUnset)
+          ? this.lastFollowingDoc
+          : lastFollowingDoc,
+      lastFollowingCursor: identical(lastFollowingCursor, _homeStateUnset)
+          ? this.lastFollowingCursor
+          : lastFollowingCursor as Map<String, dynamic>?,
+      activeFeed: identical(activeFeed, _homeStateUnset)
+          ? this.activeFeed
+          : activeFeed as FeedTab?,
+      forYouSlice: identical(forYouSlice, _homeStateUnset)
+          ? this.forYouSlice
+          : forYouSlice as FeedSlice?,
+      followingSlice: identical(followingSlice, _homeStateUnset)
+          ? this.followingSlice
+          : followingSlice as FeedSlice?,
       shouldPauseAllVideos: shouldPauseAllVideos ?? this.shouldPauseAllVideos,
       shouldResumeCurrentVideo:
           shouldResumeCurrentVideo ?? this.shouldResumeCurrentVideo,
@@ -1329,6 +1358,52 @@ class HomeState {
   }
 
   static const HomeState initial = HomeState();
+}
+
+class HomeFeedViewData {
+  const HomeFeedViewData({
+    required this.feed,
+    required this.videos,
+    required this.isLoading,
+    required this.error,
+  });
+
+  final FeedTab feed;
+  final List<HomeVideo> videos;
+  final bool isLoading;
+  final String? error;
+
+  bool get supportsVideoFeed => feed.supportsVideoFeed;
+  bool get supportsRefresh => feed.supportsRefresh;
+  bool get hasError => error != null && error!.isNotEmpty;
+}
+
+extension HomeStateFeedAccess on HomeState {
+  HomeFeedViewData feedData(FeedTab feed) {
+    switch (feed) {
+      case FeedTab.forYou:
+        return HomeFeedViewData(
+          feed: feed,
+          videos: forYouVideos,
+          isLoading: isLoading,
+          error: error,
+        );
+      case FeedTab.following:
+        return HomeFeedViewData(
+          feed: feed,
+          videos: followingVideos,
+          isLoading: followingSlice?.isLoading ?? false,
+          error: followingSlice?.error,
+        );
+      case FeedTab.threads:
+        return const HomeFeedViewData(
+          feed: FeedTab.threads,
+          videos: <HomeVideo>[],
+          isLoading: false,
+          error: null,
+        );
+    }
+  }
 }
 
 class FeedSlice {
@@ -1350,22 +1425,27 @@ class FeedSlice {
 
   FeedSlice copyWith({
     List<HomeVideo>? items,
-    Map<String, dynamic>? nextCursor,
+    Object? nextCursor = _feedSliceUnset,
     bool? isLoading,
     String? error,
     bool clearError = false,
     String? emptyMessage,
     bool clearEmptyMessage = false,
-    String? requestId,
+    Object? requestId = _feedSliceUnset,
   }) {
     return FeedSlice(
       items: items ?? this.items,
-      nextCursor: nextCursor ?? this.nextCursor,
+      nextCursor: identical(nextCursor, _feedSliceUnset)
+          ? this.nextCursor
+          : nextCursor as Map<String, dynamic>?,
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : (error ?? this.error),
-      emptyMessage:
-          clearEmptyMessage ? null : (emptyMessage ?? this.emptyMessage),
-      requestId: requestId ?? this.requestId,
+      emptyMessage: clearEmptyMessage
+          ? null
+          : (emptyMessage ?? this.emptyMessage),
+      requestId: identical(requestId, _feedSliceUnset)
+          ? this.requestId
+          : requestId as String?,
     );
   }
 }

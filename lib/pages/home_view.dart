@@ -44,34 +44,14 @@ class _HomeViewState extends ConsumerState<HomeView>
     with WidgetsBindingObserver {
   ProviderSubscription<bool>? _homeViewReactivateSubscription;
   final VideoPrefetchService _videoPrefetchService = VideoPrefetchService();
-
-  // Callback infrastructure for scroll to top - now handled by HomeContentWidget
-
-  // VideoPreloaderService removed - conflicts with GlobalPlaybackManager
-  // Using direct controller creation for better memory management
-  // GlobalPlaybackCoordinator removed - merged into GlobalPlaybackManager
-
-  // Feed selector (For You / Progression / Threads) via feed_state_provider
-  // Remove local state to use single source of truth
-
-  // StreamerCard modal state
   bool _showStreamerCard = false;
   StreamerCard? _currentStreamerCard;
-
-  // 🚀 VIRAL ALGORITHM: Ranking cache to prevent excessive re-ranking
   DateTime? _lastRankingTime;
-
-  // ✅ REMOVED: _focusTimer - no longer needed with pending focus system
 
   HomeViewController get _controller =>
       ref.read(homeViewControllerProvider.notifier);
   HomeViewControllerState get _controllerState =>
       ref.read(homeViewControllerProvider);
-
-  // _returnCounter removed - now using stable ValueKey(video.id) instead
-  // _videoEngagementScores removed - tracked in EngagementAnalyticsService instead
-
-  // Video data is now managed by Riverpod provider
 
   @override
   void initState() {
@@ -110,7 +90,9 @@ class _HomeViewState extends ConsumerState<HomeView>
         final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
         if (currentUser != null) {
           UnifiedAlgorithmService.instance.startSession(currentUser.uid);
-          log('🎯 UnifiedAlgorithm: Session started for user ${currentUser.uid}');
+          log(
+            '🎯 UnifiedAlgorithm: Session started for user ${currentUser.uid}',
+          );
         }
       }
     } catch (e) {
@@ -137,19 +119,11 @@ class _HomeViewState extends ConsumerState<HomeView>
       }
 
       _setupFavoritesManager();
-      _loadUserLikedVideos(); // TikTok-style: Load liked videos for heart state
-      _loadUserFavorites(); // Load user's bookmarked videos
+      _loadUserLikedVideos();
+      _loadUserFavorites();
       _loadVideos();
-      // REMOVED: _initializeVideoService() - duplicate call, HomeProvider.loadVideos() already calls loadAllVideos()
-
-      // Mark as active on initial load
       _controller.markAsActiveOwner();
     });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
   }
 
   /// ✅ IMPROVEMENT: Handle return to HomeView with simplified logic
@@ -204,8 +178,9 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       log('🔄 HomeView: Loading liked videos for user ${currentUser.uid}');
 
-      await StreamersTipLikeService.instance
-          .loadUserLikedVideos(currentUser.uid);
+      await StreamersTipLikeService.instance.loadUserLikedVideos(
+        currentUser.uid,
+      );
 
       log('✅ HomeView: Liked videos loaded successfully');
     } catch (e) {
@@ -245,10 +220,6 @@ class _HomeViewState extends ConsumerState<HomeView>
     // Favorites manager setup complete
   }
 
-  /// REMOVED: _initializeVideoService() - duplicate call
-  /// HomeProvider.loadVideos() already calls VideoService.loadAllVideos()
-  /// This was causing duplicate video loads and memory issues
-
   /// Load videos from VideoService based on current feed tab
   Future<void> _loadVideos() async {
     try {
@@ -263,22 +234,15 @@ class _HomeViewState extends ConsumerState<HomeView>
         await _applyAlgorithmRanking();
       }
 
-      // 🔥 FIX BLACK SCREEN: Preload first video IMMEDIATELY before setting focus
       final homeState = ref.read(hp.homeProvider);
       final activeFeed = ref.read(activeFeedProvider);
-      final List<HomeVideo> videos = switch (activeFeed) {
-        FeedTab.forYou => homeState.forYouVideos,
-        FeedTab.following => homeState.followingVideos,
-        FeedTab.threads => const <HomeVideo>[],
-      };
+      final List<HomeVideo> videos = homeState.feedData(activeFeed).videos;
 
       if (videos.isNotEmpty) {
         final firstVideo = videos.first;
         unawaited(_primeFirstVideo(firstVideo));
 
         log('🎬 HomeView: Preloading first video in background (non-blocking)');
-        // 🔥 FIX SLOW LOADING: Don't wait for preload - videos will show immediately
-        // VideoPlayer widget handles initialization and shows video when ready
         GlobalPlaybackManager.instance.preloadAround(0, videos);
       }
 
@@ -322,22 +286,20 @@ class _HomeViewState extends ConsumerState<HomeView>
       log('⏭️ HomeView: Route not current, skipping desired focus');
       return;
     }
-    
+
     try {
       final homeState = ref.read(hp.homeProvider);
       final activeFeed = ref.read(activeFeedProvider);
-      final List<HomeVideo> videos = switch (activeFeed) {
-        FeedTab.forYou => homeState.forYouVideos,
-        FeedTab.following => homeState.followingVideos,
-        FeedTab.threads => const <HomeVideo>[],
-      };
+      final List<HomeVideo> videos = homeState.feedData(activeFeed).videos;
 
       if (videos.isNotEmpty) {
         final safeIndex = preferredIndex.clamp(0, videos.length - 1);
         final firstVideo = videos[safeIndex];
         const ownerId = PlaybackOwners.home;
 
-        log('🎯 HomeView: Setting desired focus for video index $safeIndex: ${firstVideo.id} (owner: $ownerId)');
+        log(
+          '🎯 HomeView: Setting desired focus for video index $safeIndex: ${firstVideo.id} (owner: $ownerId)',
+        );
         // 🔥 PRODUCTION-GRADE: Use setDesiredFocus - queues if controller not ready, applies immediately if ready
         GlobalPlaybackManager.instance.setDesiredFocus(firstVideo.id, ownerId);
 
@@ -358,10 +320,13 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       // 🚀 CACHE: Skip if ranked within last 5 minutes
       if (_lastRankingTime != null) {
-        final minutesSinceRanking =
-            DateTime.now().difference(_lastRankingTime!).inMinutes;
+        final minutesSinceRanking = DateTime.now()
+            .difference(_lastRankingTime!)
+            .inMinutes;
         if (minutesSinceRanking < 5) {
-          log('⏭️ UnifiedAlgorithm: Skipping re-ranking (cached ${minutesSinceRanking}min ago)');
+          log(
+            '⏭️ UnifiedAlgorithm: Skipping re-ranking (cached ${minutesSinceRanking}min ago)',
+          );
           return;
         }
       }
@@ -379,12 +344,12 @@ class _HomeViewState extends ConsumerState<HomeView>
       log('🎯 UnifiedAlgorithm: Ranking ${candidateVideos.length} videos...');
 
       // Get personalized feed with all 7 systems applied
-      final rankedVideos =
-          await UnifiedAlgorithmService.instance.getPersonalizedFeed(
-        userId: currentUser.uid,
-        candidateVideos: candidateVideos,
-        limit: candidateVideos.length, // Keep all videos, just reorder
-      );
+      final rankedVideos = await UnifiedAlgorithmService.instance
+          .getPersonalizedFeed(
+            userId: currentUser.uid,
+            candidateVideos: candidateVideos,
+            limit: candidateVideos.length, // Keep all videos, just reorder
+          );
 
       // Update provider with ranked videos
       final homeVM = ref.read(hp.homeProvider.notifier);
@@ -397,7 +362,9 @@ class _HomeViewState extends ConsumerState<HomeView>
       // Update cache timestamp
       _lastRankingTime = DateTime.now();
 
-      log('✅ UnifiedAlgorithm: ${rankedVideos.length} videos ranked and ready for viral boost');
+      log(
+        '✅ UnifiedAlgorithm: ${rankedVideos.length} videos ranked and ready for viral boost',
+      );
     } catch (e) {
       log('❌ UnifiedAlgorithm: Error applying ranking: $e');
 
@@ -406,7 +373,8 @@ class _HomeViewState extends ConsumerState<HomeView>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                'Using standard feed (personalization temporarily unavailable)'),
+              'Using standard feed (personalization temporarily unavailable)',
+            ),
             duration: Duration(seconds: 2),
             backgroundColor: Colors.orange,
           ),
@@ -418,30 +386,14 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  /// ✅ REMOVED: _ensureFirstVideoFocus() - replaced by _setDesiredFocusForFirstVideo()
-  /// Old implementation used requestFocus() with timing issues. New implementation uses
-  /// PlaybackManager's setDesiredFocus() which queues requests and applies when controller is ready.
-
   @override
   void dispose() {
     _homeViewReactivateSubscription?.close();
     _homeViewReactivateSubscription = null;
     WidgetsBinding.instance.removeObserver(this);
-    // PageController removed - now managed by VideoPageViewWidget
-
-    // VideoPreloaderService removed - controllers now managed by GlobalPlaybackManager
-    // _videoEngagementScores removed - tracked in EngagementAnalyticsService
-
-    // ✅ REMOVED: _focusTimer cancellation - timer no longer exists
-
-    // ✅ FIX #4: Clean up playback manager when HomeView is disposed
-    // Don't call onLeaveHomeView() - it's for route changes, not disposal
-    // Just pause - position is saved automatically by GlobalPlaybackManager
     try {
       final playbackManager = GlobalPlaybackManager.instance;
       playbackManager.pauseAll();
-      // Position saving happens automatically in GlobalPlaybackManager._saveCurrentPosition()
-      // when onLeaveHomeView() is called, but for dispose we just pause
       log('🧹 HomeView: Cleaned up playback manager on dispose');
     } catch (e) {
       log('⚠️ HomeView: Error cleaning up playback on dispose: $e');
@@ -454,12 +406,6 @@ class _HomeViewState extends ConsumerState<HomeView>
     super.dispose();
   }
 
-  // Dead code removed - _openComments, _shareVideo, _handlePullToRefresh, _refreshInBackground, _scrollToTop
-  // All handled by VideoPlayerViewOptimized or removed features
-  // Note: _scrollToTopCallback infrastructure kept for potential future use
-
-  // Dead code removed - _disposeInactiveTabVideos now handled by GlobalPlaybackManager.disposeAll()
-
   /// Handle left swipe gesture to open StreamerCardView
   void _handleLeftSwipe(DragEndDetails details) {
     // Check if it's a left swipe (negative velocity)
@@ -470,11 +416,7 @@ class _HomeViewState extends ConsumerState<HomeView>
         // Get current video and show StreamerCardView
         final homeState = ref.read(hp.homeProvider);
         final activeFeed = ref.read(activeFeedProvider);
-        final List<HomeVideo> videos = switch (activeFeed) {
-          FeedTab.forYou => homeState.forYouVideos,
-          FeedTab.following => homeState.followingVideos,
-          FeedTab.threads => const <HomeVideo>[],
-        };
+        final List<HomeVideo> videos = homeState.feedData(activeFeed).videos;
 
         final int currentIndex = _controllerState.currentIndex;
         if (currentIndex < videos.length) {
@@ -489,26 +431,18 @@ class _HomeViewState extends ConsumerState<HomeView>
     }
   }
 
-  // Dead code removed - _handleSwipeUpRefresh was only used in removed _buildEndOfFeedMessage
-
-  // Dead code removed - _buildEndOfFeedMessage UI not rendered in current implementation
-
   void _showStreamerCardModal(User user) {
-    // Use async to prevent blocking the main thread
     Future.microtask(() {
       if (!mounted) return;
 
       HapticFeedback.lightImpact();
 
-      // ✅ FIX #2: Treat StreamerCard as overlay (block + pause, not full "leave")
       try {
-        GlobalPlaybackManager.instance.block(reason: 'streamerCardOverlay');
-        GlobalPlaybackManager.instance.pauseAll();
+        _controller.prepareForOverlay(reason: 'streamerCardOverlay');
       } catch (e) {
         log('❌ HomeView: Error blocking for StreamerCard: $e');
       }
 
-      // Convert User to StreamerCard
       final streamerCard = StreamerCard(
         id: user.id,
         displayName: user.displayName,
@@ -546,12 +480,6 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _navigateToNetworkViewWithTab(String tabName) {
-    // 🔊 AUDIO FIX: Ensure blocking happens BEFORE navigation
-    // This prevents any race condition where videos might resume during navigation
-    GlobalPlaybackManager.instance.block(reason: 'navigatingToNetworkView');
-    GlobalPlaybackManager.instance.pauseAll();
-
-    // Navigate to NetworkView with the specified tab
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => NetworkView(initialTab: tabName),
@@ -560,11 +488,12 @@ class _HomeViewState extends ConsumerState<HomeView>
     );
   }
 
-  // Handler methods for extracted components
   Future<void> _handleFeedTabChange(FeedTab newTab) async {
     if (!mounted) return;
 
-    log('🔄 HomeView: Switching from ${ref.read(activeFeedProvider).displayName} to ${newTab.displayName}');
+    log(
+      '🔄 HomeView: Switching from ${ref.read(activeFeedProvider).displayName} to ${newTab.displayName}',
+    );
 
     // Use the single source of truth provider
     await switchFeed(ref, newTab);
@@ -584,7 +513,9 @@ class _HomeViewState extends ConsumerState<HomeView>
       try {
         _setDesiredFocusForCurrentIndex();
       } catch (e) {
-        log('⚠️ HomeView: Error ensuring first video focus after feed switch: $e');
+        log(
+          '⚠️ HomeView: Error ensuring first video focus after feed switch: $e',
+        );
       }
     });
 
@@ -593,29 +524,28 @@ class _HomeViewState extends ConsumerState<HomeView>
 
   void _handleVideoTap(HomeVideo video) {
     log('🎬 HomeView: Video tapped: ${video.id}');
-    
+
     // Get current feed videos based on active tab
     final activeFeed = ref.read(activeFeedProvider);
-    final List<HomeVideo> videos = switch (activeFeed) {
-      FeedTab.forYou => ref.read(hp.homeProvider).forYouVideos,
-      FeedTab.following => ref.read(hp.homeProvider).followingVideos,
-      FeedTab.threads => const <HomeVideo>[],
-    };
+    final List<HomeVideo> videos = ref
+        .read(hp.homeProvider)
+        .feedData(activeFeed)
+        .videos;
 
     if (activeFeed == FeedTab.threads) {
       log('⏭️ HomeView: Ignoring video tap while Threads tab is active');
       return;
     }
-    
+
     if (videos.isEmpty) {
       log('⚠️ HomeView: No videos available to open');
       return;
     }
-    
+
     // Find the index of the tapped video
     final index = videos.indexWhere((v) => v.id == video.id);
     final videoIndex = index >= 0 ? index : 0;
-    
+
     AppNavigator.openPlayer(
       context,
       mode: PlayerMode.homeFeed,
@@ -626,8 +556,11 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _handleLeftSwipeVideo(HomeVideo video) {
-    _handleLeftSwipe(DragEndDetails(
-        velocity: const Velocity(pixelsPerSecond: Offset(-300, 0))));
+    _handleLeftSwipe(
+      DragEndDetails(
+        velocity: const Velocity(pixelsPerSecond: Offset(-300, 0)),
+      ),
+    );
   }
 
   void _handleRightSwipe(HomeVideo video) {
@@ -649,15 +582,8 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (!mounted || _controllerState.isNavigatingToDiscover) return;
 
     HapticFeedback.lightImpact();
-
-    // ✅ IMPROVEMENT: Track navigation to prevent race conditions
     _controller.setIsNavigatingToDiscover(true);
-
-    // Cancel any pending timer that might resume playback
-    // ✅ REMOVED: _focusTimer cancellation - timer no longer exists
-
-    // ✅ FIX #2: Real route change - block + pause + leave
-    _controller.markNavigatingAway(reason: 'leave_home_to_discover');
+    _controller.prepareForRouteNavigation(reason: 'leave_home_to_discover');
 
     if (!mounted) {
       _controller.setIsNavigatingToDiscover(false);
@@ -679,12 +605,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (!mounted) return;
 
     HapticFeedback.lightImpact();
-
-    // 🔥 CRITICAL: Cancel any pending timer that might resume playback
-    // ✅ REMOVED: _focusTimer cancellation - timer no longer exists
-
-    // ✅ FIX #2: Real route change - block + pause + leave
-    _controller.markNavigatingAway(reason: 'leave_home_to_network');
+    _controller.prepareForRouteNavigation(reason: 'leave_home_to_network');
     _navigateToNetworkViewWithTab('discover');
   }
 
@@ -697,11 +618,7 @@ class _HomeViewState extends ConsumerState<HomeView>
         final homeState = ref.read(hp.homeProvider);
         final activeFeed = ref.read(activeFeedProvider);
         _controller.setCurrentIndexForFeed(activeFeed, index);
-        final List<HomeVideo> videos = switch (activeFeed) {
-          FeedTab.forYou => homeState.forYouVideos,
-          FeedTab.following => homeState.followingVideos,
-          FeedTab.threads => const <HomeVideo>[],
-        };
+        final List<HomeVideo> videos = homeState.feedData(activeFeed).videos;
 
         // 🔒 SAFETY: Validate videos list and index before accessing
         if (videos.isEmpty) {
@@ -721,8 +638,10 @@ class _HomeViewState extends ConsumerState<HomeView>
           // TIKTOK-STYLE: Notify GlobalPlaybackManager of index change
           // 🔥 FIX: Wrap in try-catch to prevent crashes during swiping
           try {
-            await GlobalPlaybackManager.instance
-                .onVisibleIndexChanged(index, currentVideo);
+            await GlobalPlaybackManager.instance.onVisibleIndexChanged(
+              index,
+              currentVideo,
+            );
           } catch (e, stackTrace) {
             log('❌ HomeView: Error in onVisibleIndexChanged: $e');
             log('Stack trace: $stackTrace');
@@ -741,28 +660,21 @@ class _HomeViewState extends ConsumerState<HomeView>
             // Continue - don't crash
           }
         } else {
-          log('⚠️ HomeView: Index $index out of bounds (videos.length: ${videos.length})');
+          log(
+            '⚠️ HomeView: Index $index out of bounds (videos.length: ${videos.length})',
+          );
         }
       } catch (e, stackTrace) {
         // Safety: If provider access fails, log and continue
         log('❌ HomeView: Error in TikTok-style feed management: $e');
         log('Stack trace: $stackTrace');
       }
-
-      // ✅ FIX: Removed _pauseAllOtherVideos call - onVisibleIndexChanged already calls pauseAll()
-      // This prevents duplicate pause calls that could interfere with playback coordination
     } catch (e, stackTrace) {
       log('❌ HomeView: Critical error in _onPageChanged: $e');
       log('Stack trace: $stackTrace');
       // Don't crash - just log the error
     }
   }
-
-  // ✅ IMPROVEMENT: Removed _preloadAdjacentVideos() method
-  // GlobalPlaybackManager.preloadAround() already handles all preloading efficiently
-  // This eliminates redundant preloading that was wasting resources
-
-  // Dead code removed - _buildVideoContent is now handled by HomeContentWidget
 
   @override
   Widget build(BuildContext context) {
@@ -775,24 +687,15 @@ class _HomeViewState extends ConsumerState<HomeView>
             true, // This allows content to extend behind the bottom navigation
         body: Stack(
           children: [
-            // Main content using extracted components
             Positioned.fill(
               child: Consumer(
                 builder: (context, ref, child) {
                   final activeFeed = ref.watch(activeFeedProvider);
                   return HomeContentWidget(
-                    key: ValueKey(activeFeed
-                        .tabId), // Stable key to prevent audio bleeding
-                    activeTab: activeFeed.displayName,
+                    key: ValueKey(activeFeed.tabId),
+                    activeTab: activeFeed,
                     currentIndex: controllerState.currentIndex,
-                    onTabChange: (tab) {
-                      final FeedTab newTab = tab == FeedTab.forYou.displayName
-                          ? FeedTab.forYou
-                          : tab == FeedTab.following.displayName
-                              ? FeedTab.following
-                              : FeedTab.threads;
-                      _handleFeedTabChange(newTab);
-                    },
+                    onTabChange: _handleFeedTabChange,
                     onPageChanged: _onPageChanged,
                     onVideoTap: _handleVideoTap,
                     onLeftSwipe: _handleLeftSwipeVideo,
@@ -804,15 +707,6 @@ class _HomeViewState extends ConsumerState<HomeView>
                 },
               ),
             ),
-
-            // Legacy header removed - now handled by HomeContentWidget/FeedSelectorWidget
-
-            // Feed dropdown is now handled by HomeContentWidget
-
-            // ✅ REMOVED: Commented-out loading indicator code (48 lines)
-            // Hidden per user request - removed to reduce code bloat
-
-            // StreamerCard full-screen modal
             if (_showStreamerCard && _currentStreamerCard != null)
               Positioned.fill(
                 child: StreamerCardView(
@@ -824,13 +718,11 @@ class _HomeViewState extends ConsumerState<HomeView>
                     HapticFeedback.lightImpact();
                     if (kDebugMode) {
                       print(
-                          'HomeView: Message action triggered for user: $userId');
+                        'HomeView: Message action triggered for user: $userId',
+                      );
                     }
-                    // The StreamerCardView will handle the actual messaging logic
-                    // This callback is just for tracking/logging purposes
                   },
                   onNavigateToTab: (tabName) {
-                    // Handle tab navigation from StreamerCardView
                     HapticFeedback.lightImpact();
                     if (kDebugMode) {
                       print('HomeView: Tab navigation requested: $tabName');
@@ -840,20 +732,19 @@ class _HomeViewState extends ConsumerState<HomeView>
                       _showStreamerCard = false;
                       _currentStreamerCard = null;
                     });
-                    _controller.markNavigatingAway(
+                    _controller.prepareForRouteNavigation(
                       reason: 'leave_home_to_network_from_streamer_card',
                     );
                     _navigateToNetworkViewWithTab(tabName);
                   },
                   onShare: (userId) {
-                    // Handle share action using ShareProfileView (same as ProfileView)
                     HapticFeedback.lightImpact();
                     if (kDebugMode) {
                       print(
-                          'HomeView: Share action triggered for user: $userId');
+                        'HomeView: Share action triggered for user: $userId',
+                      );
                     }
 
-                    // Get user information for sharing
                     final currentStreamer = _currentStreamerCard;
                     if (currentStreamer == null) {
                       if (mounted) {
@@ -869,21 +760,19 @@ class _HomeViewState extends ConsumerState<HomeView>
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text('Share profile feature coming soon!')),
+                        content: Text('Share profile feature coming soon!'),
+                      ),
                     );
                   },
                 ),
               ),
-
-            // Bottom safe area overlay to prevent content from being covered by bottom nav
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
               child: IgnorePointer(
                 child: Container(
-                  height: MediaQuery.of(context).padding.bottom +
-                      72, // Keep a subtle nav fade without eating the creator row
+                  height: MediaQuery.of(context).padding.bottom + 72,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.bottomCenter,
@@ -903,6 +792,4 @@ class _HomeViewState extends ConsumerState<HomeView>
       ),
     );
   }
-
-  // _buildHeader method removed - now handled by FeedSelectorWidget
 }

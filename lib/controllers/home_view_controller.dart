@@ -10,11 +10,7 @@ import '../providers/feed_state_provider.dart';
 import '../providers/home_provider.dart' as hp;
 import '../services/global_playback_manager.dart';
 
-enum HomeViewLifecycleState {
-  idle,
-  activeOwner,
-  background,
-}
+enum HomeViewLifecycleState { idle, activeOwner, background }
 
 class HomeViewControllerState {
   const HomeViewControllerState({
@@ -91,10 +87,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     final int safeIndex = index < 0 ? 0 : index;
     switch (feed) {
       case FeedTab.forYou:
-        state = state.copyWith(
-          currentIndex: safeIndex,
-          forYouIndex: safeIndex,
-        );
+        state = state.copyWith(currentIndex: safeIndex, forYouIndex: safeIndex);
       case FeedTab.following:
         state = state.copyWith(
           currentIndex: safeIndex,
@@ -124,13 +117,22 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     );
   }
 
-  void markNavigatingAway({required String reason}) {
-    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
-    log('🔇 HomeViewController: Navigating away - blocking and pausing');
-    markAsBackground(shouldResumeOnReturn: true);
-    manager.block(reason: reason);
-    manager.pauseAll();
-    manager.onLeaveHomeView();
+  void prepareForOverlay({required String reason}) {
+    log('⏸️ HomeViewController: Preparing overlay ($reason)');
+    _pauseAndBlock(
+      reason: reason,
+      leaveHomeView: false,
+      shouldResumeOnReturn: true,
+    );
+  }
+
+  void prepareForRouteNavigation({required String reason}) {
+    log('🔇 HomeViewController: Navigating away ($reason)');
+    _pauseAndBlock(
+      reason: reason,
+      leaveHomeView: true,
+      shouldResumeOnReturn: true,
+    );
   }
 
   void resumeAfterOverlayDismissal() {
@@ -145,14 +147,12 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     _resumeCurrentVideoInstantly();
   }
 
-  void handleReturnedToHome({
-    required bool isRouteCurrent,
-  }) {
+  void handleReturnedToHome({required bool isRouteCurrent}) {
     if (!isRouteCurrent) return;
     if (state.isNavigatingToDiscover) return;
     _reactivateFeed(
       reason: 'return_to_home',
-      requireCooldown: true,
+      requireCooldown: false,
       resumeOnlyWhenNeeded: false,
     );
   }
@@ -207,21 +207,35 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
     state = state.copyWith(shouldResumeOnReturn: false);
   }
 
+  void _pauseAndBlock({
+    required String reason,
+    required bool leaveHomeView,
+    required bool shouldResumeOnReturn,
+  }) {
+    final GlobalPlaybackManager manager = GlobalPlaybackManager.instance;
+    markAsBackground(shouldResumeOnReturn: shouldResumeOnReturn);
+    manager.block(reason: reason);
+    manager.pauseAll();
+    if (leaveHomeView) {
+      manager.onLeaveHomeView();
+    }
+  }
+
   void _resumeCurrentVideoInstantly() {
     try {
       final hp.HomeState homeState = ref.read(hp.homeProvider);
       final FeedTab activeFeed = ref.read(activeFeedProvider);
-      final List<HomeVideo> currentVideos = switch (activeFeed) {
-        FeedTab.forYou => homeState.forYouVideos,
-        FeedTab.following => homeState.followingVideos,
-        FeedTab.threads => const <HomeVideo>[],
-      };
+      final List<HomeVideo> currentVideos = homeState
+          .feedData(activeFeed)
+          .videos;
       if (currentVideos.isEmpty) {
         log('⚠️ HomeViewController: No videos available to resume');
         return;
       }
-      final int safeIndex =
-          state.currentIndex.clamp(0, currentVideos.length - 1);
+      final int safeIndex = state.currentIndex.clamp(
+        0,
+        currentVideos.length - 1,
+      );
       final HomeVideo currentVideo = currentVideos[safeIndex];
       final String videoId = currentVideo.id;
       const String ownerId = PlaybackOwners.home;
@@ -235,6 +249,7 @@ class HomeViewController extends Notifier<HomeViewControllerState> {
 }
 
 final NotifierProvider<HomeViewController, HomeViewControllerState>
-    homeViewControllerProvider =
+homeViewControllerProvider =
     NotifierProvider<HomeViewController, HomeViewControllerState>(
-        HomeViewController.new);
+      HomeViewController.new,
+    );

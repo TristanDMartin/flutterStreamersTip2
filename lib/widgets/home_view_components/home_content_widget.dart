@@ -15,9 +15,9 @@ import '../../features/gamification/widgets/creator_progression_panel.dart';
 
 /// Main content widget for HomeView (combines all components)
 class HomeContentWidget extends ConsumerStatefulWidget {
-  final String activeTab;
+  final FeedTab activeTab;
   final int currentIndex;
-  final Function(String) onTabChange;
+  final ValueChanged<FeedTab> onTabChange;
   final Function(int) onPageChanged;
   final Function(HomeVideo) onVideoTap;
   final Function(HomeVideo) onLeftSwipe;
@@ -25,7 +25,7 @@ class HomeContentWidget extends ConsumerStatefulWidget {
   final VoidCallback onDiscoverTap;
   final VoidCallback onNetworkTap;
   final Function(VoidCallback)?
-      onScrollControllerReady; // Pass scroll callback up
+  onScrollControllerReady; // Pass scroll callback up
 
   const HomeContentWidget({
     super.key,
@@ -50,33 +50,30 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
   VoidCallback? _scrollCallback;
 
   /// Handle pull-to-refresh at top of feed (index 0)
-  Future<void> _handlePullToRefresh(String activeTab) async {
-    log('🔄 HomeContent: Pull-to-refresh triggered for $activeTab feed at index 0');
+  Future<void> _handlePullToRefresh(FeedTab activeTab) async {
+    log(
+      '🔄 HomeContent: Pull-to-refresh triggered for ${activeTab.displayName} feed at index 0',
+    );
     try {
       final homeProviderNotifier = ref.read(hp.homeProvider.notifier);
-      final feedTab = switch (activeTab) {
-        _ when activeTab == FeedTab.forYou.displayName => FeedTab.forYou,
-        _ when activeTab == FeedTab.following.displayName => FeedTab.following,
-        _ => FeedTab.threads,
-      };
-
-      if (feedTab == FeedTab.threads || feedTab == FeedTab.following) {
+      if (!activeTab.supportsRefresh) {
         return;
       }
-      
+
       // Refresh feed - this will get newest videos from Firestore (newest first)
-      await homeProviderNotifier.refreshFeedByTab(feedTab);
-      
+      await homeProviderNotifier.refreshFeedByTab(activeTab);
+
       // 🎬 TIKTOK-STYLE: Preserve index 0 after refresh
       if (mounted) {
         // Notify GlobalPlaybackManager to update index 0 with new video
         final homeState = ref.read(hp.homeProvider);
-        final videos = homeState.forYouVideos;
-        
+        final videos = homeState.feedData(activeTab).videos;
         if (videos.isNotEmpty) {
           final newTopVideo = videos[0];
           GlobalPlaybackManager.instance.onVisibleIndexChanged(0, newTopVideo);
-          log('✅ HomeContent: Feed refreshed - newest video at index 0: ${newTopVideo.id}');
+          log(
+            '✅ HomeContent: Feed refreshed - newest video at index 0: ${newTopVideo.id}',
+          );
         }
       }
     } catch (e) {
@@ -88,38 +85,17 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
   @override
   Widget build(BuildContext context) {
     final homeState = ref.watch(hp.homeProvider);
-    final activeFeed = switch (widget.activeTab) {
-      _ when widget.activeTab == FeedTab.forYou.displayName => FeedTab.forYou,
-      _ when widget.activeTab == FeedTab.following.displayName =>
-        FeedTab.following,
-      _ => FeedTab.threads,
-    };
-
-    // Get videos based on active tab
-    final videos = switch (activeFeed) {
-      FeedTab.forYou => homeState.forYouVideos,
-      FeedTab.following => homeState.followingVideos,
-      FeedTab.threads => const <HomeVideo>[],
-    };
-
-    final isLoading = switch (activeFeed) {
-      FeedTab.forYou => homeState.isLoading,
-      FeedTab.following => homeState.followingSlice?.isLoading ?? false,
-      FeedTab.threads => false,
-    };
-
-    final hasError = switch (activeFeed) {
-      FeedTab.forYou => homeState.error != null && homeState.error!.isNotEmpty,
-      FeedTab.following =>
-        homeState.followingSlice?.error != null &&
-        homeState.followingSlice!.error!.isNotEmpty,
-      FeedTab.threads => false,
-    };
+    final activeFeed = widget.activeTab;
+    final feedData = homeState.feedData(activeFeed);
+    final videos = feedData.videos;
+    final isLoading = feedData.isLoading;
+    final hasError = feedData.hasError;
 
     // 🔍 DIAGNOSTIC: Log video count for debugging
     if (kDebugMode) {
       debugPrint(
-          '📊 HomeContent[$activeFeed]: videos=${videos.length}, isLoading=$isLoading, hasError=$hasError');
+        '📊 HomeContent[$activeFeed]: videos=${videos.length}, isLoading=$isLoading, hasError=$hasError',
+      );
       if (videos.isEmpty && !isLoading) {
         debugPrint('⚠️ HomeContent[$activeFeed]: no items available');
       }
@@ -128,9 +104,7 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
     return Stack(
       children: [
         // Video content fills entire screen
-        Positioned.fill(
-          child: _buildVideoContent(videos, isLoading, hasError),
-        ),
+        Positioned.fill(child: _buildVideoContent(videos, isLoading, hasError)),
 
         if (activeFeed == FeedTab.forYou && hasError && videos.isNotEmpty)
           Positioned(
@@ -153,17 +127,11 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           right: 0,
           child: FeedSelectorWidget(
             activeTab: widget.activeTab,
-            onForYouTap: () {
-              log('🔘 HomeContent: For You tapped, current tab: ${widget.activeTab}');
-              widget.onTabChange(FeedTab.forYou.displayName);
-            },
-            onProgressionTap: () {
-              log('🔘 HomeContent: Progression tapped, current tab: ${widget.activeTab}');
-              widget.onTabChange(FeedTab.following.displayName);
-            },
-            onThreadsTap: () {
-              log('🔘 HomeContent: Threads tapped, current tab: ${widget.activeTab}');
-              widget.onTabChange(FeedTab.threads.displayName);
+            onTabSelected: (FeedTab selectedTab) {
+              log(
+                '🔘 HomeContent: ${selectedTab.displayName} tapped, current tab: ${widget.activeTab.displayName}',
+              );
+              widget.onTabChange(selectedTab);
             },
             onDiscoverTap: widget.onDiscoverTap,
           ),
@@ -213,14 +181,12 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
   }
 
   Widget _buildVideoContent(
-      List<HomeVideo> videos, bool isLoading, bool hasError) {
+    List<HomeVideo> videos,
+    bool isLoading,
+    bool hasError,
+  ) {
     final homeState = ref.read(hp.homeProvider);
-    final activeFeed = switch (widget.activeTab) {
-      _ when widget.activeTab == FeedTab.forYou.displayName => FeedTab.forYou,
-      _ when widget.activeTab == FeedTab.following.displayName =>
-        FeedTab.following,
-      _ => FeedTab.threads,
-    };
+    final activeFeed = widget.activeTab;
     if (activeFeed == FeedTab.following) {
       return const CreatorProgressionPanel();
     }
@@ -253,7 +219,7 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
               widget.onScrollControllerReady!(callback);
             }
           },
-          onRefresh: () => _handlePullToRefresh(widget.activeTab),
+          onRefresh: () => _handlePullToRefresh(activeFeed),
         );
       }
       return ErrorStateWidget(
@@ -265,15 +231,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
             homeProviderNotifier.retryLoadVideos();
             return;
           }
-          _handlePullToRefresh(widget.activeTab);
+          _handlePullToRefresh(activeFeed);
         },
       );
     }
 
     if (isLoading && videos.isEmpty) {
-      return const LoadingStateWidget(
-        message: 'Loading videos...',
-      );
+      return const LoadingStateWidget(message: 'Loading videos...');
     }
 
     if (videos.isEmpty) {
@@ -307,7 +271,7 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
           widget.onScrollControllerReady!(callback);
         }
       },
-      onRefresh: () => _handlePullToRefresh(widget.activeTab),
+      onRefresh: () => _handlePullToRefresh(activeFeed),
     );
   }
 

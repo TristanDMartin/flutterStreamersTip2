@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
+import '../../models/feed_tab.dart';
 import '../../constants/app_colors.dart';
 
 /// Feed dropdown widget for HomeView (For You / Progression / Threads)
 class FeedDropdownWidget extends StatelessWidget {
-  final String activeTab;
+  final FeedTab activeTab;
   final bool isVisible;
-  final VoidCallback onForYouTap;
-  final VoidCallback onProgressionTap;
-  final VoidCallback onThreadsTap;
+  final ValueChanged<FeedTab> onTabSelected;
   final VoidCallback onClose;
 
   const FeedDropdownWidget({
     super.key,
     required this.activeTab,
     required this.isVisible,
-    required this.onForYouTap,
-    required this.onProgressionTap,
-    required this.onThreadsTap,
+    required this.onTabSelected,
     required this.onClose,
   });
 
@@ -55,23 +52,11 @@ class FeedDropdownWidget extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildDropdownItem(
-                  'For You',
-                  isSelected: activeTab == 'For You',
-                  onTap: onForYouTap,
-                ),
+                _buildDropdownItem(FeedTab.forYou),
                 _buildDivider(),
-                _buildDropdownItem(
-                  'Progression',
-                  isSelected: activeTab == 'Progression',
-                  onTap: onProgressionTap,
-                ),
+                _buildDropdownItem(FeedTab.following),
                 _buildDivider(),
-                _buildDropdownItem(
-                  'Threads',
-                  isSelected: activeTab == 'Threads',
-                  onTap: onThreadsTap,
-                ),
+                _buildDropdownItem(FeedTab.threads),
               ],
             ),
           ),
@@ -80,11 +65,11 @@ class FeedDropdownWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildDropdownItem(String title,
-      {required bool isSelected, required VoidCallback onTap}) {
+  Widget _buildDropdownItem(FeedTab tab) {
+    final bool isSelected = activeTab == tab;
     return GestureDetector(
       onTap: () {
-        onTap();
+        onTabSelected(tab);
       },
       behavior: HitTestBehavior.opaque,
       child: Container(
@@ -98,7 +83,7 @@ class FeedDropdownWidget extends StatelessWidget {
         child: Row(
           children: [
             Text(
-              title,
+              tab.displayName,
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -107,11 +92,7 @@ class FeedDropdownWidget extends StatelessWidget {
             ),
             const Spacer(),
             if (isSelected)
-              const Icon(
-                Icons.check,
-                color: Colors.white,
-                size: 20,
-              ),
+              const Icon(Icons.check, color: Colors.white, size: 20),
           ],
         ),
       ),

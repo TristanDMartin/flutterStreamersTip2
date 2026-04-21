@@ -8,11 +8,17 @@ enum FeedTab {
   following,
 
   /// Threads feed - shows forum-style discussion threads
-  threads
+  threads,
 }
 
 /// Extension to provide consistent string representations
 extension FeedTabExtension on FeedTab {
+  static const List<FeedTab> homeTabs = <FeedTab>[
+    FeedTab.forYou,
+    FeedTab.following,
+    FeedTab.threads,
+  ];
+
   String get displayName {
     switch (this) {
       case FeedTab.forYou:
@@ -33,5 +39,24 @@ extension FeedTabExtension on FeedTab {
       case FeedTab.threads:
         return 'home/threads';
     }
+  }
+
+  bool get supportsVideoFeed {
+    switch (this) {
+      case FeedTab.forYou:
+        return true;
+      case FeedTab.following:
+      case FeedTab.threads:
+        return false;
+    }
+  }
+
+  bool get supportsRefresh => this == FeedTab.forYou;
+
+  static FeedTab fromDisplayName(String displayName) {
+    return homeTabs.firstWhere(
+      (FeedTab tab) => tab.displayName == displayName,
+      orElse: () => FeedTab.forYou,
+    );
   }
 }

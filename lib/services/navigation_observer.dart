@@ -19,37 +19,35 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     debugPrint('🔍 NavigationObserver: didPop');
     if (route.settings.name != null || previousRoute?.settings.name != null) {
       debugPrint(
-          '   - Popped route: ${route.settings.name} (${route.runtimeType})');
+        '   - Popped route: ${route.settings.name} (${route.runtimeType})',
+      );
       debugPrint(
-          '   - Previous route: ${previousRoute?.settings.name} (${previousRoute?.runtimeType})');
+        '   - Previous route: ${previousRoute?.settings.name} (${previousRoute?.runtimeType})',
+      );
     }
 
-    // 🔥 CRITICAL FIX: Detect return from DiscoverView to HomeView
     final poppedRouteName = route.settings.name ?? route.runtimeType.toString();
-    final isPoppingDiscoverView =
-        poppedRouteName.toLowerCase().contains('discover');
+    final isPoppingDiscoverView = poppedRouteName.toLowerCase().contains(
+      'discover',
+    );
 
     if (isPoppingDiscoverView && previousRoute != null) {
       final previousRouteName =
           previousRoute.settings.name ?? previousRoute.runtimeType.toString();
-      final isReturningToHome =
-          previousRouteName.toLowerCase().contains('home') ||
-              previousRouteName == '/' ||
-              previousRouteName.isEmpty;
+      final isReturningToHome = previousRouteName.toLowerCase().contains(
+        'home',
+      );
 
       if (isReturningToHome) {
         debugPrint(
-            '🔄 NavigationObserver: Returning to HomeView from DiscoverView - resuming videos');
-        // 🔥 CRITICAL: Unblock first (DiscoverView may have blocked playback)
+          '🔄 NavigationObserver: Returning to HomeView from DiscoverView - resuming videos',
+        );
         _manager.unblock();
-        // 🎯 SINGLE ACTIVE OWNER: Set home as active owner
-        // VideoPlayerViewOptimized's activeOwnerSubscription listener will automatically resume
         _manager.setActiveOwner(PlaybackOwners.home);
         return;
       }
     }
 
-    // ✅ FIX: Let _handleRouteChange determine if we should resume based on route type
     _handleRouteChange(previousRoute, isForeground: true);
   }
 
@@ -74,20 +72,24 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     final routeName = (name ?? typeName).toLowerCase();
 
     debugPrint(
-        '[MediaRouteObserver] new route: ${route.settings.name ?? typeName}');
+      '[MediaRouteObserver] new route: ${route.settings.name ?? typeName}',
+    );
 
-    final isHomeRoute = routeName == '/' ||
-        routeName.isEmpty ||
+    final isShellRoute = routeName == '/' || routeName.isEmpty;
+    final isHomeRoute =
         routeName == '/home' ||
         routeName.contains('homeview') ||
         routeName == 'home';
-    final isDiscoverRoute = routeName == '/discover' ||
+    final isDiscoverRoute =
+        routeName == '/discover' ||
         routeName.contains('discoverview') ||
         routeName.contains('discover');
-    final isProfileRoute = routeName == '/profile' ||
+    final isProfileRoute =
+        routeName == '/profile' ||
         routeName.contains('profileview') ||
         routeName.contains('profile');
-    final isPlayerRoute = routeName == '/player' ||
+    final isPlayerRoute =
+        routeName == '/player' ||
         routeName.contains('playerscreen') ||
         routeName.contains('playerview');
 
@@ -98,20 +100,30 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     final isStreamerCardRoute = routeName.contains('streamer_card');
     final isNetworkRoute =
         routeName == '/network' || routeName.contains('networkview');
-    final isCameraRoute = routeName.contains('camera') ||
+    final isCameraRoute =
+        routeName.contains('camera') ||
         routeName.contains('recording') ||
         routeName.contains('upload');
-    final isInboxRoute = routeName.contains('inbox') ||
+    final isInboxRoute =
+        routeName.contains('inbox') ||
         routeName.contains('chat') ||
         routeName.contains('message');
     final isSupportedPlaybackModal =
         (route is PopupRoute || route is ModalRoute) &&
         (isCommentsModal || isShareSheetModal);
 
+    if (isShellRoute) {
+      debugPrint(
+        '🎛️ NavigationObserver: App shell route - playback owned by current tab',
+      );
+      return;
+    }
+
     // If this is a known lightweight modal over the current view, keep playing
     if (isSupportedPlaybackModal) {
       debugPrint(
-          '🎵 NavigationObserver: Modal presented - keeping video playing (route: $routeName)');
+        '🎵 NavigationObserver: Modal presented - keeping video playing (route: $routeName)',
+      );
       return;
     }
 
@@ -140,21 +152,27 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     }
 
     // Non-playing routes: block + pause
-    if (isNetworkRoute ||
-        isStreamerCardRoute ||
-        isCameraRoute ||
-        isInboxRoute) {
-      _manager.block(
-          reason: isNetworkRoute
-              ? 'route_change_network'
-              : isStreamerCardRoute
-                  ? 'route_change_streamer'
-                  : isCameraRoute
-                      ? 'route_change_camera'
-                      : 'route_change_inbox');
+    if (isNetworkRoute) {
+      _manager.setActiveOwner(PlaybackOwners.network);
       _manager.pauseAll();
       debugPrint(
-          '🚫 NavigationObserver: Blocking playback for route: $routeName');
+        '🚫 NavigationObserver: Set non-playing owner for route: $routeName',
+      );
+      return;
+    }
+
+    if (isStreamerCardRoute || isCameraRoute || isInboxRoute) {
+      _manager.block(
+        reason: isStreamerCardRoute
+            ? 'route_change_streamer'
+            : isCameraRoute
+            ? 'route_change_camera'
+            : 'route_change_inbox',
+      );
+      _manager.pauseAll();
+      debugPrint(
+        '🚫 NavigationObserver: Blocking playback for route: $routeName',
+      );
       return;
     }
 
@@ -164,7 +182,8 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       _manager.unblock();
       _manager.setActiveOwner(PlaybackOwners.player);
       debugPrint(
-          '🎬 NavigationObserver: Unnamed MaterialPageRoute - allowing playback');
+        '🎬 NavigationObserver: Unnamed MaterialPageRoute - allowing playback',
+      );
       return;
     }
 
@@ -173,7 +192,8 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
       _manager.block(reason: 'route_change_unknown');
       _manager.pauseAll();
       debugPrint(
-          '🚫 NavigationObserver: Unknown route - blocking playback ($routeName)');
+        '🚫 NavigationObserver: Unknown route - blocking playback ($routeName)',
+      );
     }
   }
 
@@ -186,7 +206,8 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
           modalType?.contains('share') == true ||
           modalType?.contains('Share') == true) {
         debugPrint(
-            '🎵 NavigationObserver: Modal presented - keeping video playing (type: $modalType)');
+          '🎵 NavigationObserver: Modal presented - keeping video playing (type: $modalType)',
+        );
         return;
       }
 

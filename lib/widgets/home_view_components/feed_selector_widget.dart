@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../models/feed_tab.dart';
 import '../../constants/app_colors.dart';
 import 'feed_dropdown_widget.dart';
 
 /// Feed selector widget for HomeView (single purple pill with dropdown + compass)
 class FeedSelectorWidget extends StatefulWidget {
-  final String activeTab;
-  final VoidCallback onForYouTap;
-  final VoidCallback onProgressionTap;
-  final VoidCallback onThreadsTap;
+  final FeedTab activeTab;
+  final ValueChanged<FeedTab> onTabSelected;
   final VoidCallback onDiscoverTap;
 
   const FeedSelectorWidget({
     super.key,
     required this.activeTab,
-    required this.onForYouTap,
-    required this.onProgressionTap,
-    required this.onThreadsTap,
+    required this.onTabSelected,
     required this.onDiscoverTap,
   });
 
@@ -53,29 +50,15 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
           child: FeedDropdownWidget(
             activeTab: widget.activeTab,
             isVisible: true,
-            onForYouTap: () {
-              debugPrint('🔘 FeedSelector: For You tapped in overlay');
+            onTabSelected: (FeedTab tab) {
+              debugPrint(
+                '🔘 FeedSelector: ${tab.displayName} tapped in overlay',
+              );
               _removeOverlay();
               setState(() {
                 _isDropdownOpen = false;
               });
-              widget.onForYouTap();
-            },
-            onProgressionTap: () {
-              debugPrint('🔘 FeedSelector: Progression tapped in overlay');
-              _removeOverlay();
-              setState(() {
-                _isDropdownOpen = false;
-              });
-              widget.onProgressionTap();
-            },
-            onThreadsTap: () {
-              debugPrint('🔘 FeedSelector: Threads tapped in overlay');
-              _removeOverlay();
-              setState(() {
-                _isDropdownOpen = false;
-              });
-              widget.onThreadsTap();
+              widget.onTabSelected(tab);
             },
             onClose: () {
               _removeOverlay();
@@ -110,7 +93,8 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                   _isDropdownOpen = !_isDropdownOpen;
                 });
                 debugPrint(
-                    '🔘 FeedSelector: Dropdown state changed to: $_isDropdownOpen');
+                  '🔘 FeedSelector: Dropdown state changed to: $_isDropdownOpen',
+                );
 
                 if (_isDropdownOpen) {
                   _showOverlay();
@@ -119,8 +103,10 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                 }
               },
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
                   gradient: LinearGradient(
@@ -152,7 +138,7 @@ class _FeedSelectorWidgetState extends State<FeedSelectorWidget> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      widget.activeTab,
+                      widget.activeTab.displayName,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
