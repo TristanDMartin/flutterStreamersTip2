@@ -1,6 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../constants/app_colors.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
 import '../widgets/optimized_image.dart';
@@ -99,6 +101,24 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     super.dispose();
   }
 
+  bool get _canOpenActorProfile {
+    final id = widget.notification.user.id.toLowerCase().trim();
+    final username = widget.notification.user.username.toLowerCase().trim();
+    return id.isNotEmpty &&
+        !id.contains('system') &&
+        username != 'streamerstip' &&
+        username != 'system';
+  }
+
+  void _handleActorTap() {
+    HapticFeedback.lightImpact();
+    if (_canOpenActorProfile) {
+      widget.onProfileTap(widget.notification.user);
+    } else {
+      widget.onCardTap?.call(widget.notification);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Get actual user management from Riverpod
@@ -140,31 +160,25 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
             return Transform.scale(
               scale: 1.0 - (_scaleController.value * 0.02),
               child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   color: _isPressed
-                      ? Colors.white.withValues(alpha: 0.25)
-                      : Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
+                      ? AppColors.primary.withValues(alpha: 0.12)
+                      : Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: _isPressed
-                        ? Colors.white.withValues(alpha: 0.5)
-                        : Colors.white.withValues(alpha: 0.4),
-                    width: 1.5,
+                        ? AppColors.primary.withValues(alpha: 0.35)
+                        : Colors.white.withValues(alpha: 0.10),
+                    width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
+                      color: Colors.black.withValues(alpha: 0.12),
                       blurRadius: 16,
                       offset: const Offset(0, 8),
-                      spreadRadius: 2,
-                    ),
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, -2),
-                      spreadRadius: 1,
                     ),
                   ],
                 ),
@@ -193,13 +207,13 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                     // Unread indicator
                     if (widget.notification.status == 'pending')
                       Positioned(
-                        top: 12,
-                        right: 12,
+                        top: 10,
+                        right: 10,
                         child: Container(
                           width: 8,
                           height: 8,
                           decoration: const BoxDecoration(
-                            color: Color(0xFF9248D2),
+                            color: AppColors.accent,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -245,10 +259,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
     final avatarURL = user.avatarURL ?? '';
 
     return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        widget.onProfileTap(widget.notification.user);
-      },
+      onTap: _handleActorTap,
       child: Stack(
         children: [
           // User avatar - Always show user's avatar using UnifiedAvatarService
@@ -258,45 +269,45 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.3),
+                color: Colors.white.withValues(alpha: 0.22),
                 width: 2,
               ),
-              // No background color - let the avatar show through
             ),
             child: ClipOval(
               child: avatarURL.isNotEmpty
-                  ? Image.network(
-                      avatarURL,
+                  ? CachedNetworkImage(
+                      imageUrl: avatarURL,
                       width: 40,
                       height: 40,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.person,
-                            color: Colors.grey[600],
-                            size: 20,
-                          ),
-                        );
-                      },
+                      fadeInDuration: const Duration(milliseconds: 180),
+                      placeholder: (_, __) => Container(
+                        width: 40,
+                        height: 40,
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        width: 40,
+                        height: 40,
+                        color: Colors.white.withValues(alpha: 0.10),
+                        child: Icon(
+                          Icons.person_rounded,
+                          color: Colors.white.withValues(alpha: 0.45),
+                          size: 22,
+                        ),
+                      ),
                     )
                   : Container(
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.grey[300],
+                        color: Colors.white.withValues(alpha: 0.10),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        Icons.person,
-                        color: Colors.grey[600],
-                        size: 20,
+                        Icons.person_rounded,
+                        color: Colors.white.withValues(alpha: 0.45),
+                        size: 22,
                       ),
                     ),
             ),
@@ -339,42 +350,53 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
   }
 
   Widget _buildNotificationText() {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        widget.onProfileTap(widget.notification.user);
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          RichText(
-            text: TextSpan(
-              style: const TextStyle(
-                fontSize: 15,
-                color: Colors.white,
-                height: 1.3,
-              ),
-              children: [
-                TextSpan(
-                  text: widget.notification.user.displayName,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                TextSpan(
-                  text: ' ${_getNotificationMessage()}',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontWeight: FontWeight.w400,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RichText(
+          text: TextSpan(
+            style: TextStyle(
+              fontSize: 15,
+              color: Colors.white.withValues(alpha: 0.96),
+              height: 1.32,
+            ),
+            children: [
+              WidgetSpan(
+                alignment: PlaceholderAlignment.baseline,
+                baseline: TextBaseline.alphabetic,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _handleActorTap,
+                  child: Text(
+                    widget.notification.user.displayName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      height: 1.32,
+                    ),
                   ),
                 ),
-              ],
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+              ),
+              TextSpan(
+                text: ' ${_getNotificationMessage()}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.82),
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Text(
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _handleActorTap,
+              child: Text(
                 '@${widget.notification.user.username}',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.6),
@@ -382,28 +404,28 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                width: 4,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.4),
-                  shape: BoxShape.circle,
-                ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 4,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.4),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(width: 8),
-              Text(
-                _getTimestampString(),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _getTimestampString(),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
               ),
-            ],
-          ),
-        ],
-      ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -493,34 +515,19 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             decoration: BoxDecoration(
-              gradient: isMutualFollow
-                  ? const LinearGradient(
-                      colors: [
-                        Color(0xFF9248D2), // Primary purple
-                        Color(0xFF7768DF), // Secondary purple
-                        Color(0xFF1670DE), // Blue
-                        Color(0xFF3C8BD6), // Lighter blue
-                        Color(0xFF4897D2), // Lightest blue
-                      ],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    )
-                  : const LinearGradient(
-                      colors: [
-                        Color(0xFF9248D2), // Primary purple
-                        Color(0xFF7768DF), // Secondary purple
-                        Color(0xFF1670DE), // Blue
-                        Color(0xFF3C8BD6), // Lighter blue
-                        Color(0xFF4897D2), // Lightest blue
-                      ],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-              borderRadius: BorderRadius.circular(25),
+              gradient: const LinearGradient(
+                colors: AppColors.primaryGradient,
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.22),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-                  blurRadius: 8,
+                  color: AppColors.primary.withValues(alpha: 0.28),
+                  blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -636,7 +643,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
       case ActivityNotificationType.commentReply:
         return const Color(0xFF00BCD4); // Cyan
       case ActivityNotificationType.newVideo:
-        return const Color(0xFF9248D2); // StreamersTip Purple
+        return AppColors.primary;
       case ActivityNotificationType.milestone:
         return const Color(0xFFFFC107); // Amber/Gold
       case ActivityNotificationType.liveStream:
@@ -709,13 +716,14 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         final message = success
             ? (isFollowing
                 ? 'Unfollowed @$username'
-                : (isMutualFollow ? 'Stayed connected with @$username' : 'Following @$username'))
+                : (isMutualFollow
+                    ? 'Stayed connected with @$username'
+                    : 'Following @$username'))
             : 'Unable to update follow status for @$username';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
-            backgroundColor:
-                success ? Colors.green.shade700 : Colors.red.shade700,
+            backgroundColor: success ? AppColors.success : AppColors.error,
             duration: const Duration(seconds: 2),
           ),
         );
@@ -729,7 +737,7 @@ class _ActivityRowViewState extends ConsumerState<ActivityRowView>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.error,
             duration: const Duration(seconds: 2),
           ),
         );

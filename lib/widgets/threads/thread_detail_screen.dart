@@ -9,7 +9,9 @@ import '../../models/forum_author.dart';
 import '../../services/forum_service.dart';
 import '../../services/discussion_author_service.dart';
 import '../../services/report_service.dart';
+import '../../services/unified_avatar_service.dart';
 import '../../constants/app_colors.dart';
+import '../../routing/app_navigator.dart';
 import 'discussion_author_row.dart';
 import 'thread_comment_item.dart';
 
@@ -24,8 +26,7 @@ class ThreadDetailScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<ThreadDetailScreen> createState() =>
-      _ThreadDetailScreenState();
+  ConsumerState<ThreadDetailScreen> createState() => _ThreadDetailScreenState();
 }
 
 class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
@@ -33,14 +34,15 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
   final ReportService _reportService = ReportService();
   final DiscussionAuthorService _discussionAuthorService =
       DiscussionAuthorService();
+  final FocusNode _composerFocusNode = FocusNode();
   ForumPost? _post;
   bool _isLoading = true;
   String? _errorMessage;
   final TextEditingController _commentController = TextEditingController();
   String? _replyingToCommentId;
-  final Map<String, TextEditingController> _replyControllers = {};
+  String? _replyingToDisplayName;
   final Set<String> _expandedReplies = {};
-  final Set<String> _submittingReplies = {};
+  bool _isSubmittingReply = false;
 
   @override
   void initState() {
@@ -51,9 +53,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
   @override
   void dispose() {
     _commentController.dispose();
-    for (final controller in _replyControllers.values) {
-      controller.dispose();
-    }
+    _composerFocusNode.dispose();
     super.dispose();
   }
 
@@ -147,42 +147,49 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
         unawaited(_loadThread());
       }
     } catch (e) {
+      final message = e.toString().contains('permission-denied')
+          ? 'Comments are blocked by Firestore rules right now. The app-side fix is in; if this still appears after reinstall/redeploy, we should re-publish rules.'
+          : 'Error: ${e.toString()}';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
+          SnackBar(content: Text(message)),
         );
       }
     }
   }
 
-  void _handleReply(String commentId) {
+  void _handleReply(ForumComment comment) {
     setState(() {
-      _replyingToCommentId = commentId;
-      if (!_replyControllers.containsKey(commentId)) {
-        _replyControllers[commentId] = TextEditingController();
+      _replyingToCommentId = comment.id;
+      _replyingToDisplayName = comment.author.displayName;
+      if (!_expandedReplies.contains(comment.id)) {
+        _expandedReplies.add(comment.id);
       }
     });
-  }
-
-  void _handleCancelReply(String commentId) {
-    setState(() {
-      _replyingToCommentId = null;
-      _replyControllers[commentId]?.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _composerFocusNode.requestFocus();
     });
   }
 
-  Future<void> _handleSubmitReply(String commentId) async {
-    final controller = _replyControllers[commentId];
-    if (controller == null) return;
+  void _handleCancelReply() {
+    setState(() {
+      _replyingToCommentId = null;
+      _replyingToDisplayName = null;
+    });
+  }
 
-    final text = controller.text.trim();
+  Future<void> _handleSubmitReply() async {
+    final commentId = _replyingToCommentId;
+    final text = _commentController.text.trim();
     if (text.isEmpty) return;
+    if (commentId == null) return;
 
     final user = firebase_auth.FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     setState(() {
-      _submittingReplies.add(commentId);
+      _isSubmittingReply = true;
     });
 
     try {
@@ -197,7 +204,8 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
       if (mounted) {
         setState(() {
           _replyingToCommentId = null;
-          controller.clear();
+          _replyingToDisplayName = null;
+          _commentController.clear();
           if (!_expandedReplies.contains(commentId)) {
             _expandedReplies.add(commentId);
           }
@@ -205,15 +213,18 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
         unawaited(_loadThread());
       }
     } catch (e) {
+      final message = e.toString().contains('permission-denied')
+          ? 'Replies are blocked by Firestore rules right now. The app-side fix is in; if this still appears after reinstall/redeploy, we should re-publish rules.'
+          : 'Error: ${e.toString()}';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
+          SnackBar(content: Text(message)),
         );
       }
     } finally {
       if (mounted) {
         setState(() {
-          _submittingReplies.remove(commentId);
+          _isSubmittingReply = false;
         });
       }
     }
@@ -293,6 +304,14 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
     }
   }
 
+  Future<void> _handleComposerSubmit() async {
+    if (_replyingToCommentId != null) {
+      await _handleSubmitReply();
+      return;
+    }
+    await _addComment();
+  }
+
   void _toggleReplies(String commentId) {
     setState(() {
       if (_expandedReplies.contains(commentId)) {
@@ -331,7 +350,9 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
   Future<void> _reportThread() async {
     final post = _post;
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (post == null || currentUser == null || currentUser.uid == post.author.uid) {
+    if (post == null ||
+        currentUser == null ||
+        currentUser.uid == post.author.uid) {
       return;
     }
 
@@ -357,7 +378,8 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
               final reason = reasons[index];
               return ListTile(
                 leading: const Icon(Icons.flag_outlined, color: Colors.white70),
-                title: Text(reason, style: const TextStyle(color: Colors.white)),
+                title:
+                    Text(reason, style: const TextStyle(color: Colors.white)),
                 onTap: () => Navigator.of(context).pop(reason),
               );
             },
@@ -376,7 +398,8 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Thread reported. Thanks for the report.')),
+        const SnackBar(
+            content: Text('Thread reported. Thanks for the report.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -469,6 +492,7 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.supportBackground,
+      resizeToAvoidBottomInset: true,
       body: Container(
         color: AppColors.supportBackground,
         child: Column(
@@ -487,7 +511,8 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                   actions: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (firebase_auth.FirebaseAuth.instance.currentUser?.uid !=
+                      if (firebase_auth
+                              .FirebaseAuth.instance.currentUser?.uid !=
                           _post!.author.uid)
                         _buildHeaderIconButton(
                           icon: Icons.flag_outlined,
@@ -495,11 +520,13 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                         ),
                       const SizedBox(width: 8),
                       _buildHeaderIconButton(
-                        icon: _post!.likedBy.contains(
-                                firebase_auth.FirebaseAuth.instance.currentUser?.uid)
+                        icon: _post!.likedBy.contains(firebase_auth
+                                .FirebaseAuth.instance.currentUser?.uid)
                             ? Icons.favorite
                             : Icons.favorite_border,
                         onPressed: _toggleLike,
+                        isActive: _post!.likedBy.contains(firebase_auth
+                            .FirebaseAuth.instance.currentUser?.uid),
                       ),
                     ],
                   ),
@@ -508,7 +535,14 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
             ),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  _replyingToCommentId != null ? 164 : 132,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -537,57 +571,126 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                     color: Colors.white.withValues(alpha: 0.10),
                   ),
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildComposerAvatar(),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: _commentController,
-                        style: const TextStyle(color: Colors.white),
-                        minLines: 1,
-                        maxLines: 4,
-                        decoration: InputDecoration(
-                          hintText: 'Jump into the conversation...',
-                          hintStyle: const TextStyle(color: Colors.white70),
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.08),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide(
-                              color: Colors.white.withValues(alpha: 0.08),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide(
-                              color: Colors.white.withValues(alpha: 0.08),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide(
-                              color: AppColors.primary.withValues(alpha: 0.75),
-                            ),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
+                    if (_replyingToCommentId != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.10),
                           ),
                         ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.reply_rounded,
+                              size: 16,
+                              color: AppColors.supportAccent,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Replying to ${_replyingToDisplayName ?? 'comment'}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _handleCancelReply,
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.white70,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('Cancel'),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _addComment,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: const CircleBorder(),
-                        padding: const EdgeInsets.all(14),
-                      ),
-                      child: const Icon(Icons.send_rounded, size: 20),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _buildComposerAvatar(),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _commentController,
+                            focusNode: _composerFocusNode,
+                            textInputAction: TextInputAction.send,
+                            style: const TextStyle(color: Colors.white),
+                            minLines: 1,
+                            maxLines: 4,
+                            onSubmitted: (_) => _handleComposerSubmit(),
+                            decoration: InputDecoration(
+                              hintText: _replyingToCommentId != null
+                                  ? 'Write a reply...'
+                                  : 'Jump into the conversation...',
+                              hintStyle: const TextStyle(color: Colors.white70),
+                              filled: true,
+                              fillColor: Colors.white.withValues(alpha: 0.08),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: BorderSide(
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.75),
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed:
+                              _isSubmittingReply ? null : _handleComposerSubmit,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            shape: const CircleBorder(),
+                            padding: const EdgeInsets.all(14),
+                          ),
+                          child: _isSubmittingReply
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.send_rounded, size: 20),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -653,20 +756,38 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
   Widget _buildHeaderIconButton({
     required IconData icon,
     required VoidCallback onPressed,
+    bool isActive = false,
   }) {
     return Container(
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
+        color: isActive
+            ? AppColors.primary.withValues(alpha: 0.16)
+            : Colors.white.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
+          color: isActive
+              ? AppColors.primary.withValues(alpha: 0.55)
+              : Colors.white.withValues(alpha: 0.10),
         ),
+        boxShadow: isActive
+            ? [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.18),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
       ),
       child: IconButton(
         onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white, size: 20),
+        icon: Icon(
+          icon,
+          color: isActive ? AppColors.primary : Colors.white,
+          size: 20,
+        ),
       ),
     );
   }
@@ -725,8 +846,10 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
             displayName: _post!.author.displayName,
             username: _post!.author.username,
             avatarUrl: _post!.author.avatarUrl,
+            userId: _post!.author.uid,
             avatarRadius: 22,
             trailingText: _formatDate(_post!.createdAt),
+            onTap: () => _openStreamerCard(_post!.author.uid),
           ),
           const SizedBox(height: 18),
           Text(
@@ -839,17 +962,18 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                 return _buildCommentsFeedbackCard(
                   icon: Icons.cloud_off_outlined,
                   title: 'Comments Need A Retry',
-                  message: 'We hit a snag loading this conversation. Give it another try in a moment.',
+                  message:
+                      'We hit a snag loading this conversation. Give it another try in a moment.',
                 );
               }
 
               final comments = snapshot.data ?? [];
-
               if (comments.isEmpty) {
                 return _buildCommentsFeedbackCard(
                   icon: Icons.chat_bubble_outline_rounded,
                   title: 'Be The First To Reply',
-                  message: 'Kick things off with the first comment and set the tone for this thread.',
+                  message:
+                      'Kick things off with the first comment and set the tone for this thread.',
                 );
               }
 
@@ -860,27 +984,15 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
                 itemBuilder: (context, index) {
                   final comment = comments[index];
 
-                  if (!_replyControllers.containsKey(comment.id)) {
-                    _replyControllers[comment.id] = TextEditingController();
-                  }
-
                   return ThreadCommentItem(
                     comment: comment,
                     postId: widget.postId,
-                    onReply: () => _handleReply(comment.id),
+                    onReply: _handleReply,
                     onLike: () => _handleLike(comment.id),
                     onDislike: () => _handleDislike(comment.id),
                     onDelete: () => _handleDelete(comment.id),
                     onToggleReplies: () => _toggleReplies(comment.id),
                     isExpanded: _expandedReplies.contains(comment.id),
-                    isReplying: _replyingToCommentId == comment.id,
-                    replyText: _replyControllers[comment.id]!.text,
-                    onReplyTextChanged: (text) {
-                      _replyControllers[comment.id]!.text = text;
-                    },
-                    onSubmitReply: () => _handleSubmitReply(comment.id),
-                    onCancelReply: () => _handleCancelReply(comment.id),
-                    isSubmittingReply: _submittingReplies.contains(comment.id),
                   );
                 },
               );
@@ -964,6 +1076,43 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
 
   Widget _buildComposerAvatar() {
     final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      return _buildComposerAvatarShell(const Icon(
+        Icons.person,
+        color: Colors.white,
+        size: 18,
+      ));
+    }
+
+    return StreamBuilder(
+      stream: _discussionAuthorService.watchForumAuthor(currentUser.uid),
+      builder: (context, snapshot) {
+        final liveAvatarUrl = snapshot.data?.avatarUrl ?? currentUser.photoURL;
+        if (liveAvatarUrl != null && liveAvatarUrl.isNotEmpty) {
+          return _buildComposerAvatarShell(
+            UnifiedAvatarService().getAvatar(
+              imageUrl: liveAvatarUrl,
+              radius: 18,
+              useProfileViewStyling: false,
+              showLoadingIndicator: false,
+              errorWidget: const Icon(
+                Icons.person,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+          );
+        }
+        return _buildComposerAvatarShell(const Icon(
+          Icons.person,
+          color: Colors.white,
+          size: 18,
+        ));
+      },
+    );
+  }
+
+  Widget _buildComposerAvatarShell(Widget child) {
     return Container(
       width: 36,
       height: 36,
@@ -976,25 +1125,10 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
           ],
         ),
       ),
-      child: currentUser?.photoURL != null && currentUser!.photoURL!.isNotEmpty
-          ? ClipOval(
-              child: Image.network(
-                currentUser.photoURL!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const Icon(
-                  Icons.person,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-            )
-          : const Icon(
-              Icons.person,
-              color: Colors.white,
-              size: 18,
-            ),
+      child: ClipOval(child: child),
     );
   }
+
   Widget _buildSourceCommentCard() {
     final sourceComment = _post!.sourceComment!;
 
@@ -1039,16 +1173,33 @@ class _ThreadDetailScreenState extends ConsumerState<ThreadDetailScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
-            'Original comment by ${sourceComment.authorName} (@${sourceComment.authorUsername})',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.65),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
+          InkWell(
+            onTap: () => _openStreamerCard(sourceComment.authorId),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                'Original comment by ${sourceComment.authorName} (@${sourceComment.authorUsername})',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  void _openStreamerCard(String userId) {
+    if (userId.isEmpty) return;
+
+    AppNavigator.openStreamerCard(
+      context,
+      userId: userId,
+      currentUserId: firebase_auth.FirebaseAuth.instance.currentUser?.uid,
     );
   }
 

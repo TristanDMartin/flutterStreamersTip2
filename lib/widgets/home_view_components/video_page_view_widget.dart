@@ -20,6 +20,8 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
   final Function(VoidCallback)?
       onControllerReady; // Callback to expose scroll-to-top
   final Function()? onRefresh; // Callback for pull-to-refresh
+  final bool showCommandCenterTrigger;
+  final VoidCallback? onCommandCenterTap;
 
   const VideoPageViewWidget({
     super.key,
@@ -32,6 +34,8 @@ class VideoPageViewWidget extends ConsumerStatefulWidget {
     required this.onRightSwipe,
     this.onControllerReady,
     this.onRefresh,
+    this.showCommandCenterTrigger = false,
+    this.onCommandCenterTap,
   });
 
   @override
@@ -364,6 +368,8 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
                   homeViewModel: ref.read(homeProvider.notifier),
                   showSheet: false,
                   sheetType: 'none',
+                  showCommandCenterTrigger: widget.showCommandCenterTrigger,
+                  onCommandCenterTap: widget.onCommandCenterTap,
                   onVideoUnplayable: () {
                     _consecutiveUnplayableCount++;
                     if (_consecutiveUnplayableCount >= 3 && mounted) {

@@ -7,8 +7,10 @@ class ForumPost {
   final String id;
   final String title;
   final String content;
+
   /// `forumCategories` document id (used for queries).
   final String category;
+
   /// Resolved label for UI; never show [category] raw in the app.
   final String? categoryDisplayName;
   final List<String> tags;
@@ -52,6 +54,15 @@ class ForumPost {
     final data = doc.data() as Map<String, dynamic>;
     final createdAtValue = data['createdAt'];
     final updatedAtValue = data['updatedAt'];
+    final rawAuthorMap = Map<String, dynamic>.from(
+      (data['author'] as Map<String, dynamic>?) ?? const <String, dynamic>{},
+    );
+    final authorId = data['authorId'] as String?;
+    if (authorId != null && authorId.isNotEmpty) {
+      rawAuthorMap.putIfAbsent('uid', () => authorId);
+      rawAuthorMap.putIfAbsent('id', () => authorId);
+    }
+
     return ForumPost(
       id: doc.id,
       title: data['title'] as String,
@@ -59,7 +70,7 @@ class ForumPost {
       category: data['category'] as String? ?? '',
       categoryDisplayName: data['categoryName'] as String?,
       tags: List<String>.from(data['tags'] ?? []),
-      author: ForumAuthor.fromMap(data['author'] as Map<String, dynamic>),
+      author: ForumAuthor.fromMap(rawAuthorMap),
       visibility: data['visibility'] as String? ?? 'public',
       likes: data['likes'] as int? ?? 0,
       commentCount: data['commentCount'] as int? ?? 0,
@@ -69,8 +80,7 @@ class ForumPost {
       linkedVideoId: data['linkedVideoId'] as String?,
       linkedCommentId: data['linkedCommentId'] as String?,
       sourceComment: data['sourceComment'] != null
-          ? SourceComment.fromMap(
-              data['sourceComment'] as Map<String, dynamic>)
+          ? SourceComment.fromMap(data['sourceComment'] as Map<String, dynamic>)
           : null,
       createdAt: createdAtValue is Timestamp
           ? createdAtValue.toDate()

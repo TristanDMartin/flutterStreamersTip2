@@ -4,6 +4,7 @@ import '../models/chat.dart' as app_chat;
 import '../models/user.dart' as app_user;
 import '../services/chat_service.dart';
 import '../services/inbox_service_optimized.dart';
+import '../services/unified_avatar_service.dart';
 import '../services/user_blocking_service.dart';
 import 'chat_view_optimized.dart';
 import 'choose_person_view.dart';
@@ -122,17 +123,17 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
             children: [
               // Header
               _buildHeader(),
-              
+
               // Search Bar
               _buildSearchBar(),
-              
+
               const Divider(color: Colors.white24, height: 1),
-              
+
               // Primary Actions
               _buildPrimaryActions(),
-              
+
               const Divider(color: Colors.white24, height: 1),
-              
+
               // Recent Chats (Optional)
               Expanded(
                 child: _buildRecentChats(),
@@ -193,7 +194,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
         children: [
           Icon(
             Icons.search,
-            color: Colors.white.withValues(alpha:0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -225,7 +226,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
               },
               icon: Icon(
                 Icons.close,
-                color: Colors.white.withValues(alpha:0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 size: 20,
               ),
             ),
@@ -267,12 +268,12 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Colors.white.withValues(alpha:0.1),
-              Colors.white.withValues(alpha:0.05),
+              Colors.white.withValues(alpha: 0.1),
+              Colors.white.withValues(alpha: 0.05),
             ],
           ),
           border: Border.all(
-            color: Colors.white.withValues(alpha:0.1),
+            color: Colors.white.withValues(alpha: 0.1),
             width: 1,
           ),
         ),
@@ -282,7 +283,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Icon(
@@ -308,7 +309,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -317,7 +318,7 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
             ),
             Icon(
               Icons.chevron_right,
-              color: Colors.white.withValues(alpha:0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               size: 24,
             ),
           ],
@@ -328,8 +329,33 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
 
   Widget _buildRecentChats() {
     if (_isLoadingRecentChats) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
+      return Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 360),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.10),
+            ),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 16),
+              Text(
+                'Loading recent chats',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -351,13 +377,52 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
           Expanded(
             child: chats.isEmpty
                 ? Center(
-                    child: Text(
-                      _searchQuery.isEmpty
-                          ? 'No recent chats yet'
-                          : 'No chats match your search',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontSize: 16,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 360),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 28),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.10),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _searchQuery.isEmpty
+                                ? Icons.forum_outlined
+                                : Icons.search_off_rounded,
+                            color: Colors.white.withValues(alpha: 0.78),
+                            size: 36,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? 'No recent chats yet'
+                                : 'No chats match your search',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? 'Start a new message and your recent conversations will show up here.'
+                                : 'Try a different name or username.',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.64),
+                              fontSize: 14,
+                              height: 1.4,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     ),
                   )
@@ -397,14 +462,9 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: Colors.white.withValues(alpha: 0.12),
-              backgroundImage:
-                  avatarUrl != null && avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-              child: avatarUrl == null || avatarUrl.isEmpty
-                  ? const Icon(Icons.person, color: Colors.white)
-                  : null,
+            _RecentChatAvatar(
+              avatarUrl: avatarUrl,
+              displayName: displayName,
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -492,5 +552,74 @@ class _NewMessageViewState extends ConsumerState<NewMessageView> {
       ),
     );
   }
+}
 
+class _RecentChatAvatar extends StatelessWidget {
+  const _RecentChatAvatar({
+    required this.avatarUrl,
+    required this.displayName,
+  });
+
+  final String? avatarUrl;
+  final String displayName;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasAvatar = avatarUrl != null && avatarUrl!.isNotEmpty;
+    final String initial =
+        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'C';
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: hasAvatar
+            ? null
+            : const LinearGradient(
+                colors: [Color(0xFF9248D2), Color(0xFF7768DF)],
+              ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF9248D2).withValues(alpha: 0.24),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: hasAvatar
+            ? UnifiedAvatarService().getAvatar(
+                imageUrl: avatarUrl!,
+                radius: 24,
+                useProfileViewStyling: false,
+                showLoadingIndicator: false,
+                errorWidget: _RecentChatAvatarFallback(initial: initial),
+              )
+            : _RecentChatAvatarFallback(initial: initial),
+      ),
+    );
+  }
+}
+
+class _RecentChatAvatarFallback extends StatelessWidget {
+  const _RecentChatAvatarFallback({
+    required this.initial,
+  });
+
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 }

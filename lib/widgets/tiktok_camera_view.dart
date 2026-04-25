@@ -390,6 +390,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
     final previewAction =
         await Navigator.of(context).push<VideoRecordingPreviewAction>(
       MaterialPageRoute(
+        settings: const RouteSettings(name: '/camera/preview'),
         builder: (context) => VideoRecordingPreview(
           videoFile: videoFile,
         ),
@@ -402,6 +403,7 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
 
     await Navigator.of(context).push(
       MaterialPageRoute(
+        settings: const RouteSettings(name: '/camera/publish'),
         builder: (context) => VideoPublishingScreen(
           videoFile: videoFile,
           caption: '',
@@ -746,7 +748,8 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
             children: [
               _buildModeChip(
                 _showGrid ? 'Grid on' : 'Grid off',
-                icon: _showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded,
+                icon:
+                    _showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded,
                 onTap: _toggleGrid,
               ),
               const SizedBox(width: 8),
@@ -779,7 +782,9 @@ class _TikTokCameraViewState extends ConsumerState<TikTokCameraView>
               ),
               const Spacer(),
               Text(
-                _isRecording ? _formatDuration(_recordingDuration) : 'Hold to record',
+                _isRecording
+                    ? _formatDuration(_recordingDuration)
+                    : 'Hold to record',
                 style: const TextStyle(
                   color: Colors.white70,
                   fontSize: 12,

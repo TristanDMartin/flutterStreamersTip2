@@ -19,7 +19,7 @@ class GamificationRepository {
         if (!snap.exists || snap.data() == null) {
           return UserProgressBundle.fallback();
         }
-        return GamificationMapper.userDocToBundle(snap.data()!);
+        return GamificationMapper.userDocToBundle(snap.data()!, uid: uid);
       },
     );
   }

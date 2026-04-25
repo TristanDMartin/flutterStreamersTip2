@@ -202,42 +202,6 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         (data['videoId'] as String?)?.trim() ??
         '';
     if (videoId.isNotEmpty) {
-      final cacheKey = 'video:$videoId';
-      if (_legacyOwnerCache.containsKey(cacheKey)) {
-        final cached = _legacyOwnerCache[cacheKey];
-        if (cached != null && cached.isNotEmpty) return cached;
-      } else {
-        try {
-          final snapshot = await _firestore
-              .collectionGroup('videos')
-              .where(FieldPath.documentId, isEqualTo: videoId)
-              .limit(10)
-              .get();
-          if (snapshot.docs.isNotEmpty) {
-            String? ownerId;
-            for (final doc in snapshot.docs) {
-              final candidateOwnerId = doc.reference.parent.parent?.id;
-              if (candidateOwnerId != null && candidateOwnerId.trim().isNotEmpty) {
-                ownerId = candidateOwnerId;
-                break;
-              }
-            }
-            final normalizedOwnerId = ownerId?.trim();
-            _legacyOwnerCache[cacheKey] =
-                normalizedOwnerId != null && normalizedOwnerId.isNotEmpty
-                    ? normalizedOwnerId
-                    : null;
-            if (normalizedOwnerId != null && normalizedOwnerId.isNotEmpty) {
-              return normalizedOwnerId;
-            }
-          } else {
-            _legacyOwnerCache[cacheKey] = null;
-          }
-        } catch (_) {
-          _legacyOwnerCache[cacheKey] = null;
-        }
-      }
-
       final underscoreIndex = videoId.indexOf('_');
       if (underscoreIndex > 0) {
         final candidateOwnerId = videoId.substring(0, underscoreIndex).trim();
@@ -248,8 +212,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             if (cached != null && cached.isNotEmpty) return cached;
           } else {
             try {
-              final userDoc =
-                  await _firestore.collection('users').doc(candidateOwnerId).get();
+              final userDoc = await _firestore
+                  .collection('users')
+                  .doc(candidateOwnerId)
+                  .get();
               final normalizedOwnerId =
                   userDoc.exists ? candidateOwnerId : null;
               _legacyOwnerCache[cacheKey] = normalizedOwnerId;
@@ -262,6 +228,11 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           }
         }
       }
+
+      // Avoid a collectionGroup + FieldPath.documentId fallback here. On iOS
+      // Firestore can emit a native ObjC exception for legacy collection-group
+      // document-id comparisons even when Dart catches the failure, which makes
+      // startup/profile browsing look unstable in device logs.
     }
 
     final usernameCandidates = <String>{
@@ -337,7 +308,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
       // 🔥 CRITICAL FIX: Check if Firebase is initialized before proceeding
       if (Firebase.apps.isEmpty) {
-        debugPrint('⚠️ VideoService: Firebase not initialized yet, skipping video load');
+        debugPrint(
+            '⚠️ VideoService: Firebase not initialized yet, skipping video load');
         state = [];
         return;
       }
@@ -413,9 +385,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         // Status gate — accept spec enum ('active') and legacy values for
         // backward compat with videos written before schema migration.
         final status = data['status'] as String?;
-        final isActiveStatus = status == 'active' ||
-            status == 'published' ||
-            status == 'ready';
+        final isActiveStatus =
+            status == 'active' || status == 'published' || status == 'ready';
         if (!isActiveStatus) {
           final reason = 'status: $status';
           _recordSkip(skippedVideoDetails, skipReasons, doc.id, reason);
@@ -476,7 +447,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             (data['thumbnailUrl'] ?? data['thumbnailURL']) as String?;
 
         final videoUrl = resolveVideoUrl(data);
-        final playableResult = await VideoHealthGate.instance.resolvePlayableSource(
+        final playableResult =
+            await VideoHealthGate.instance.resolvePlayableSource(
           doc.id,
           cachedData: data,
           fallbackUrl: videoUrl.isEmpty ? null : videoUrl,
@@ -488,23 +460,26 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           _recordSkip(skippedVideoDetails, skipReasons, doc.id, reason);
           skippedCount++;
           if (kDebugMode) {
-            final raw = data['videoUrl'] ?? data['videoURL'] ?? data['video_url'];
+            final raw =
+                data['videoUrl'] ?? data['videoURL'] ?? data['video_url'];
             final urlStr = raw is String ? raw : '';
-            final host = urlStr.isNotEmpty ? Uri.tryParse(urlStr)?.host ?? '?' : 'none';
+            final host =
+                urlStr.isNotEmpty ? Uri.tryParse(urlStr)?.host ?? '?' : 'none';
             debugPrint(
-              '🎬 VideoService: SKIP ${doc.id} (unplayable): reason=$reason, '
-              'status=$status, hasMux=${data['muxPlaybackId'] != null}, '
-              'videoUrlHost=$host, raw=${raw != null ? "YES" : "NO"}');
+                '🎬 VideoService: SKIP ${doc.id} (unplayable): reason=$reason, '
+                'status=$status, hasMux=${data['muxPlaybackId'] != null}, '
+                'videoUrlHost=$host, raw=${raw != null ? "YES" : "NO"}');
             VideoHealthGate.instance.logUnplayableVideo(
-              doc.id, reason, {...info, 'videoUrlHost': host},
+              doc.id,
+              reason,
+              {...info, 'videoUrlHost': host},
             );
           }
           continue;
         }
         final playableUrl = playableResult.url;
 
-        debugPrint(
-            '🎬 VideoService: ✅ Playable ${doc.id} - gate-approved URL');
+        debugPrint('🎬 VideoService: ✅ Playable ${doc.id} - gate-approved URL');
 
         // Get creator data
         final creator = await _userDataService.getUserById(userId);
@@ -665,8 +640,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           }
         }
         if (skippedCount > 0 && processedCount == 0) {
-          final top = skipReasons.entries
-              .reduce((a, b) => a.value > b.value ? a : b);
+          final top =
+              skipReasons.entries.reduce((a, b) => a.value > b.value ? a : b);
           final hint = switch (top.key) {
             'processing' => 'webhook not updating status→ready',
             'raw_or_original_forbidden' => 'raw/isOriginal flags',
@@ -674,7 +649,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             'image_url_not_video' => 'placehold.co/placeholder URL',
             _ => 'check gate rules',
           };
-          debugPrint('   ⚠️ All skipped. Top: "${top.key}" (${top.value}x) → $hint');
+          debugPrint(
+              '   ⚠️ All skipped. Top: "${top.key}" (${top.value}x) → $hint');
         }
       }
 
@@ -709,8 +685,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
 
         // Additional diagnostic: Count total videos in Firestore
         try {
-          final totalSnapshot =
-              await _firestore.collection('videos').limit(100).get(); // Reduced to prevent memory issues
+          final totalSnapshot = await _firestore
+              .collection('videos')
+              .limit(100)
+              .get(); // Reduced to prevent memory issues
           debugPrint(
               '📊 Diagnostic: Found ${totalSnapshot.docs.length} total videos in Firestore');
 
@@ -814,8 +792,7 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       }
       final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> docMap =
           <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-      for (final String field
-          in <String>['userId', 'user_id', 'creatorId']) {
+      for (final String field in <String>['userId', 'user_id', 'creatorId']) {
         final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
             .collection('videos')
             .where(field, isEqualTo: profileUserId)
@@ -990,10 +967,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
       videoURL: playableUrl,
       thumbnailURL: thumbnailUrl,
       thumbnails: thumbnails,
-      caption: data['caption'] ??
-          data['title'] ??
-          data['description'] ??
-          'Untitled',
+      caption:
+          data['caption'] ?? data['title'] ?? data['description'] ?? 'Untitled',
       categoryId: data['category'] ?? data['categoryId'] ?? 'general',
       views: data['views']?.toInt() ?? 0,
       likes: data['likes']?.toInt() ?? 0,
@@ -1130,7 +1105,10 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
   /// Get diagnostic information about videos in Firestore
   Future<Map<String, dynamic>> getVideoDiagnostics() async {
     try {
-      final snapshot = await _firestore.collection('videos').limit(100).get(); // Reduced to prevent memory issues
+      final snapshot = await _firestore
+          .collection('videos')
+          .limit(100)
+          .get(); // Reduced to prevent memory issues
 
       final diagnostics = <String, dynamic>{
         'totalVideos': snapshot.docs.length,
@@ -1286,7 +1264,9 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
             .where('status', whereIn: ['published', 'ready', 'active'])
             .orderBy('createdAt', descending: true)
             .limit(limit);
-        if (startAfter != null) fallback = fallback.startAfterDocument(startAfter);
+        if (startAfter != null) {
+          fallback = fallback.startAfterDocument(startAfter);
+        }
         snapshot = await fallback.get();
       }
 
@@ -1299,9 +1279,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         if (userId == null || blockedUserIds.contains(userId)) continue;
 
         final status = data['status'] as String?;
-        final isActiveStatus = status == 'active' ||
-            status == 'published' ||
-            status == 'ready';
+        final isActiveStatus =
+            status == 'active' || status == 'published' || status == 'ready';
         if (!isActiveStatus) continue;
 
         if (data['isReadyForFeed'] == false) continue;
@@ -1316,8 +1295,8 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
         if (!isPublic) continue;
 
         final videoUrl = resolveVideoUrl(data);
-        final playableResult = await VideoHealthGate.instance
-            .resolvePlayableSource(
+        final playableResult =
+            await VideoHealthGate.instance.resolvePlayableSource(
           doc.id,
           cachedData: data,
           fallbackUrl: videoUrl.isEmpty ? null : videoUrl,
@@ -1340,16 +1319,15 @@ class VideoService extends StateNotifier<List<HomeVideo>> {
           views: data['views']?.toInt() ?? 0,
           likes: data['likes']?.toInt() ?? 0,
           comments: data['comments']?.toInt() ?? 0,
-          duration: _parseDuration(
-              data['metadata']?['duration'] ?? data['duration']),
+          duration:
+              _parseDuration(data['metadata']?['duration'] ?? data['duration']),
           isDraft: false,
           createdAt: data['createdAt'] as Timestamp? ?? Timestamp.now(),
         );
         videos.add(video);
       }
 
-      final lastDoc =
-          docsList.isNotEmpty ? docsList.last : null;
+      final lastDoc = docsList.isNotEmpty ? docsList.last : null;
 
       return {
         'videos': videos,

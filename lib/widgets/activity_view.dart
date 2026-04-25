@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,11 +9,12 @@ import '../providers/home_provider.dart' as hp;
 import '../services/auth_service.dart';
 import '../services/notification_navigation_service.dart';
 import '../routing/app_navigator.dart';
+import '../routing/app_routes.dart';
 import '../widgets/activity_row_view.dart';
+import '../widgets/threads/thread_detail_screen.dart';
 import '../models/activity_notification.dart';
 import '../models/user.dart';
-// import '../widgets/post_detail_view.dart'; // Removed - unused
-import 'instant_response_button.dart';
+import '../constants/app_colors.dart';
 
 class ActivityView extends ConsumerStatefulWidget {
   const ActivityView({super.key});
@@ -35,22 +38,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     'Mentions'
   ];
 
-  bool _isLoadingMore = false;
   final ScrollController _scrollController = ScrollController();
   bool _isInitialized = false;
-
-  // Common button gradient used throughout the view
-  static const LinearGradient _buttonGradient = LinearGradient(
-    colors: [
-      Color(0xFF9248D2), // Primary purple
-      Color(0xFF7768DF), // Secondary purple
-      Color(0xFF1670DE), // Blue
-      Color(0xFF3C8BD6), // Lighter blue
-      Color(0xFF4897D2), // Lightest blue
-    ],
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-  );
+  bool _isInitializationQueued = false;
 
   @override
   void initState() {
@@ -69,9 +59,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
     _fadeController.forward();
     _badgeController.forward();
-
-    // Setup scroll listener for pagination
-    _scrollController.addListener(_onScroll);
 
     // Initialize activity data will be called in build method
   }
@@ -96,9 +83,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     _badgeController.dispose();
     _scrollController.dispose();
 
-    // Clear any pending operations
-    _isLoadingMore = false;
-
     super.dispose();
   }
 
@@ -119,8 +103,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     }
 
     // Initialize ActivityView if not already initialized
-    if (!_isInitialized) {
+    if (!_isInitialized && !_isInitializationQueued) {
+      _isInitializationQueued = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        _isInitializationQueued = false;
+        if (!mounted || _isInitialized) return;
         _initializeActivityView();
       });
     }
@@ -146,34 +133,28 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return PopScope(
       canPop: true,
       child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Stack(
-          children: [
-            SafeArea(
-              child: Column(
-                  children: [
-                    _buildHeader(state),
-                    _buildFilterChips(),
-                    if (state.isProcessing)
-                      _buildProcessingIndicator(state.processingCount),
-                    Expanded(
-                      child: FadeTransition(
-                        opacity: _fadeController,
-                        child: state.isLoading
-                            ? _buildSkeletonLoading()
-                            : state.hasError
-                                ? _buildErrorState(
-                                    state.error ?? 'Unknown error')
-                                : filteredGrouped.isEmpty
-                                    ? _buildEmptyState()
-                                    : _buildActivityList(
-                                        titles, filteredGrouped),
-                      ),
-                    ),
-                  ],
+        backgroundColor: AppColors.supportBackground,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(state),
+              _buildFilterChips(),
+              if (state.isProcessing)
+                _buildProcessingIndicator(state.processingCount),
+              Expanded(
+                child: FadeTransition(
+                  opacity: _fadeController,
+                  child: state.isLoading
+                      ? _buildSkeletonLoading()
+                      : state.hasError
+                          ? _buildErrorState(state.error ?? 'Unknown error')
+                          : filteredGrouped.isEmpty
+                              ? _buildEmptyState()
+                              : _buildActivityList(titles, filteredGrouped),
                 ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -181,6 +162,7 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   Widget _buildLoadingScaffold() {
     return Scaffold(
+      backgroundColor: AppColors.supportBackground,
       body: const Center(
         child: CircularProgressIndicator(
           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -191,54 +173,79 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   Widget _buildSignInRequiredScaffold() {
     return Scaffold(
-      body: const Center(
+      backgroundColor: AppColors.supportBackground,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.notifications_outlined,
                 size: 64,
-                color: Colors.white70,
+                color: Colors.white.withValues(alpha: 0.72),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Text(
                 'Sign in to view your activity',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text(
-                'Stay updated with all your notifications',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
+                'Stay updated with likes, follows, and comments',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
               ),
             ],
           ),
         ),
+      ),
     );
   }
 
   Widget _buildHeader(ActivityState state) {
+    final int unread = _getTotalNotificationCount(state.grouped);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Row(
-        children: [
-          // Back button (matches ProfileView style)
-          InstantIconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            hapticType: HapticFeedbackType.lightImpact,
-            icon: const Icon(
-              Icons.arrow_back,
-              color: Colors.white,
-              size: 24,
-            ),
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: AppColors.supportSurfaceGradient,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
-          // Title with animation
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconButton(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).pop();
+            },
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+              color: Colors.white,
+              size: 20,
+            ),
+            padding: const EdgeInsets.all(8),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -250,38 +257,43 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 28,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
                       ),
                     ),
-                    if (_getTotalNotificationCount(state.grouped) > 0) ...[
-                      const SizedBox(width: 12),
+                    if (unread > 0) ...[
+                      const SizedBox(width: 10),
                       AnimatedBuilder(
                         animation: _badgeController,
                         builder: (context, child) {
                           return Transform.scale(
-                            scale: 0.8 + (0.2 * _badgeController.value),
+                            scale: 0.85 + (0.15 * _badgeController.value),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE91E63),
-                                borderRadius: BorderRadius.circular(12),
+                                gradient: const LinearGradient(
+                                  colors: AppColors.supportAccentGradient,
+                                ),
+                                borderRadius: BorderRadius.circular(999),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFFE91E63)
-                                        .withValues(alpha: 0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
                                   ),
                                 ],
                               ),
                               child: Text(
-                                '${_getTotalNotificationCount(state.grouped)}',
+                                '$unread',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
@@ -291,13 +303,13 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                     ],
                   ],
                 ),
-                if (state.isProcessing) ...[
-                  const SizedBox(height: 4),
+                const SizedBox(height: 4),
+                if (state.isProcessing)
                   Row(
                     children: [
                       const SizedBox(
-                        width: 16,
-                        height: 16,
+                        width: 14,
+                        height: 14,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor:
@@ -305,72 +317,68 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'Processing ${state.processingCount} notifications...',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                      Expanded(
+                        child: Text(
+                          'Processing ${state.processingCount}…',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.72),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ],
+                  )
+                else
+                  Text(
+                    unread > 0 ? '$unread unread' : 'Likes, follows & replies',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.58),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ],
               ],
             ),
           ),
-          // Action buttons
-          Row(
-            children: [
-              // Mark all as read button
-              if (_hasUnreadNotifications(state.grouped))
-                GestureDetector(
-                  onTap: _handleMarkAllAsRead,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: _buttonGradient,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF9248D2).withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.done_all,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+          if (_hasUnreadNotifications(state.grouped))
+            IconButton(
+              tooltip: 'Mark all read',
+              onPressed: _handleMarkAllAsRead,
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: AppColors.supportAccentGradient,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
                   ),
                 ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _handleRefresh,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  child: AnimatedBuilder(
-                    animation: _refreshController,
-                    builder: (context, child) {
-                      return Transform.rotate(
-                        angle: _refreshController.value * 2 * 3.14159,
-                        child: const Icon(
-                          Icons.refresh,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      );
-                    },
-                  ),
+                child: const Icon(
+                  Icons.done_all_rounded,
+                  color: Colors.white,
+                  size: 18,
                 ),
               ),
-            ],
+            ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _handleRefresh,
+            icon: AnimatedBuilder(
+              animation: _refreshController,
+              builder: (context, child) {
+                return Transform.rotate(
+                  angle: _refreshController.value * 2 * 3.14159,
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    color: Colors.white.withValues(alpha: 0.95),
+                    size: 24,
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -378,165 +386,149 @@ class _ActivityViewState extends ConsumerState<ActivityView>
   }
 
   Widget _buildFilterChips() {
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: _filters.length,
-        itemBuilder: (context, index) {
-          final filter = _filters[index];
-          final isSelected = _selectedFilter == filter;
-
-          return GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              setState(() {
-                _selectedFilter = filter;
-              });
-            },
-            child: Padding(
-              padding: const EdgeInsets.only(right: 28),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: isSelected
-                    ? ShaderMask(
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [
-                            Color(0xFF9248D2),
-                            Color(0xFF1670DE),
-                          ],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        ).createShader(bounds),
-                        child: Text(
-                          filter,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      )
-                    : Text(
-                        filter,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500,
-                        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      child: SizedBox(
+        height: 40,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: _filters.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final String filter = _filters[index];
+            final bool isSelected = _selectedFilter == filter;
+            return Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _selectedFilter = filter);
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primary.withValues(alpha: 0.22)
+                        : Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected
+                          ? AppColors.accent.withValues(alpha: 0.45)
+                          : Colors.white.withValues(alpha: 0.10),
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      filter,
+                      style: TextStyle(
+                        color: isSelected
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.58),
+                        fontSize: 14,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w500,
+                        letterSpacing: 0.2,
                       ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 
   Widget _buildProcessingIndicator(int count) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: _buildContainerDecoration(),
-      child: Row(
-        children: [
-          const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.10),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Processing $count notifications...',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.9),
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+        ),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Processing $count notifications…',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSkeletonLoading() {
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: 5,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+      itemCount: 6,
       itemBuilder: (context, index) {
         return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(16),
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.5),
-              width: 1.5,
+              color: Colors.white.withValues(alpha: 0.10),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-                spreadRadius: 2,
-              ),
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.1),
-                blurRadius: 8,
-                offset: const Offset(0, -2),
-                spreadRadius: 1,
-              ),
-            ],
           ),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.4),
+                  color: Colors.white.withValues(alpha: 0.10),
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.6),
-                    width: 1,
-                  ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      height: 16,
+                      height: 14,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.4),
+                        color: Colors.white.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          width: 0.5,
-                        ),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Container(
-                      height: 12,
-                      width: 200,
+                      height: 11,
+                      width: 160,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.4),
+                        color: Colors.white.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          width: 0.5,
-                        ),
                       ),
                     ),
                   ],
@@ -570,14 +562,14 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withValues(alpha: 0.1),
-                          Colors.white.withValues(alpha: 0.05),
+                          AppColors.supportTopSurface.withValues(alpha: 0.35),
+                          Colors.white.withValues(alpha: 0.06),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.2),
+                        color: Colors.white.withValues(alpha: 0.16),
                         width: 1,
                       ),
                       boxShadow: [
@@ -666,36 +658,34 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 32, vertical: 16),
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF9248D2), // Primary purple
-                              Color(0xFF7768DF), // Secondary purple
-                              Color(0xFF1670DE), // Blue
-                              Color(0xFF3C8BD6), // Lighter blue
-                              Color(0xFF4897D2), // Lightest blue
-                            ],
+                            colors: AppColors.primaryGradient,
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
                           ),
                           borderRadius: BorderRadius.circular(25),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF9248D2)
-                                  .withValues(alpha: 0.4),
+                              color: AppColors.primary.withValues(alpha: 0.4),
                               blurRadius: 20,
                               offset: const Offset(0, 8),
                             ),
                           ],
                         ),
                         child: const Text(
-                          'Explore Content',
+                          'Explore content',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
+                            letterSpacing: 0.3,
                           ),
                         ),
                       ),
@@ -718,9 +708,9 @@ class _ActivityViewState extends ConsumerState<ActivityView>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.error_outline,
-              size: 80,
-              color: Colors.red.withValues(alpha: 0.7),
+              Icons.error_outline_rounded,
+              size: 72,
+              color: AppColors.error.withValues(alpha: 0.85),
             ),
             const SizedBox(height: 24),
             Text(
@@ -753,31 +743,30 @@ class _ActivityViewState extends ConsumerState<ActivityView>
                 }
               },
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF9248D2), // Primary purple
-                      Color(0xFF7768DF), // Secondary purple
-                      Color(0xFF1670DE), // Blue
-                      Color(0xFF3C8BD6), // Lighter blue
-                      Color(0xFF4897D2), // Lightest blue
-                    ],
+                    colors: AppColors.primaryGradient,
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
                   borderRadius: BorderRadius.circular(25),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF9248D2).withValues(alpha: 0.3),
+                      color: AppColors.primary.withValues(alpha: 0.35),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
                   ],
                 ),
                 child: const Text(
-                  'Try Again',
+                  'Try again',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -797,35 +786,27 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     return RefreshIndicator(
       onRefresh: _handleRefresh,
       color: Colors.white,
-      backgroundColor: const Color(0xFF9248D2),
+      backgroundColor: AppColors.primary,
       child: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.only(bottom: 100),
-        itemCount: titles.length + (_isLoadingMore ? 1 : 0),
+        itemCount: titles.length,
         itemBuilder: (context, index) {
-          if (index == titles.length) {
-            // Loading indicator for pagination
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16.0),
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-            );
-          }
-
-          final title = titles[index];
-          final items = grouped[title] ?? <ActivityNotification>[];
+          final String title = titles[index];
+          final List<ActivityNotification> items =
+              grouped[title] ?? <ActivityNotification>[];
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildSectionHeader(title),
-              for (final notification in items)
+              for (final ActivityNotification notification in items)
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   child: ActivityRowView(
+                    key: ValueKey(notification.id),
                     notification: notification,
                     onProfileTap: (user) => _handleProfileTap(user),
                     onPostTap: _handlePostTap,
@@ -839,48 +820,34 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      _loadMoreNotifications();
-    }
-  }
-
-  Future<void> _loadMoreNotifications() async {
-    if (_isLoadingMore) return;
-
-    setState(() {
-      _isLoadingMore = true;
-    });
-
-    try {
-      // Load more notifications implementation
-      // This would involve calling ActivityNotifier.loadMoreNotifications method
-      // Currently simulating loading as this feature is not implemented
-      await Future.delayed(const Duration(milliseconds: 500));
-    } catch (e) {
-      debugPrint('Error loading more notifications: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingMore = false;
-        });
-      }
-    }
-  }
-
   Widget _buildSectionHeader(String title) {
-    return Container(
-      margin: const EdgeInsets.only(left: 20, top: 16, bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: _buildContainerDecoration(borderRadius: 20),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 18,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(2),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: AppColors.supportAccentGradient,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.92),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -917,26 +884,16 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   Future<void> _handleRefresh() async {
     HapticFeedback.lightImpact();
-
-    _refreshController.forward().then((_) {
-      _refreshController.reset();
-    });
-
-    // Force refresh the activity data
+    unawaited(
+      _refreshController.forward().then((_) => _refreshController.reset()),
+    );
     final notifier = ref.read(activityProvider.notifier);
     final auth = ref.read(authServiceProvider);
-    final userId = auth.currentUser?.id;
-
-    if (userId != null) {
-      debugPrint('🔄 Force refreshing activity data...');
-      _isInitialized = false; // Reset initialization flag
-      notifier.reset(); // Reset the provider
-      await notifier.init(userId); // Re-initialize
-      debugPrint('🔄 Refresh completed');
-    }
-
-    // Simulate refresh delay
-    await Future.delayed(const Duration(milliseconds: 1500));
+    final String? userId = auth.currentUser?.id;
+    if (userId == null) return;
+    notifier.reset();
+    notifier.startProcessingListener(userId);
+    await notifier.init(userId);
   }
 
   void _handleMarkAllAsRead() {
@@ -948,10 +905,10 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     if (userId != null) {
       notifier.markAllDelivered(userId);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('All notifications marked as read'),
-          backgroundColor: Color(0xFF9248D2),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: const Text('All notifications marked as read'),
+          backgroundColor: AppColors.primary,
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -984,6 +941,11 @@ class _ActivityViewState extends ConsumerState<ActivityView>
 
   void _handleProfileTap(User user) {
     HapticFeedback.lightImpact();
+
+    if (_isSystemActor(user)) {
+      Navigator.of(context).pushNamed(AppRoutes.inbox);
+      return;
+    }
 
     debugPrint(
         '👆 ActivityView: Profile tap - userId: ${user.id}, username: ${user.username}');
@@ -1022,17 +984,47 @@ class _ActivityViewState extends ConsumerState<ActivityView>
     );
   }
 
+  bool _isSystemActor(User user) {
+    final id = user.id.toLowerCase().trim();
+    final username = user.username.toLowerCase().trim();
+    return id.contains('system') ||
+        username == 'streamerstip' ||
+        username == 'system';
+  }
+
+  bool _looksLikeContentPlanAction(ActivityNotification notification) {
+    final actionText =
+        '${notification.actionUrl ?? ''} ${notification.actionType ?? ''}'
+            .toLowerCase();
+    return actionText.contains('content') || actionText.contains('plan');
+  }
+
   void _handleNotificationTap(ActivityNotification notification) {
     HapticFeedback.lightImpact();
 
     // Mark notification as read
     _markNotificationAsRead(notification);
 
+    if (notification.videoId?.isNotEmpty == true) {
+      _handlePostTap(notification);
+      return;
+    }
+
+    final threadId = notification.threadId ?? notification.postId;
+    if (threadId != null && threadId.isNotEmpty) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ThreadDetailScreen(postId: threadId),
+        ),
+      );
+      return;
+    }
+
     // Navigate based on notification type
     switch (notification.type) {
       case ActivityNotificationType.like:
       case ActivityNotificationType.comment:
-        if (notification.postThumbnailUrl != null) {
+        if (notification.postThumbnailUrl?.isNotEmpty == true) {
           _handlePostTap(notification);
         } else {
           _handleProfileTap(notification.user);
@@ -1054,6 +1046,18 @@ class _ActivityViewState extends ConsumerState<ActivityView>
         break;
       case ActivityNotificationType.liveStream:
       case ActivityNotificationType.adminBroadcast:
+        if (notification.chatId?.isNotEmpty == true) {
+          Navigator.of(context).pushNamed(AppRoutes.inbox);
+          return;
+        }
+        if (_looksLikeContentPlanAction(notification)) {
+          AppNavigator.openManagePosts(context);
+          return;
+        }
+        if (_isSystemActor(notification.user)) {
+          Navigator.of(context).pushNamed(AppRoutes.inbox);
+          return;
+        }
         _handleProfileTap(notification.user);
         break;
     }
@@ -1068,33 +1072,6 @@ class _ActivityViewState extends ConsumerState<ActivityView>
       _badgeController.reset();
       _badgeController.forward();
     }
-  }
-
-  BoxDecoration _buildContainerDecoration({
-    double alpha = 0.1,
-    double borderRadius = 16,
-    bool hasBorder = true,
-    bool hasShadow = false,
-  }) {
-    return BoxDecoration(
-      color: Colors.white.withValues(alpha: alpha),
-      borderRadius: BorderRadius.circular(borderRadius),
-      border: hasBorder
-          ? Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
-              width: 1,
-            )
-          : null,
-      boxShadow: hasShadow
-          ? [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ]
-          : null,
-    );
   }
 
   List<String> _orderedSectionTitles(List<String> titles) {

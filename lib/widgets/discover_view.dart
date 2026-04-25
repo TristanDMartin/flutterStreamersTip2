@@ -15,14 +15,12 @@ import 'category_card.dart';
 import 'recommended_content_card.dart';
 import '../services/logging_service.dart';
 import '../services/caching_service.dart';
-import '../services/offline_storage_service.dart';
 import '../services/accessibility_service.dart';
 import '../services/global_playback_manager.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../constants/playback_owners.dart';
 import '../constants/app_colors.dart';
 import 'instant_response_button.dart';
-import 'lazy_loading_list.dart';
 import 'video_player_view_optimized.dart';
 import '../models/home_video.dart';
 import '../models/user.dart';
@@ -133,7 +131,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   String? _getCategoryName(String categoryId) {
     for (final category in discover_models.Category.samples) {
-      if (_normalizeCategoryKey(category.id) == _normalizeCategoryKey(categoryId)) {
+      if (_normalizeCategoryKey(category.id) ==
+          _normalizeCategoryKey(categoryId)) {
         return category.name;
       }
     }
@@ -234,7 +233,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         );
       }
 
-      if (!allowOrderlessFallback || orderByField == null || rangeField != null) {
+      if (!allowOrderlessFallback ||
+          orderByField == null ||
+          rangeField != null) {
         continue;
       }
 
@@ -314,7 +315,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
 
   // Services
   final CachingService _cachingService = CachingService();
-  final OfflineStorageService _offlineStorage = OfflineStorageService();
   final AccessibilityService _accessibilityService = AccessibilityService();
 
   // 🔥 FIX: Real-time subscriptions
@@ -511,59 +511,6 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
     _categoryFeedFutures[categoryId] = _getCategoryVideosForFeed(categoryId);
   }
 
-  // Lazy loading methods
-  Future<List<TrendingCreator>> _loadTrendingCreators(
-    int page,
-    int limit,
-  ) async {
-    try {
-      // Check cache first
-      final cacheKey = 'trending_creators_${page}_$limit';
-      final cachedData = _cachingService.getMemoryCache<List<TrendingCreator>>(
-        cacheKey,
-      );
-      if (cachedData != null) {
-        return cachedData;
-      }
-
-      // Load from offline storage if available
-      final offlineCreators = await _offlineStorage.getTrendingCreators();
-      if (offlineCreators.isNotEmpty) {
-        final startIndex = page * limit;
-        final endIndex = (startIndex + limit).clamp(0, offlineCreators.length);
-        final pageData = offlineCreators.sublist(startIndex, endIndex);
-
-        // Cache the result
-        _cachingService.setMemoryCache(cacheKey, pageData);
-        return pageData;
-      }
-
-      // Fallback to provider
-      final discoverState = ref.read(discoverProvider);
-      final startIndex = page * limit;
-      final endIndex = (startIndex + limit).clamp(
-        0,
-        discoverState.trendingCreators.length,
-      );
-      final pageData = discoverState.trendingCreators.sublist(
-        startIndex,
-        endIndex,
-      );
-
-      // Cache the result
-      _cachingService.setMemoryCache(cacheKey, pageData);
-      return pageData;
-    } catch (e, stackTrace) {
-      LoggingService.instance.error(
-        'Failed to load trending creators',
-        tag: 'DiscoverView',
-        error: e,
-        stackTrace: stackTrace,
-      );
-      return [];
-    }
-  }
-
   Widget _buildTrendingCreatorCard(
     BuildContext context,
     TrendingCreator creator,
@@ -640,9 +587,8 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
   }
 
   Widget _buildTrendingCreatorItem(TrendingCreator creator) {
-    return Container(
-      width: 80,
-      margin: const EdgeInsets.only(right: 12),
+    return SizedBox(
+      width: double.infinity,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1053,331 +999,151 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
               parent: BouncingScrollPhysics(),
             ),
             slivers: [
-            // App Bar
-            SliverAppBar(
-              backgroundColor: AppColors.supportBackground,
-              elevation: 0,
-              leading: InstantIconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
-                hapticType: HapticFeedbackType.lightImpact,
-              ),
-              title: const Text(
-                'Discover',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              // App Bar
+              SliverAppBar(
+                backgroundColor: AppColors.supportBackground,
+                elevation: 0,
+                leading: InstantIconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                  hapticType: HapticFeedbackType.lightImpact,
                 ),
+                title: const Text(
+                  'Discover',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                centerTitle: true,
+                actions: [_buildNotificationButton(context, ref)],
               ),
-              centerTitle: true,
-              actions: [_buildNotificationButton(context, ref)],
-            ),
 
-            // Search Bar
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: Column(
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: AppColors.supportSurfaceGradient,
-                        ),
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          width: 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.18),
-                            blurRadius: 24,
-                            offset: const Offset(0, 14),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            selectedCategory == null
-                                ? 'Find your next rabbit hole'
-                                : 'Locked into ${selectedCategory.name}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            selectedCategory == null
-                                ? 'Creators, categories, and short-form inspiration in one place.'
-                                : 'Swipe into a deeper feed when something grabs you, or pull to refresh for a fresh set.',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.74),
-                              fontSize: 14,
-                              height: 1.35,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _buildHeroChip(
-                                Icons.whatshot_rounded,
-                                '${discoverState.trendingCreators.length} trending',
-                              ),
-                              _buildHeroChip(
-                                Icons.grid_view_rounded,
-                                '${discoverState.categories.length} categories',
-                              ),
-                              _buildHeroChip(
-                                Icons.explore_rounded,
-                                selectedCategory?.name ?? 'Browse all',
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    GestureDetector(
-                      onTap: () {
-                        AppNavigator.openSearch(context);
-                      },
-                      child: Container(
-                        height: 52,
+              // Search Bar
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(24),
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: AppColors.supportSurfaceGradient,
+                          ),
+                          borderRadius: BorderRadius.circular(28),
                           border: Border.all(
                             color: Colors.white.withValues(alpha: 0.12),
                             width: 1,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.16),
-                              blurRadius: 18,
-                              offset: const Offset(0, 10),
+                              color: Colors.black.withValues(alpha: 0.18),
+                              blurRadius: 24,
+                              offset: const Offset(0, 14),
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.search,
-                              color: AppColors.supportAccent,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 10),
-                            Flexible(
-                              child: Text(
-                                'Search creators, videos, hashtags…',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.65),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
+                            Text(
+                              selectedCategory == null
+                                  ? 'Find your next rabbit hole'
+                                  : 'Locked into ${selectedCategory.name}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            Icon(
-                              Icons.arrow_forward_ios,
-                              color: Colors.white.withValues(alpha: 0.4),
-                              size: 14,
+                            const SizedBox(height: 6),
+                            Text(
+                              selectedCategory == null
+                                  ? 'Creators, categories, and short-form inspiration in one place.'
+                                  : 'Swipe into a deeper feed when something grabs you, or pull to refresh for a fresh set.',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.74),
+                                fontSize: 14,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _buildHeroChip(
+                                  Icons.whatshot_rounded,
+                                  '${discoverState.trendingCreators.length} trending',
+                                ),
+                                _buildHeroChip(
+                                  Icons.grid_view_rounded,
+                                  '${discoverState.categories.length} categories',
+                                ),
+                                _buildHeroChip(
+                                  Icons.explore_rounded,
+                                  selectedCategory?.name ?? 'Browse all',
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Trending Creators Section with Lazy Loading
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  left: 20,
-                  right: 20,
-                  top: 12,
-                  bottom: 16,
-                ),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.10),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionHeading(
-                        'Trending Creators',
-                        'People gaining momentum right now',
-                      ),
-                      const SizedBox(height: 16),
-                      if (discoverState.isLoadingTrendingCreators &&
-                          discoverState.trendingCreators.isEmpty)
-                        _buildLoadingState()
-                      else
-                        SizedBox(
-                          height: 200,
-                          child: LazyLoadingList<TrendingCreator>(
-                            loadData: _loadTrendingCreators,
-                            itemBuilder: _buildTrendingCreatorCard,
-                            itemsPerPage: 10,
-                            emptyBuilder: (context) =>
-                                _buildEmptyTrendingCreatorsState(),
-                            loadingBuilder: (context) => _buildLoadingState(),
-                            errorBuilder: _buildErrorState,
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  left: 20,
-                  right: 20,
-                  top: 0,
-                  bottom: 16,
-                ),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.10),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionHeading(
-                        'Categories',
-                        'Jump into the corner of the app that fits your mood',
-                      ),
-
-                      // Categories PageView with proper spacing
-                      SizedBox(
-                        height: 288,
-                        child: PageView.builder(
-                          onPageChanged: (page) {
-                            setState(() {
-                              _currentCategoryPage = page;
-                            });
-                          },
-                          itemCount:
-                              (discoverState.categories.length / 6).ceil(),
-                          itemBuilder: (context, pageIndex) {
-                            final startIndex = pageIndex * 6;
-                            final endIndex = (startIndex + 6).clamp(
-                              0,
-                              discoverState.categories.length,
-                            );
-                            final pageCategories = discoverState.categories
-                                .sublist(startIndex, endIndex);
-
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: GridView.builder(
-                                physics: const NeverScrollableScrollPhysics(),
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 3,
-                                  crossAxisSpacing: 8,
-                                  mainAxisSpacing: 8,
-                                ),
-                                itemCount: pageCategories.length,
-                                itemBuilder: (context, index) {
-                                  final category = pageCategories[index];
-                                  return _accessibilityService
-                                      .createAccessibleButton(
-                                    semanticLabel: 'Category ${category.name}',
-                                    semanticHint: _selectedCategory ==
-                                            category.id
-                                        ? 'Currently selected category. Tap to deselect.'
-                                        : 'Tap to select this category',
-                                    onPressed: () => _onCategorySelected(
-                                      _selectedCategory == category.id
-                                          ? null
-                                          : category.id,
-                                    ),
-                                    hapticFeedbackType:
-                                        AccessibilityHapticFeedbackType.light,
-                                    child: CategoryCard(
-                                      key: ValueKey(category.id),
-                                      category: category,
-                                      isSelected:
-                                          _selectedCategory == category.id,
-                                      hasCategorySelected:
-                                          _selectedCategory != null,
-                                      onTap: () => _onCategorySelected(
-                                        _selectedCategory == category.id
-                                            ? null
-                                            : category.id,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-
-                      // Reduced spacing between categories and dots
-                      SizedBox(
-                        height: 8,
-                      ),
-
-                      // Page indicator with proper safe area handling
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: List.generate(
-                              (discoverState.categories.length / 6).ceil(),
-                              (index) => Container(
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 4),
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: index == _currentCategoryPage
-                                      ? const Color(0xFF40DCD1)
-                                      : const Color(
-                                          0xFF6B5AE0,
-                                        ).withValues(alpha: 0.4),
-                                ),
-                              ),
+                      const SizedBox(height: 14),
+                      GestureDetector(
+                        onTap: () {
+                          AppNavigator.openSearch(context);
+                        },
+                        child: Container(
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              width: 1,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.16),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.search,
+                                color: AppColors.supportAccent,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Flexible(
+                                child: Text(
+                                  'Search creators, videos, hashtags…',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.65),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                color: Colors.white.withValues(alpha: 0.4),
+                                size: 14,
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -1385,14 +1151,16 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                   ),
                 ),
               ),
-            ),
 
-            // Content based on category selection
-            if (_selectedCategory == null) ...[
-              // Default view - show resources
+              // Trending Creators Section with Lazy Loading
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  padding: const EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 12,
+                    bottom: 16,
+                  ),
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                     decoration: BoxDecoration(
@@ -1406,35 +1174,262 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildSectionHeading(
-                          'Resources',
-                          'Helpful picks, tools, and ideas to explore next',
+                          'Trending Creators',
+                          'People gaining momentum right now',
                         ),
-                        const SizedBox(height: 12),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: discoverState.recommendedContent.length,
-                          itemBuilder: (context, index) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: RecommendedContentCard(
-                                content: discoverState.recommendedContent[index],
+                        const SizedBox(height: 16),
+                        if (discoverState.isLoadingTrendingCreators &&
+                            discoverState.trendingCreators.isEmpty)
+                          _buildLoadingState()
+                        else if (discoverState.trendingCreators.isEmpty)
+                          _buildEmptyTrendingCreatorsState()
+                        else
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 12,
+                                childAspectRatio: 0.78,
+                              ),
+                              itemCount: discoverState.trendingCreators.length,
+                              itemBuilder: (context, index) {
+                                final creator =
+                                    discoverState.trendingCreators[index];
+                                return _buildTrendingCreatorCard(
+                                  context,
+                                  creator,
+                                  index,
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 0,
+                    bottom: 16,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionHeading(
+                          'Categories',
+                          'Jump into the corner of the app that fits your mood',
+                        ),
+
+                        // PageView height + aspect ratio derived from cell width so
+                        // CategoryCard (80px icon + label) never overflows the cell.
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            const int crossAxisCount = 3;
+                            const double gridSpacing = 8;
+                            final TextScaler scaler =
+                                MediaQuery.textScalerOf(context);
+                            final double cellMainExtent = scaler
+                                .scale(126)
+                                .clamp(118.0, 156.0)
+                                .toDouble();
+                            final int categoryCount =
+                                discoverState.categories.length;
+                            final int pageCount =
+                                (categoryCount / 6).ceil().clamp(1, 999);
+                            int maxRowCount = 1;
+                            for (int p = 0; p < pageCount; p++) {
+                              final int n = categoryCount - p * 6;
+                              if (n <= 0) break;
+                              final int onPage = n >= 6 ? 6 : n;
+                              final int rows = (onPage + crossAxisCount - 1) ~/
+                                  crossAxisCount;
+                              if (rows > maxRowCount) maxRowCount = rows;
+                            }
+                            final double gridHeight =
+                                maxRowCount * cellMainExtent +
+                                    (maxRowCount > 1
+                                        ? (maxRowCount - 1) * gridSpacing
+                                        : 0);
+                            final double pageViewHeight = gridHeight + 12;
+                            return SizedBox(
+                              height: pageViewHeight,
+                              child: PageView.builder(
+                                onPageChanged: (page) {
+                                  setState(() {
+                                    _currentCategoryPage = page;
+                                  });
+                                },
+                                itemCount: pageCount,
+                                itemBuilder: (context, pageIndex) {
+                                  final int startIndex = pageIndex * 6;
+                                  final int endIndex = (startIndex + 6).clamp(
+                                    0,
+                                    categoryCount,
+                                  );
+                                  final pageCategories = discoverState
+                                      .categories
+                                      .sublist(startIndex, endIndex);
+
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: GridView.builder(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      gridDelegate:
+                                          SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: crossAxisCount,
+                                        crossAxisSpacing: gridSpacing,
+                                        mainAxisSpacing: gridSpacing,
+                                        mainAxisExtent: cellMainExtent,
+                                      ),
+                                      itemCount: pageCategories.length,
+                                      itemBuilder: (context, index) {
+                                        final category = pageCategories[index];
+                                        return _accessibilityService
+                                            .createAccessibleButton(
+                                          semanticLabel:
+                                              'Category ${category.name}',
+                                          semanticHint: _selectedCategory ==
+                                                  category.id
+                                              ? 'Currently selected category. Tap to deselect.'
+                                              : 'Tap to select this category',
+                                          onPressed: () => _onCategorySelected(
+                                            _selectedCategory == category.id
+                                                ? null
+                                                : category.id,
+                                          ),
+                                          hapticFeedbackType:
+                                              AccessibilityHapticFeedbackType
+                                                  .light,
+                                          child: CategoryCard(
+                                            key: ValueKey(category.id),
+                                            category: category,
+                                            isSelected: _selectedCategory ==
+                                                category.id,
+                                            hasCategorySelected:
+                                                _selectedCategory != null,
+                                            onTap: () => _onCategorySelected(
+                                              _selectedCategory == category.id
+                                                  ? null
+                                                  : category.id,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  );
+                                },
                               ),
                             );
                           },
+                        ),
+
+                        // Reduced spacing between categories and dots
+                        SizedBox(
+                          height: 8,
+                        ),
+
+                        // Page indicator with proper safe area handling
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: List.generate(
+                                (discoverState.categories.length / 6).ceil(),
+                                (index) => Container(
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 4),
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: index == _currentCategoryPage
+                                        ? const Color(0xFF40DCD1)
+                                        : const Color(
+                                            0xFF6B5AE0,
+                                          ).withValues(alpha: 0.4),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
-            ),
-            ] else ...[
-              // Category selected - show 3-column video grid with tap to open swipeable feed
-              _buildCategoryVideoGridSliver(discoverState),
-            ],
+              ),
 
-            // Bottom padding for tab bar
-            const SliverToBoxAdapter(child: SizedBox(height: 60)),
+              // Content based on category selection
+              if (_selectedCategory == null) ...[
+                // Default view - show resources
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.10),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeading(
+                            'Resources',
+                            'Helpful picks, tools, and ideas to explore next',
+                          ),
+                          const SizedBox(height: 12),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: discoverState.recommendedContent.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: RecommendedContentCard(
+                                  content:
+                                      discoverState.recommendedContent[index],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ] else ...[
+                // Category selected - show 3-column video grid with tap to open swipeable feed
+                _buildCategoryVideoGridSliver(discoverState),
+              ],
+
+              // Bottom padding for tab bar
+              const SliverToBoxAdapter(child: SizedBox(height: 60)),
             ],
           ),
         ),
@@ -1864,7 +1859,9 @@ class _DiscoverViewState extends ConsumerState<DiscoverView> {
         videos.add({
           'id': videoData['docId'],
           'title': FieldMapper.safeString(
-            data['caption'] ?? data['title'] ?? data['metadata']?['title'] ??
+            data['caption'] ??
+                data['title'] ??
+                data['metadata']?['title'] ??
                 'Untitled',
           ),
           'creator': FieldMapper.getDisplayName(userData),
@@ -2548,7 +2545,8 @@ class _CategoryVideoFeedStatefulState
                       AppNavigator.openStreamerCard(
                         context,
                         userId: video.creator.id,
-                        currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+                        currentUserId:
+                            fa.FirebaseAuth.instance.currentUser?.uid,
                         onDismiss: () => Navigator.of(context).pop(),
                       );
                     },
@@ -2590,7 +2588,8 @@ class _CategoryVideoFeedStatefulState
                       AppNavigator.openStreamerCard(
                         context,
                         userId: video.creator.id,
-                        currentUserId: fa.FirebaseAuth.instance.currentUser?.uid,
+                        currentUserId:
+                            fa.FirebaseAuth.instance.currentUser?.uid,
                         onDismiss: () => Navigator.of(context).pop(),
                       );
                     },

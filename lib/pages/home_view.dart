@@ -26,8 +26,10 @@ import '../views/network_view.dart';
 import '../widgets/streamer_card_view.dart';
 import '../widgets/home_view_components/home_content_widget.dart';
 import '../widgets/player_screen.dart';
+import '../widgets/creator_command_center_overlay.dart';
 import '../models/user.dart';
 import '../models/streamer_card.dart';
+import '../models/creator_command_snapshot.dart';
 import '../controllers/home_view_controller.dart';
 import '../routing/app_navigator.dart';
 import '../constants/playback_owners.dart';
@@ -47,6 +49,9 @@ class _HomeViewState extends ConsumerState<HomeView>
   bool _showStreamerCard = false;
   StreamerCard? _currentStreamerCard;
   DateTime? _lastRankingTime;
+  CreatorCommandCenterState _commandCenterState =
+      CreatorCommandCenterState.closed;
+  int _lastObservedFeedIndex = 0;
 
   HomeViewController get _controller =>
       ref.read(homeViewControllerProvider.notifier);
@@ -480,6 +485,7 @@ class _HomeViewState extends ConsumerState<HomeView>
   }
 
   void _navigateToNetworkViewWithTab(String tabName) {
+    _closeCommandCenter();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => NetworkView(initialTab: tabName),
@@ -497,6 +503,9 @@ class _HomeViewState extends ConsumerState<HomeView>
 
     // Use the single source of truth provider
     await switchFeed(ref, newTab);
+    if (newTab != FeedTab.forYou) {
+      _closeCommandCenter();
+    }
     if (!mounted) return;
 
     // Restore the user's last position for each feed to keep switches sticky.
@@ -582,6 +591,7 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (!mounted || _controllerState.isNavigatingToDiscover) return;
 
     HapticFeedback.lightImpact();
+    _closeCommandCenter();
     _controller.setIsNavigatingToDiscover(true);
     _controller.prepareForRouteNavigation(reason: 'leave_home_to_discover');
 
@@ -605,14 +615,69 @@ class _HomeViewState extends ConsumerState<HomeView>
     if (!mounted) return;
 
     HapticFeedback.lightImpact();
+    _closeCommandCenter();
     _controller.prepareForRouteNavigation(reason: 'leave_home_to_network');
     _navigateToNetworkViewWithTab('discover');
+  }
+
+  void _toggleCommandCenter() {
+    if (!mounted || ref.read(activeFeedProvider) != FeedTab.forYou) {
+      return;
+    }
+    setState(() {
+      _commandCenterState =
+          _commandCenterState == CreatorCommandCenterState.closed
+              ? CreatorCommandCenterState.expanded
+              : CreatorCommandCenterState.closed;
+    });
+  }
+
+  void _expandCommandCenter() {
+    if (!mounted) return;
+    setState(() {
+      _commandCenterState = CreatorCommandCenterState.expanded;
+    });
+  }
+
+  void _closeCommandCenter() {
+    if (!mounted) return;
+    if (_commandCenterState == CreatorCommandCenterState.closed) {
+      return;
+    }
+    setState(() {
+      _commandCenterState = CreatorCommandCenterState.closed;
+    });
+  }
+
+  void _applyScrollDirectionToCommandCenter(HomeFeedScrollDirection direction) {
+    if (!mounted || ref.read(activeFeedProvider) != FeedTab.forYou) {
+      return;
+    }
+    if (direction == HomeFeedScrollDirection.down &&
+        _commandCenterState == CreatorCommandCenterState.expanded) {
+      setState(() {
+        _commandCenterState = CreatorCommandCenterState.collapsed;
+      });
+    } else if (direction == HomeFeedScrollDirection.up &&
+        _commandCenterState == CreatorCommandCenterState.collapsed) {
+      setState(() {
+        _commandCenterState = CreatorCommandCenterState.expanded;
+      });
+    }
   }
 
   Future<void> _onPageChanged(int index) async {
     if (!mounted) return; // 🔒 SAFETY: Exit early if widget is disposed
 
     try {
+      final int previousIndex = _lastObservedFeedIndex;
+      _lastObservedFeedIndex = index;
+      if (index > previousIndex) {
+        _applyScrollDirectionToCommandCenter(HomeFeedScrollDirection.down);
+      } else if (index < previousIndex) {
+        _applyScrollDirectionToCommandCenter(HomeFeedScrollDirection.up);
+      }
+
       // TIKTOK-STYLE: Get current video for feed management (with safety checks)
       try {
         final homeState = ref.read(hp.homeProvider);
@@ -695,6 +760,8 @@ class _HomeViewState extends ConsumerState<HomeView>
                     key: ValueKey(activeFeed.tabId),
                     activeTab: activeFeed,
                     currentIndex: controllerState.currentIndex,
+                    showCommandCenterTrigger: activeFeed == FeedTab.forYou,
+                    onCommandCenterTap: _toggleCommandCenter,
                     onTabChange: _handleFeedTabChange,
                     onPageChanged: _onPageChanged,
                     onVideoTap: _handleVideoTap,
@@ -706,6 +773,11 @@ class _HomeViewState extends ConsumerState<HomeView>
                   );
                 },
               ),
+            ),
+            CreatorCommandCenterOverlay(
+              state: _commandCenterState,
+              onDismiss: _closeCommandCenter,
+              onExpand: _expandCommandCenter,
             ),
             if (_showStreamerCard && _currentStreamerCard != null)
               Positioned.fill(

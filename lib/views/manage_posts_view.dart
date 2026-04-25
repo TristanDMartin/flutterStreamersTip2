@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/scheduled_post.dart';
 import '../routing/app_navigator.dart';
+import '../routing/app_routes.dart';
 import '../services/firestore_scheduled_post_service.dart';
 import '../services/scheduled_post_publisher_service.dart';
 import '../services/scheduled_post_service.dart';
@@ -33,7 +35,14 @@ enum BulkAction {
 }
 
 class ManagePostsView extends StatefulWidget {
-  const ManagePostsView({super.key});
+  const ManagePostsView({
+    super.key,
+    this.initialTab = ManagePostsInitialTab.scheduled,
+    this.launchSource = ManagePostsLaunchSource.direct,
+  });
+
+  final ManagePostsInitialTab initialTab;
+  final ManagePostsLaunchSource launchSource;
 
   @override
   State<ManagePostsView> createState() => _ManagePostsViewState();
@@ -41,7 +50,8 @@ class ManagePostsView extends StatefulWidget {
 
 class _ManagePostsViewState extends State<ManagePostsView>
     with TickerProviderStateMixin {
-  final FirestoreScheduledPostService _postService = FirestoreScheduledPostService();
+  final FirestoreScheduledPostService _postService =
+      FirestoreScheduledPostService();
   final ScheduledPostService _scheduledPostService = ScheduledPostService();
   final VideoAnalyticsService _videoAnalyticsService = VideoAnalyticsService();
   List<ScheduledPost> _posts = [];
@@ -56,23 +66,39 @@ class _ManagePostsViewState extends State<ManagePostsView>
   bool _isSelectionMode = false;
 
   // Sorting
-  final PostSortOption _sortOption = PostSortOption.dateDesc;
+  PostSortOption _sortOption = PostSortOption.dateDesc;
 
   // Real-time updates
   bool _isRealTimeEnabled = true;
   int _refreshInterval = 30; // seconds
   int _retryCount = 0;
   static const int _maxRetries = 3;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: _tabIndexFor(widget.initialTab),
+    );
     _loadPosts();
     _startRealTimeUpdates();
     _checkAndPublishOverduePosts();
   }
-  
+
+  int _tabIndexFor(ManagePostsInitialTab tab) {
+    switch (tab) {
+      case ManagePostsInitialTab.scheduled:
+        return 0;
+      case ManagePostsInitialTab.publishing:
+        return 1;
+      case ManagePostsInitialTab.published:
+        return 2;
+    }
+  }
+
   /// Check for posts that are past their scheduled time and trigger publishing
   Future<void> _checkAndPublishOverduePosts() async {
     try {
@@ -88,8 +114,9 @@ class _ManagePostsViewState extends State<ManagePostsView>
   }
 
   void _startRealTimeUpdates() {
+    _refreshTimer?.cancel();
     if (_isRealTimeEnabled) {
-      Future.delayed(Duration(seconds: _refreshInterval), () {
+      _refreshTimer = Timer(Duration(seconds: _refreshInterval), () {
         if (mounted) {
           _loadPosts();
           _startRealTimeUpdates();
@@ -100,11 +127,13 @@ class _ManagePostsViewState extends State<ManagePostsView>
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
   Future<void> _loadPosts() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
@@ -118,12 +147,14 @@ class _ManagePostsViewState extends State<ManagePostsView>
 
       final sortedPosts = _sortPosts(posts);
 
+      if (!mounted) return;
       setState(() {
         _posts = sortedPosts;
         _isLoading = false;
         _retryCount = 0;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -132,7 +163,7 @@ class _ManagePostsViewState extends State<ManagePostsView>
         _retryCount++;
         _showErrorSnackBar(
             'Failed to load posts. Retrying... ($_retryCount/$_maxRetries)');
-        Future.delayed(Duration(seconds: _retryCount * 2), () {
+        Timer(Duration(seconds: _retryCount * 2), () {
           if (mounted) _loadPosts();
         });
       } else {
@@ -296,7 +327,12 @@ class _ManagePostsViewState extends State<ManagePostsView>
       color: const Color(0xFF9248D2),
       backgroundColor: const Color(0xFF1A1A1A),
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          MediaQuery.of(context).padding.top + 132,
+          16,
+          24,
+        ),
         itemCount: filteredPosts.length,
         itemBuilder: (context, index) {
           final post = filteredPosts[index];
@@ -342,7 +378,7 @@ class _ManagePostsViewState extends State<ManagePostsView>
     final isOverdue = post.status == PostStatus.scheduled &&
         post.schedule?.scheduledAtUtc != null &&
         post.schedule!.scheduledAtUtc.isBefore(DateTime.now());
-    
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -383,13 +419,18 @@ class _ManagePostsViewState extends State<ManagePostsView>
             ),
             const SizedBox(width: 8),
           ],
-          Text(
-            _formatScheduleTime(
-                post.schedule?.scheduledAtUtc ?? DateTime.now()),
-            style: TextStyle(
-              color: isOverdue ? Colors.orange : Colors.white70,
-              fontSize: 12,
-              fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+          Flexible(
+            child: Text(
+              _formatScheduleTime(
+                  post.schedule?.scheduledAtUtc ?? DateTime.now()),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                color: isOverdue ? Colors.orange : Colors.white70,
+                fontSize: 12,
+                fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ),
         ],
@@ -555,7 +596,9 @@ class _ManagePostsViewState extends State<ManagePostsView>
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Row(
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
         children: [
           if (post.status == PostStatus.scheduled) ...[
             _buildActionButton(
@@ -563,13 +606,11 @@ class _ManagePostsViewState extends State<ManagePostsView>
               Icons.publish,
               () => _publishNow(post),
             ),
-            const SizedBox(width: 8),
             _buildActionButton(
               'Cancel',
               Icons.cancel,
               () => _cancelPost(post),
             ),
-            const SizedBox(width: 8),
             _buildActionButton(
               'Progress',
               Icons.insights,
@@ -577,7 +618,6 @@ class _ManagePostsViewState extends State<ManagePostsView>
             ),
           ] else if (post.status == PostStatus.publishing) ...[
             _buildActionChip('Publishing', Icons.schedule_send),
-            const SizedBox(width: 8),
             _buildActionButton(
               'Progress',
               Icons.insights,
@@ -589,14 +629,12 @@ class _ManagePostsViewState extends State<ManagePostsView>
               Icons.open_in_new,
               () => _viewPost(post),
             ),
-            const SizedBox(width: 8),
             _buildActionButton(
               'Analytics',
               Icons.bar_chart,
               () => _showPostAnalytics(post),
             ),
             if (failedPlatforms.isNotEmpty) ...[
-              const SizedBox(width: 8),
               _buildActionButton(
                 'Retry Failed',
                 Icons.refresh,
@@ -609,24 +647,22 @@ class _ManagePostsViewState extends State<ManagePostsView>
               Icons.refresh,
               () => _retryPost(
                 post,
-                platformKeys: failedPlatforms.isNotEmpty ? failedPlatforms : null,
+                platformKeys:
+                    failedPlatforms.isNotEmpty ? failedPlatforms : null,
               ),
             ),
-            const SizedBox(width: 8),
             _buildActionButton(
               'Progress',
               Icons.insights,
               () => _showPostProgress(post),
             ),
             if (reauthPlatforms.isNotEmpty) ...[
-              const SizedBox(width: 8),
               _buildActionButton(
                 'Reconnect',
                 Icons.link_off,
                 () => _openReconnectPlatforms(post),
               ),
             ] else ...[
-              const SizedBox(width: 8),
               _buildActionButton(
                 'Analytics',
                 Icons.bar_chart,
@@ -642,7 +678,6 @@ class _ManagePostsViewState extends State<ManagePostsView>
             ),
           ],
           if (post.platforms.isNotEmpty) ...[
-            const SizedBox(width: 8),
             _buildActionButton(
               'Details',
               Icons.toc,
@@ -1190,7 +1225,7 @@ class _ManagePostsViewState extends State<ManagePostsView>
                 _buildProgressMetric(
                   'Scheduled for',
                   '${MaterialLocalizations.of(context).formatFullDate(scheduledAt)} '
-                  '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(scheduledAt))}',
+                      '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(scheduledAt))}',
                 ),
               _buildProgressMetric(
                 'Destinations completed',
@@ -1273,8 +1308,7 @@ class _ManagePostsViewState extends State<ManagePostsView>
   Widget _buildHistoryEntry(Map<String, dynamic> entry) {
     final status = entry['status']?.toString() ?? 'update';
     final platform = entry['platform']?.toString();
-    final message =
-        entry['message']?.toString() ??
+    final message = entry['message']?.toString() ??
         entry['detail']?.toString() ??
         'Status updated';
     final rawTimestamp = entry['timestamp'] ?? entry['createdAt'];
@@ -1388,7 +1422,8 @@ class _ManagePostsViewState extends State<ManagePostsView>
             .map((entry) => Map<String, dynamic>.from(entry as Map))
             .toList();
     try {
-      final remoteHistory = await _scheduledPostService.getPublishingHistory(post.id);
+      final remoteHistory =
+          await _scheduledPostService.getPublishingHistory(post.id);
       if (remoteHistory.isNotEmpty) {
         return remoteHistory;
       }
@@ -1431,16 +1466,22 @@ class _ManagePostsViewState extends State<ManagePostsView>
               builder: (context, snapshot) {
                 final analytics = snapshot.data;
                 final fallback = post.analyticsHints;
-                final views =
-                    analytics?.views ?? fallback['views'] ?? fallback['impressions'] ?? 0;
+                final views = analytics?.views ??
+                    fallback['views'] ??
+                    fallback['impressions'] ??
+                    0;
                 final likes = analytics?.likes ?? fallback['likes'] ?? 0;
-                final comments = analytics?.comments ?? fallback['comments'] ?? 0;
+                final comments =
+                    analytics?.comments ?? fallback['comments'] ?? 0;
                 final shares = analytics?.shares ?? fallback['shares'] ?? 0;
-                final engagement = analytics?.engagementRate ?? fallback['engagement'] ?? 0;
-                final averageWatchTime =
-                    analytics?.averageWatchTime ?? fallback['averageWatchTime'] ?? 0;
-                final completionRate =
-                    analytics?.completionRate ?? fallback['completionRate'] ?? 0;
+                final engagement =
+                    analytics?.engagementRate ?? fallback['engagement'] ?? 0;
+                final averageWatchTime = analytics?.averageWatchTime ??
+                    fallback['averageWatchTime'] ??
+                    0;
+                final completionRate = analytics?.completionRate ??
+                    fallback['completionRate'] ??
+                    0;
                 final uniqueViewers =
                     analytics?.uniqueViewers ?? fallback['uniqueViewers'] ?? 0;
                 final audienceReach =
@@ -1559,7 +1600,8 @@ class _ManagePostsViewState extends State<ManagePostsView>
     );
   }
 
-  Widget? _buildInlinePlatformAction(ScheduledPost post, PlatformConfig platform) {
+  Widget? _buildInlinePlatformAction(
+      ScheduledPost post, PlatformConfig platform) {
     final status = platform.status ?? PlatformStatus.pending;
     if (status == PlatformStatus.failed) {
       return TextButton(
@@ -1767,8 +1809,7 @@ class _ManagePostsViewState extends State<ManagePostsView>
   void _showBulkActionDialog() {
     final selectedPosts =
         _posts.where((post) => _selectedPosts.contains(post.id)).toList();
-    final canPublish =
-        selectedPosts.isNotEmpty &&
+    final canPublish = selectedPosts.isNotEmpty &&
         selectedPosts.every((post) => post.status == PostStatus.scheduled);
     final canCancel =
         selectedPosts.any((post) => post.status == PostStatus.scheduled);
@@ -1957,13 +1998,32 @@ class _ManagePostsViewState extends State<ManagePostsView>
               ),
             ),
             const SizedBox(height: 16),
-            ...PostSortOption.values
-                .map((option) => RadioListTile<PostSortOption>(
-                      title: Text(_getSortOptionLabel(option),
-                          style: const TextStyle(color: Colors.white)),
-                      value: option,
-                      activeColor: const Color(0xFF9248D2),
-                    )),
+            ...PostSortOption.values.map(
+              (option) {
+                final isSelected = option == _sortOption;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    color:
+                        isSelected ? const Color(0xFF9248D2) : Colors.white54,
+                  ),
+                  title: Text(
+                    _getSortOptionLabel(option),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _sortOption = option;
+                      _posts = _sortPosts(List<ScheduledPost>.from(_posts));
+                    });
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -2033,6 +2093,8 @@ class _ManagePostsViewState extends State<ManagePostsView>
                 });
                 if (_isRealTimeEnabled) {
                   _startRealTimeUpdates();
+                } else {
+                  _refreshTimer?.cancel();
                 }
                 Navigator.pop(context);
               },
@@ -2136,6 +2198,8 @@ class _ManagePostsViewState extends State<ManagePostsView>
               Navigator.pop(context);
               if (_isRealTimeEnabled) {
                 _startRealTimeUpdates();
+              } else {
+                _refreshTimer?.cancel();
               }
             },
             child: const Text('Save'),

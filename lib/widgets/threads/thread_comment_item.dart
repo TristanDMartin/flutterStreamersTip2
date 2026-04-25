@@ -11,18 +11,12 @@ import 'discussion_author_row.dart';
 class ThreadCommentItem extends StatefulWidget {
   final ForumComment comment;
   final String postId;
-  final VoidCallback onReply;
+  final ValueChanged<ForumComment> onReply;
   final VoidCallback onLike;
   final VoidCallback onDislike;
   final VoidCallback onDelete;
   final VoidCallback onToggleReplies;
   final bool isExpanded;
-  final bool isReplying;
-  final String replyText;
-  final ValueChanged<String> onReplyTextChanged;
-  final VoidCallback onSubmitReply;
-  final VoidCallback onCancelReply;
-  final bool isSubmittingReply;
 
   const ThreadCommentItem({
     super.key,
@@ -34,12 +28,6 @@ class ThreadCommentItem extends StatefulWidget {
     required this.onDelete,
     required this.onToggleReplies,
     required this.isExpanded,
-    required this.isReplying,
-    required this.replyText,
-    required this.onReplyTextChanged,
-    required this.onSubmitReply,
-    required this.onCancelReply,
-    required this.isSubmittingReply,
   });
 
   @override
@@ -81,7 +69,8 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
               final reason = reasons[index];
               return ListTile(
                 leading: const Icon(Icons.flag_outlined, color: Colors.white70),
-                title: Text(reason, style: const TextStyle(color: Colors.white)),
+                title:
+                    Text(reason, style: const TextStyle(color: Colors.white)),
                 onTap: () => Navigator.of(context).pop(reason),
               );
             },
@@ -115,8 +104,7 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
 
   @override
   Widget build(BuildContext context) {
-    final isLiked =
-        user != null && widget.comment.likedBy.contains(user!.uid);
+    final isLiked = user != null && widget.comment.likedBy.contains(user!.uid);
     final isDisliked =
         user != null && widget.comment.dislikedBy.contains(user!.uid);
     final isAuthor = user != null && widget.comment.author.uid == user!.uid;
@@ -148,9 +136,11 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                       displayName: widget.comment.author.displayName,
                       username: widget.comment.author.username,
                       avatarUrl: widget.comment.author.avatarUrl,
+                      userId: widget.comment.author.uid,
                       avatarRadius: 16,
                       trailingText: _formatDate(widget.comment.createdAt),
-                      onTap: () => _navigateToProfile(widget.comment.author.uid),
+                      onTap: () =>
+                          _navigateToProfile(widget.comment.author.uid),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -201,13 +191,12 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                 _buildActionButton(
                   icon: Icons.reply_outlined,
                   label: 'Reply',
-                  onTap: widget.onReply,
+                  onTap: () => widget.onReply(widget.comment),
                 ),
               if (hasReplies)
                 _buildActionButton(
-                  icon: widget.isExpanded
-                      ? Icons.expand_less
-                      : Icons.expand_more,
+                  icon:
+                      widget.isExpanded ? Icons.expand_less : Icons.expand_more,
                   label: widget.isExpanded
                       ? 'Hide replies (${widget.comment.replyCount})'
                       : 'View replies (${widget.comment.replyCount})',
@@ -230,14 +219,13 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
             ],
           ),
 
-          // Reply Input (inline)
-          if (widget.isReplying && user != null) _buildReplyInput(),
-
           // Replies Section with smooth animation
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
-            child: widget.isExpanded ? _buildRepliesSection() : const SizedBox.shrink(),
+            child: widget.isExpanded
+                ? _buildRepliesSection()
+                : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -315,129 +303,6 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildReplyInput() {
-    return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.card.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppColors.borderPrimary.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildComposerAvatar(
-                user?.photoURL,
-                14,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: TextEditingController(text: widget.replyText)
-                    ..selection = TextSelection.fromPosition(
-                      TextPosition(offset: widget.replyText.length),
-                    ),
-                  onChanged: widget.onReplyTextChanged,
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: 'Write a reply...',
-                    hintStyle: TextStyle(color: AppColors.textTertiary),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: AppColors.borderPrimary.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: AppColors.borderPrimary.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: AppColors.primary),
-                    ),
-                    contentPadding: const EdgeInsets.all(8),
-                  ),
-                  maxLines: 2,
-                  minLines: 1,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: widget.onCancelReply,
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.textSecondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-                child: const Text('Cancel'),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: widget.isSubmittingReply ? null : widget.onSubmitReply,
-                icon: const Icon(Icons.send, size: 14),
-                label: Text(widget.isSubmittingReply ? 'Posting...' : 'Reply'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildComposerAvatar(String? avatarUrl, double radius) {
-    return Container(
-      width: radius * 2,
-      height: radius * 2,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.card,
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.35),
-        ),
-      ),
-      child: avatarUrl != null && avatarUrl.isNotEmpty
-          ? ClipOval(
-              child: Image.network(
-                avatarUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    _buildComposerAvatarFallback(radius),
-              ),
-            )
-          : _buildComposerAvatarFallback(radius),
-    );
-  }
-
-  Widget _buildComposerAvatarFallback(double radius) {
-    return Icon(
-      Icons.person,
-      size: radius,
-      color: AppColors.primary,
     );
   }
 
@@ -519,6 +384,7 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                             displayName: reply.author.displayName,
                             username: reply.author.username,
                             avatarUrl: reply.author.avatarUrl,
+                            userId: reply.author.uid,
                             avatarRadius: 12,
                             trailingText: _formatDate(reply.createdAt),
                             onTap: () => _navigateToProfile(reply.author.uid),
@@ -573,8 +439,8 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
                                   ),
                                   style: TextButton.styleFrom(
                                     foregroundColor: Colors.red,
-                                    padding:
-                                        const EdgeInsets.symmetric(horizontal: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8),
                                     minimumSize: Size.zero,
                                     tapTargetSize:
                                         MaterialTapTargetSize.shrinkWrap,
@@ -625,7 +491,6 @@ class _ThreadCommentItemState extends State<ThreadCommentItem> {
       context,
       userId: userId,
       currentUserId: user?.uid,
-      onDismiss: () => Navigator.of(context).pop(),
     );
   }
 }

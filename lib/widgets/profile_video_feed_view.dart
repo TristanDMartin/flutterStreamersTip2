@@ -58,7 +58,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
   final Map<String, StreamSubscription<DocumentSnapshot>> _videoListeners = {};
   StreamSubscription<String>? _optimisticFeedRefreshSubscription;
   Future<List<Map<String, dynamic>>>? _draftsFuture;
-  List<Map<String, dynamic>> _lastResolvedDrafts = const <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _lastResolvedDrafts =
+      const <Map<String, dynamic>>[];
   bool _bootstrapLoadScheduled = false;
   String? _mergedProfileVideosForUserId;
   Set<String> _lastSyncedListenerVideoIds = const <String>{};
@@ -201,10 +202,15 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
       try {
         if (kDebugMode) {
-          debugPrint('🎬 ProfileView: VideoService is empty, loading videos...');
+          debugPrint(
+              '🎬 ProfileView: VideoService is empty, loading videos...');
         }
-        ref.read(providers.videoServiceLoadingProvider.notifier).setIsLoading(true);
-        await ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
+        ref
+            .read(providers.videoServiceLoadingProvider.notifier)
+            .setIsLoading(true);
+        await ref
+            .read(providers.videoServiceStateProvider.notifier)
+            .loadAllVideos();
       } catch (e, stackTrace) {
         if (kDebugMode) {
           debugPrint('❌ ProfileView: Error bootstrapping videos: $e');
@@ -212,7 +218,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         }
       } finally {
         if (mounted) {
-          ref.read(providers.videoServiceLoadingProvider.notifier).setIsLoading(false);
+          ref
+              .read(providers.videoServiceLoadingProvider.notifier)
+              .setIsLoading(false);
         }
         _bootstrapLoadScheduled = false;
       }
@@ -371,7 +379,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     return Consumer(
       builder: (context, ref, child) {
         try {
-          final videoServiceState = ref.watch(providers.videoServiceStateProvider);
+          final videoServiceState =
+              ref.watch(providers.videoServiceStateProvider);
           final isLoadingVideos =
               ref.watch(providers.videoServiceLoadingProvider);
           final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
@@ -384,11 +393,11 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           final userVideos = ref.watch(userVideosProvider(widget.userId ?? ''));
           final List<OptimisticVideo> optimisticVideos = _isViewingOwnProfile
               ? (OptimisticVideoService()
-                    .getOptimisticVideosForUser(widget.userId ?? '')
-                    .where((video) => video.status.isProcessing)
-                    .where((video) =>
-                        !userVideos.any((item) => item.id == video.videoId))
-                    .toList()
+                  .getOptimisticVideosForUser(widget.userId ?? '')
+                  .where((video) => video.status.isProcessing)
+                  .where((video) =>
+                      !userVideos.any((item) => item.id == video.videoId))
+                  .toList()
                 ..sort((a, b) => b.createdAt.compareTo(a.createdAt)))
               : <OptimisticVideo>[];
 
@@ -403,8 +412,7 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
           final bool isServiceBootstrapping =
               videoServiceState.isEmpty && isLoadingVideos;
-          final bool shouldShowLoadingPlaceholder =
-              videoServiceState.isEmpty &&
+          final bool shouldShowLoadingPlaceholder = videoServiceState.isEmpty &&
               userVideos.isEmpty &&
               optimisticVideos.isEmpty &&
               (isLoadingVideos || !isViewingOwnProfile);
@@ -428,7 +436,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
                   return _buildLoadingGridPlaceholder();
                 }
 
-                if (userVideos.isEmpty && drafts.isEmpty && optimisticVideos.isEmpty) {
+                if (userVideos.isEmpty &&
+                    drafts.isEmpty &&
+                    optimisticVideos.isEmpty) {
                   return _buildEmptyState(
                     icon: Icons.videocam_outlined,
                     title: 'No Videos Yet',
@@ -704,7 +714,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
-            await ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
+            await ref
+                .read(providers.videoServiceStateProvider.notifier)
+                .loadAllVideos();
             break;
         }
       },
@@ -731,11 +743,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             }
             final draftVideo = HomeVideo(
               id: 'all_drafts',
-              videoURL: firstDraft['videoPath'] ??
-                  firstDraft['videoUrl'] ??
-                  '',
-              thumbnailURL: firstDraft['thumbnailPath'] ??
-                  firstDraft['thumbnailUrl'],
+              videoURL: firstDraft['videoPath'] ?? firstDraft['videoUrl'] ?? '',
+              thumbnailURL:
+                  firstDraft['thumbnailPath'] ?? firstDraft['thumbnailUrl'],
               creator: User(
                 id: 'current_user',
                 displayName: 'You',
@@ -763,7 +773,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           }
 
           final optimisticIndex = index - draftOffset;
-          if (optimisticIndex >= 0 && optimisticIndex < optimisticVideos.length) {
+          if (optimisticIndex >= 0 &&
+              optimisticIndex < optimisticVideos.length) {
             return _buildOptimisticProcessingCard(
               optimisticVideos[optimisticIndex],
             );
@@ -788,7 +799,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     final tileWidth = (screenWidth - 32 - 32) / 3;
 
     DecorationImage? backgroundImage;
-    if (video.localThumbnailPath != null && video.localThumbnailPath!.isNotEmpty) {
+    if (video.localThumbnailPath != null &&
+        video.localThumbnailPath!.isNotEmpty) {
       final localFile = File(video.localThumbnailPath!);
       if (localFile.existsSync()) {
         backgroundImage = DecorationImage(
@@ -934,7 +946,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
-            await ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
+            await ref
+                .read(providers.videoServiceStateProvider.notifier)
+                .loadAllVideos();
             break;
         }
       },
@@ -1008,7 +1022,9 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
           case ProfileVideoFeedType.videos:
           case ProfileVideoFeedType.tagged:
             ref.invalidate(userVideosProvider(widget.userId ?? ''));
-            await ref.read(providers.videoServiceStateProvider.notifier).loadAllVideos();
+            await ref
+                .read(providers.videoServiceStateProvider.notifier)
+                .loadAllVideos();
             break;
         }
       },
@@ -1036,7 +1052,8 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
     int draftCount,
     List<Map<String, dynamic>> allDrafts,
   ) {
-    final latestDraft = allDrafts.isNotEmpty ? allDrafts.first : const <String, dynamic>{};
+    final latestDraft =
+        allDrafts.isNotEmpty ? allDrafts.first : const <String, dynamic>{};
     final latestCaption =
         (latestDraft['caption'] as String?)?.trim().isNotEmpty == true
             ? (latestDraft['caption'] as String).trim()
@@ -1422,12 +1439,26 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
             '🏷️ ProfileVideoFeedView: Fetching tagged videos for user: $userId');
       }
 
-      // Query tags collection to find videos where this user is tagged
-      final tagsSnapshot = await FirebaseFirestore.instance
-          .collection('tags')
-          .where('taggedUserId', isEqualTo: userId)
-          .orderBy('createdAt', descending: true)
-          .get();
+      // Keep this query index-light. Some production tag documents were created
+      // before the current schema, so filter the user field locally instead of
+      // relying on a composite taggedUserId + createdAt query.
+      QuerySnapshot<Map<String, dynamic>> tagsSnapshot;
+      try {
+        tagsSnapshot = await FirebaseFirestore.instance
+            .collection('tags')
+            .orderBy('createdAt', descending: true)
+            .limit(250)
+            .get();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+              '🏷️ ProfileVideoFeedView: Ordered tags query failed, using fallback: $e');
+        }
+        tagsSnapshot = await FirebaseFirestore.instance
+            .collection('tags')
+            .limit(250)
+            .get();
+      }
 
       if (tagsSnapshot.docs.isEmpty) {
         if (kDebugMode) {
@@ -1437,10 +1468,13 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
         return [];
       }
 
-      // Extract unique video IDs
+      // Extract unique video IDs for tags that match this profile user.
       final videoIds = tagsSnapshot.docs
-          .map((doc) => doc.data()['videoId'] as String?)
+          .map((doc) => doc.data())
+          .where((data) => _tagMatchesUser(data, userId))
+          .map(_tagVideoId)
           .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
           .toSet()
           .toList();
 
@@ -1462,14 +1496,18 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
 
       for (int i = 0; i < videoIds.length; i += batchSize) {
         final batch = videoIds.skip(i).take(batchSize).toList();
-        final videosSnapshot = await FirebaseFirestore.instance
-            .collection('videos')
-            .where(FieldPath.documentId, whereIn: batch)
-            .where('status', whereIn: ['published', 'ready', 'active'])
-            .get();
+        final videoDocs = await Future.wait(batch.map((videoId) =>
+            FirebaseFirestore.instance
+                .collection('videos')
+                .doc(videoId)
+                .get()));
 
-        for (final doc in videosSnapshot.docs) {
+        for (final doc in videoDocs) {
+          if (!doc.exists) continue;
           final data = doc.data();
+          if (data == null) continue;
+          final status = (data['status'] ?? 'published').toString();
+          if (!{'published', 'ready', 'active'}.contains(status)) continue;
           final videoCreatorId = data['userId'] ?? data['creatorId'] ?? '';
 
           // Fetch creator data
@@ -1517,6 +1555,47 @@ class _ProfileVideoFeedViewState extends ConsumerState<ProfileVideoFeedView> {
       debugPrint('❌ ProfileVideoFeedView: Error fetching tagged videos: $e');
       return [];
     }
+  }
+
+  bool _tagMatchesUser(Map<String, dynamic> tagData, String userId) {
+    bool matches(dynamic value) {
+      if (value == null) return false;
+      if (value is DocumentReference) {
+        return value.id == userId || value.path.endsWith('/$userId');
+      }
+      if (value is String) {
+        return value == userId || value.endsWith('/$userId');
+      }
+      if (value is Map) {
+        return matches(value['id']) ||
+            matches(value['uid']) ||
+            matches(value['userId']) ||
+            matches(value['path']);
+      }
+      return false;
+    }
+
+    return matches(tagData['taggedUserId']) ||
+        matches(tagData['taggedUserRef']) ||
+        matches(tagData['taggedUser']) ||
+        matches(tagData['userId']);
+  }
+
+  String? _tagVideoId(Map<String, dynamic> tagData) {
+    final value =
+        tagData['videoId'] ?? tagData['videoRef'] ?? tagData['video'] ?? '';
+    if (value is DocumentReference) return value.id;
+    if (value is String) {
+      if (value.isEmpty) return null;
+      return value.contains('/') ? value.split('/').last : value;
+    }
+    if (value is Map) {
+      final id = value['id'] ?? value['videoId'] ?? value['path'];
+      if (id is String && id.isNotEmpty) {
+        return id.contains('/') ? id.split('/').last : id;
+      }
+    }
+    return null;
   }
 
   /// Fetch real video data from Firebase for favorite video IDs

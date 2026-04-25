@@ -26,9 +26,24 @@ class GamificationEventService {
     if (trimmed.contains('cloudfunctions.net')) {
       return Uri.parse(trimmed);
     }
-    final String noSlash =
-        trimmed.endsWith('/') ? trimmed.substring(0, trimmed.length - 1) : trimmed;
+    final String noSlash = trimmed.endsWith('/')
+        ? trimmed.substring(0, trimmed.length - 1)
+        : trimmed;
     return Uri.parse('$noSlash/gamification/events');
+  }
+
+  static Uri _claimMissionUri(String baseUrl) {
+    final String trimmed = baseUrl.trim();
+    if (trimmed.contains('cloudfunctions.net')) {
+      final String noSlash = trimmed.endsWith('/')
+          ? trimmed.substring(0, trimmed.length - 1)
+          : trimmed;
+      return Uri.parse('$noSlash/claimMissionReward');
+    }
+    final String noSlash = trimmed.endsWith('/')
+        ? trimmed.substring(0, trimmed.length - 1)
+        : trimmed;
+    return Uri.parse('$noSlash/gamification/missions/claim');
   }
 
   /// Event types must match website + worker contract (e.g. `content.video_uploaded`).
@@ -78,5 +93,37 @@ class GamificationEventService {
     } catch (e) {
       debugPrint('GamificationEventService: emit failed (non-fatal): $e');
     }
+  }
+
+  Future<Map<String, dynamic>> claimMissionReward({
+    required String missionId,
+  }) async {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw StateError('Not signed in');
+    }
+    final String? token = await user.getIdToken(true);
+    if (token == null || token.isEmpty) {
+      throw StateError('No ID token');
+    }
+    final Uri uri = _claimMissionUri(_baseUrl);
+    final http.Response res = await _http.post(
+      uri,
+      headers: <String, String>{
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'uid': user.uid,
+        'missionId': missionId,
+        'source': 'app',
+      }),
+    );
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode >= 400) {
+      throw StateError(body['error']?.toString() ?? 'Mission claim failed');
+    }
+    return body;
   }
 }

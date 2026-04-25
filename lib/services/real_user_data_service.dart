@@ -199,7 +199,7 @@ class RealUserDataService {
             username: creatorData['username'] ?? 'Unknown',
             displayName: creatorData['displayName'] ?? creatorData['username'],
             avatarURL: creatorData['avatarURL'],
-            followerCount: creatorData['followerCount'] ?? 0,
+            followerCount: UserCountFields.readFollowersCount(creatorData),
             isActive: true,
           ));
 

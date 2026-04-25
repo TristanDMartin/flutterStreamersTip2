@@ -41,11 +41,20 @@ class ForumComment {
     final data = doc.data() as Map<String, dynamic>;
     final createdAtValue = data['createdAt'];
     final updatedAtValue = data['updatedAt'];
+    final rawAuthorMap = Map<String, dynamic>.from(
+      (data['author'] as Map<String, dynamic>?) ?? const <String, dynamic>{},
+    );
+    final authorId = data['authorId'] as String?;
+    if (authorId != null && authorId.isNotEmpty) {
+      rawAuthorMap.putIfAbsent('uid', () => authorId);
+      rawAuthorMap.putIfAbsent('id', () => authorId);
+    }
+
     return ForumComment(
       id: doc.id,
       postId: postId,
       content: data['content'] as String? ?? '[deleted]',
-      author: ForumAuthor.fromMap(data['author'] as Map<String, dynamic>),
+      author: ForumAuthor.fromMap(rawAuthorMap),
       parentCommentId: data['parentCommentId'] as String?,
       quotedCommentId: data['quotedCommentId'] as String?,
       createdAt: createdAtValue is Timestamp

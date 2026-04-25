@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/forum_author.dart';
 import '../models/user.dart' as app_user;
+import '../utils/avatar_url_resolver.dart';
 
 class DiscussionAuthorService {
   static final DiscussionAuthorService _instance =
@@ -31,6 +32,16 @@ class DiscussionAuthorService {
     return ForumAuthor.fromUserData(userId, data);
   }
 
+  Stream<ForumAuthor?> watchForumAuthor(String userId) {
+    return _firestore.collection('users').doc(userId).snapshots().map((doc) {
+      final data = doc.data();
+      if (!doc.exists || data == null) {
+        return null;
+      }
+      return ForumAuthor.fromUserData(userId, data);
+    });
+  }
+
   Future<app_user.User> enrichCommentUser(app_user.User user) async {
     final data = await loadUserData(user.id);
     if (data == null) return user;
@@ -45,9 +56,7 @@ class DiscussionAuthorService {
       username: (data['username'] as String?) ?? user.username,
       displayName: (data['displayName'] as String?) ?? user.displayName,
       bio: (data['bio'] as String?) ?? user.bio,
-      avatarURL: (data['avatarURL'] as String?) ??
-          (data['avatarUrl'] as String?) ??
-          user.avatarURL,
+      avatarURL: resolveAvatarUrl(data) ?? user.avatarURL,
       onlineStatus: onlineStatus,
       hashtags: user.hashtags,
       aiSelf: user.aiSelf,
@@ -61,8 +70,7 @@ class DiscussionAuthorService {
   Future<String?> loadAvatarUrl(String userId) async {
     final data = await loadUserData(userId);
     if (data == null) return null;
-    final avatarUrl =
-        (data['avatarURL'] as String?) ?? (data['avatarUrl'] as String?);
+    final avatarUrl = resolveAvatarUrl(data);
     if (avatarUrl == null || avatarUrl.isEmpty) return null;
     return avatarUrl;
   }

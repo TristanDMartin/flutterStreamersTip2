@@ -43,17 +43,36 @@ class FollowsService {
       return false;
     }
     try {
-      final currentUserId = currentUser.uid;
+      final String currentUserId = currentUser.uid;
+      if (await isFollowing(targetUserId)) {
+        return true;
+      }
       await _ensureCounterFields(currentUserId);
       await _ensureCounterFields(targetUserId);
-      await _firestore.collection('follows').add({
+      final WriteBatch batch = _firestore.batch();
+      final DocumentReference<Map<String, dynamic>> followRef =
+          _firestore.collection('follows').doc();
+      batch.set(followRef, {
         'followerUserId': currentUserId,
         'targetUserId': targetUserId,
-        'followerId': currentUserId, // legacy
-        'followingId': targetUserId, // legacy
+        'followerId': currentUserId,
+        'followingId': targetUserId,
         'isActive': true,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      final DocumentReference<Map<String, dynamic>> currentUserRef =
+          _firestore.collection('users').doc(currentUserId);
+      final DocumentReference<Map<String, dynamic>> targetUserRef =
+          _firestore.collection('users').doc(targetUserId);
+      batch.update(currentUserRef, {
+        'followingCount': FieldValue.increment(1),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      batch.update(targetUserRef, {
+        'followerCount': FieldValue.increment(1),
+        'followersCount': FieldValue.increment(1),
+      });
+      await batch.commit();
       if (_eventTriggerService != null) {
         await _eventTriggerService!.triggerFollowEvent(
           followerId: currentUserId,
@@ -74,37 +93,54 @@ class FollowsService {
       return false;
     }
     try {
-      final currentUserId = currentUser.uid;
+      final String currentUserId = currentUser.uid;
       await _ensureCounterFields(currentUserId);
       await _ensureCounterFields(targetUserId);
-      final batch = _firestore.batch();
-      final follows = _firestore.collection('follows');
-      final primary = await follows
+      final CollectionReference<Map<String, dynamic>> follows =
+          _firestore.collection('follows');
+      final QuerySnapshot<Map<String, dynamic>> primary = await follows
           .where('followerUserId', isEqualTo: currentUserId)
           .where('targetUserId', isEqualTo: targetUserId)
           .get();
-      for (final doc in primary.docs) {
-        batch.delete(doc.reference);
-      }
-      final legacy = await follows
+      final QuerySnapshot<Map<String, dynamic>> legacy = await follows
           .where('followerId', isEqualTo: currentUserId)
           .where('followingId', isEqualTo: targetUserId)
           .get();
-      for (final doc in legacy.docs) {
-        batch.delete(doc.reference);
-      }
-      final legacyAlt = await follows
+      final QuerySnapshot<Map<String, dynamic>> legacyAlt = await follows
           .where('followerId', isEqualTo: currentUserId)
           .where('followedId', isEqualTo: targetUserId)
           .get();
-      for (final doc in legacyAlt.docs) {
-        batch.delete(doc.reference);
-      }
-      if (primary.docs.isEmpty &&
-          legacy.docs.isEmpty &&
-          legacyAlt.docs.isEmpty) {
+      final int removed = primary.docs.length +
+          legacy.docs.length +
+          legacyAlt.docs.length;
+      if (removed == 0) {
         return true;
       }
+      final WriteBatch batch = _firestore.batch();
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in primary.docs) {
+        batch.delete(doc.reference);
+      }
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in legacy.docs) {
+        batch.delete(doc.reference);
+      }
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in legacyAlt.docs) {
+        batch.delete(doc.reference);
+      }
+      final DocumentReference<Map<String, dynamic>> currentUserRef =
+          _firestore.collection('users').doc(currentUserId);
+      final DocumentReference<Map<String, dynamic>> targetUserRef =
+          _firestore.collection('users').doc(targetUserId);
+      batch.update(currentUserRef, {
+        'followingCount': FieldValue.increment(-removed),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      batch.update(targetUserRef, {
+        'followersCount': FieldValue.increment(-removed),
+        'followerCount': FieldValue.increment(-removed),
+      });
       await batch.commit();
       return true;
     } catch (e) {
@@ -120,9 +156,9 @@ class FollowsService {
       final data = userDoc.data()!;
       final updates = <String, dynamic>{};
       if (!data.containsKey('followingCount')) updates['followingCount'] = 0;
-      if (!data.containsKey('followersCount')) updates['followersCount'] = 0;
-      if (!data.containsKey('connectionsCount'))
+      if (!data.containsKey('connectionsCount')) {
         updates['connectionsCount'] = 0;
+      }
       if (updates.isNotEmpty) {
         await _firestore.collection('users').doc(userId).update(updates);
       }

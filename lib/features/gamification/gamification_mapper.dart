@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'models/daily_mission_model.dart';
 import 'models/gamification_summary_model.dart';
 import 'models/usage_metrics_model.dart';
@@ -10,7 +12,10 @@ import 'utils/gamification_constants.dart';
 class GamificationMapper {
   GamificationMapper._();
 
-  static UserProgressBundle userDocToBundle(Map<String, dynamic> data) {
+  static UserProgressBundle userDocToBundle(
+    Map<String, dynamic> data, {
+    String? uid,
+  }) {
     final Object? gam = data['gamification'];
     final Map<String, dynamic>? gamMap =
         gam is Map<String, dynamic> ? gam : null;
@@ -22,10 +27,8 @@ class GamificationMapper {
             GamificationSummaryModel.fromFirestoreMap(gamMap),
             historicalProgress,
           );
-    final Object? sub = data['subscription'];
-    final UserSubscriptionModel? subscription = sub is Map<String, dynamic>
-        ? UserSubscriptionModel.fromFirestoreMap(sub)
-        : null;
+    final UserSubscriptionModel subscription =
+        UserSubscriptionModel.fromUserDocument(data, uid: uid);
     final Object? ent = data['entitlements'];
     final UserEntitlementsModel entitlements = ent is Map<String, dynamic>
         ? UserEntitlementsModel.fromFirestoreMap(ent)
@@ -37,6 +40,9 @@ class GamificationMapper {
     final List<DailyMissionModel> missions = _parseMissionList(data);
     final List<DailyMissionModel> historicalMissions =
         _deriveHistoricalMissions(data);
+    debugPrint(
+      '🎮 ProgressionBundle: level=${progress.level} | rankTitle=${progress.rankTitle} | totalXp=${progress.totalXp} | subscriptionPlan=${subscription.plan.name} | subscriptionStatus=${subscription.status} | missions=${missions.isEmpty ? historicalMissions.length : missions.length}',
+    );
     return UserProgressBundle(
       progress: progress,
       subscription: subscription,
@@ -92,7 +98,8 @@ class GamificationMapper {
   static GamificationSummaryModel _deriveHistoricalSummary(
     Map<String, dynamic> data,
   ) {
-    final int postCount = _readInt(data, <String>['postCount', 'postsCount']) ?? 0;
+    final int postCount =
+        _readInt(data, <String>['postCount', 'postsCount']) ?? 0;
     final int followerCount =
         _readInt(data, <String>['followerCount', 'followersCount']) ?? 0;
     final int followingCount =
@@ -112,14 +119,18 @@ class GamificationMapper {
     totalXp += (followerCount.clamp(0, 100)) ~/ 5;
 
     int level = 1;
-    for (int i = 0; i < GamificationConstants.cumulativeXpForLevel.length; i++) {
+    for (int i = 0;
+        i < GamificationConstants.cumulativeXpForLevel.length;
+        i++) {
       if (totalXp >= GamificationConstants.cumulativeXpForLevel[i]) {
         level = i + 1;
       }
     }
 
-    final double creatorScore =
-        (postCount * 8) + (platformCount * 6) + (followerCount / 10) + (followingCount / 20);
+    final double creatorScore = (postCount * 8) +
+        (platformCount * 6) +
+        (followerCount / 10) +
+        (followingCount / 20);
 
     String? nextActionHint;
     if (!profileComplete) {
@@ -144,7 +155,8 @@ class GamificationMapper {
     Map<String, dynamic> data,
   ) {
     final DateTime now = DateTime.now().toUtc();
-    final int postCount = _readInt(data, <String>['postCount', 'postsCount']) ?? 0;
+    final int postCount =
+        _readInt(data, <String>['postCount', 'postsCount']) ?? 0;
     final int platformCount = _readCollectionCount(
       data,
       <String>['platforms', 'linkedPlatforms'],
@@ -156,7 +168,8 @@ class GamificationMapper {
         missionId: 'historical_onboard_profile',
         templateId: 'onboard_profile_v1',
         title: 'Complete your profile',
-        description: 'Derived from the profile details already on your account.',
+        description:
+            'Derived from the profile details already on your account.',
         target: 1,
         progress: profileComplete ? 1 : 0,
         rewardXp: 30,
@@ -178,7 +191,8 @@ class GamificationMapper {
         missionId: 'historical_onboard_first_post',
         templateId: 'onboard_first_post_v1',
         title: 'Make your first post',
-        description: 'Backfilled from posts already associated with your account.',
+        description:
+            'Backfilled from posts already associated with your account.',
         target: 1,
         progress: postCount > 0 ? 1 : 0,
         rewardXp: 40,
@@ -231,7 +245,8 @@ class GamificationMapper {
         (avatar != null && avatar.trim().isNotEmpty);
   }
 
-  static int _readCollectionCount(Map<String, dynamic> data, List<String> keys) {
+  static int _readCollectionCount(
+      Map<String, dynamic> data, List<String> keys) {
     for (final String key in keys) {
       final Object? value = data[key];
       if (value is List) return value.length;

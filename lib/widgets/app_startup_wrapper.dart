@@ -21,10 +21,16 @@ class AppStartupWrapper extends ConsumerStatefulWidget {
 }
 
 class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
+  bool _firebaseStartupGracePeriodElapsed = false;
+
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlayStyle();
+    Future<void>.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _firebaseStartupGracePeriodElapsed = true);
+    });
   }
 
   @override
@@ -75,11 +81,15 @@ class _AppStartupWrapperState extends ConsumerState<AppStartupWrapper> {
     // Watch auth service to rebuild when state changes
     final authService = ref.watch(robustAuthServiceProvider);
 
-    // CRITICAL: Check if Firebase is ready before accessing auth service
-    if (Firebase.apps.isEmpty) {
+    // Give Firebase a brief chance to finish cold-start initialization, but do
+    // not trap users on the splash forever if initialization fails/degrades.
+    if (Firebase.apps.isEmpty && !_firebaseStartupGracePeriodElapsed) {
       debugPrint(
           '⚠️ AppStartupWrapper: Firebase not ready yet - showing splash screen');
       return _buildLoadingScreen();
+    } else if (Firebase.apps.isEmpty) {
+      debugPrint(
+          '⚠️ AppStartupWrapper: Firebase unavailable after startup grace period - continuing to auth UI');
     }
 
     // Listen to auth state changes and force rebuild

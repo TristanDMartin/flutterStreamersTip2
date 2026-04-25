@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import '../models/user.dart';
+import '../routing/app_navigator.dart';
 import '../services/user_blocking_service.dart';
 import 'network_view_controller.dart';
 import 'network_view_sections.dart';
-import 'streamer_card_view.dart';
 
 class NetworkView extends StatefulWidget {
   const NetworkView({super.key});
@@ -154,14 +154,11 @@ class _NetworkViewState extends State<NetworkView>
   void _openStreamerCardForUser(User user) {
     final currentUserId = firebase_auth.FirebaseAuth.instance.currentUser?.uid;
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => StreamerCardView(
-          userId: user.id,
-          currentUserId: currentUserId,
-          onDismiss: () => Navigator.of(context).pop(),
-        ),
-      ),
+    AppNavigator.openStreamerCard(
+      context,
+      userId: user.id,
+      currentUserId: currentUserId,
+      onDismiss: () => Navigator.of(context).pop(),
     );
   }
 }

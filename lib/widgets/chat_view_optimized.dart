@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_colors.dart';
 import '../models/chat.dart' as app_chat;
 import '../models/message.dart' as app_message;
+import '../services/unified_avatar_service.dart';
 import '../providers/status_provider.dart';
 import 'chat_view_controller.dart';
 import 'online_status_indicator.dart';
@@ -279,7 +280,8 @@ class _ChatViewOptimizedState extends ConsumerState<ChatViewOptimized> {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: destructive ? Colors.redAccent : AppColors.primary,
+              backgroundColor:
+                  destructive ? Colors.redAccent : AppColors.primary,
             ),
             onPressed: () => Navigator.of(context).pop(true),
             child: Text(confirmLabel),
@@ -937,8 +939,8 @@ class _ChatMessageBubble extends StatelessWidget {
                               : const Radius.circular(24),
                         ),
                         border: Border.all(
-                          color:
-                              Colors.white.withValues(alpha: isMe ? 0.16 : 0.12),
+                          color: Colors.white
+                              .withValues(alpha: isMe ? 0.16 : 0.12),
                           width: 1,
                         ),
                         boxShadow: [
@@ -1114,8 +1116,10 @@ class _ChatComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      margin: EdgeInsets.fromLTRB(20, 0, 20, 20 + (bottomInset > 0 ? 8 : 0)),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
@@ -1186,6 +1190,7 @@ class _ChatComposer extends StatelessWidget {
                   Expanded(
                     child: TextField(
                       controller: controller,
+                      textInputAction: TextInputAction.send,
                       decoration: InputDecoration(
                         hintText: 'Type a message...',
                         hintStyle: TextStyle(
@@ -1257,6 +1262,9 @@ class _ChatComposer extends StatelessWidget {
 }
 
 class _ChatMessageAvatar extends StatelessWidget {
+  static const Color _avatarPrimaryColor = Color(0xFF9248D2);
+  static const Color _avatarSecondaryColor = Color(0xFF7B2CBF);
+
   const _ChatMessageAvatar({
     required this.imageUrl,
     required this.displayName,
@@ -1283,8 +1291,8 @@ class _ChatMessageAvatar extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFF9248D2).withValues(alpha: 0.8),
-                  const Color(0xFF7B2CBF).withValues(alpha: 0.8),
+                  _avatarPrimaryColor.withValues(alpha: 0.8),
+                  _avatarSecondaryColor.withValues(alpha: 0.8),
                 ],
               )
             : null,
@@ -1295,7 +1303,7 @@ class _ChatMessageAvatar extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF9248D2).withValues(alpha: 0.3),
+            color: _avatarPrimaryColor.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1303,32 +1311,44 @@ class _ChatMessageAvatar extends StatelessWidget {
       ),
       child: ClipOval(
         child: hasImage
-            ? Image.network(
-                imageUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Center(
-                    child: Text(
-                      initial,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: size * 0.42,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  );
-                },
-              )
-            : Center(
-                child: Text(
-                  initial,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: size * 0.42,
-                    fontWeight: FontWeight.bold,
-                  ),
+            ? UnifiedAvatarService().getAvatar(
+                imageUrl: imageUrl!,
+                radius: size / 2,
+                useProfileViewStyling: false,
+                showLoadingIndicator: false,
+                errorWidget: _ChatAvatarFallback(
+                  initial: initial,
+                  size: size,
                 ),
+              )
+            : _ChatAvatarFallback(
+                initial: initial,
+                size: size,
               ),
+      ),
+    );
+  }
+}
+
+class _ChatAvatarFallback extends StatelessWidget {
+  const _ChatAvatarFallback({
+    required this.initial,
+    required this.size,
+  });
+
+  final String initial;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * 0.42,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

@@ -1,11 +1,13 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
+import '../../services/discussion_author_service.dart';
+import '../../services/unified_avatar_service.dart';
 
 class DiscussionAuthorRow extends StatelessWidget {
   final String displayName;
   final String username;
   final String? avatarUrl;
+  final String? userId;
   final String? trailingText;
   final double avatarRadius;
   final VoidCallback? onTap;
@@ -15,6 +17,7 @@ class DiscussionAuthorRow extends StatelessWidget {
     required this.displayName,
     required this.username,
     this.avatarUrl,
+    this.userId,
     this.trailingText,
     this.avatarRadius = 16,
     this.onTap,
@@ -22,12 +25,38 @@ class DiscussionAuthorRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (userId == null || userId!.isEmpty) {
+      return _buildRow(
+        resolvedDisplayName: displayName,
+        resolvedUsername: username,
+        resolvedAvatarUrl: avatarUrl,
+      );
+    }
+
+    return StreamBuilder(
+      stream: DiscussionAuthorService().watchForumAuthor(userId!),
+      builder: (context, snapshot) {
+        final liveAuthor = snapshot.data;
+        return _buildRow(
+          resolvedDisplayName: liveAuthor?.displayName ?? displayName,
+          resolvedUsername: liveAuthor?.username ?? username,
+          resolvedAvatarUrl: liveAuthor?.avatarUrl ?? avatarUrl,
+        );
+      },
+    );
+  }
+
+  Widget _buildRow({
+    required String resolvedDisplayName,
+    required String resolvedUsername,
+    required String? resolvedAvatarUrl,
+  }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
           onTap: onTap,
-          child: _buildAuthorAvatar(avatarUrl, avatarRadius),
+          child: _buildAuthorAvatar(resolvedAvatarUrl, avatarRadius),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -37,7 +66,7 @@ class DiscussionAuthorRow extends StatelessWidget {
               GestureDetector(
                 onTap: onTap,
                 child: Text(
-                  displayName,
+                  resolvedDisplayName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -56,7 +85,7 @@ class DiscussionAuthorRow extends StatelessWidget {
                   GestureDetector(
                     onTap: onTap,
                     child: Text(
-                      '@$username',
+                      '@$resolvedUsername',
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
@@ -93,17 +122,12 @@ class DiscussionAuthorRow extends StatelessWidget {
       ),
       child: currentAvatarUrl != null && currentAvatarUrl.isNotEmpty
           ? ClipOval(
-              child: CachedNetworkImage(
+              child: UnifiedAvatarService().getAvatar(
                 imageUrl: currentAvatarUrl,
-                width: radius * 2,
-                height: radius * 2,
-                fit: BoxFit.cover,
-                memCacheWidth: (radius * 2 * 2).round(),
-                memCacheHeight: (radius * 2 * 2).round(),
-                placeholder: (context, url) => _buildPlaceholderAvatar(radius),
-                errorWidget: (context, url, error) =>
-                    _buildPlaceholderAvatar(radius),
-                fadeInDuration: const Duration(milliseconds: 200),
+                radius: radius,
+                useProfileViewStyling: false,
+                showLoadingIndicator: false,
+                errorWidget: _buildPlaceholderAvatar(radius),
               ),
             )
           : _buildPlaceholderAvatar(radius),

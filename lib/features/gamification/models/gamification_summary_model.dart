@@ -33,12 +33,13 @@ class GamificationSummaryModel {
       );
     }
     final int level = _readInt(raw, <String>['level', 'creatorLevel']) ?? 1;
-    final int totalXp = _readInt(raw, <String>['totalXp', 'total_xp', 'xp']) ?? 0;
-    final int streak = _readInt(raw, <String>['streakDays', 'streak_days']) ?? 0;
+    final int totalXp =
+        _readInt(raw, <String>['totalXp', 'total_xp', 'xp']) ?? 0;
+    final int streak =
+        _readInt(raw, <String>['streakDays', 'streak_days']) ?? 0;
     final double score =
         _readDouble(raw, <String>['creatorScore', 'creator_score']) ?? 0;
-    final String title = _readString(raw, <String>['rankTitle', 'rank_title']) ??
-        GamificationConstants.rankTitleForLevel(level);
+    final String title = GamificationConstants.rankTitleForLevel(level);
     final String? next = _readString(raw, <String>[
       'nextAction',
       'next_action',

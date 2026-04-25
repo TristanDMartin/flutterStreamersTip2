@@ -183,14 +183,14 @@ class RobustAuthenticationService extends ChangeNotifier {
 
       // OPTIMIZED: Fast auth check with shorter timeout
       final currentUser = _authInstance.currentUser;
-      
+
       if (currentUser != null) {
         // User is logged in - show UI immediately, load data in background
         debugPrint('✅ User logged in - showing UI immediately');
         _isLoggedIn = true;
         _isCheckingAuth = false;
         notifyListeners();
-        
+
         // Load user data in background (non-blocking)
         _handleUserSignIn(currentUser).catchError((e) {
           debugPrint('❌ Background user data load failed: $e');
@@ -506,7 +506,8 @@ class RobustAuthenticationService extends ChangeNotifier {
           return AuthRequestResult(
             requestId: requestId,
             success: true,
-            user: _currentUser ?? _mapFirebaseUserToFallback(userCredential.user!),
+            user: _currentUser ??
+                _mapFirebaseUserToFallback(userCredential.user!),
           );
         } else {
           return AuthRequestResult(
@@ -539,12 +540,12 @@ class RobustAuthenticationService extends ChangeNotifier {
   User _mapFirebaseUserToFallback(firebase_auth.User firebaseUser) {
     return User(
       id: firebaseUser.uid,
-      username:
-          firebaseUser.displayName?.toLowerCase().replaceAll(' ', '') ??
-              firebaseUser.email?.split('@').first ??
-              'user',
-      displayName:
-          firebaseUser.displayName ?? firebaseUser.email?.split('@').first ?? 'User',
+      username: firebaseUser.displayName?.toLowerCase().replaceAll(' ', '') ??
+          firebaseUser.email?.split('@').first ??
+          'user',
+      displayName: firebaseUser.displayName ??
+          firebaseUser.email?.split('@').first ??
+          'User',
       bio: '',
       avatarURL: firebaseUser.photoURL,
       onlineStatus: 'online',
@@ -1183,6 +1184,22 @@ class RobustAuthenticationService extends ChangeNotifier {
 
         if (settings.authorizationStatus != AuthorizationStatus.authorized) {
           debugPrint("⚠️ Notification permission denied");
+          return;
+        }
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        String? apnsToken;
+        for (int attempt = 0; attempt < 5; attempt++) {
+          apnsToken = await messaging.getAPNSToken();
+          if (apnsToken != null && apnsToken.isNotEmpty) {
+            break;
+          }
+          await Future.delayed(const Duration(milliseconds: 700));
+        }
+
+        if (apnsToken == null || apnsToken.isEmpty) {
+          debugPrint("ℹ️ APNS token not ready yet; deferring FCM registration");
           return;
         }
       }

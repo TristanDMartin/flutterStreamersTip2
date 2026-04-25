@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/forum_post.dart';
 import '../../constants/app_colors.dart';
+import '../../services/discussion_author_service.dart';
+import '../../services/unified_avatar_service.dart';
 
 /// Card widget for displaying a forum post in the grid
 class ForumPostCard extends StatelessWidget {
@@ -59,7 +60,7 @@ class ForumPostCard extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             // Content
             Expanded(
               child: Padding(
@@ -104,7 +105,7 @@ class ForumPostCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
-                    
+
                     // Content preview
                     Expanded(
                       child: Text(
@@ -122,7 +123,7 @@ class ForumPostCard extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             // Footer with author and stats
             Container(
               padding: const EdgeInsets.symmetric(
@@ -138,19 +139,29 @@ class ForumPostCard extends StatelessWidget {
               child: Row(
                 children: [
                   // Avatar - Always show, even if URL is missing
-                  _buildAvatar(post.author.avatarUrl),
+                  _ThreadPostAvatar(
+                    userId: post.author.uid,
+                    fallbackAvatarUrl: post.author.avatarUrl,
+                  ),
                   const SizedBox(width: 8),
                   // Author name
                   Expanded(
-                    child: Text(
-                      post.author.displayName,
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: StreamBuilder(
+                      stream: DiscussionAuthorService()
+                          .watchForumAuthor(post.author.uid),
+                      builder: (context, snapshot) {
+                        final liveAuthor = snapshot.data;
+                        return Text(
+                          liveAuthor?.displayName ?? post.author.displayName,
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -159,6 +170,27 @@ class ForumPostCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ThreadPostAvatar extends StatelessWidget {
+  const _ThreadPostAvatar({
+    required this.userId,
+    required this.fallbackAvatarUrl,
+  });
+
+  final String userId;
+  final String? fallbackAvatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+      stream: DiscussionAuthorService().watchForumAuthor(userId),
+      builder: (context, snapshot) {
+        final liveAvatarUrl = snapshot.data?.avatarUrl ?? fallbackAvatarUrl;
+        return _buildAvatar(liveAvatarUrl);
+      },
     );
   }
 
@@ -177,17 +209,12 @@ class ForumPostCard extends StatelessWidget {
       ),
       child: avatarUrl != null && avatarUrl.isNotEmpty
           ? ClipOval(
-              child: CachedNetworkImage(
+              child: UnifiedAvatarService().getAvatar(
                 imageUrl: avatarUrl,
-                width: avatarSize,
-                height: avatarSize,
-                fit: BoxFit.cover,
-                memCacheWidth: 56,
-                memCacheHeight: 56,
-                placeholder: (context, url) => _buildPlaceholderAvatar(avatarSize),
-                errorWidget: (context, url, error) =>
-                    _buildPlaceholderAvatar(avatarSize),
-                fadeInDuration: const Duration(milliseconds: 200),
+                radius: avatarSize / 2,
+                useProfileViewStyling: false,
+                showLoadingIndicator: false,
+                errorWidget: _buildPlaceholderAvatar(avatarSize),
               ),
             )
           : _buildPlaceholderAvatar(avatarSize),

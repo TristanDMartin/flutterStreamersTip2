@@ -7,6 +7,8 @@ import 'package:dio/dio.dart';
 /// Mux direct upload via Cloudflare Worker (no Firebase Cloud Functions).
 const String _workerBaseUrl =
     'https://streamerstip-mux-api.streamerstip.workers.dev';
+const String _firebaseMuxFallbackUrl =
+    'https://us-central1-streamerstip-6cfdb.cloudfunctions.net/createMuxDirectUpload';
 
 /// Handles Mux direct upload: get signed URL from Worker, PUT to Mux, listen for ready.
 class MuxUploadService {
@@ -24,6 +26,32 @@ class MuxUploadService {
     required String userId,
     required String idToken,
     bool isDraft = false,
+  }) async {
+    try {
+      return await _createDirectUploadViaWorker(
+        videoId: videoId,
+        userId: userId,
+        idToken: idToken,
+        isDraft: isDraft,
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode != 404) rethrow;
+      debugPrint(
+        'MuxUploadService: Worker direct-upload route returned 404; using Firebase callable fallback.',
+      );
+      return _createDirectUploadViaCallable(
+        videoId: videoId,
+        userId: userId,
+        idToken: idToken,
+      );
+    }
+  }
+
+  Future<MuxDirectUploadResult> _createDirectUploadViaWorker({
+    required String videoId,
+    required String userId,
+    required String idToken,
+    required bool isDraft,
   }) async {
     final url = '$_workerBaseUrl/mux/direct-upload';
     debugPrint('MuxUploadService: POST $url');
@@ -49,8 +77,57 @@ class MuxUploadService {
     final uploadId = data['uploadId'] as String?;
     final vid = data['videoId'] as String? ?? videoId;
     if (uploadUrl == null || uploadUrl.isEmpty) {
+      throw Exception(
+        data['error'] as String? ?? 'No upload URL from Firebase fallback',
+      );
+    }
+    return MuxDirectUploadResult(
+      uploadUrl: uploadUrl,
+      uploadId: uploadId ?? '',
+      videoId: vid,
+    );
+  }
+
+  Future<MuxDirectUploadResult> _createDirectUploadViaCallable({
+    required String videoId,
+    required String userId,
+    required String idToken,
+  }) async {
+    debugPrint('MuxUploadService: POST $_firebaseMuxFallbackUrl');
+    final res = await _dio.post<Map<String, dynamic>>(
+      _firebaseMuxFallbackUrl,
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer ${idToken.trim()}',
+          'Content-Type': 'application/json',
+        },
+      ),
+      data: {
+        'data': {
+          'videoId': videoId,
+          'userId': userId,
+        },
+      },
+    );
+
+    final responseData = res.data;
+    final resultData = responseData?['result'];
+    final data = resultData is Map<String, dynamic>
+        ? resultData
+        : resultData is Map
+            ? Map<String, dynamic>.from(resultData)
+            : null;
+    if (data == null || data.isEmpty) {
+      throw Exception('Firebase callable returned empty response');
+    }
+
+    final uploadUrl = data['uploadUrl'] as String?;
+    final uploadId = data['uploadId'] as String?;
+    final vid = data['videoId'] as String? ?? videoId;
+    if (uploadUrl == null || uploadUrl.isEmpty) {
       throw Exception(data['error'] as String? ?? 'No upload URL from Worker');
     }
+
     return MuxDirectUploadResult(
       uploadUrl: uploadUrl,
       uploadId: uploadId ?? '',

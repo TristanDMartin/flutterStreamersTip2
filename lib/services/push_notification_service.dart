@@ -107,6 +107,25 @@ class PushNotificationService {
   /// Get FCM token
   Future<void> _getFCMToken() async {
     try {
+      if (Platform.isIOS) {
+        String? apnsToken;
+        for (int attempt = 0; attempt < 5; attempt++) {
+          apnsToken = await _messaging.getAPNSToken();
+          if (apnsToken != null && apnsToken.isNotEmpty) {
+            break;
+          }
+          await Future.delayed(const Duration(milliseconds: 700));
+        }
+
+        if (apnsToken == null || apnsToken.isEmpty) {
+          LoggingService.instance.debug(
+            'APNS token not ready yet; deferring FCM token registration',
+            tag: 'PushNotificationService',
+          );
+          return;
+        }
+      }
+
       _fcmToken = await _messaging.getToken();
       if (_fcmToken != null) {
         LoggingService.instance

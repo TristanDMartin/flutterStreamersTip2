@@ -23,6 +23,12 @@ class EnhancedLikeButton extends StatefulWidget {
   final VoidCallback? onLikeChanged;
   final GlobalKey? iconKey;
   final String? source; // 'button' or 'double-tap' for analytics
+  final double width;
+  final double height;
+  final double iconSize;
+  final double labelFontSize;
+  final double labelGap;
+  final double sparkleSize;
 
   const EnhancedLikeButton({
     super.key,
@@ -32,6 +38,12 @@ class EnhancedLikeButton extends StatefulWidget {
     this.onLikeChanged,
     this.iconKey,
     this.source = 'button',
+    this.width = 64,
+    this.height = 96,
+    this.iconSize = 34,
+    this.labelFontSize = 12,
+    this.labelGap = 4,
+    this.sparkleSize = 80,
   });
 
   @override
@@ -433,8 +445,8 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
     //     '🎨 EnhancedLikeButton: Building - videoId: ${widget.videoId}, local _isLiked: $_isLiked, _likeCount: $_likeCount');
 
     return SizedBox(
-      width: 64, // fixed box to stop layout shift of the right rail
-      height: 96,
+      width: widget.width,
+      height: widget.height,
       child: Semantics(
         label: _isLiked ? 'Unlike' : 'Like',
         hint: 'Double-tap video to like',
@@ -470,26 +482,26 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
                                   ],
                                   stops: [0.0, 0.25, 0.5, 0.75, 1.0],
                                 ).createShader(bounds),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.favorite,
                                   color: Colors.white,
-                                  size: 34,
+                                  size: widget.iconSize,
                                 ),
                               )
-                            : const Icon(
+                            : Icon(
                                 Icons.favorite_border,
                                 color: Colors.white,
-                                size: 34,
+                                size: widget.iconSize,
                               ),
                       );
                     },
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: widget.labelGap),
                   Text(
                     _formatCompactCount(_likeCount),
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 12,
+                      fontSize: widget.labelFontSize,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -520,7 +532,7 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
   /// Build Instagram-style sparkle/burst effect around the heart
   Widget _buildSparkleEffect() {
     return CustomPaint(
-      size: const Size(80, 80), // Larger sparkle area like Instagram
+      size: Size.square(widget.sparkleSize),
       painter: InstagramSparklePainter(
         animationValue: _sparkleController.value,
       ),
@@ -538,9 +550,8 @@ class _EnhancedLikeButtonState extends State<EnhancedLikeButton>
       return '${text.replaceFirst(RegExp(r'\\.0$'), '')}K';
     }
     final compact = value / 1000000;
-    final text = compact < 10
-        ? compact.toStringAsFixed(1)
-        : compact.toStringAsFixed(0);
+    final text =
+        compact < 10 ? compact.toStringAsFixed(1) : compact.toStringAsFixed(0);
     return '${text.replaceFirst(RegExp(r'\\.0$'), '')}M';
   }
 }

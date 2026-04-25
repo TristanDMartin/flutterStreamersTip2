@@ -3,13 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/user_stats.dart';
 import '../providers/user_stats_provider.dart';
+import '../utils/responsive_layout.dart';
 
 class UserStatsRow extends ConsumerStatefulWidget {
   const UserStatsRow({
     super.key,
     required this.userId,
     this.showConnections = false,
-    this.spacing = 54,
+    this.spacing = 12,
+    this.postsCountOverride,
     this.valueTextStyle,
     this.labelTextStyle,
   });
@@ -17,6 +19,7 @@ class UserStatsRow extends ConsumerStatefulWidget {
   final String userId;
   final bool showConnections;
   final double spacing;
+  final int? postsCountOverride;
   final TextStyle? valueTextStyle;
   final TextStyle? labelTextStyle;
 
@@ -40,7 +43,7 @@ class _UserStatsRowState extends ConsumerState<UserStatsRow> {
 
     return statsAsync.when(
       data: (UserStats stats) => _StatsRowContent(
-        postsCount: stats.postsCount,
+        postsCount: widget.postsCountOverride ?? stats.postsCount,
         followersCount: stats.followersCount,
         followingCount: stats.followingCount,
         connectionsCount: stats.connectionsCount,
@@ -51,7 +54,7 @@ class _UserStatsRowState extends ConsumerState<UserStatsRow> {
       ),
       loading: () => fallbackStats != null
           ? _StatsRowContent(
-              postsCount: fallbackStats.postsCount,
+              postsCount: widget.postsCountOverride ?? fallbackStats.postsCount,
               followersCount: fallbackStats.followersCount,
               followingCount: fallbackStats.followingCount,
               connectionsCount: fallbackStats.connectionsCount,
@@ -68,7 +71,7 @@ class _UserStatsRowState extends ConsumerState<UserStatsRow> {
             ),
       error: (Object err, StackTrace stackTrace) => fallbackStats != null
           ? _StatsRowContent(
-              postsCount: fallbackStats.postsCount,
+              postsCount: widget.postsCountOverride ?? fallbackStats.postsCount,
               followersCount: fallbackStats.followersCount,
               followingCount: fallbackStats.followingCount,
               connectionsCount: fallbackStats.connectionsCount,
@@ -115,17 +118,18 @@ class _StatsRowContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppResponsive responsive = context.responsive;
     final TextStyle resolvedValueTextStyle = valueTextStyle ??
-        const TextStyle(
+        TextStyle(
           color: Colors.white,
-          fontSize: 24,
+          fontSize: responsive.font(21),
           fontWeight: FontWeight.w900,
           height: 1.0,
         );
     final TextStyle resolvedLabelTextStyle = labelTextStyle ??
         TextStyle(
           color: Colors.white.withValues(alpha: 0.7),
-          fontSize: 16,
+          fontSize: responsive.font(12.5),
           fontWeight: FontWeight.w600,
           height: 1.0,
         );
@@ -133,39 +137,50 @@ class _StatsRowContent extends StatelessWidget {
     final String followersValue = followersCount?.toString() ?? '...';
     final String followingValue = followingCount?.toString() ?? '...';
     final String connectionsValue = connectionsCount?.toString() ?? '...';
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
+    final List<_StatItem> statItems = <_StatItem>[
+      _StatItem(
+        label: 'Posts',
+        value: postsValue,
+        valueTextStyle: resolvedValueTextStyle,
+        labelTextStyle: resolvedLabelTextStyle,
+      ),
+      _StatItem(
+        label: 'Followers',
+        value: followersValue,
+        valueTextStyle: resolvedValueTextStyle,
+        labelTextStyle: resolvedLabelTextStyle,
+      ),
+      _StatItem(
+        label: 'Following',
+        value: followingValue,
+        valueTextStyle: resolvedValueTextStyle,
+        labelTextStyle: resolvedLabelTextStyle,
+      ),
+      if (showConnections)
         _StatItem(
-          label: 'Posts',
-          value: postsValue,
+          label: 'Connections',
+          value: connectionsValue,
           valueTextStyle: resolvedValueTextStyle,
           labelTextStyle: resolvedLabelTextStyle,
         ),
-        SizedBox(width: spacing),
-        _StatItem(
-          label: 'Followers',
-          value: followersValue,
-          valueTextStyle: resolvedValueTextStyle,
-          labelTextStyle: resolvedLabelTextStyle,
-        ),
-        SizedBox(width: spacing),
-        _StatItem(
-          label: 'Following',
-          value: followingValue,
-          valueTextStyle: resolvedValueTextStyle,
-          labelTextStyle: resolvedLabelTextStyle,
-        ),
-        if (showConnections) ...<Widget>[
-          SizedBox(width: spacing),
-          _StatItem(
-            label: 'Connections',
-            value: connectionsValue,
-            valueTextStyle: resolvedValueTextStyle,
-            labelTextStyle: resolvedLabelTextStyle,
-          ),
-        ],
-      ],
+    ];
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool tight = constraints.maxWidth < 340;
+        final double maxGap = tight ? 6 : 12;
+        final double resolvedSpacing = spacing.clamp(4.0, maxGap);
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            for (int index = 0; index < statItems.length; index++) ...<Widget>[
+              if (index > 0) SizedBox(width: resolvedSpacing),
+              Expanded(child: statItems[index]),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -187,9 +202,21 @@ class _StatItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
-        Text(value, style: valueTextStyle),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: valueTextStyle,
+        ),
         const SizedBox(height: 4),
-        Text(label, style: labelTextStyle),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: labelTextStyle,
+        ),
       ],
     );
   }

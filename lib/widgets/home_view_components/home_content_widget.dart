@@ -26,6 +26,8 @@ class HomeContentWidget extends ConsumerStatefulWidget {
   final VoidCallback onNetworkTap;
   final Function(VoidCallback)?
   onScrollControllerReady; // Pass scroll callback up
+  final bool showCommandCenterTrigger;
+  final VoidCallback? onCommandCenterTap;
 
   const HomeContentWidget({
     super.key,
@@ -39,6 +41,8 @@ class HomeContentWidget extends ConsumerStatefulWidget {
     required this.onDiscoverTap,
     required this.onNetworkTap,
     this.onScrollControllerReady,
+    this.showCommandCenterTrigger = false,
+    this.onCommandCenterTap,
   });
 
   @override
@@ -198,11 +202,13 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
 
     if (hasError) {
       if (activeFeed == FeedTab.forYou && videos.isNotEmpty) {
-        return VideoPageViewWidget(
-          videos: videos,
-          currentIndex: widget.currentIndex,
-          tabId: activeFeed.tabId,
-          onPageChanged: (index) {
+      return VideoPageViewWidget(
+        videos: videos,
+        currentIndex: widget.currentIndex,
+        tabId: activeFeed.tabId,
+        showCommandCenterTrigger: widget.showCommandCenterTrigger,
+        onCommandCenterTap: widget.onCommandCenterTap,
+        onPageChanged: (index) {
             widget.onPageChanged(index);
             if (mounted) {
               setState(() {
@@ -251,6 +257,8 @@ class _HomeContentWidgetState extends ConsumerState<HomeContentWidget> {
       videos: videos,
       currentIndex: widget.currentIndex,
       tabId: activeFeed.tabId,
+      showCommandCenterTrigger: widget.showCommandCenterTrigger,
+      onCommandCenterTap: widget.onCommandCenterTap,
       onPageChanged: (index) {
         widget.onPageChanged(index);
         // Show scroll-to-top button when scrolled past first video

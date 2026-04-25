@@ -10,6 +10,7 @@ import 'contact_support_view.dart';
 import '../constants/app_colors.dart';
 import 'upgrade_view.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/responsive_layout.dart';
 
 class MenuView extends ConsumerStatefulWidget {
   const MenuView({super.key});
@@ -50,19 +51,21 @@ class _MenuViewState extends ConsumerState<MenuView> {
 
   @override
   Widget build(BuildContext context) {
+    final metrics = _MenuMetrics.of(context);
+
     return Scaffold(
       backgroundColor: AppColors.supportBackground,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: metrics.pagePadding,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildTopSurface(context),
-              const SizedBox(height: 28),
-              _buildMenuSectionHeader(),
-              const SizedBox(height: 14),
-              _buildMenuGrid(context),
+              _buildTopSurface(context, metrics),
+              SizedBox(height: metrics.sectionGap),
+              _buildMenuSectionHeader(metrics),
+              SizedBox(height: metrics.gridTopGap),
+              _buildMenuGrid(context, metrics),
             ],
           ),
         ),
@@ -70,12 +73,12 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  Widget _buildTopSurface(BuildContext context) {
+  Widget _buildTopSurface(BuildContext context, _MenuMetrics metrics) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+      padding: metrics.surfacePadding,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(metrics.surfaceRadius),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.14),
         ),
@@ -90,15 +93,15 @@ class _MenuViewState extends ConsumerState<MenuView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(context),
-          const SizedBox(height: 18),
-          _buildProfileSection(context),
+          _buildHeader(context, metrics),
+          SizedBox(height: metrics.profileTopGap),
+          _buildProfileSection(context, metrics),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, _MenuMetrics metrics) {
     final now = TimeOfDay.now();
     final formattedHour = now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod;
     final formattedMinute = now.minute.toString().padLeft(2, '0');
@@ -112,9 +115,9 @@ class _MenuViewState extends ConsumerState<MenuView> {
           children: [
             Text(
               'Menu',
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
-                fontSize: 26,
+                fontSize: metrics.titleFontSize,
                 fontWeight: FontWeight.w900,
                 height: 1.0,
               ),
@@ -124,7 +127,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
               '$formattedHour:$formattedMinute $period',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.68),
-                fontSize: 14,
+                fontSize: metrics.timeFontSize,
                 fontWeight: FontWeight.w600,
                 height: 1.0,
               ),
@@ -134,17 +137,22 @@ class _MenuViewState extends ConsumerState<MenuView> {
         Container(
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(metrics.closeRadius),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.12),
             ),
           ),
           child: IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(
+            constraints: BoxConstraints.tightFor(
+              width: metrics.closeButtonSize,
+              height: metrics.closeButtonSize,
+            ),
+            padding: EdgeInsets.zero,
+            icon: Icon(
               Icons.close,
               color: Colors.white,
-              size: 22,
+              size: metrics.closeIconSize,
             ),
           ),
         ),
@@ -152,49 +160,60 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  Widget _buildProfileSection(BuildContext context) {
+  Widget _buildProfileSection(BuildContext context, _MenuMetrics metrics) {
     final user = fa.FirebaseAuth.instance.currentUser;
     final avatarURL = resolveAvatarUrl(_userData);
-    final displayName = _userData?['displayName'] as String? ?? user?.displayName ?? 'User';
-    final username = _userData?['username'] as String? ?? user?.email?.split('@')[0] ?? 'username';
+    final displayName =
+        _userData?['displayName'] as String? ?? user?.displayName ?? 'User';
+    final username = _userData?['username'] as String? ??
+        user?.email?.split('@')[0] ??
+        'username';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _buildAvatarWithGradientRing(avatarURL),
-            const SizedBox(width: 16),
+            _buildAvatarWithGradientRing(avatarURL, metrics),
+            SizedBox(width: metrics.profileTextGap),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     displayName,
-                    style: const TextStyle(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 24,
+                      fontSize: metrics.profileNameFontSize,
                       fontWeight: FontWeight.w900,
                       height: 1.0,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: metrics.usernameGap),
                   Text(
                     '@$username',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 16,
+                      fontSize: metrics.usernameFontSize,
                       fontWeight: FontWeight.w600,
                       height: 1.0,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: metrics.profileDescriptionGap),
                   Text(
                     'Quick access to your account, saved content, and settings.',
+                    maxLines: metrics.compact ? 2 : 3,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.64),
-                      fontSize: 13,
+                      fontSize: metrics.descriptionFontSize,
                       fontWeight: FontWeight.w500,
+                      height: 1.24,
                     ),
                   ),
                 ],
@@ -206,17 +225,17 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  Widget _buildMenuSectionHeader() {
+  Widget _buildMenuSectionHeader(_MenuMetrics metrics) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: EdgeInsets.symmetric(horizontal: metrics.sectionHeaderInset),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Quick Access',
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
-              fontSize: 21,
+              fontSize: metrics.sectionTitleFontSize,
               fontWeight: FontWeight.w800,
               height: 1.0,
             ),
@@ -226,7 +245,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
             'Everything you need from one calm place.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.66),
-              fontSize: 13,
+              fontSize: metrics.sectionSubtitleFontSize,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -235,13 +254,13 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  Widget _buildAvatarWithGradientRing(String? avatarURL) {
+  Widget _buildAvatarWithGradientRing(String? avatarURL, _MenuMetrics metrics) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Container(
-          width: 112,
-          height: 112,
+          width: metrics.avatarOuterSize,
+          height: metrics.avatarOuterSize,
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
             gradient: SweepGradient(
@@ -255,8 +274,8 @@ class _MenuViewState extends ConsumerState<MenuView> {
           ),
           child: Center(
             child: Container(
-              width: 104,
-              height: 104,
+              width: metrics.avatarInnerSize,
+              height: metrics.avatarInnerSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.black.withValues(alpha: 0.2),
@@ -267,17 +286,16 @@ class _MenuViewState extends ConsumerState<MenuView> {
                         avatarURL,
                         key: ValueKey(avatarURL),
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
+                        errorBuilder: (context, error, stackTrace) => Icon(
                           Icons.person,
                           color: Colors.white,
-                          size: 48,
+                          size: metrics.avatarIconSize,
                         ),
                       )
-                    : const Icon(
+                    : Icon(
                         Icons.person,
                         color: Colors.white,
-                        size: 48,
+                        size: metrics.avatarIconSize,
                       ),
               ),
             ),
@@ -287,64 +305,76 @@ class _MenuViewState extends ConsumerState<MenuView> {
     );
   }
 
-  Widget _buildMenuGrid(BuildContext context) {
-    return GridView.count(
+  Widget _buildMenuGrid(BuildContext context, _MenuMetrics metrics) {
+    final cards = <Widget>[
+      _buildMenuCard(
+        context,
+        metrics: metrics,
+        icon: Icons.support_agent,
+        title: 'Contact Support',
+        subtitle: 'Get help & support',
+        onTap: () => _navigateToPage(context, const ContactSupportView()),
+      ),
+      _buildMenuCard(
+        context,
+        metrics: metrics,
+        icon: Icons.workspace_premium_rounded,
+        title: 'Upgrade',
+        subtitle: 'View tiers & subscribe',
+        isPrimary: true,
+        onTap: () => _navigateToPage(context, const UpgradeView()),
+      ),
+      _buildMenuCard(
+        context,
+        metrics: metrics,
+        icon: Icons.bookmark,
+        title: 'Bookmarks',
+        subtitle: 'Saved content',
+        onTap: () => _navigateToPage(context, const BookmarkView()),
+      ),
+      _buildMenuCard(
+        context,
+        metrics: metrics,
+        icon: Icons.schedule,
+        title: 'Scheduled',
+        subtitle: 'Manage posts',
+        onTap: () => _navigateToManagePosts(context),
+      ),
+      _buildMenuCard(
+        context,
+        metrics: metrics,
+        icon: Icons.settings,
+        title: 'Settings',
+        subtitle: 'Settings & Privacy',
+        onTap: () => _navigateToSettings(context),
+      ),
+      _buildMenuCard(
+        context,
+        metrics: metrics,
+        icon: Icons.logout,
+        title: 'Log Out',
+        subtitle: 'Sign out of account',
+        onTap: () => _showLogOutDialog(context),
+      ),
+    ];
+
+    return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      childAspectRatio: 1.1,
-      children: [
-        _buildMenuCard(
-          context,
-          icon: Icons.support_agent,
-          title: 'Contact Support',
-          subtitle: 'Get help & support',
-          onTap: () => _navigateToPage(context, const ContactSupportView()),
-        ),
-        _buildMenuCard(
-          context,
-          icon: Icons.workspace_premium_rounded,
-          title: 'Upgrade',
-          subtitle: 'View tiers & subscribe',
-          isPrimary: true,
-          onTap: () => _navigateToPage(context, const UpgradeView()),
-        ),
-        _buildMenuCard(
-          context,
-          icon: Icons.bookmark,
-          title: 'Bookmarks',
-          subtitle: 'Saved content',
-          onTap: () => _navigateToPage(context, const BookmarkView()),
-        ),
-        _buildMenuCard(
-          context,
-          icon: Icons.schedule,
-          title: 'Scheduled',
-          subtitle: 'Manage posts',
-          onTap: () => _navigateToManagePosts(context),
-        ),
-        _buildMenuCard(
-          context,
-          icon: Icons.settings,
-          title: 'Settings',
-          subtitle: 'Settings & Privacy',
-          onTap: () => _navigateToSettings(context),
-        ),
-        _buildMenuCard(
-          context,
-          icon: Icons.logout,
-          title: 'Log Out',
-          subtitle: 'Sign out of account',
-          onTap: () => _showLogOutDialog(context),
-        ),
-      ],
+      itemCount: cards.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: metrics.gridSpacing,
+        mainAxisSpacing: metrics.gridSpacing,
+        childAspectRatio: metrics.cardAspectRatio,
+      ),
+      itemBuilder: (context, index) => cards[index],
     );
   }
 
   Widget _buildMenuCard(
     BuildContext context, {
+    required _MenuMetrics metrics,
     required IconData icon,
     required String title,
     required String subtitle,
@@ -354,7 +384,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: metrics.cardPadding,
         decoration: BoxDecoration(
           gradient: isPrimary
               ? const LinearGradient(
@@ -364,7 +394,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
                 )
               : null,
           color: isPrimary ? null : Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(metrics.cardRadius),
           border: Border.all(
             color: Colors.white.withValues(alpha: isPrimary ? 0.22 : 0.12),
             width: 1,
@@ -382,11 +412,11 @@ class _MenuViewState extends ConsumerState<MenuView> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Container(
-              width: 50,
-              height: 50,
+              width: metrics.cardIconBoxSize,
+              height: metrics.cardIconBoxSize,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: isPrimary ? 0.18 : 0.1),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(metrics.cardIconRadius),
                 border: Border.all(
                   color: Colors.white.withValues(alpha: 0.12),
                 ),
@@ -394,7 +424,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
               child: Icon(
                 icon,
                 color: Colors.white,
-                size: 26,
+                size: metrics.cardIconSize,
               ),
             ),
             Column(
@@ -402,41 +432,43 @@ class _MenuViewState extends ConsumerState<MenuView> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 17,
+                    fontSize: metrics.cardTitleFontSize,
                     fontWeight: FontWeight.w700,
                     height: 1.1,
                   ),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: metrics.cardSubtitleGap),
                 Text(
                   subtitle,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.78),
-                    fontSize: 13,
+                    fontSize: metrics.cardSubtitleFontSize,
                     fontWeight: FontWeight.w500,
                     height: 1.25,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: metrics.cardActionGap),
                 Row(
                   children: [
                     Text(
                       'Open',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.82),
-                        fontSize: 12,
+                        fontSize: metrics.cardActionFontSize,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    SizedBox(width: metrics.cardArrowGap),
                     Icon(
                       Icons.arrow_forward_rounded,
                       color: Colors.white.withValues(alpha: 0.82),
-                      size: 14,
+                      size: metrics.cardArrowSize,
                     ),
                   ],
                 ),
@@ -473,12 +505,19 @@ class _MenuViewState extends ConsumerState<MenuView> {
   }
 
   void _showLogOutDialog(BuildContext context) {
+    final metrics = _MenuMetrics.of(context);
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => Container(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        padding: EdgeInsets.fromLTRB(
+          metrics.sheetHorizontalPadding,
+          16,
+          metrics.sheetHorizontalPadding,
+          24 + MediaQuery.paddingOf(context).bottom,
+        ),
         decoration: BoxDecoration(
           color: AppColors.supportBackground,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -520,7 +559,7 @@ class _MenuViewState extends ConsumerState<MenuView> {
             ),
             const SizedBox(height: 24),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(metrics.sheetInnerPadding),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(22),
@@ -534,6 +573,157 @@ class _MenuViewState extends ConsumerState<MenuView> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MenuMetrics {
+  const _MenuMetrics({
+    required this.compact,
+    required this.pagePadding,
+    required this.surfacePadding,
+    required this.surfaceRadius,
+    required this.sectionGap,
+    required this.gridTopGap,
+    required this.profileTopGap,
+    required this.titleFontSize,
+    required this.timeFontSize,
+    required this.closeButtonSize,
+    required this.closeIconSize,
+    required this.closeRadius,
+    required this.avatarOuterSize,
+    required this.avatarInnerSize,
+    required this.avatarIconSize,
+    required this.profileTextGap,
+    required this.profileNameFontSize,
+    required this.usernameFontSize,
+    required this.usernameGap,
+    required this.descriptionFontSize,
+    required this.profileDescriptionGap,
+    required this.sectionHeaderInset,
+    required this.sectionTitleFontSize,
+    required this.sectionSubtitleFontSize,
+    required this.gridSpacing,
+    required this.cardAspectRatio,
+    required this.cardPadding,
+    required this.cardRadius,
+    required this.cardIconBoxSize,
+    required this.cardIconRadius,
+    required this.cardIconSize,
+    required this.cardTitleFontSize,
+    required this.cardSubtitleFontSize,
+    required this.cardSubtitleGap,
+    required this.cardActionFontSize,
+    required this.cardActionGap,
+    required this.cardArrowGap,
+    required this.cardArrowSize,
+    required this.sheetHorizontalPadding,
+    required this.sheetInnerPadding,
+  });
+
+  final bool compact;
+  final EdgeInsets pagePadding;
+  final EdgeInsets surfacePadding;
+  final double surfaceRadius;
+  final double sectionGap;
+  final double gridTopGap;
+  final double profileTopGap;
+  final double titleFontSize;
+  final double timeFontSize;
+  final double closeButtonSize;
+  final double closeIconSize;
+  final double closeRadius;
+  final double avatarOuterSize;
+  final double avatarInnerSize;
+  final double avatarIconSize;
+  final double profileTextGap;
+  final double profileNameFontSize;
+  final double usernameFontSize;
+  final double usernameGap;
+  final double descriptionFontSize;
+  final double profileDescriptionGap;
+  final double sectionHeaderInset;
+  final double sectionTitleFontSize;
+  final double sectionSubtitleFontSize;
+  final double gridSpacing;
+  final double cardAspectRatio;
+  final EdgeInsets cardPadding;
+  final double cardRadius;
+  final double cardIconBoxSize;
+  final double cardIconRadius;
+  final double cardIconSize;
+  final double cardTitleFontSize;
+  final double cardSubtitleFontSize;
+  final double cardSubtitleGap;
+  final double cardActionFontSize;
+  final double cardActionGap;
+  final double cardArrowGap;
+  final double cardArrowSize;
+  final double sheetHorizontalPadding;
+  final double sheetInnerPadding;
+
+  static _MenuMetrics of(BuildContext context) {
+    final responsive = context.responsive;
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = responsive.isCompactPhone || width < 360;
+    final small = responsive.isSmallPhone || width < 390;
+
+    final horizontal = compact ? 16.0 : 20.0;
+    final gridSpacing = compact ? 12.0 : 14.0;
+    final cardAspectRatio = compact ? 0.78 : (small ? 0.84 : 0.90);
+    final avatarOuter = compact ? 82.0 : (small ? 92.0 : 104.0);
+
+    return _MenuMetrics(
+      compact: compact,
+      pagePadding: EdgeInsets.fromLTRB(
+        responsive.spacing(horizontal),
+        responsive.spacing(compact ? 14 : 18),
+        responsive.spacing(horizontal),
+        responsive.spacing(26) + MediaQuery.paddingOf(context).bottom,
+      ),
+      surfacePadding: EdgeInsets.fromLTRB(
+        responsive.spacing(compact ? 14 : 18),
+        responsive.spacing(compact ? 14 : 18),
+        responsive.spacing(compact ? 14 : 18),
+        responsive.spacing(compact ? 16 : 20),
+      ),
+      surfaceRadius: responsive.radius(compact ? 24 : 28),
+      sectionGap: responsive.spacing(compact ? 22 : 28),
+      gridTopGap: responsive.spacing(compact ? 12 : 14),
+      profileTopGap: responsive.spacing(compact ? 14 : 18),
+      titleFontSize: responsive.font(compact ? 24 : 26),
+      timeFontSize: responsive.font(14),
+      closeButtonSize: compact ? 40 : 44,
+      closeIconSize: compact ? 20 : 22,
+      closeRadius: responsive.radius(16),
+      avatarOuterSize: avatarOuter,
+      avatarInnerSize: avatarOuter - 8,
+      avatarIconSize: compact ? 36 : 44,
+      profileTextGap: responsive.spacing(compact ? 12 : 16),
+      profileNameFontSize: responsive.font(compact ? 21 : 24),
+      usernameFontSize: responsive.font(compact ? 14 : 16),
+      usernameGap: responsive.spacing(compact ? 5 : 6),
+      descriptionFontSize: responsive.font(13),
+      profileDescriptionGap: responsive.spacing(compact ? 8 : 10),
+      sectionHeaderInset: responsive.spacing(4),
+      sectionTitleFontSize: responsive.font(compact ? 20 : 21),
+      sectionSubtitleFontSize: responsive.font(13),
+      gridSpacing: responsive.spacing(gridSpacing),
+      cardAspectRatio: cardAspectRatio,
+      cardPadding: EdgeInsets.all(responsive.spacing(compact ? 14 : 16)),
+      cardRadius: responsive.radius(22),
+      cardIconBoxSize: compact ? 42 : (small ? 46 : 50),
+      cardIconRadius: responsive.radius(16),
+      cardIconSize: compact ? 22 : 25,
+      cardTitleFontSize: responsive.font(compact ? 15 : 16),
+      cardSubtitleFontSize: responsive.font(12.5),
+      cardSubtitleGap: responsive.spacing(5),
+      cardActionFontSize: responsive.font(12),
+      cardActionGap: responsive.spacing(compact ? 9 : 11),
+      cardArrowGap: responsive.spacing(4),
+      cardArrowSize: compact ? 13 : 14,
+      sheetHorizontalPadding: responsive.spacing(compact ? 18 : 24),
+      sheetInnerPadding: responsive.spacing(compact ? 14 : 16),
     );
   }
 }

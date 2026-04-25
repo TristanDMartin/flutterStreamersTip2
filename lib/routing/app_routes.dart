@@ -6,6 +6,7 @@ import '../views/linked_platforms_view.dart';
 import '../views/manage_posts_view.dart';
 import '../views/search_screen.dart';
 import '../views/settings_view.dart';
+import '../views/upgrade_view.dart';
 import '../widgets/activity_view.dart';
 import '../widgets/app_startup_wrapper.dart';
 import '../widgets/auth_modal_view.dart';
@@ -25,6 +26,7 @@ class AppRoutes {
   static const String inbox = '/inbox';
   static const String settings = '/settings';
   static const String managePosts = '/manage-posts';
+  static const String upgrade = '/upgrade';
   static const String linkedPlatforms = '/linked-platforms';
   static const String discover = '/discover';
   static const String activity = '/activity';
@@ -78,9 +80,22 @@ class AppRoutes {
           builder: (_) => const SettingsView(),
         );
       case managePosts:
+        final args = routeSettings.arguments;
         return _buildRoute(
           settings: routeSettings,
-          builder: (_) => const ManagePostsView(),
+          builder: (_) => ManagePostsView(
+            initialTab: args is ManagePostsRouteArgs
+                ? args.initialTab
+                : ManagePostsInitialTab.scheduled,
+            launchSource: args is ManagePostsRouteArgs
+                ? args.launchSource
+                : ManagePostsLaunchSource.direct,
+          ),
+        );
+      case upgrade:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const UpgradeView(),
         );
       case linkedPlatforms:
         final args = routeSettings.arguments;
@@ -224,6 +239,20 @@ class ChatRouteArgs {
   final bool otherUserIsOnline;
   final Map<String, dynamic>? draftToSend;
   final bool fullscreenDialog;
+}
+
+enum ManagePostsInitialTab { scheduled, publishing, published }
+
+enum ManagePostsLaunchSource { direct, commandCenter, tippy }
+
+class ManagePostsRouteArgs {
+  const ManagePostsRouteArgs({
+    required this.initialTab,
+    required this.launchSource,
+  });
+
+  final ManagePostsInitialTab initialTab;
+  final ManagePostsLaunchSource launchSource;
 }
 
 class SettingsRouteArgs {

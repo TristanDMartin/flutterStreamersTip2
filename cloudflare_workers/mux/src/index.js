@@ -1313,6 +1313,166 @@ async function applyGamificationMissions(env, uid, eventType, eventId) {
   );
 }
 
+function findMissionRow(list, missionId) {
+  if (!Array.isArray(list)) return null;
+  const index = list.findIndex((raw) => {
+    if (!raw || typeof raw !== 'object') return false;
+    return String(raw.missionId || raw.id || '').trim() === missionId;
+  });
+  if (index < 0) return null;
+  return { index, mission: { ...list[index] } };
+}
+
+function claimMissionInList(list, missionId, now) {
+  if (!Array.isArray(list)) {
+    return { found: false, updated: false, alreadyClaimed: false, xpGain: 0, list };
+  }
+  const match = findMissionRow(list, missionId);
+  if (!match) {
+    return { found: false, updated: false, alreadyClaimed: false, xpGain: 0, list };
+  }
+  const mission = match.mission;
+  const target = readInt(mission.target) || 1;
+  const progress = readInt(mission.progress);
+  const completed =
+    String(mission.status || '').toLowerCase() === 'completed' ||
+    String(mission.status || '').toLowerCase() === 'claimed' ||
+    String(mission.status || '').toLowerCase() === 'rewarded' ||
+    (target > 0 && progress >= target);
+  if (!completed) {
+    return {
+      found: true,
+      updated: false,
+      alreadyClaimed: false,
+      incomplete: true,
+      xpGain: 0,
+      list,
+    };
+  }
+  const alreadyClaimed =
+    mission.rewardClaimed === true ||
+    String(mission.status || '').toLowerCase() === 'claimed' ||
+    String(mission.status || '').toLowerCase() === 'rewarded';
+  if (alreadyClaimed) {
+    return {
+      found: true,
+      updated: false,
+      alreadyClaimed: true,
+      xpGain: 0,
+      list,
+    };
+  }
+  mission.rewardClaimed = true;
+  mission.status = 'claimed';
+  mission.claimedAt = now;
+  if (!mission.completedAt) {
+    mission.completedAt = now;
+  }
+  const next = [...list];
+  next[match.index] = mission;
+  return {
+    found: true,
+    updated: true,
+    alreadyClaimed: false,
+    xpGain: readInt(mission.rewardXp),
+    list: next,
+  };
+}
+
+async function claimMissionReward(env, uid, missionId) {
+  const auditPath = `users/${uid}/gamification_claim_audit/${missionId}`;
+  const existingAudit = await firestoreGetDocument(env, auditPath);
+  if (existingAudit) {
+    return {
+      missionId,
+      alreadyClaimed: true,
+      xpGranted: readInt(existingAudit.xpGranted),
+    };
+  }
+
+  const userPath = `users/${uid}`;
+  const data = (await firestoreGetDocument(env, userPath)) || {};
+  const now = new Date();
+  const daily = claimMissionInList(data.dailyMissions, missionId, now);
+  const weekly = claimMissionInList(data.missions, missionId, now);
+  const match = daily.found ? daily : weekly;
+
+  if (!daily.found && !weekly.found) {
+    return {
+      error: 'Mission not found',
+      status: 404,
+    };
+  }
+  if (match.incomplete) {
+    return {
+      error: 'Mission is not complete yet',
+      status: 409,
+    };
+  }
+  if (match.alreadyClaimed) {
+    await firestoreWrite(
+      env,
+      'POST',
+      `users/${uid}/gamification_claim_audit?documentId=${missionId}`,
+      {
+        missionId,
+        uid,
+        xpGranted: 0,
+        processedAt: { __timestamp: true },
+      }
+    );
+    return {
+      missionId,
+      alreadyClaimed: true,
+      xpGranted: 0,
+    };
+  }
+
+  const xpGain = daily.xpGain + weekly.xpGain;
+  const gam =
+    data.gamification && typeof data.gamification === 'object'
+      ? data.gamification
+      : {};
+  const currentXp =
+    readInt(gam.totalXp) ||
+    readInt(gam.total_xp) ||
+    readInt(gam.xp);
+  const newXp = currentXp + xpGain;
+  const level = levelFromTotalXp(newXp);
+  const rankTitle = rankTitleForLevel(level);
+  const mergedGam = {
+    ...gam,
+    totalXp: newXp,
+    level,
+    rankTitle,
+    updatedAt: { __timestamp: true },
+  };
+  const patchFields = {
+    gamification: mergedGam,
+  };
+  if (daily.found) patchFields.dailyMissions = daily.list;
+  if (weekly.found) patchFields.missions = weekly.list;
+  await firestorePatchDocument(env, userPath, patchFields);
+  await firestoreWrite(
+    env,
+    'POST',
+    `users/${uid}/gamification_claim_audit?documentId=${missionId}`,
+    {
+      missionId,
+      uid,
+      xpGranted: xpGain,
+      processedAt: { __timestamp: true },
+    }
+  );
+  return {
+    missionId,
+    alreadyClaimed: false,
+    xpGranted: xpGain,
+    level,
+    totalXp: newXp,
+  };
+}
+
 /** Create Mux direct upload */
 async function createMuxUpload(env, videoId, userId, isDraft = false) {
   const tokenId = env.MUX_TOKEN_ID;
@@ -1456,6 +1616,9 @@ export default {
       if (path === '/gamification/events' && request.method === 'POST') {
         return await handleGamificationEvent(request, env, cors);
       }
+      if (path === '/gamification/missions/claim' && request.method === 'POST') {
+        return await handleMissionClaim(request, env, cors);
+      }
 
       return jsonResponse({ error: 'Not found' }, 404, {}, cors);
     } catch (e) {
@@ -1545,6 +1708,58 @@ async function handleGamificationEvent(request, env, cors) {
   }
   await applyGamificationMissions(env, verifiedUid, typeStr, id);
   return jsonResponse({ ok: true }, 200, {}, cors);
+}
+
+async function handleMissionClaim(request, env, cors) {
+  const auth = request.headers.get('Authorization');
+  if (!auth?.startsWith('Bearer ')) {
+    throw new Error('Missing Authorization: Bearer <firebase_id_token>');
+  }
+  const idToken = auth.slice(7).trim();
+  const { uid: verifiedUid } = await verifyFirebaseToken(
+    idToken,
+    env.FIREBASE_WEB_API_KEY
+  );
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON body' }, 400, {}, cors);
+  }
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return jsonResponse({ error: 'Body must be a JSON object' }, 400, {}, cors);
+  }
+  const missionId = String(body.missionId || '').trim();
+  const bodyUid = String(body.uid || '').trim();
+  if (!missionId) {
+    return jsonResponse(
+      { error: 'missionId is required (non-empty string)' },
+      400,
+      {},
+      cors
+    );
+  }
+  if (!bodyUid) {
+    return jsonResponse(
+      { error: 'uid is required (non-empty string)' },
+      400,
+      {},
+      cors
+    );
+  }
+  if (bodyUid !== verifiedUid) {
+    return jsonResponse(
+      { error: 'uid must match authenticated user' },
+      403,
+      {},
+      cors
+    );
+  }
+  const result = await claimMissionReward(env, verifiedUid, missionId);
+  if (result?.error) {
+    return jsonResponse({ error: result.error }, result.status || 400, {}, cors);
+  }
+  return jsonResponse({ ok: true, ...result }, 200, {}, cors);
 }
 
 async function handleHealth(request, env, cors) {

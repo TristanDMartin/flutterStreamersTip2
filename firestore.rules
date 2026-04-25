@@ -12,7 +12,7 @@ service cloud.firestore {
       // TikTok-style: Allow any authenticated user to update follower/following counts and liked_videos array
       allow update: if request.auth != null 
         && (request.auth.uid == userId  // Own profile
-            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_videos', 'followingCount', 'followersCount', 'connectionsCount']) // Only these fields
+            || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_videos', 'followingCount', 'followersCount', 'followerCount', 'connectionsCount']) // Only these fields
                 && (!('liked_videos' in request.resource.data.diff(resource.data).affectedKeys()) 
                     || isValidBookmarkUpdate(request.resource.data.liked_videos)))); // Validate bookmark data only if liked_videos is being updated
       
@@ -383,6 +383,18 @@ service cloud.firestore {
         );
         allow delete: if false;
       }
+    }
+
+    match /forumNotifications/{notificationId} {
+      allow read, list: if request.auth != null &&
+        request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null &&
+        request.auth.uid == resource.data.userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'read'
+        ]);
+      allow delete: if false;
     }
     
     // Video analytics aggregated data (camelCase) - read by InsightsView

@@ -1,8 +1,13 @@
 class UserCountFields {
+  /// Picks a sensible follow total when the doc has mixed legacy fields
+  /// (e.g. [followersCount] was initialized to 0 but [followerCount] is live).
   static int readFollowersCount(Map<String, dynamic> data) {
-    return _readInt(data['followersCount']) ??
-        _readInt(data['followerCount']) ??
-        0;
+    final int? plural = _readInt(data['followersCount']);
+    final int? singular = _readInt(data['followerCount']);
+    if (plural == null && singular == null) return 0;
+    if (plural == null) return singular!;
+    if (singular == null) return plural;
+    return singular > plural ? singular : plural;
   }
 
   static int readFollowingCount(Map<String, dynamic> data) {

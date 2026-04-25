@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
@@ -21,8 +23,8 @@ class _BookmarkViewState extends State<BookmarkView>
   List<BookmarkEvent> _bookmarks = [];
   bool _isLoading = true;
   String? _error;
+  StreamSubscription<List<BookmarkEvent>>? _bookmarkSubscription;
 
-  static const Color _purple = Color(0xFF955CFF);
   static const Color _gradientStart = Color(0xFF6137EB);
   static const Color _gradientEnd = Color(0xFF1C135D);
 
@@ -37,6 +39,7 @@ class _BookmarkViewState extends State<BookmarkView>
 
   @override
   void dispose() {
+    _bookmarkSubscription?.cancel();
     _outerTabController.dispose();
     _eventTabController.dispose();
     super.dispose();
@@ -45,7 +48,8 @@ class _BookmarkViewState extends State<BookmarkView>
   Future<void> _initializeBookmarks() async {
     try {
       await _bookmarkService.initialize();
-      _bookmarkService.getBookmarksStream().listen(
+      await _bookmarkSubscription?.cancel();
+      _bookmarkSubscription = _bookmarkService.getBookmarksStream().listen(
         (bookmarks) {
           if (mounted) {
             setState(() {
@@ -76,9 +80,8 @@ class _BookmarkViewState extends State<BookmarkView>
 
   Map<EventStatus, List<BookmarkEvent>> _getBookmarksByStatus() {
     return {
-      EventStatus.upcoming: _bookmarks
-          .where((b) => b.status == EventStatus.upcoming)
-          .toList(),
+      EventStatus.upcoming:
+          _bookmarks.where((b) => b.status == EventStatus.upcoming).toList(),
       EventStatus.live:
           _bookmarks.where((b) => b.status == EventStatus.live).toList(),
       EventStatus.past:
@@ -114,11 +117,18 @@ class _BookmarkViewState extends State<BookmarkView>
             ),
             bottom: TabBar(
               controller: _outerTabController,
-              indicatorColor: _purple,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              indicator: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white24),
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              dividerColor: Colors.transparent,
               labelColor: Colors.white,
-              unselectedLabelColor: Colors.grey,
+              unselectedLabelColor: Colors.white60,
               labelStyle: const TextStyle(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w800,
                 fontSize: 15,
               ),
               tabs: const [
@@ -149,7 +159,8 @@ class _BookmarkViewState extends State<BookmarkView>
 
   Future<void> _deleteBookmark(BookmarkEvent bookmark) async {
     HapticFeedback.lightImpact();
-    setState(() => _bookmarks.removeWhere((b) => b.eventId == bookmark.eventId));
+    setState(
+        () => _bookmarks.removeWhere((b) => b.eventId == bookmark.eventId));
     final success =
         await _bookmarkService.deleteBookmark(eventId: bookmark.eventId);
     if (!success && mounted) {
@@ -276,9 +287,16 @@ class _EventsTab extends StatelessWidget {
   Widget _buildEventTabBar() {
     return TabBar(
       controller: tabController,
-      indicatorColor: _purple,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      indicator: BoxDecoration(
+        color: _purple.withValues(alpha: 0.24),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _purple.withValues(alpha: 0.44)),
+      ),
+      indicatorSize: TabBarIndicatorSize.tab,
+      dividerColor: Colors.transparent,
       labelColor: Colors.white,
-      unselectedLabelColor: Colors.grey,
+      unselectedLabelColor: Colors.white60,
       tabs: const [
         Tab(text: 'Upcoming'),
         Tab(text: 'Live'),
@@ -297,19 +315,32 @@ class _ErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, color: Colors.red, size: 64),
-          const SizedBox(height: 16),
-          Text(
-            error,
-            style: const TextStyle(color: Colors.red),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
-        ],
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.redAccent, size: 44),
+            const SizedBox(height: 14),
+            Text(
+              error,
+              style: const TextStyle(color: Colors.white70),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -334,29 +365,41 @@ class _EventList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (bookmarks.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(emptyIcon, color: Colors.grey, size: 64),
-            const SizedBox(height: 16),
-            Text(
-              emptyMessage,
-              style: const TextStyle(color: Colors.grey, fontSize: 18),
-              textAlign: TextAlign.center,
-            ),
-          ],
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(emptyIcon, color: Colors.white54, size: 42),
+              const SizedBox(height: 14),
+              Text(
+                emptyMessage,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: bookmarks.length,
-      itemBuilder: (context, index) =>
-          _EventCard(
-            bookmark: bookmarks[index],
-            onDelete: onDelete,
-            onToggleNotification: onToggleNotification,
-          ),
+      itemBuilder: (context, index) => _EventCard(
+        bookmark: bookmarks[index],
+        onDelete: onDelete,
+        onToggleNotification: onToggleNotification,
+      ),
     );
   }
 }
@@ -378,14 +421,15 @@ class _EventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: Colors.white.withValues(alpha: 0.1),
+      elevation: 0,
+      color: Colors.white.withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
       ),
       child: InkWell(
         onTap: () => _showDetails(context),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -402,14 +446,20 @@ class _EventCard extends StatelessWidget {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w900,
+                            height: 1.15,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Text(
                           bookmark.creatorName,
                           style: const TextStyle(
-                              color: Colors.grey, fontSize: 14),
+                            color: Colors.white60,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
@@ -420,19 +470,24 @@ class _EventCard extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.schedule, color: Colors.grey[400], size: 16),
+                  const Icon(Icons.schedule, color: Colors.white60, size: 16),
                   const SizedBox(width: 8),
                   Text(
                     _formatRelative(bookmark.startAt),
-                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                    style: const TextStyle(color: Colors.white60, fontSize: 14),
                   ),
                   const Spacer(),
-                  Text(
-                    bookmark.formattedStartTime,
-                    style: TextStyle(
-                      color: _timeColor(bookmark.status),
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: Text(
+                      bookmark.formattedStartTime,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        color: _timeColor(bookmark.status),
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -440,7 +495,7 @@ class _EventCard extends StatelessWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  IconButton(
+                  IconButton.filledTonal(
                     onPressed: () => onToggleNotification(bookmark),
                     icon: Icon(
                       bookmark.notify
@@ -450,7 +505,7 @@ class _EventCard extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
+                  IconButton.filledTonal(
                     onPressed: () => _confirmDelete(context),
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                   ),
@@ -487,8 +542,8 @@ class _EventCard extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(bookmark.title,
-            style: const TextStyle(color: Colors.white)),
+        title:
+            Text(bookmark.title, style: const TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -499,8 +554,7 @@ class _EventCard extends StatelessWidget {
             Text('Start: ${_formatRelative(bookmark.startAt)}',
                 style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 8),
-            Text(
-                'Notifications: ${bookmark.notify ? "On" : "Off"}',
+            Text('Notifications: ${bookmark.notify ? "On" : "Off"}',
                 style: const TextStyle(color: Colors.grey)),
           ],
         ),
@@ -533,8 +587,7 @@ class _EventCard extends StatelessWidget {
               Navigator.of(context).pop();
               onDelete(bookmark);
             },
-            child:
-                const Text('Delete', style: TextStyle(color: Colors.red)),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -563,8 +616,8 @@ class _StatusChip extends StatelessWidget {
       ),
       child: Text(
         status.displayName,
-        style: TextStyle(
-            color: color, fontSize: 12, fontWeight: FontWeight.bold),
+        style:
+            TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
       ),
     );
   }

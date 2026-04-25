@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../models/category.dart';
 
@@ -22,65 +24,89 @@ class CategoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final useCompactSize = hasCategorySelected && !isSelected;
-    final containerSize = useCompactSize ? _iconSizeUnselected : _iconSizeSelected;
-    final innerIconSize = useCompactSize ? _iconInnerUnselected : _iconInnerSelected;
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                width: containerSize,
-                height: containerSize,
-                decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isSelected 
-                    ? const Color(0xFF6633CC).withValues(alpha: 0.2) // Selected background
-                    : const Color(0xFF1A1A1A), // Dark circular background
-                border: isSelected 
-                    ? Border.all(
-                        color: const Color(0xFF6633CC),
-                        width: 2,
-                      )
-                    : null,
-                boxShadow: [
-                  BoxShadow(
-                    color: isSelected 
-                        ? const Color(0xFF6633CC).withValues(alpha: 0.3)
-                        : Colors.black.withValues(alpha: 0.3),
-                    blurRadius: isSelected ? 12 : 8,
-                    offset: const Offset(0, 4),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useCompactSize = hasCategorySelected && !isSelected;
+        final targetIconSize =
+            useCompactSize ? _iconSizeUnselected : _iconSizeSelected;
+        final targetInnerSize =
+            useCompactSize ? _iconInnerUnselected : _iconInnerSelected;
+        final textScale = MediaQuery.textScalerOf(context);
+        final labelReserve = textScale.scale(useCompactSize ? 18 : 22);
+        final gap = useCompactSize ? 6.0 : 8.0;
+        final maxWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : targetIconSize;
+        final maxHeight =
+            constraints.maxHeight.isFinite ? constraints.maxHeight : 120.0;
+        final availableForIcon = math.max(40.0, maxHeight - labelReserve - gap);
+        final containerSize = math.min(
+          targetIconSize,
+          math.min(maxWidth, availableForIcon),
+        );
+        final innerIconSize =
+            math.min(targetInnerSize, math.max(20.0, containerSize * 0.4));
+
+        return GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: SizedBox.expand(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                Container(
+                  width: containerSize,
+                  height: containerSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected
+                        ? const Color(0xFF6633CC).withValues(alpha: 0.2)
+                        : const Color(0xFF1A1A1A),
+                    border: isSelected
+                        ? Border.all(
+                            color: const Color(0xFF6633CC),
+                            width: 2,
+                          )
+                        : null,
+                    boxShadow: [
+                      BoxShadow(
+                        color: isSelected
+                            ? const Color(0xFF6633CC).withValues(alpha: 0.3)
+                            : Colors.black.withValues(alpha: 0.3),
+                        blurRadius: isSelected ? 12 : 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Icon(
-                _getIconData(category.icon),
-                color: _getIconColor(category.id),
-                size: innerIconSize,
-              ),
+                  child: Icon(
+                    _getIconData(category.icon),
+                    color: _getIconColor(category.id),
+                    size: innerIconSize,
+                  ),
+                ),
+                SizedBox(height: gap),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Text(
+                    category.name,
+                    style: TextStyle(
+                      fontSize: useCompactSize ? 11 : 14,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.w500,
+                      color:
+                          isSelected ? const Color(0xFF6633CC) : Colors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
             ),
           ),
-            SizedBox(height: useCompactSize ? 6 : 12),
-            Text(
-              category.name,
-              style: TextStyle(
-                fontSize: useCompactSize ? 11 : 14,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected 
-                    ? const Color(0xFF6633CC) 
-                    : Colors.white,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 

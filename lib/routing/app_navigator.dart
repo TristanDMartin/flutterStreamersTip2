@@ -92,7 +92,25 @@ class AppNavigator {
   }
 
   static Future<T?> openManagePosts<T>(BuildContext context) {
-    return Navigator.of(context).pushNamed<T>(AppRoutes.managePosts);
+    return openManagePostsWithArgs(
+      context,
+      initialTab: ManagePostsInitialTab.scheduled,
+      launchSource: ManagePostsLaunchSource.direct,
+    );
+  }
+
+  static Future<T?> openManagePostsWithArgs<T>(
+    BuildContext context, {
+    required ManagePostsInitialTab initialTab,
+    required ManagePostsLaunchSource launchSource,
+  }) {
+    return Navigator.of(context).pushNamed<T>(
+      AppRoutes.managePosts,
+      arguments: ManagePostsRouteArgs(
+        initialTab: initialTab,
+        launchSource: launchSource,
+      ),
+    );
   }
 
   static Future<T?> openLinkedPlatforms<T>(

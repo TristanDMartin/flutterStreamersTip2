@@ -28,6 +28,7 @@ import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'constants/app_colors.dart';
+import 'utils/responsive_layout.dart';
 
 void main() async {
   final appStartTime = DateTime.now();
@@ -43,10 +44,22 @@ void main() async {
 
   // 🔥 CRITICAL: Initialize Firebase BEFORE runApp to prevent "[core/no-app]" errors
   // Firebase must be ready before any Firebase-dependent services are accessed
-  debugPrint('🔥 FIREBASE: Initializing Firebase BEFORE runApp at ${DateTime.now()}');
+  debugPrint(
+      '🔥 FIREBASE: Initializing Firebase BEFORE runApp at ${DateTime.now()}');
   try {
-    await FirebaseIOSService.initialize();
-    debugPrint('✅ FIREBASE: Firebase initialized successfully at ${DateTime.now()}');
+    var firebaseTimedOut = false;
+    await FirebaseIOSService.initialize().timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        firebaseTimedOut = true;
+        debugPrint(
+            '⚠️ FIREBASE: Initialization timed out - continuing startup in degraded mode');
+      },
+    );
+    if (!firebaseTimedOut) {
+      debugPrint(
+          '✅ FIREBASE: Firebase initialized successfully at ${DateTime.now()}');
+    }
   } catch (e) {
     debugPrint('❌ FIREBASE: Initialization failed: $e');
     // Continue anyway - app will show splash screen and retry
@@ -331,6 +344,12 @@ class MyApp extends ConsumerWidget {
           surface: AppColors.supportBackground,
         ),
       ),
+      builder: (context, child) {
+        return MediaQuery(
+          data: AppResponsive.normalizedMediaQuery(MediaQuery.of(context)),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       debugShowCheckedModeBanner: false,
     );
   }

@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/feed_tab.dart';
 import '../models/home_video.dart';
-import '../models/user.dart' as app_user;
 import '../services/video_service.dart' as video_service;
 import '../services/favorites_service.dart';
 import '../services/following_feed_service.dart';
@@ -33,12 +32,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
     required FavoritesService favoritesService,
     FollowingFeedService? followingFeedService,
     CommentsService? commentsService,
-  }) : _videoService = videoService,
-       _favoritesService = favoritesService,
-       _followingFeedService =
-           followingFeedService ?? FollowingFeedService.instance,
-       _commentsService = commentsService ?? CommentsService(),
-       super(const HomeState()) {
+  })  : _videoService = videoService,
+        _favoritesService = favoritesService,
+        _followingFeedService =
+            followingFeedService ?? FollowingFeedService.instance,
+        _commentsService = commentsService ?? CommentsService(),
+        super(const HomeState()) {
     // Initialize the callbacks
     updateVideoLikeState = _updateVideoLikeState;
     updateVideoFavoriteState = _updateVideoFavoriteState;
@@ -394,16 +393,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
 
       // Preload avatars for instant display with timeout
       if (avatarUrls.isNotEmpty) {
-        await UnifiedAvatarService()
-            .preloadAvatars(avatarUrls)
-            .timeout(
-              const Duration(seconds: 5),
-              onTimeout: () {
-                log(
-                  '⏰ Avatar preloading timeout - continuing without preloaded avatars',
-                );
-              },
+        await UnifiedAvatarService().preloadAvatars(avatarUrls).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            log(
+              '⏰ Avatar preloading timeout - continuing without preloaded avatars',
             );
+          },
+        );
         log('✅ Preloaded ${avatarUrls.length} avatars for instant display');
       }
     } catch (e) {
@@ -535,11 +532,12 @@ class HomeViewModel extends StateNotifier<HomeState> {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (state.forYouVideos.isEmpty) {
           _updateForYouFeed(
-            videos: _createSampleVideos(),
+            videos: const <HomeVideo>[],
             isLoading: false,
             nextCursor: null,
             lastDocument: null,
-            error: 'You are offline. Showing fallback videos for now.',
+            error:
+                'Unable to load videos right now. Check your connection and try again.',
           );
           return;
         }
@@ -551,54 +549,6 @@ class HomeViewModel extends StateNotifier<HomeState> {
         );
       });
     }
-  }
-
-  /// Create sample videos for instant display with TikTok-style fast videos
-  List<HomeVideo> _createSampleVideos() {
-    return [
-      const HomeVideo(
-        id: '1',
-        creator: app_user.User(
-          id: 'user1',
-          username: 'streamer1',
-          displayName: 'Streamer One',
-          avatarURL: 'https://picsum.photos/200/300?random=1',
-        ),
-        videoURL:
-            'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
-        thumbnailURL: 'https://picsum.photos/seed/video1/300/200',
-        likes: 1250,
-        comments: 89,
-        views: 15420,
-        caption: 'Beautiful butterfly in nature! #nature #butterfly',
-        isLiked: false,
-        isFavorited: false,
-        isDraft: false,
-        mlScore: 0.95,
-        categoryId: 'nature',
-      ),
-      const HomeVideo(
-        id: '2',
-        creator: app_user.User(
-          id: 'user2',
-          username: 'streamer2',
-          displayName: 'Streamer Two',
-          avatarURL: 'https://i.pravatar.cc/200?img=2',
-        ),
-        videoURL:
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-        thumbnailURL: 'https://i.pravatar.cc/400?img=2',
-        likes: 890,
-        comments: 45,
-        views: 9870,
-        caption: 'Check out this cool trick! 🔥',
-        isLiked: true,
-        isFavorited: false,
-        isDraft: false,
-        mlScore: 0.87,
-        categoryId: 'entertainment',
-      ),
-    ];
   }
 
   // MARK: - Feed Switching (Hard refresh per feed)
@@ -845,16 +795,14 @@ class HomeViewModel extends StateNotifier<HomeState> {
       );
       final videos = page['videos'] as List<HomeVideo>;
       final lastDoc = page['lastDocument'];
-      final mergedVideos = reset
-          ? videos
-          : <HomeVideo>[...state.followingVideos, ...videos];
+      final mergedVideos =
+          reset ? videos : <HomeVideo>[...state.followingVideos, ...videos];
 
       _updateFollowingFeed(
         videos: mergedVideos,
         isLoading: false,
-        nextCursor: lastDoc == null
-            ? null
-            : <String, dynamic>{'lastDoc': lastDoc},
+        nextCursor:
+            lastDoc == null ? null : <String, dynamic>{'lastDoc': lastDoc},
         lastDocument: lastDoc,
         clearError: true,
       );
@@ -1012,8 +960,7 @@ class HomeViewModel extends StateNotifier<HomeState> {
       });
 
       // Update state if there are changes
-      final hasChanges =
-          updatedForYouVideos.any(
+      final hasChanges = updatedForYouVideos.any(
             (video) =>
                 video.comments !=
                 state.forYouVideos
@@ -1440,9 +1387,8 @@ class FeedSlice {
           : nextCursor as Map<String, dynamic>?,
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : (error ?? this.error),
-      emptyMessage: clearEmptyMessage
-          ? null
-          : (emptyMessage ?? this.emptyMessage),
+      emptyMessage:
+          clearEmptyMessage ? null : (emptyMessage ?? this.emptyMessage),
       requestId: identical(requestId, _feedSliceUnset)
           ? this.requestId
           : requestId as String?,

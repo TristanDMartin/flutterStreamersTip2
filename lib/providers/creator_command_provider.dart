@@ -1,0 +1,314 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../features/gamification/gamification_providers.dart';
+import '../features/gamification/models/subscription_plan.dart';
+import '../features/gamification/models/user_progress_bundle.dart';
+import '../models/creator_command_snapshot.dart';
+import 'current_user_provider.dart';
+
+final Provider<FirebaseFirestore> creatorCommandFirestoreProvider =
+    Provider<FirebaseFirestore>((Ref ref) => FirebaseFirestore.instance);
+
+final StreamProvider<Map<String, dynamic>?> creatorCommandIdentityProvider =
+    StreamProvider<Map<String, dynamic>?>((Ref ref) {
+  return ref.watch(currentUserStreamProvider.stream);
+});
+
+final StreamProvider<UserProgressBundle> creatorCommandProgressProvider =
+    StreamProvider<UserProgressBundle>((Ref ref) {
+  return ref.watch(userProgressBundleProvider.stream);
+});
+
+final StreamProvider<List<Map<String, dynamic>>> creatorCommandScheduledPostsProvider =
+    StreamProvider<List<Map<String, dynamic>>>((Ref ref) {
+  final AsyncValue<Map<String, dynamic>?> identity =
+      ref.watch(creatorCommandIdentityProvider);
+  final String? userId = identity.valueOrNull?['id'] as String?;
+  if (userId == null || userId.isEmpty) {
+    return Stream<List<Map<String, dynamic>>>.value(const <Map<String, dynamic>>[]);
+  }
+
+  final FirebaseFirestore firestore = ref.watch(creatorCommandFirestoreProvider);
+  return firestore
+      .collection('scheduled_posts')
+      .where('authorId', isEqualTo: userId)
+      .snapshots()
+      .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
+    return snapshot.docs
+        .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.data())
+        .toList(growable: false);
+  });
+});
+
+final StreamProvider<int> creatorCommandDraftCountProvider =
+    StreamProvider<int>((Ref ref) {
+  final AsyncValue<Map<String, dynamic>?> identity =
+      ref.watch(creatorCommandIdentityProvider);
+  final String? userId = identity.valueOrNull?['id'] as String?;
+  if (userId == null || userId.isEmpty) {
+    return Stream<int>.value(0);
+  }
+
+  final FirebaseFirestore firestore = ref.watch(creatorCommandFirestoreProvider);
+  return firestore
+      .collection('users')
+      .doc(userId)
+      .collection('drafts')
+      .snapshots()
+      .map((QuerySnapshot<Map<String, dynamic>> snapshot) => snapshot.docs.length);
+});
+
+final StreamProvider<Map<String, dynamic>?> creatorCommandMetricsProvider =
+    StreamProvider<Map<String, dynamic>?>((Ref ref) {
+  final AsyncValue<Map<String, dynamic>?> identity =
+      ref.watch(creatorCommandIdentityProvider);
+  final String? userId = identity.valueOrNull?['id'] as String?;
+  if (userId == null || userId.isEmpty) {
+    return Stream<Map<String, dynamic>?>.value(null);
+  }
+
+  final FirebaseFirestore firestore = ref.watch(creatorCommandFirestoreProvider);
+  return firestore.collection('creator_metrics').doc(userId).snapshots().map(
+    (DocumentSnapshot<Map<String, dynamic>> doc) => doc.data(),
+  );
+});
+
+final StreamProvider<List<Map<String, dynamic>>> creatorCommandRecentVideosProvider =
+    StreamProvider<List<Map<String, dynamic>>>((Ref ref) {
+  final AsyncValue<Map<String, dynamic>?> identity =
+      ref.watch(creatorCommandIdentityProvider);
+  final String? userId = identity.valueOrNull?['id'] as String?;
+  if (userId == null || userId.isEmpty) {
+    return Stream<List<Map<String, dynamic>>>.value(const <Map<String, dynamic>>[]);
+  }
+
+  final FirebaseFirestore firestore = ref.watch(creatorCommandFirestoreProvider);
+  return firestore
+      .collection('videos')
+      .where('creatorId', isEqualTo: userId)
+      .orderBy('createdAt', descending: true)
+      .limit(100)
+      .snapshots()
+      .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
+    return snapshot.docs
+        .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.data())
+        .toList(growable: false);
+  });
+});
+
+final Provider<AsyncValue<CreatorCommandSnapshot?>> creatorCommandSnapshotProvider =
+    Provider<AsyncValue<CreatorCommandSnapshot?>>((Ref ref) {
+  final AsyncValue<Map<String, dynamic>?> identity =
+      ref.watch(creatorCommandIdentityProvider);
+  final AsyncValue<UserProgressBundle> progress =
+      ref.watch(creatorCommandProgressProvider);
+  final AsyncValue<List<Map<String, dynamic>>> scheduledPosts =
+      ref.watch(creatorCommandScheduledPostsProvider);
+  final AsyncValue<int> draftCount = ref.watch(creatorCommandDraftCountProvider);
+  final AsyncValue<Map<String, dynamic>?> metrics =
+      ref.watch(creatorCommandMetricsProvider);
+  final AsyncValue<List<Map<String, dynamic>>> recentVideos =
+      ref.watch(creatorCommandRecentVideosProvider);
+
+  if (identity.isLoading ||
+      progress.isLoading ||
+      scheduledPosts.isLoading ||
+      draftCount.isLoading ||
+      metrics.isLoading ||
+      recentVideos.isLoading) {
+    return const AsyncValue<CreatorCommandSnapshot?>.loading();
+  }
+
+  if (identity.hasError) {
+    return AsyncValue<CreatorCommandSnapshot?>.error(
+      identity.error!,
+      identity.stackTrace ?? StackTrace.current,
+    );
+  }
+  if (progress.hasError) {
+    return AsyncValue<CreatorCommandSnapshot?>.error(
+      progress.error!,
+      progress.stackTrace ?? StackTrace.current,
+    );
+  }
+  if (scheduledPosts.hasError) {
+    return AsyncValue<CreatorCommandSnapshot?>.error(
+      scheduledPosts.error!,
+      scheduledPosts.stackTrace ?? StackTrace.current,
+    );
+  }
+  if (draftCount.hasError) {
+    return AsyncValue<CreatorCommandSnapshot?>.error(
+      draftCount.error!,
+      draftCount.stackTrace ?? StackTrace.current,
+    );
+  }
+  if (metrics.hasError) {
+    return AsyncValue<CreatorCommandSnapshot?>.error(
+      metrics.error!,
+      metrics.stackTrace ?? StackTrace.current,
+    );
+  }
+  if (recentVideos.hasError) {
+    return AsyncValue<CreatorCommandSnapshot?>.error(
+      recentVideos.error!,
+      recentVideos.stackTrace ?? StackTrace.current,
+    );
+  }
+
+  final Map<String, dynamic>? userData = identity.valueOrNull;
+  if (userData == null) {
+    return const AsyncValue<CreatorCommandSnapshot?>.data(null);
+  }
+
+  return AsyncValue<CreatorCommandSnapshot?>.data(
+    buildCreatorCommandSnapshot(
+      userData: userData,
+      bundle: progress.valueOrNull ?? UserProgressBundle.fallback(),
+      scheduledPosts: scheduledPosts.valueOrNull ?? const <Map<String, dynamic>>[],
+      draftCount: draftCount.valueOrNull ?? 0,
+      metrics: metrics.valueOrNull,
+      recentVideos: recentVideos.valueOrNull ?? const <Map<String, dynamic>>[],
+    ),
+  );
+});
+
+CreatorCommandSnapshot buildCreatorCommandSnapshot({
+  required Map<String, dynamic> userData,
+  required UserProgressBundle bundle,
+  required List<Map<String, dynamic>> scheduledPosts,
+  required int draftCount,
+  required Map<String, dynamic>? metrics,
+  required List<Map<String, dynamic>> recentVideos,
+}) {
+  final List<Map<String, dynamic>> creatorPosts = scheduledPosts
+      .where((Map<String, dynamic> post) => (post['authorId'] as String?) == userData['id'])
+      .toList(growable: false);
+  creatorPosts.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+    final DateTime? aTime = _readScheduledAt(a);
+    final DateTime? bTime = _readScheduledAt(b);
+    if (aTime == null && bTime == null) return 0;
+    if (aTime == null) return 1;
+    if (bTime == null) return -1;
+    return aTime.compareTo(bTime);
+  });
+
+  final DateTime now = DateTime.now();
+  final List<Map<String, dynamic>> actionablePosts = creatorPosts
+      .where((Map<String, dynamic> post) {
+    final String status = (post['status'] as String? ?? '').toLowerCase();
+    return status == 'scheduled' || status == 'publishing' || status == 'published';
+  }).toList(growable: false);
+  final List<Map<String, dynamic>> duePosts = actionablePosts
+      .where((Map<String, dynamic> post) {
+    final DateTime? dueAt = _readScheduledAt(post);
+    return dueAt != null;
+  })
+      .toList(growable: false);
+
+  duePosts.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+    final DateTime aTime = _readScheduledAt(a)!;
+    final DateTime bTime = _readScheduledAt(b)!;
+    return aTime.compareTo(bTime);
+  });
+
+  final Map<String, dynamic>? nextPost = duePosts.isEmpty ? null : duePosts.first;
+  final DateTime? nextPostDueAt = nextPost == null ? null : _readScheduledAt(nextPost);
+  final bool nextPostOverdue = nextPostDueAt != null && nextPostDueAt.isBefore(now);
+
+  final int alertCount = actionablePosts.where((Map<String, dynamic> post) {
+    final bool requiresAttention =
+        post['metadata']?['requiresCreatorAttention'] as bool? ??
+            post['requiresCreatorAttention'] as bool? ??
+            false;
+    final DateTime? dueAt = _readScheduledAt(post);
+    final bool overdue = dueAt != null && dueAt.isBefore(now);
+    return requiresAttention || overdue;
+  }).length;
+
+  final double? uploadConsistency = _readDouble(
+        metrics,
+        const <String>['uploadConsistency'],
+      ) ??
+      _calculateUploadConsistency(recentVideos);
+  final int consistencyScorePercent =
+      ((uploadConsistency ?? 0).clamp(0.0, 1.0) * 100).round();
+  final double? growthVelocity = _readDouble(
+    metrics,
+    const <String>['growthVelocity'],
+  );
+
+  return CreatorCommandSnapshot(
+    userId: userData['id'] as String? ?? '',
+    username: userData['username'] as String? ?? '',
+    displayName: userData['displayName'] as String? ?? '',
+    level: bundle.progress.level,
+    streakDays: bundle.progress.streakDays,
+    subscriptionPlan: bundle.subscription?.plan ?? SubscriptionPlan.unknown,
+    tippyAiEnabled: bundle.entitlements.tippyAi,
+    draftCount: draftCount,
+    consistencyScorePercent: consistencyScorePercent,
+    alertCount: alertCount,
+    requiresAttentionCount: alertCount,
+    pendingWorkCount: draftCount,
+    growthPercent: growthVelocity == null ? null : growthVelocity * 100,
+    nextPostDueAt: nextPostDueAt,
+    nextPostOverdue: nextPostOverdue,
+  );
+}
+
+DateTime? _readScheduledAt(Map<String, dynamic>? post) {
+  if (post == null) return null;
+  final Object? schedule = post['schedule'];
+  if (schedule is Map<String, dynamic>) {
+    final Object? raw = schedule['scheduledAtUtc'];
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is DateTime) return raw;
+    if (raw is String) return DateTime.tryParse(raw);
+  }
+  final Object? root = post['scheduledAtUtc'];
+  if (root is Timestamp) return root.toDate();
+  if (root is DateTime) return root;
+  if (root is String) return DateTime.tryParse(root);
+  return null;
+}
+
+double? _readDouble(Map<String, dynamic>? source, List<String> keys) {
+  if (source == null) return null;
+  for (final String key in keys) {
+    final Object? value = source[key];
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+  }
+  return null;
+}
+
+double? _calculateUploadConsistency(List<Map<String, dynamic>> videos) {
+  if (videos.length < 2) return 0.0;
+  final DateTime now = DateTime.now();
+  int weeksWithUploads = 0;
+  for (int week = 0; week < 10; week++) {
+    final DateTime weekStart = now.subtract(Duration(days: 7 * (week + 1)));
+    final DateTime weekEnd = now.subtract(Duration(days: 7 * week));
+    final bool hasUploadThisWeek = videos.any((Map<String, dynamic> video) {
+      final Object? createdAt = video['createdAt'];
+      DateTime? date;
+      if (createdAt is Timestamp) {
+        date = createdAt.toDate();
+      } else if (createdAt is DateTime) {
+        date = createdAt;
+      } else if (createdAt is String) {
+        date = DateTime.tryParse(createdAt);
+      }
+      return date != null &&
+          date.isAfter(weekStart) &&
+          date.isBefore(weekEnd);
+    });
+    if (hasUploadThisWeek) {
+      weeksWithUploads++;
+    }
+  }
+  return weeksWithUploads / 10.0;
+}

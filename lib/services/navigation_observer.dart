@@ -28,15 +28,15 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
 
     final poppedRouteName = route.settings.name ?? route.runtimeType.toString();
     final isPoppingDiscoverView = poppedRouteName.toLowerCase().contains(
-      'discover',
-    );
+          'discover',
+        );
 
     if (isPoppingDiscoverView && previousRoute != null) {
       final previousRouteName =
           previousRoute.settings.name ?? previousRoute.runtimeType.toString();
       final isReturningToHome = previousRouteName.toLowerCase().contains(
-        'home',
-      );
+            'home',
+          );
 
       if (isReturningToHome) {
         debugPrint(
@@ -76,20 +76,16 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     );
 
     final isShellRoute = routeName == '/' || routeName.isEmpty;
-    final isHomeRoute =
-        routeName == '/home' ||
+    final isHomeRoute = routeName == '/home' ||
         routeName.contains('homeview') ||
         routeName == 'home';
-    final isDiscoverRoute =
-        routeName == '/discover' ||
+    final isDiscoverRoute = routeName == '/discover' ||
         routeName.contains('discoverview') ||
         routeName.contains('discover');
-    final isProfileRoute =
-        routeName == '/profile' ||
+    final isProfileRoute = routeName == '/profile' ||
         routeName.contains('profileview') ||
         routeName.contains('profile');
-    final isPlayerRoute =
-        routeName == '/player' ||
+    final isPlayerRoute = routeName == '/player' ||
         routeName.contains('playerscreen') ||
         routeName.contains('playerview');
 
@@ -100,17 +96,17 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
     final isStreamerCardRoute = routeName.contains('streamer_card');
     final isNetworkRoute =
         routeName == '/network' || routeName.contains('networkview');
-    final isCameraRoute =
-        routeName.contains('camera') ||
+    final isCameraRoute = routeName.contains('camera') ||
         routeName.contains('recording') ||
+        routeName.contains('preview') ||
+        routeName.contains('publish') ||
         routeName.contains('upload');
-    final isInboxRoute =
-        routeName.contains('inbox') ||
+    final isInboxRoute = routeName.contains('inbox') ||
         routeName.contains('chat') ||
         routeName.contains('message');
     final isSupportedPlaybackModal =
         (route is PopupRoute || route is ModalRoute) &&
-        (isCommentsModal || isShareSheetModal);
+            (isCommentsModal || isShareSheetModal);
 
     if (isShellRoute) {
       debugPrint(
@@ -166,8 +162,8 @@ class AppNavigationObserver extends RouteObserver<PageRoute<dynamic>> {
         reason: isStreamerCardRoute
             ? 'route_change_streamer'
             : isCameraRoute
-            ? 'route_change_camera'
-            : 'route_change_inbox',
+                ? 'route_change_camera'
+                : 'route_change_inbox',
       );
       _manager.pauseAll();
       debugPrint(

@@ -37,7 +37,8 @@ class _ContactSupportViewState extends State<ContactSupportView> {
   }
 
   Future<void> _submitTicket() async {
-    if (!_formKey.currentState!.validate()) return;
+    final formState = _formKey.currentState;
+    if (formState == null || !formState.validate()) return;
 
     setState(() {
       _isSubmitting = true;
@@ -46,7 +47,9 @@ class _ContactSupportViewState extends State<ContactSupportView> {
     try {
       final user = fa.FirebaseAuth.instance.currentUser;
       if (user == null) {
-        _showError('You must be logged in to submit a ticket');
+        if (mounted) {
+          _showError('You must be logged in to submit a ticket');
+        }
         return;
       }
 
@@ -77,6 +80,7 @@ class _ContactSupportViewState extends State<ContactSupportView> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
+      if (!mounted) return;
       _showSuccess();
 
       // Clear form
@@ -86,11 +90,15 @@ class _ContactSupportViewState extends State<ContactSupportView> {
         _selectedCategory = 'General';
       });
     } catch (e) {
-      _showError('Failed to submit ticket: $e');
+      if (mounted) {
+        _showError('Failed to submit ticket: $e');
+      }
     } finally {
-      setState(() {
-        _isSubmitting = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -114,6 +122,141 @@ class _ContactSupportViewState extends State<ContactSupportView> {
     );
   }
 
+  Widget _buildLabel(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.9),
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+
+  InputDecoration _fieldDecoration({
+    required String hintText,
+    IconData? icon,
+  }) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+    );
+    return InputDecoration(
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.09),
+      hintText: hintText,
+      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.45)),
+      prefixIcon: icon == null
+          ? null
+          : Icon(icon, color: Colors.white.withValues(alpha: 0.55), size: 20),
+      border: border,
+      enabledBorder: border,
+      errorBorder: border.copyWith(
+        borderSide: const BorderSide(color: AppColors.error),
+      ),
+      focusedBorder: border.copyWith(
+        borderSide: const BorderSide(color: AppColors.supportAccent, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    );
+  }
+
+  Widget _buildHero() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: AppColors.supportAccentGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.24),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child:
+                const Icon(Icons.support_agent, color: Colors.white, size: 30),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tell us what happened',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    height: 1.05,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Include the device, account, and steps you took so support can move quickly.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.verified_user_outlined,
+            color: Colors.white.withValues(alpha: 0.78),
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Support tickets are linked to your signed-in account. Typical response time is 24-48 hours.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.76),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -130,267 +273,140 @@ class _ContactSupportViewState extends State<ContactSupportView> {
           style: TextStyle(color: Colors.white),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: AppColors.supportAccentGradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
+      body: GestureDetector(
+        onTap: FocusScope.of(context).unfocus,
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            28 + MediaQuery.of(context).padding.bottom,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: Form(
+                key: _formKey,
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(
-                      Icons.support_agent,
-                      color: Colors.white,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'We\'re here to help!',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    _buildHero(),
+                    const SizedBox(height: 24),
+                    _buildLabel('Category *'),
                     const SizedBox(height: 8),
-                    Text(
-                      'Submit a ticket and we\'ll get back to you soon',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 14,
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedCategory,
+                      decoration: _fieldDecoration(
+                        hintText: 'Choose a support topic',
+                        icon: Icons.topic_outlined,
                       ),
-                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white),
+                      dropdownColor: AppColors.supportTopSurface,
+                      items: _categories.map((String category) {
+                        return DropdownMenuItem<String>(
+                          value: category,
+                          child: Text(category),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            _selectedCategory = newValue;
+                          });
+                        }
+                      },
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-              // Category dropdown
-              Text(
-                'Category *',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
-                  ),
-                ),
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedCategory,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
+                    const SizedBox(height: 20),
+                    _buildLabel('Subject *'),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _subjectController,
+                      decoration: _fieldDecoration(
+                        hintText: 'Brief description of your issue',
+                        icon: Icons.short_text,
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      textInputAction: TextInputAction.next,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter a subject';
+                        }
+                        return null;
+                      },
+                      inputFormatters: [
+                        LengthLimitingTextInputFormatter(100),
+                      ],
                     ),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  dropdownColor: AppColors.supportTopSurface,
-                  items: _categories.map((String category) {
-                    return DropdownMenuItem<String>(
-                      value: category,
-                      child: Text(category),
-                    );
-                  }).toList(),
-                  onChanged: (String? newValue) {
-                    if (newValue != null) {
-                      setState(() {
-                        _selectedCategory = newValue;
-                      });
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Subject field
-              Text(
-                'Subject *',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _subjectController,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.1),
-                  hintText: 'Brief description of your issue',
-                  hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.2),
+                    const SizedBox(height: 20),
+                    _buildLabel('Message *'),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _messageController,
+                      maxLines: 8,
+                      minLines: 6,
+                      decoration: _fieldDecoration(
+                        hintText:
+                            'What happened? What did you expect? Any error messages?',
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      textInputAction: TextInputAction.newline,
+                      validator: (value) {
+                        final trimmed = value?.trim() ?? '';
+                        if (trimmed.isEmpty) {
+                          return 'Please enter a message';
+                        }
+                        if (trimmed.length < 20) {
+                          return 'Message must be at least 20 characters';
+                        }
+                        return null;
+                      },
+                      inputFormatters: [
+                        LengthLimitingTextInputFormatter(1000),
+                      ],
                     ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: AppColors.supportAccent,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                style: const TextStyle(color: Colors.white),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a subject';
-                  }
-                  return null;
-                },
-                inputFormatters: [
-                  LengthLimitingTextInputFormatter(100),
-                ],
-              ),
-              const SizedBox(height: 24),
-              // Message field
-              Text(
-                'Message *',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _messageController,
-                maxLines: 8,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.1),
-                  hintText:
-                      'Please provide detailed information about your issue...',
-                  hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: AppColors.supportAccent,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                style: const TextStyle(color: Colors.white),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a message';
-                  }
-                  if (value.length < 20) {
-                    return 'Message must be at least 20 characters';
-                  }
-                  return null;
-                },
-                inputFormatters: [
-                  LengthLimitingTextInputFormatter(1000),
-                ],
-              ),
-              const SizedBox(height: 32),
-              // Submit button
-              ElevatedButton(
-                onPressed: _isSubmitting ? null : _submitTicket,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.supportAccent,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSubmitting ? null : _submitTicket,
+                        icon: _isSubmitting
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : const Icon(Icons.send_rounded,
+                                color: Colors.white),
+                        label: Text(
+                          _isSubmitting ? 'Submitting...' : 'Submit Ticket',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
-                      )
-                    : const Text(
-                        'Submit Ticket',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-              ),
-              const SizedBox(height: 16),
-              // Help text
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      color: Colors.white70,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Response time is typically within 24-48 hours',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 12,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.supportAccent,
+                          disabledBackgroundColor:
+                              AppColors.supportAccent.withValues(alpha: 0.45),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    _buildInfoCard(),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),

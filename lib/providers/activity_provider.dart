@@ -25,9 +25,15 @@ sealed class ActivityState with _$ActivityState {
 class ActivityNotifier extends StateNotifier<ActivityState> {
   ActivityNotifier() : super(const ActivityState());
 
+  static const String _forumIdPrefix = 'forum:';
+
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notifSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _forumSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _procSub;
+  final Map<String, app_user.User> _userCache = <String, app_user.User>{};
+  final Map<String, ActivityNotification> _primaryItems = {};
+  final Map<String, ActivityNotification> _forumItems = {};
   bool _isInitialized = false; // FIXED: Prevent multiple initializations
 
   bool get isInitialized => _isInitialized;
@@ -62,175 +68,74 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     try {
       debugPrint(
           '🔍 ActivityNotifier: Setting up Firestore listener for user: $userId');
-      debugPrint('🔍 ActivityNotifier: Path: activity/$userId/notifications');
+      debugPrint(
+          '🔍 ActivityNotifier: Primary path: notifications/$userId/items');
+      debugPrint('🔍 ActivityNotifier: Forum path: forumNotifications');
 
-      // First, try to get initial data from new structure (activity/{userId}/notifications)
-      QuerySnapshot<Map<String, dynamic>>? initialSnapshot;
-      bool usingLegacyStructure = false;
+      await _notifSub?.cancel();
+      await _forumSub?.cancel();
+      _primaryItems.clear();
+      _forumItems.clear();
 
       try {
-        initialSnapshot = await _db
-            .collection('activity')
-            .doc(userId)
-            .collection('notifications')
-            .orderBy('createdAt', descending: true)
-            .limit(50)
-            .get();
-
-        debugPrint(
-            '🔍 ActivityNotifier: Initial load (new structure) - ${initialSnapshot.docs.length} documents');
-
-        // 🔄 FALLBACK: If new structure is empty, try legacy structure
-        if (initialSnapshot.docs.isEmpty) {
-          debugPrint(
-            '🔄 ActivityNotifier: New structure empty, checking legacy structure...',
-          );
-          try {
-            initialSnapshot = await _db
-                .collection('notifications')
-                .doc(userId)
-                .collection('items')
-                .orderBy('timestamp', descending: true)
-                .limit(50)
-                .get();
-            usingLegacyStructure = true;
-            debugPrint(
-              '🔍 ActivityNotifier: Legacy structure found ${initialSnapshot.docs.length} documents',
-            );
-          } catch (legacyError) {
-            debugPrint(
-              '⚠️ ActivityNotifier: Legacy structure also failed: $legacyError',
-            );
-          }
-        }
-
-        if (initialSnapshot != null && initialSnapshot.docs.isNotEmpty) {
-          debugPrint(
-            '🔍 ActivityNotifier: Found ${initialSnapshot.docs.length} notifications',
-          );
-
-          final items = initialSnapshot.docs
-              .map((d) {
-                final data = d.data();
-                final notificationType = (data['type'] ?? 'like').toString();
-
-                // 🚫 FILTER: Skip test/fake accounts and test videos
-                final actorId = data['actorId'] ?? data['user']?['id'] ?? '';
-                final videoId = data['videoId'] ?? data['targetId'] ?? '';
-                if (_isTestAccount(actorId) || _isTestVideo(videoId)) {
-                  debugPrint(
-                    '🚫 ActivityNotifier: Skipping test notification ${d.id} - '
-                    'actorId: $actorId, videoId: $videoId',
-                  );
-                  return null;
-                }
-
-                // 🔍 DEBUG: Log raw notification data
-                debugPrint(
-                  '🔔 ActivityNotifier: Processing notification ${d.id} - '
-                  'type: $notificationType, '
-                  'structure: ${usingLegacyStructure ? "legacy" : "new"}, '
-                  'actorId: $actorId, '
-                  'actorUsername: ${data['actorUsername'] ?? data['user']?['username'] ?? 'N/A'}, '
-                  'targetId: $videoId, '
-                  'isRead: ${data['isRead'] ?? (data['status'] == 'delivered')}',
-                );
-
-                // Map to mobile model (handles both new and legacy structures)
-                final user = _mapToUser(data);
-                final timestamp = _getTimestamp(data);
-                final isRead = usingLegacyStructure
-                    ? (data['status'] == 'delivered')
-                    : (data['isRead'] ?? false);
-                final status = isRead ? 'delivered' : 'pending';
-
-                final mappedType = _typeFromString(notificationType);
-                debugPrint(
-                  '✅ ActivityNotifier: Mapped type "$notificationType" → ${mappedType.name}',
-                );
-
-                return ActivityNotification(
-                  id: d.id,
-                  type: mappedType,
-                  user: user,
-                  timestamp: timestamp,
-                  postThumbnailUrl: data['postThumbnailUrl'] as String?,
-                  commentText: data['commentText'] as String?,
-                  status: status,
-                  videoId: videoId.isEmpty ? null : videoId,
-                  milestoneType: data['milestoneType'] as String?,
-                  milestoneValue: data['milestoneValue'] as int?,
-                  parentCommentId: data['parentCommentId'] as String?,
-                );
-              })
-              .whereType<ActivityNotification>()
-              .toList();
-
-          debugPrint(
-            '📊 ActivityNotifier: Processed ${items.length} notifications - '
-            'types: ${items.map((n) => n.type.name).join(", ")}',
-          );
-
-          final grouped = <String, List<ActivityNotification>>{};
-          for (final n in items) {
-            final key = _groupKey(n.timestamp);
-            grouped.putIfAbsent(key, () => []).add(n);
-          }
-
-          state = state.copyWith(
-            grouped: grouped,
-            isLoading: false,
-            hasError: false,
-            error: null,
-          );
-          debugPrint(
-              '✅ Initial Firestore data loaded successfully with ${items.length} notifications');
-        } else {
-          // No notifications found
-          state = state.copyWith(
-            grouped: {},
-            isLoading: false,
-            hasError: false,
-            error: null,
-          );
-          debugPrint('ℹ️ No notifications found for user: $userId');
-        }
-      } catch (e) {
-        debugPrint('🚨 Error loading initial data: $e');
-        state = state.copyWith(
-          isLoading: false,
-          hasError: true,
-          error: 'Failed to load notifications: ${e.toString()}',
-        );
-        return;
-      }
-
-      // Set up real-time listener (use same structure as initial load)
-      if (usingLegacyStructure) {
-        debugPrint(
-          '🔄 ActivityNotifier: Setting up real-time listener for LEGACY structure',
-        );
-        _notifSub = _db
+        final primarySnapshot = await _db
             .collection('notifications')
             .doc(userId)
             .collection('items')
             .orderBy('timestamp', descending: true)
-            .limit(50)
-            .snapshots()
-            .listen(_handleLegacySnapshot);
-      } else {
+            .limit(75)
+            .get();
+        await _replacePrimarySnapshot(primarySnapshot);
+      } catch (e) {
         debugPrint(
-          '🔄 ActivityNotifier: Setting up real-time listener for NEW structure',
-        );
-        _notifSub = _db
-            .collection('activity')
-            .doc(userId)
-            .collection('notifications')
-            .orderBy('createdAt', descending: true)
-            .limit(50)
-            .snapshots()
-            .listen(_handleNewStructureSnapshot);
+            '⚠️ ActivityNotifier: Primary notifications denied/failed: $e');
       }
+
+      try {
+        final forumSnapshot = await _db
+            .collection('forumNotifications')
+            .where('userId', isEqualTo: userId)
+            .orderBy('createdAt', descending: true)
+            .limit(75)
+            .get();
+        await _replaceForumSnapshot(forumSnapshot);
+      } catch (e) {
+        debugPrint(
+            '⚠️ ActivityNotifier: Forum notifications denied/failed: $e');
+      }
+
+      _rebuildGroupedState();
+
+      _notifSub = _db
+          .collection('notifications')
+          .doc(userId)
+          .collection('items')
+          .orderBy('timestamp', descending: true)
+          .limit(75)
+          .snapshots()
+          .listen(
+        (snap) => unawaited(_handlePrimarySnapshot(snap)),
+        onError: (Object error) {
+          debugPrint('⚠️ ActivityNotifier: Primary listener error: $error');
+          _primaryItems.clear();
+          _rebuildGroupedState();
+        },
+      );
+
+      _forumSub = _db
+          .collection('forumNotifications')
+          .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
+          .limit(75)
+          .snapshots()
+          .listen(
+        (snap) => unawaited(_handleForumSnapshot(snap)),
+        onError: (Object error) {
+          debugPrint('⚠️ ActivityNotifier: Forum listener error: $error');
+          _forumItems.clear();
+          _rebuildGroupedState();
+        },
+      );
     } catch (e) {
       debugPrint('🚨 Error setting up Firestore listener: $e');
       state = state.copyWith(
@@ -241,180 +146,197 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     }
   }
 
-  void _handleNewStructureSnapshot(QuerySnapshot<Map<String, dynamic>> snap) {
+  Future<void> _handlePrimarySnapshot(
+      QuerySnapshot<Map<String, dynamic>> snap) async {
     try {
-      debugPrint(
-          '🔍 ActivityNotifier: Real-time update (new structure) - ${snap.docs.length} documents');
-
-      final items = snap.docs
-          .map((d) {
-            final data = d.data();
-
-            // 🚫 FILTER: Skip test/fake accounts and test videos
-            final actorId = data['actorId'] ?? '';
-            final videoId = data['videoId'] ?? data['targetId'] ?? '';
-            if (_isTestAccount(actorId) || _isTestVideo(videoId)) {
-              debugPrint(
-                '🚫 ActivityNotifier: Skipping test notification ${d.id} - '
-                'actorId: $actorId, videoId: $videoId',
-              );
-              return null;
-            }
-
-            // 🔍 DEBUG: Log raw notification data
-            final notificationType = (data['type'] ?? 'like').toString();
-            debugPrint(
-              '🔔 ActivityNotifier: Processing notification ${d.id} - '
-              'type: $notificationType, '
-              'actorId: $actorId, '
-              'targetId: $videoId',
-            );
-
-            // Map website structure to mobile model
-            final user = _mapToUser(data);
-            final timestamp = _getTimestamp(data);
-            final isRead = data['isRead'] ?? false;
-            final status = isRead ? 'delivered' : 'pending';
-
-            final mappedType = _typeFromString(notificationType);
-            debugPrint(
-              '✅ ActivityNotifier: Mapped type "$notificationType" → ${mappedType.name}',
-            );
-
-            return ActivityNotification(
-              id: d.id,
-              type: mappedType,
-              user: user,
-              timestamp: timestamp,
-              postThumbnailUrl: data['postThumbnailUrl'] as String?,
-              commentText: data['commentText'] as String?,
-              status: status,
-              videoId: videoId.isEmpty ? null : videoId,
-              milestoneType: data['milestoneType'] as String?,
-              milestoneValue: data['milestoneValue'] as int?,
-              parentCommentId: data['parentCommentId'] as String?,
-            );
-          })
-          .whereType<ActivityNotification>()
-          .toList();
-
-      // 📊 DEBUG: Log notification type distribution
-      final typeCounts = <String, int>{};
-      for (final item in items) {
-        typeCounts[item.type.name] = (typeCounts[item.type.name] ?? 0) + 1;
-      }
-      debugPrint(
-        '✅ Real-time update successful with ${items.length} notifications - '
-        'types: ${typeCounts.entries.map((e) => '${e.key}:${e.value}').join(", ")}',
-      );
-
-      final grouped = <String, List<ActivityNotification>>{};
-      for (final n in items) {
-        final key = _groupKey(n.timestamp);
-        grouped.putIfAbsent(key, () => []).add(n);
-      }
-
-      state = state.copyWith(
-        grouped: grouped,
-        isLoading: false,
-        hasError: false,
-        error: null,
-      );
+      await _replacePrimarySnapshot(snap);
+      _rebuildGroupedState();
     } catch (e) {
-      debugPrint('🚨 Real-time update parsing error: $e');
+      debugPrint('🚨 Primary notification parsing error: $e');
       state = state.copyWith(
         hasError: true,
-        error: 'Failed to parse real-time updates: ${e.toString()}',
+        error: 'Failed to parse notifications: ${e.toString()}',
       );
     }
   }
 
-  void _handleLegacySnapshot(QuerySnapshot<Map<String, dynamic>> snap) {
+  Future<void> _handleForumSnapshot(
+      QuerySnapshot<Map<String, dynamic>> snap) async {
     try {
-      debugPrint(
-          '🔍 ActivityNotifier: Real-time update (legacy structure) - ${snap.docs.length} documents');
-
-      final items = snap.docs
-          .map((d) {
-            final data = d.data();
-
-            // 🚫 FILTER: Skip test/fake accounts and test videos
-            final actorId = data['user']?['id'] ?? '';
-            final videoId = data['videoId'] ?? '';
-            if (_isTestAccount(actorId) || _isTestVideo(videoId)) {
-              debugPrint(
-                '🚫 ActivityNotifier: Skipping test notification ${d.id} - '
-                'actorId: $actorId, videoId: $videoId',
-              );
-              return null;
-            }
-
-            // 🔍 DEBUG: Log raw notification data
-            final notificationType = (data['type'] ?? 'like').toString();
-            debugPrint(
-              '🔔 ActivityNotifier: Processing notification ${d.id} - '
-              'type: $notificationType, '
-              'user: $actorId, '
-              'targetId: $videoId',
-            );
-
-            // Map legacy structure to mobile model
-            final user = _mapToUser(data);
-            final timestamp = _getTimestamp(data);
-            final isRead = data['status'] == 'delivered';
-            final status = isRead ? 'delivered' : 'pending';
-
-            final mappedType = _typeFromString(notificationType);
-            debugPrint(
-              '✅ ActivityNotifier: Mapped type "$notificationType" → ${mappedType.name}',
-            );
-
-            return ActivityNotification(
-              id: d.id,
-              type: mappedType,
-              user: user,
-              timestamp: timestamp,
-              postThumbnailUrl: data['postThumbnailUrl'] as String?,
-              commentText: data['commentText'] as String?,
-              status: status,
-              videoId: videoId.isEmpty ? null : videoId,
-              milestoneType: data['milestoneType'] as String?,
-              milestoneValue: data['milestoneValue'] as int?,
-              parentCommentId: data['parentCommentId'] as String?,
-            );
-          })
-          .whereType<ActivityNotification>()
-          .toList();
-
-      // 📊 DEBUG: Log notification type distribution
-      final typeCounts = <String, int>{};
-      for (final item in items) {
-        typeCounts[item.type.name] = (typeCounts[item.type.name] ?? 0) + 1;
-      }
-      debugPrint(
-        '✅ Real-time update successful with ${items.length} notifications - '
-        'types: ${typeCounts.entries.map((e) => '${e.key}:${e.value}').join(", ")}',
-      );
-
-      final grouped = <String, List<ActivityNotification>>{};
-      for (final n in items) {
-        final key = _groupKey(n.timestamp);
-        grouped.putIfAbsent(key, () => []).add(n);
-      }
-
-      state = state.copyWith(
-        grouped: grouped,
-        isLoading: false,
-        hasError: false,
-        error: null,
-      );
+      await _replaceForumSnapshot(snap);
+      _rebuildGroupedState();
     } catch (e) {
-      debugPrint('🚨 Real-time update parsing error: $e');
+      debugPrint('🚨 Forum notification parsing error: $e');
       state = state.copyWith(
         hasError: true,
-        error: 'Failed to parse real-time updates: ${e.toString()}',
+        error: 'Failed to parse forum notifications: ${e.toString()}',
       );
     }
+  }
+
+  Future<void> _replacePrimarySnapshot(
+      QuerySnapshot<Map<String, dynamic>> snap) async {
+    final mappedItems = await Future.wait(
+      snap.docs.map(_mapPrimaryNotificationDoc),
+    );
+    _primaryItems
+      ..clear()
+      ..addEntries(
+        mappedItems
+            .whereType<ActivityNotification>()
+            .map((item) => MapEntry(item.id, item)),
+      );
+    debugPrint(
+      '✅ ActivityNotifier: Primary notifications loaded: ${_primaryItems.length}',
+    );
+  }
+
+  Future<void> _replaceForumSnapshot(
+      QuerySnapshot<Map<String, dynamic>> snap) async {
+    final mappedItems = await Future.wait(
+      snap.docs.map(_mapForumNotificationDoc),
+    );
+    _forumItems
+      ..clear()
+      ..addEntries(
+        mappedItems
+            .whereType<ActivityNotification>()
+            .map((item) => MapEntry(item.id, item)),
+      );
+    debugPrint(
+      '✅ ActivityNotifier: Forum notifications loaded: ${_forumItems.length}',
+    );
+  }
+
+  void _rebuildGroupedState() {
+    final rawItems = <ActivityNotification>[
+      ..._primaryItems.values,
+      ..._forumItems.values,
+    ]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+    final items = _dedupeNotifications(rawItems);
+
+    final grouped = <String, List<ActivityNotification>>{};
+    for (final n in items) {
+      final key = _groupKey(n.timestamp);
+      grouped.putIfAbsent(key, () => []).add(n);
+    }
+
+    state = state.copyWith(
+      grouped: grouped,
+      isLoading: false,
+      hasError: false,
+      error: null,
+    );
+  }
+
+  List<ActivityNotification> _dedupeNotifications(
+    List<ActivityNotification> items,
+  ) {
+    final byKey = <String, ActivityNotification>{};
+    for (final item in items) {
+      final key = _dedupeKey(item);
+      final existing = byKey[key];
+      if (existing == null || item.timestamp.isAfter(existing.timestamp)) {
+        byKey[key] = item;
+      }
+    }
+
+    final deduped = byKey.values.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final dropped = items.length - deduped.length;
+    if (dropped > 0) {
+      debugPrint('🧹 ActivityNotifier: Deduped $dropped repeated rows');
+    }
+    return deduped;
+  }
+
+  String _dedupeKey(ActivityNotification notification) {
+    final targetId = notification.videoId ??
+        notification.threadId ??
+        notification.postId ??
+        notification.parentCommentId ??
+        notification.commentId ??
+        notification.chatId ??
+        '';
+    return [
+      notification.type.name,
+      notification.user.id,
+      targetId,
+      notification.commentText ?? '',
+    ].join('|');
+  }
+
+  Future<ActivityNotification?> _mapPrimaryNotificationDoc(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    final actorId = _notificationActorId(data);
+    final videoId = _notificationVideoId(data);
+    if (_isTestAccount(actorId) || _isTestVideo(videoId)) {
+      return null;
+    }
+
+    final notificationType = (data['type'] ?? 'like').toString();
+    final isRead = data['isRead'] == true;
+    return ActivityNotification(
+      id: doc.id,
+      type: _typeFromString(notificationType),
+      user: await _mapToUser(data),
+      timestamp: _getTimestamp(data),
+      postThumbnailUrl: _stringField(data, const [
+        'postThumbnailUrl',
+        'thumbnailUrl',
+        'thumbnailURL',
+        'imageUrl',
+      ]).ifEmpty(null),
+      commentText: _stringField(data, const ['commentText', 'body', 'title'])
+          .ifEmpty(null),
+      status: isRead ? 'delivered' : 'pending',
+      videoId: videoId.ifEmpty(null),
+      chatId: _stringField(data, const ['chatId']).ifEmpty(null),
+      actionUrl: _stringField(data, const ['actionUrl']).ifEmpty(null),
+      actionType:
+          _stringField(data, const ['actionType']).ifEmpty(notificationType),
+      threadId: _stringField(data, const ['threadId']).ifEmpty(null),
+      postId: _stringField(data, const ['postId']).ifEmpty(null),
+      commentId: _stringField(data, const ['commentId']).ifEmpty(null),
+      milestoneType: data['milestoneType'] as String?,
+      milestoneValue: data['milestoneValue'] as int?,
+      parentCommentId:
+          _stringField(data, const ['parentCommentId', 'commentId'])
+              .ifEmpty(null),
+    );
+  }
+
+  Future<ActivityNotification?> _mapForumNotificationDoc(
+      QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    final data = doc.data();
+    final actorId = _notificationActorId(data);
+    if (_isTestAccount(actorId)) {
+      return null;
+    }
+
+    final notificationType = (data['type'] ?? 'comment').toString();
+    final isRead = data['read'] == true;
+    return ActivityNotification(
+      id: '$_forumIdPrefix${doc.id}',
+      type: _typeFromString(notificationType),
+      user: await _mapToUser(data),
+      timestamp: _getTimestamp(data),
+      postThumbnailUrl: _stringField(data, const [
+        'postThumbnailUrl',
+        'thumbnailUrl',
+        'thumbnailURL',
+      ]).ifEmpty(null),
+      commentText: _stringField(data, const ['commentText', 'body', 'title'])
+          .ifEmpty(null),
+      status: isRead ? 'delivered' : 'pending',
+      threadId: _stringField(data, const ['threadId', 'postId']).ifEmpty(null),
+      postId: _stringField(data, const ['postId', 'threadId']).ifEmpty(null),
+      commentId: _stringField(data, const ['commentId']).ifEmpty(null),
+      parentCommentId:
+          _stringField(data, const ['postId', 'threadId']).ifEmpty(null),
+    );
   }
 
   Future<void> markAllDelivered(String userId) async {
@@ -422,38 +344,39 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       int totalMarked = 0;
       final batch = _db.batch();
 
-      // Try new structure first
       try {
         final qs = await _db
-            .collection('activity')
-            .doc(userId)
             .collection('notifications')
+            .doc(userId)
+            .collection('items')
             .where('isRead', isEqualTo: false)
             .limit(100)
             .get();
         for (final d in qs.docs) {
-          batch.update(d.reference, {'isRead': true});
+          batch.update(d.reference, {
+            'isRead': true,
+            'readAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
         }
         totalMarked += qs.docs.length;
       } catch (e) {
-        debugPrint('⚠️ New structure mark all failed: $e');
+        debugPrint('⚠️ Primary mark all failed: $e');
       }
 
-      // Also try legacy structure
       try {
-        final qsLegacy = await _db
-            .collection('notifications')
-            .doc(userId)
-            .collection('items')
-            .where('status', isEqualTo: 'pending')
+        final qsForum = await _db
+            .collection('forumNotifications')
+            .where('userId', isEqualTo: userId)
+            .where('read', isEqualTo: false)
             .limit(100)
             .get();
-        for (final d in qsLegacy.docs) {
-          batch.update(d.reference, {'status': 'delivered'});
+        for (final d in qsForum.docs) {
+          batch.update(d.reference, {'read': true});
         }
-        totalMarked += qsLegacy.docs.length;
+        totalMarked += qsForum.docs.length;
       } catch (e) {
-        debugPrint('⚠️ Legacy structure mark all failed: $e');
+        debugPrint('⚠️ Forum mark all failed: $e');
       }
 
       if (totalMarked > 0) {
@@ -474,32 +397,25 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       final currentUser = fa.FirebaseAuth.instance.currentUser;
       if (currentUser == null) return;
 
-      // Try new structure first
-      try {
+      if (notificationId.startsWith(_forumIdPrefix)) {
+        final forumId = notificationId.substring(_forumIdPrefix.length);
         await _db
-            .collection('activity')
-            .doc(currentUser.uid)
+            .collection('forumNotifications')
+            .doc(forumId)
+            .update({'read': true});
+        debugPrint('✅ Marked forum notification $forumId as read');
+      } else {
+        await _db
             .collection('notifications')
+            .doc(currentUser.uid)
+            .collection('items')
             .doc(notificationId)
-            .update({'isRead': true});
-        debugPrint(
-            '✅ Marked notification $notificationId as read (new structure)');
-      } catch (e) {
-        // Fallback to legacy structure
-        try {
-          await _db
-              .collection('notifications')
-              .doc(currentUser.uid)
-              .collection('items')
-              .doc(notificationId)
-              .update({'status': 'delivered'});
-          debugPrint(
-              '✅ Marked notification $notificationId as read (legacy structure)');
-        } catch (legacyError) {
-          debugPrint(
-              '❌ Failed to mark notification as read in both structures: $e, $legacyError');
-          rethrow;
-        }
+            .update({
+          'isRead': true,
+          'readAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        debugPrint('✅ Marked notification $notificationId as read');
       }
 
       // Update local state immediately for better UX
@@ -537,42 +453,177 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
     return count;
   }
 
-  /// Map website structure to User model
-  app_user.User _mapToUser(Map<String, dynamic> data) {
-    // New structure: flat fields (actorId, actorUsername, etc.)
-    if (data.containsKey('actorId')) {
-      return app_user.User(
-        id: data['actorId'] as String? ?? '',
-        username: data['actorUsername'] as String? ?? '',
-        displayName: data['actorDisplayName'] as String? ?? '',
-        avatarURL: data['actorAvatarUrl'] as String?,
-        onlineStatus: 'offline',
-        hashtags: const [],
-        followerCount: 0,
-        followingCount: 0,
-        postCount: 0,
-        bio: null,
-        aiSelf: '',
-        calendarEvents: const [],
-        privacy: const app_user.UserPrivacy(),
-        pinnedVideoIds: const [],
-        role: 'user',
-      );
+  String _stringField(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+    return '';
+  }
+
+  String _notificationActorId(Map<String, dynamic> data) {
+    final nestedActor = data['actor'];
+    final nestedActorMap = nestedActor is Map ? nestedActor : null;
+    final nestedUser = data['user'];
+    final nestedUserMap = nestedUser is Map ? nestedUser : null;
+    final flatId = _stringField(data, const <String>[
+      'actor.id',
+      'actorId',
+      'fromUserId',
+      'sourceUserId',
+      'senderId',
+      'likerId',
+      'commenterId',
+      'followerId',
+      'taggerId',
+      'mentionerId',
+    ]);
+    if (flatId.isNotEmpty) return flatId;
+    final actorId =
+        (nestedActorMap?['id'] ?? nestedActorMap?['uid'] ?? '').toString();
+    if (actorId.trim().isNotEmpty) return actorId.trim();
+    return (nestedUserMap?['id'] ?? nestedUserMap?['uid'] ?? '').toString();
+  }
+
+  String _notificationVideoId(Map<String, dynamic> data) {
+    final metadata = data['metadata'];
+    final metadataMap = metadata is Map ? metadata : null;
+    return _stringField(data, const <String>[
+          'videoId',
+          'targetId',
+          'mediaId',
+        ]).ifEmpty((metadataMap?['videoId'] ?? '').toString().trim()) ??
+        '';
+  }
+
+  Future<app_user.User?> _fetchUser(String userId) async {
+    if (userId.isEmpty) return null;
+    final cached = _userCache[userId];
+    if (cached != null) return cached;
+
+    try {
+      final doc = await _db.collection('users').doc(userId).get();
+      if (!doc.exists) return null;
+      final data = <String, dynamic>{
+        'id': doc.id,
+        ...?doc.data(),
+      };
+      final user = app_user.User.fromMap(data);
+      _userCache[userId] = user;
+      return user;
+    } catch (e) {
+      debugPrint('⚠️ ActivityNotifier: Failed to fetch user $userId: $e');
+      return null;
+    }
+  }
+
+  /// Map website and legacy notification structures to a populated User model.
+  Future<app_user.User> _mapToUser(Map<String, dynamic> data) async {
+    final nestedActor = data['actor'];
+    if (nestedActor is Map && nestedActor.isNotEmpty) {
+      final actorMap = Map<String, dynamic>.from(nestedActor);
+      final actor = await _userFromNotificationMap(actorMap);
+      if (actor != null) {
+        _userCache[actor.id] = actor;
+        return actor;
+      }
     }
 
-    // Legacy structure: nested user object
-    if (data.containsKey('user')) {
-      return const UserConverter().fromJson(
-        Map<String, dynamic>.from(data['user'] ?? {}),
-      );
+    final nestedUser = data['user'];
+    if (nestedUser is Map && nestedUser.isNotEmpty) {
+      final nestedMap = Map<String, dynamic>.from(nestedUser);
+      final nested = await _userFromNotificationMap(nestedMap);
+      if (nested != null) {
+        _userCache[nested.id] = nested;
+        return nested;
+      }
     }
 
-    // Fallback: create minimal user
+    final actorId = _notificationActorId(data);
+    final fetchedUser = await _fetchUser(actorId);
+    if (fetchedUser != null) return fetchedUser;
+
+    final username = _stringField(data, const <String>[
+      'actorUsername',
+      'fromUsername',
+      'fromUserName',
+      'senderUsername',
+      'likerUsername',
+      'commenterUsername',
+      'followerUsername',
+      'taggerUsername',
+      'mentionerUsername',
+    ]);
+    final displayName = _stringField(data, const <String>[
+      'actorDisplayName',
+      'fromDisplayName',
+      'fromUserName',
+      'senderDisplayName',
+      'likerDisplayName',
+      'commenterDisplayName',
+      'followerDisplayName',
+      'taggerDisplayName',
+      'mentionerDisplayName',
+    ]);
+    final avatarUrl = _stringField(data, const <String>[
+      'actorAvatarUrl',
+      'actorAvatarURL',
+      'fromAvatarUrl',
+      'fromAvatarURL',
+      'senderAvatarUrl',
+      'avatarURL',
+      'avatarUrl',
+    ]);
+
     return app_user.User(
-      id: '',
-      username: 'Unknown',
-      displayName: 'Unknown User',
-      avatarURL: null,
+      id: actorId,
+      username: username.isNotEmpty ? username : 'unknown',
+      displayName: displayName.isNotEmpty
+          ? displayName
+          : (username.isNotEmpty ? username : 'Unknown User'),
+      avatarURL: avatarUrl.isNotEmpty ? avatarUrl : null,
+      onlineStatus: 'offline',
+      hashtags: const [],
+      followerCount: 0,
+      followingCount: 0,
+      postCount: 0,
+      bio: null,
+      aiSelf: '',
+      calendarEvents: const [],
+      privacy: const app_user.UserPrivacy(),
+      pinnedVideoIds: const [],
+      role: 'user',
+    );
+  }
+
+  Future<app_user.User?> _userFromNotificationMap(
+      Map<String, dynamic> data) async {
+    final id = _stringField(data, const ['id', 'uid', 'userId']);
+    if (id.isEmpty) return null;
+
+    final fetchedUser = await _fetchUser(id);
+    if (fetchedUser != null) return fetchedUser;
+
+    final username =
+        _stringField(data, const ['username', 'userName', 'handle']);
+    final displayName =
+        _stringField(data, const ['displayName', 'name', 'username']);
+    final avatarUrl = _stringField(data, const [
+      'avatarURL',
+      'avatarUrl',
+      'photoURL',
+      'photoUrl',
+    ]);
+
+    return app_user.User(
+      id: id,
+      username: username.isNotEmpty ? username : id,
+      displayName: displayName.isNotEmpty
+          ? displayName
+          : (username.isNotEmpty ? username : id),
+      avatarURL: avatarUrl.isNotEmpty ? avatarUrl : null,
       onlineStatus: 'offline',
       hashtags: const [],
       followerCount: 0,
@@ -928,7 +979,10 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   void reset() {
     _isInitialized = false;
     _notifSub?.cancel();
+    _forumSub?.cancel();
     _procSub?.cancel();
+    _primaryItems.clear();
+    _forumItems.clear();
     state = const ActivityState();
   }
 
@@ -936,6 +990,7 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
   void dispose() {
     debugPrint('🧹 ActivityNotifier: Disposing and cancelling listeners');
     _notifSub?.cancel();
+    _forumSub?.cancel();
     _procSub?.cancel();
     _isInitialized = false;
     super.dispose();
@@ -947,23 +1002,33 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
         '🔍 ActivityNotifier: Mapping notification type "$s" (normalized: "$normalized")');
 
     switch (normalized) {
+      case 'follow_user':
       case 'follow':
       case 'follows':
         return ActivityNotificationType.follow;
+      case 'like_video':
+      case 'like_post':
       case 'like':
       case 'likes':
         return ActivityNotificationType.like;
+      case 'comment_video':
+      case 'comment_post':
       case 'comment':
       case 'comments':
         return ActivityNotificationType.comment;
       case 'commentreply':
       case 'comment_reply':
+      case 'reply_video_comment':
+      case 'replyvideocomment':
+      case 'video_comment_reply':
+      case 'comment_video_reply':
       case 'reply':
       case 'replies':
         return ActivityNotificationType.commentReply;
       case 'tag':
       case 'tags':
         return ActivityNotificationType.tag;
+      case 'mention_user':
       case 'mention':
       case 'mentions':
         return ActivityNotificationType.mention;
@@ -977,10 +1042,16 @@ class ActivityNotifier extends StateNotifier<ActivityState> {
       case 'livestream':
       case 'live_stream':
       case 'live':
+      case 'new_event':
+      case 'newevent':
         return ActivityNotificationType.liveStream;
       case 'admin_broadcast':
       case 'adminbroadcast':
       case 'broadcast':
+      case 'content_plan_expired':
+      case 'contentplanexpired':
+      case 'content_plan':
+      case 'plan_expired':
         return ActivityNotificationType.adminBroadcast;
       default:
         debugPrint(
@@ -1005,9 +1076,60 @@ final activityProvider =
   return ActivityNotifier();
 });
 
-/// Provider for unread activity count only - does NOT keep activity provider alive
-final unreadActivityCountProvider = Provider<int>((ref) {
-  // This will ONLY watch the provider when someone requests the count
-  // and won't prevent the activity provider from disposing
-  return 0; // Default to 0 when activity provider is not initialized
+/// Live unread Activity badge count, matching the website contract.
+final unreadActivityCountProvider = StreamProvider.autoDispose<int>((ref) {
+  final currentUser = fa.FirebaseAuth.instance.currentUser;
+  if (currentUser == null) {
+    return Stream<int>.value(0);
+  }
+
+  final controller = StreamController<int>();
+  var primaryUnread = 0;
+  var forumUnread = 0;
+
+  void emit() {
+    if (!controller.isClosed) {
+      controller.add(primaryUnread + forumUnread);
+    }
+  }
+
+  final primarySub = FirebaseFirestore.instance
+      .collection('notifications')
+      .doc(currentUser.uid)
+      .collection('items')
+      .where('isRead', isEqualTo: false)
+      .snapshots()
+      .listen((snapshot) {
+    primaryUnread = snapshot.docs.length;
+    emit();
+  }, onError: (_) {
+    primaryUnread = 0;
+    emit();
+  });
+
+  final forumSub = FirebaseFirestore.instance
+      .collection('forumNotifications')
+      .where('userId', isEqualTo: currentUser.uid)
+      .where('read', isEqualTo: false)
+      .snapshots()
+      .listen((snapshot) {
+    forumUnread = snapshot.docs.length;
+    emit();
+  }, onError: (_) {
+    forumUnread = 0;
+    emit();
+  });
+
+  emit();
+  ref.onDispose(() {
+    primarySub.cancel();
+    forumSub.cancel();
+    controller.close();
+  });
+
+  return controller.stream;
 });
+
+extension on String {
+  String? ifEmpty(String? fallback) => isEmpty ? fallback : this;
+}

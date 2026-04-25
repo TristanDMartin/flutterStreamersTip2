@@ -13,8 +13,10 @@ import '../services/offline_inbox_service.dart';
 import '../services/chat_service.dart';
 import '../services/draft_sharing_service.dart';
 import '../services/local_draft_service.dart';
+import '../services/unified_avatar_service.dart';
 import '../services/user_blocking_service.dart';
 import '../utils/avatar_url_resolver.dart';
+import '../utils/responsive_layout.dart';
 import '../providers/unread_messages_provider.dart';
 import '../routing/app_navigator.dart';
 import 'new_message_view.dart';
@@ -42,6 +44,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   static const Color _secondaryColor = Color(0xFF7768DF);
   static const Color _accentColor = Color(0xFF1670DE);
   static const Color _successColor = Color(0xFF4CAF50);
+  static const bool _showSharedDraftsTab = false;
 
   // Data
   List<app_chat.Chat> _chats = [];
@@ -53,6 +56,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   final Map<String, bool> _onlineStatus = {};
   final Map<String, StreamSubscription<DocumentSnapshot>>
       _unreadCountSubscriptions = {};
+  final Map<String, StreamSubscription<DocumentSnapshot>>
+      _userProfileSubscriptions = {};
 
   // State
   bool _isLoading = true;
@@ -63,7 +68,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: _showSharedDraftsTab ? 2 : 1,
+      vsync: this,
+    );
 
     _initializeRealTimeUpdates();
     _blockingService.blockListRevision.addListener(_handleBlockListChanged);
@@ -87,6 +95,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       subscription.cancel();
     }
     _unreadCountSubscriptions.clear();
+    for (final subscription in _userProfileSubscriptions.values) {
+      subscription.cancel();
+    }
+    _userProfileSubscriptions.clear();
     super.dispose();
   }
 
@@ -107,6 +119,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
         // Set up real-time unread count listeners for each chat
         _setupUnreadCountListeners(validChats);
+        _setupUserProfileListeners(validChats);
 
         await _loadUserDataForChats(validChats);
         await _offlineService.cacheChats(validChats);
@@ -128,9 +141,6 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         }
       },
     );
-
-    // Set up real-time user profile listeners for existing chats
-    _setupUserProfileListeners();
   }
 
   /// Set up real-time listeners for unread counts per chat
@@ -185,11 +195,23 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
   }
 
-  void _setupUserProfileListeners() {
+  void _setupUserProfileListeners(List<app_chat.Chat> chats) {
     final currentUser = _inboxService.auth.currentUser;
     if (currentUser == null) return;
 
-    for (final chat in _chats) {
+    final nextUserIds = chats
+        .expand((chat) => chat.participants)
+        .where((id) => id.isNotEmpty && id != currentUser.uid)
+        .toSet();
+    final subscriptionsToCancel = _userProfileSubscriptions.keys
+        .where((id) => !nextUserIds.contains(id))
+        .toList();
+    for (final userId in subscriptionsToCancel) {
+      _userProfileSubscriptions[userId]?.cancel();
+      _userProfileSubscriptions.remove(userId);
+    }
+
+    for (final chat in chats) {
       // Filter out empty IDs and current user
       final validParticipants = chat.participants
           .where((id) => id.isNotEmpty && id != currentUser.uid)
@@ -198,9 +220,10 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       if (validParticipants.isEmpty) continue;
 
       final otherUserId = validParticipants.first;
+      if (_userProfileSubscriptions.containsKey(otherUserId)) continue;
 
       // Listen to user profile changes
-      FirebaseFirestore.instance
+      final subscription = FirebaseFirestore.instance
           .collection('users')
           .doc(otherUserId)
           .snapshots()
@@ -229,6 +252,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           });
         }
       });
+      _userProfileSubscriptions[otherUserId] = subscription;
     }
   }
 
@@ -291,6 +315,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
       final validChats = await _filterVisibleChats(allChats);
 
       // Load user profiles and unread counts for each chat
+      _setupUnreadCountListeners(validChats);
+      _setupUserProfileListeners(validChats);
       await _loadUserDataForChats(validChats);
 
       setState(() {
@@ -325,7 +351,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }).toList();
   }
 
-  Future<List<app_chat.Chat>> _filterVisibleChats(List<app_chat.Chat> chats) async {
+  Future<List<app_chat.Chat>> _filterVisibleChats(
+      List<app_chat.Chat> chats) async {
     final validChats = _filterValidChats(chats);
     final blockedUserIds = (await _blockingService.getBlockedUsers()).toSet();
     if (blockedUserIds.isEmpty) {
@@ -503,16 +530,28 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   }
 
   Widget _buildHeader() {
+    final responsive = context.responsive;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      margin: EdgeInsets.fromLTRB(
+        responsive.spacing(20),
+        responsive.spacing(12),
+        responsive.spacing(20),
+        responsive.spacing(12),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        responsive.spacing(20),
+        responsive.spacing(18),
+        responsive.spacing(20),
+        responsive.spacing(18),
+      ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: AppColors.supportSurfaceGradient,
         ),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(responsive.radius(28)),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.10),
         ),
@@ -538,17 +577,17 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     color: Colors.white, size: 20),
                 padding: const EdgeInsets.all(8),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: responsive.spacing(16)),
               // Title with better typography
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Messages',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 28,
+                        fontSize: responsive.font(28),
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
                       ),
@@ -557,7 +596,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       '${_chats.length} conversations',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.6),
-                        fontSize: 14,
+                        fontSize: responsive.font(14),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -735,11 +774,18 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   }
 
   Widget _buildSearchBar() {
+    final responsive = context.responsive;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      margin: EdgeInsets.fromLTRB(
+        responsive.spacing(20),
+        0,
+        responsive.spacing(20),
+        responsive.spacing(10),
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(responsive.radius(22)),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.12),
           width: 1,
@@ -761,7 +807,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               : 'Search drafts...',
           hintStyle: TextStyle(
             color: Colors.white.withValues(alpha: 0.5),
-            fontSize: 16,
+            fontSize: responsive.font(16),
             fontWeight: FontWeight.w400,
           ),
           filled: false,
@@ -771,7 +817,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             child: Icon(
               Icons.search_rounded,
               color: Colors.white.withValues(alpha: 0.6),
-              size: 20,
+              size: responsive.icon(20),
             ),
           ),
           suffixIcon: _searchController.text.isNotEmpty
@@ -787,12 +833,14 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                   ),
                 )
               : null,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: responsive.spacing(8),
+            vertical: responsive.spacing(16),
+          ),
         ),
-        style: const TextStyle(
+        style: TextStyle(
           color: Colors.white,
-          fontSize: 16,
+          fontSize: responsive.font(16),
           fontWeight: FontWeight.w400,
         ),
       ),
@@ -800,11 +848,18 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   }
 
   Widget _buildTabBar() {
+    final responsive = context.responsive;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      margin: EdgeInsets.fromLTRB(
+        responsive.spacing(20),
+        0,
+        responsive.spacing(20),
+        responsive.spacing(12),
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(responsive.radius(22)),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.12),
           width: 1,
@@ -824,17 +879,17 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
           gradient: const LinearGradient(
             colors: [_primaryColor, _secondaryColor],
           ),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(responsive.radius(20)),
         ),
         labelColor: Colors.white,
         unselectedLabelColor: Colors.white.withValues(alpha: 0.6),
-        labelStyle: const TextStyle(
+        labelStyle: TextStyle(
           fontWeight: FontWeight.w700,
-          fontSize: 16,
+          fontSize: responsive.font(16),
         ),
-        unselectedLabelStyle: const TextStyle(
+        unselectedLabelStyle: TextStyle(
           fontWeight: FontWeight.w500,
-          fontSize: 16,
+          fontSize: responsive.font(16),
         ),
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
@@ -849,16 +904,17 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
               ],
             ),
           ),
-          Tab(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.drafts_outlined, size: 18),
-                const SizedBox(width: 8),
-                Text('Shared Drafts (${_sharedDrafts.length})'),
-              ],
+          if (_showSharedDraftsTab)
+            Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.drafts_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  Text('Shared Drafts (${_sharedDrafts.length})'),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -873,7 +929,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         controller: _tabController,
         children: [
           _buildChatList(),
-          _buildDraftsList(),
+          if (_showSharedDraftsTab) _buildDraftsList(),
         ],
       ),
     );
@@ -950,19 +1006,25 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
             ? participantName[0].toUpperCase()
             : 'L';
     final unreadCount = _unreadCounts[chat.id ?? ''] ?? 0;
-    final isOnline = _onlineStatus[otherUserId] ?? false;
+    final bool isOnline = (_onlineStatus[otherUserId] ?? false) ||
+        userProfile?.onlineStatus.toLowerCase() == 'online';
     final secondaryLabel = isOnline
         ? 'Online now'
         : ((userProfile?.username.isNotEmpty) ?? false)
             ? '@${userProfile!.username}'
             : 'Conversation';
+    final bool isMuted =
+        currentUser != null && chat.mutedBy.contains(currentUser.uid);
+    final bool hasUnread = unreadCount > 0;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: isSelected
             ? _primaryColor.withValues(alpha: 0.15)
-            : Colors.white.withValues(alpha: 0.04),
+            : hasUnread
+                ? Colors.white.withValues(alpha: 0.07)
+                : Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: isSelected
@@ -997,55 +1059,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                 // Avatar with selection indicator and online status
                 Stack(
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: userProfile?.avatarURL != null
-                            ? null
-                            : const LinearGradient(
-                                colors: [_primaryColor, _secondaryColor],
-                              ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _primaryColor.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: userProfile?.avatarURL != null
-                          ? ClipOval(
-                              child: Image.network(
-                                userProfile!.avatarURL!,
-                                width: 44,
-                                height: 44,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Center(
-                                    child: Text(
-                                      initials,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            )
-                          : Center(
-                              child: Text(
-                                initials,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
+                    _InboxAvatar(
+                      imageUrl: userProfile?.avatarURL,
+                      initials: initials,
                     ),
                     // Online status indicator
                     if (isOnline)
@@ -1112,8 +1128,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                         ),
                       ),
                     // Mute indicator
-                    if (currentUser != null &&
-                        chat.mutedBy.contains(currentUser.uid))
+                    if (isMuted)
                       Positioned(
                         left: -4,
                         top: -4,
@@ -1158,27 +1173,65 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               children: [
                                 Text(
                                   participantName,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 15,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: hasUnread
+                                        ? FontWeight.w800
+                                        : FontWeight.w700,
                                     letterSpacing: -0.3,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 3),
-                                Text(
-                                  secondaryLabel,
-                                  style: TextStyle(
-                                    color: isOnline
-                                        ? Colors.white.withValues(alpha: 0.82)
-                                        : Colors.white.withValues(alpha: 0.52),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        secondaryLabel,
+                                        style: TextStyle(
+                                          color: isOnline
+                                              ? Colors.white
+                                                  .withValues(alpha: 0.82)
+                                              : Colors.white
+                                                  .withValues(alpha: 0.52),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (isMuted) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.08),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                          border: Border.all(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.10),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Muted',
+                                          style: TextStyle(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.62),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ],
                             ),
@@ -1190,13 +1243,17 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                               Text(
                                 _formatTime(chat.lastTimestamp),
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.5),
+                                  color: hasUnread
+                                      ? Colors.white.withValues(alpha: 0.86)
+                                      : Colors.white.withValues(alpha: 0.5),
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                                  fontWeight: hasUnread
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              _buildMessageStatusIndicator(chat),
+                              _buildChatMetaIndicator(chat, unreadCount),
                             ],
                           ),
                         ],
@@ -1205,10 +1262,12 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                       Text(
                         chat.lastMessage ?? 'No messages yet',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
+                          color: hasUnread
+                              ? Colors.white.withValues(alpha: 0.92)
+                              : Colors.white.withValues(alpha: 0.72),
                           fontSize: 13,
                           fontWeight:
-                              unreadCount > 0 ? FontWeight.w500 : FontWeight.w400,
+                              hasUnread ? FontWeight.w500 : FontWeight.w400,
                           height: 1.3,
                         ),
                         maxLines: 2,
@@ -1235,8 +1294,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   Widget _buildDraftTile(SharedDraft draft) {
     final isSelected = _selectedItems.contains(draft.id);
     final isUnread = draft.status != SharedDraftStatus.viewed;
-    final draftSubtitle =
-        draft.senderName.isNotEmpty ? 'From ${draft.senderName}' : 'Shared draft';
+    final draftSubtitle = draft.senderName.isNotEmpty
+        ? 'From ${draft.senderName}'
+        : 'Shared draft';
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1433,7 +1493,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
   }
 
   Widget _buildEmptyState(String title, IconData icon, String subtitle,
-      String buttonText, VoidCallback onPressed) {
+      String buttonText, VoidCallback onPressed,
+      {IconData actionIcon = Icons.add_rounded}) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -1541,8 +1602,8 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.add_rounded,
+                      Icon(
+                        actionIcon,
                         color: Colors.white,
                         size: 20,
                       ),
@@ -1770,6 +1831,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
     final confirmed = await _showDeleteConfirmation();
     if (!confirmed) return;
+    final int deletedCount = _selectedItems.length;
 
     try {
       if (_tabController.index == 0) {
@@ -1793,7 +1855,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         _isSelectionMode = false;
       });
 
-      _showSnackBar('${_selectedItems.length} items deleted', _primaryColor);
+      _showSnackBar('$deletedCount items deleted', _primaryColor);
     } catch (e) {
       _showSnackBar('Error deleting items', Colors.red);
     }
@@ -1831,6 +1893,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
 
   void _markAsRead() async {
     if (_selectedItems.isEmpty) return;
+    final int markedCount = _selectedItems.length;
 
     try {
       for (final chatId in _selectedItems) {
@@ -1845,8 +1908,7 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         _isSelectionMode = false;
       });
 
-      _showSnackBar(
-          '${_selectedItems.length} chats marked as read', _primaryColor);
+      _showSnackBar('$markedCount chats marked as read', _primaryColor);
     } catch (e) {
       _showSnackBar('Error marking as read', Colors.red);
     }
@@ -2003,8 +2065,9 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
                     context,
                     chat: updatedChat,
                     otherUserId: foundOtherUserId,
-                    otherUserName:
-                        userProfile?.displayName ?? userProfile?.username ?? 'User',
+                    otherUserName: userProfile?.displayName ??
+                        userProfile?.username ??
+                        'User',
                     otherUserAvatarUrl: userProfile?.avatarURL,
                     otherUserIsOnline: _onlineStatus[foundOtherUserId] ?? false,
                   );
@@ -2311,33 +2374,36 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
     }
   }
 
-  Widget _buildMessageStatusIndicator(app_chat.Chat chat) {
+  Widget _buildChatMetaIndicator(app_chat.Chat chat, int unreadCount) {
     final currentUser = _inboxService.auth.currentUser;
     if (currentUser == null) return const SizedBox.shrink();
-
-    // Check if the last message was sent by current user
-    final isLastMessageFromCurrentUser =
-        chat.participants.contains(currentUser.uid);
-
-    if (!isLastMessageFromCurrentUser) {
-      return const SizedBox.shrink();
+    if (unreadCount > 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [_primaryColor, _secondaryColor],
+          ),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          unreadCount == 1 ? 'New' : '$unreadCount new',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
     }
-
-    // For now, show a simple sent indicator
-    // In a real app, this would check actual message status from Firestore
-    return Container(
-      width: 16,
-      height: 16,
-      decoration: BoxDecoration(
-        color: _successColor,
-        shape: BoxShape.circle,
-      ),
-      child: const Icon(
-        Icons.check,
-        color: Colors.white,
-        size: 10,
-      ),
-    );
+    if (chat.mutedBy.contains(currentUser.uid)) {
+      return Icon(
+        Icons.volume_off_rounded,
+        color: Colors.white.withValues(alpha: 0.40),
+        size: 16,
+      );
+    }
+    return const SizedBox(height: 16);
   }
 
   String _formatTime(DateTime time) {
@@ -2385,6 +2451,77 @@ class _InboxViewOptimizedState extends ConsumerState<InboxViewOptimized>
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+}
+
+class _InboxAvatar extends StatelessWidget {
+  static const Color _avatarPrimaryColor = Color(0xFF9248D2);
+  static const Color _avatarSecondaryColor = Color(0xFF7768DF);
+
+  const _InboxAvatar({
+    required this.imageUrl,
+    required this.initials,
+  });
+
+  final String? imageUrl;
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasImage = imageUrl != null && imageUrl!.isNotEmpty;
+
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: hasImage
+            ? null
+            : const LinearGradient(
+                colors: [_avatarPrimaryColor, _avatarSecondaryColor],
+              ),
+        boxShadow: [
+          BoxShadow(
+            color: _avatarPrimaryColor.withValues(alpha: 0.24),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: hasImage
+          ? ClipOval(
+              child: UnifiedAvatarService().getAvatar(
+                imageUrl: imageUrl!,
+                radius: 22,
+                useProfileViewStyling: false,
+                showLoadingIndicator: false,
+                errorWidget: _AvatarFallback(initials: initials),
+              ),
+            )
+          : _AvatarFallback(initials: initials),
+    );
+  }
+}
+
+class _AvatarFallback extends StatelessWidget {
+  const _AvatarFallback({
+    required this.initials,
+  });
+
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        initials,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );

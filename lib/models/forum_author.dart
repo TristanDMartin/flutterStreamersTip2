@@ -1,3 +1,5 @@
+import '../utils/avatar_url_resolver.dart';
+
 /// Forum author model - Regular class (NOT freezed)
 class ForumAuthor {
   final String uid;
@@ -17,7 +19,7 @@ class ForumAuthor {
       uid: (map['uid'] ?? map['id'] ?? '') as String,
       username: (map['username'] ?? 'user') as String,
       displayName: (map['displayName'] ?? map['name'] ?? 'Anonymous') as String,
-      avatarUrl: (map['avatarUrl'] ?? map['avatarURL']) as String?,
+      avatarUrl: resolveAvatarUrl(map),
     );
   }
 
@@ -26,8 +28,7 @@ class ForumAuthor {
       uid: uid,
       username: data['username'] as String? ?? 'user',
       displayName: data['displayName'] as String? ?? 'Anonymous',
-      avatarUrl:
-          data['avatarUrl'] as String? ?? data['avatarURL'] as String?,
+      avatarUrl: resolveAvatarUrl(data),
     );
   }
 

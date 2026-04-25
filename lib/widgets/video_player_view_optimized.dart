@@ -31,8 +31,11 @@ import '../services/video_resume_service.dart';
 import '../services/feed_telemetry_service.dart';
 import '../routing/app_navigator.dart';
 import '../utils/video_health_gate.dart';
+import '../utils/responsive_layout.dart';
 import '../constants/app_colors.dart';
 import '../services/thumbnail_service.dart';
+import '../widgets/creator_command_center_overlay.dart';
+import '../providers/creator_command_provider.dart';
 
 class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final HomeVideo video;
@@ -53,6 +56,8 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
   final bool isLiked;
   final bool isBookmarked;
   final bool showHUD; // NEW: Control whether to show HUD overlays
+  final bool showCommandCenterTrigger;
+  final VoidCallback? onCommandCenterTap;
   final VoidCallback? onVideoUnplayable; // 🔥 TIKTOK-STYLE: Auto-skip callback
   final VoidCallback? onVideoPlaySuccess; // Resets consecutive-failure counter
 
@@ -73,6 +78,8 @@ class VideoPlayerViewOptimized extends ConsumerStatefulWidget {
     this.isLiked = false,
     this.isBookmarked = false,
     this.showHUD = true, // Default to true for backward compatibility
+    this.showCommandCenterTrigger = false,
+    this.onCommandCenterTap,
     this.onVideoUnplayable, // 🔥 TIKTOK-STYLE: Optional auto-skip callback
     this.onVideoPlaySuccess,
   });
@@ -95,13 +102,12 @@ class _VideoPlayerViewOptimizedState
   bool get _controllerReady {
     try {
       final c = _videoPlayerController;
-      return c != null &&
-          !c.value.hasError &&
-          c.value.isInitialized;
+      return c != null && !c.value.hasError && c.value.isInitialized;
     } catch (_) {
       return false;
     }
   }
+
   bool _hasIncrementedView = false;
   static const Duration _minWatchTimeForView = Duration(seconds: 7);
   Timer? _viewCountTimer;
@@ -342,7 +348,8 @@ class _VideoPlayerViewOptimizedState
   }
 
   /// Clear reference to a disposed controller after build (never mutate state in build).
-  void _scheduleClearDisposedController(VideoPlayerController? disposedController) {
+  void _scheduleClearDisposedController(
+      VideoPlayerController? disposedController) {
     if (disposedController == null) return;
     final toClear = disposedController;
     final wasCurrent = widget.isCurrentVideo;
@@ -409,7 +416,8 @@ class _VideoPlayerViewOptimizedState
     _posterTimer = null;
     _thumbnailVisible = true;
     try {
-      _isInitialized = controller.value.isInitialized && !controller.value.hasError;
+      _isInitialized =
+          controller.value.isInitialized && !controller.value.hasError;
       _isPlaying = controller.value.isPlaying;
     } catch (_) {
       _isInitialized = false;
@@ -418,6 +426,11 @@ class _VideoPlayerViewOptimizedState
 
     log('🎬 CONTROLLER_ATTACHED: videoId=${widget.video.id} controllerId=$controllerId '
         'init=$_isInitialized isPlaying=$_isPlaying');
+
+    _clearPosterAfterFrameIfPlaying(
+      controller: controller,
+      reason: 'adopted initialized controller',
+    );
 
     // 🔥 PRODUCTION-GRADE: Reset black screen recovery state on controller change
     _blackScreenRecoveryAttempts = 0;
@@ -478,13 +491,15 @@ class _VideoPlayerViewOptimizedState
       return false;
     }
 
-    if (_videoPlayerController != null && identical(_videoPlayerController, pooled)) {
+    if (_videoPlayerController != null &&
+        identical(_videoPlayerController, pooled)) {
       mgr.markControllerAttached(widget.video.id, pooled.hashCode);
       log('VVIEW adopt id=${widget.video.id} pooledHash=${pooled.hashCode} (already same) reason=$reason');
       return true;
     }
 
-    if (_videoPlayerController != null && !identical(_videoPlayerController, pooled)) {
+    if (_videoPlayerController != null &&
+        !identical(_videoPlayerController, pooled)) {
       _adoptController(pooled);
       try {
         if (_canUseController(pooled)) {
@@ -666,10 +681,8 @@ class _VideoPlayerViewOptimizedState
     final DocumentReference<Map<String, dynamic>> videoRef =
         FirebaseFirestore.instance.collection('videos').doc(widget.video.id);
 
-    _commentCountSubscription = videoRef
-        .collection('comments')
-        .snapshots()
-        .listen(
+    _commentCountSubscription =
+        videoRef.collection('comments').snapshots().listen(
       (QuerySnapshot<Map<String, dynamic>> snapshot) {
         if (!mounted) {
           return;
@@ -784,7 +797,6 @@ class _VideoPlayerViewOptimizedState
     }
   }
 
-
   // ✅ REMOVED: _handleVideoEnter() method - no longer needed
   // All playback now goes through requestFocus() → activate() → play() single path
   // This eliminates duplicate play calls and double audio issues
@@ -842,7 +854,8 @@ class _VideoPlayerViewOptimizedState
       return false;
     }
 
-    if (_videoPlayerController == null || !identical(_videoPlayerController, pooled)) {
+    if (_videoPlayerController == null ||
+        !identical(_videoPlayerController, pooled)) {
       _tryAdoptFromPool(reason: 'attemptRequestFocus');
     }
 
@@ -916,7 +929,8 @@ class _VideoPlayerViewOptimizedState
         _retryFocusSubscription =
             playbackManager.activeOwnerStream.listen((activeOwner) {
           final ownerMatches = activeOwner != null &&
-              (_ownerKey == activeOwner || _ownerKey.startsWith('$activeOwner/'));
+              (_ownerKey == activeOwner ||
+                  _ownerKey.startsWith('$activeOwner/'));
           if (ownerMatches) {
             _retryFocusSubscription?.cancel();
             _retryFocusSubscription = null;
@@ -976,7 +990,8 @@ class _VideoPlayerViewOptimizedState
           log('🔄 VideoPlayer: Owner $owner became active for ${widget.video.id}');
           _hasRequestedFocus = false;
           _lastRequestedVideoId = null;
-          GlobalPlaybackManager.instance.setDesiredFocus(widget.video.id, owner);
+          GlobalPlaybackManager.instance
+              .setDesiredFocus(widget.video.id, owner);
           _scheduleActivationRetry(
             'activeOwnerStream',
             delay: const Duration(milliseconds: 40),
@@ -1081,6 +1096,36 @@ class _VideoPlayerViewOptimizedState
   void _forceRemountTexture() {
     if (!mounted) return;
     setState(() => _textureRebuildTick++);
+  }
+
+  void _clearPosterAfterFrameIfPlaying({
+    required VideoPlayerController controller,
+    required String reason,
+  }) {
+    if (!_thumbnailVisible || !mounted || _isDisposed) return;
+
+    try {
+      final value = controller.value;
+      final hasFrameDimensions = value.size.width > 0 && value.size.height > 0;
+      final playbackStarted = value.isPlaying || value.position > Duration.zero;
+      if (!value.isInitialized || value.hasError) return;
+      if (!hasFrameDimensions || !playbackStarted) return;
+    } catch (_) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isDisposed || !_thumbnailVisible) return;
+      if (!identical(_videoPlayerController, controller)) return;
+      setState(() {
+        _thumbnailVisible = false;
+        _hasSeenFirstFrame = true;
+        _firstFrameRenderedAt ??= DateTime.now();
+      });
+      _firstFrameWatchdog?.cancel();
+      _firstFrameWatchdog = null;
+      log('✅ VideoPlayer: Poster cleared for ${widget.video.id} ($reason)');
+    });
   }
 
   bool _canTriggerRecovery() {
@@ -1252,7 +1297,8 @@ class _VideoPlayerViewOptimizedState
               c.setVolume(0.0).catchError((_) {});
               return;
             }
-            if (GlobalPlaybackManager.instance.activeVideoId != widget.video.id) {
+            if (GlobalPlaybackManager.instance.activeVideoId !=
+                widget.video.id) {
               c.setVolume(0.0).catchError((_) {});
               return;
             }
@@ -1531,10 +1577,12 @@ class _VideoPlayerViewOptimizedState
 
     if (oldWidget.isCurrentVideo != widget.isCurrentVideo) {
       if (widget.isCurrentVideo) {
-        final poolController = GlobalPlaybackManager.instance.getController(widget.video.id);
+        final poolController =
+            GlobalPlaybackManager.instance.getController(widget.video.id);
         final controllerSource = _videoPlayerController == null
             ? 'null'
-            : (poolController != null && identical(_videoPlayerController, poolController)
+            : (poolController != null &&
+                    identical(_videoPlayerController, poolController)
                 ? 'pool'
                 : 'local');
         log('VVIEW current=TRUE id=${widget.video.id} controller=$controllerSource');
@@ -1775,7 +1823,8 @@ class _VideoPlayerViewOptimizedState
           if (playbackController != null &&
               oldController != null &&
               identical(playbackController, oldController)) {
-            GlobalPlaybackManager.instance.unregisterController(widget.video.id);
+            GlobalPlaybackManager.instance
+                .unregisterController(widget.video.id);
           }
         } catch (_) {}
       }
@@ -1794,10 +1843,12 @@ class _VideoPlayerViewOptimizedState
         _isUnplayable = true;
         _playbackError = 'Failed to get or create controller';
         _isInitializing = false;
-        _handleUnplayableVideo('get_or_create_failed', {'videoId': widget.video.id});
+        _handleUnplayableVideo(
+            'get_or_create_failed', {'videoId': widget.video.id});
         return;
       }
-      if (currentGen != _playbackGeneration || initVersion != _controllerVersion) {
+      if (currentGen != _playbackGeneration ||
+          initVersion != _controllerVersion) {
         log('🔄 VideoPlayer: Generation/version changed during getOrCreateController, aborting');
         _isInitializing = false;
         return;
@@ -1810,7 +1861,8 @@ class _VideoPlayerViewOptimizedState
       _currentControllerInstance = controllerFromManager;
       _videoPlayerController!.addListener(_onControllerChanged);
       try {
-        _isInitialized = controllerFromManager.value.isInitialized && !controllerFromManager.value.hasError;
+        _isInitialized = controllerFromManager.value.isInitialized &&
+            !controllerFromManager.value.hasError;
         _isPlaying = controllerFromManager.value.isPlaying;
       } catch (_) {
         _isInitialized = false;
@@ -1835,7 +1887,8 @@ class _VideoPlayerViewOptimizedState
         return;
       }
       _startLoopCheckTimer();
-      playbackManager.markControllerAttached(widget.video.id, controllerFromManager.hashCode);
+      playbackManager.markControllerAttached(
+          widget.video.id, controllerFromManager.hashCode);
       _registry.register(widget.video.id, controllerFromManager);
       _wasRegistered = true;
       _registry.markVisible(widget.video.id);
@@ -1869,7 +1922,8 @@ class _VideoPlayerViewOptimizedState
 
         if (mounted && !_isDisposed) {
           setState(() => _isPlaying = true); // reflect pending playback in UI
-          widget.onVideoPlaySuccess?.call(); // Reset consecutive-failure counter
+          widget.onVideoPlaySuccess
+              ?.call(); // Reset consecutive-failure counter
         }
 
         // Apply audio enhancement while staying muted; GPM will unmute/play
@@ -2639,12 +2693,10 @@ class _VideoPlayerViewOptimizedState
     if (errorString.contains('timeout')) {
       return 'Video took too long to load';
     }
-    if (errorString.contains('network') ||
-        errorString.contains('connection')) {
+    if (errorString.contains('network') || errorString.contains('connection')) {
       return 'Network connection issue';
     }
-    if (errorString.contains('format') ||
-        errorString.contains('codec')) {
+    if (errorString.contains('format') || errorString.contains('codec')) {
       return 'Video format not supported';
     }
     if (errorString.contains('permission')) {
@@ -2880,8 +2932,7 @@ class _VideoPlayerViewOptimizedState
         restoreAfterStreamerCard('streamer_card_dismissed');
         log('👤 VideoPlayer: Returned from StreamerCard, restoring playback');
       },
-    )
-        .then((_) {
+    ).then((_) {
       // Also unblock when back button is used (fallback)
       restoreAfterStreamerCard('streamer_card_back');
       log('👤 VideoPlayer: Back from StreamerCard (via back button)');
@@ -2920,8 +2971,7 @@ class _VideoPlayerViewOptimizedState
         restoreAfterTaggedProfile('tagged_profile_dismissed');
         log('👤 VideoPlayer: Returned from tagged user profile, restoring playback');
       },
-    )
-        .then((_) {
+    ).then((_) {
       restoreAfterTaggedProfile('tagged_profile_back');
       log('👤 VideoPlayer: Back from tagged user profile (via back button)');
     });
@@ -2949,14 +2999,14 @@ class _VideoPlayerViewOptimizedState
       if (!mounted || _isDisposed || !widget.isCurrentVideo) return;
       _hasRequestedFocus = false;
       _lastRequestedVideoId = null;
-      GlobalPlaybackManager.instance.setDesiredFocus(widget.video.id, _ownerKey);
+      GlobalPlaybackManager.instance
+          .setDesiredFocus(widget.video.id, _ownerKey);
       _activateCurrentVideo('comments_dismissed');
     });
   }
 
   void _handleBookmark() {
-    if (UnifiedBookmarkService.instance
-        .hasPendingOperation(widget.video.id)) {
+    if (UnifiedBookmarkService.instance.hasPendingOperation(widget.video.id)) {
       return;
     }
     HapticFeedback.lightImpact();
@@ -2995,7 +3045,8 @@ class _VideoPlayerViewOptimizedState
       if (!mounted || _isDisposed || !widget.isCurrentVideo) return;
       _hasRequestedFocus = false;
       _lastRequestedVideoId = null;
-      GlobalPlaybackManager.instance.setDesiredFocus(widget.video.id, _ownerKey);
+      GlobalPlaybackManager.instance
+          .setDesiredFocus(widget.video.id, _ownerKey);
       _activateCurrentVideo('share_dismissed');
     });
   }
@@ -3325,6 +3376,13 @@ class _VideoPlayerViewOptimizedState
       return const ColoredBox(color: Colors.black);
     }
 
+    if (widget.isCurrentVideo) {
+      _clearPosterAfterFrameIfPlaying(
+        controller: controller,
+        reason: 'build current initialized controller',
+      );
+    }
+
     final double width = v.size.width > 0 ? v.size.width : 16;
     final double height = v.size.height > 0 ? v.size.height : 9;
 
@@ -3532,16 +3590,15 @@ class _VideoPlayerViewOptimizedState
 
   Widget _buildUIOverlay() {
     final media = MediaQuery.of(context);
+    final railMetrics = _ActionRailMetrics.of(context);
     final safeBottom = media.viewPadding.bottom;
 
     // Constants - TikTok-style spacing
-    const railWidth = 64.0;
-    const leftInset = 12.0;
-    const rightInset = railWidth + 16;
-    const bottomNavHeight = 96.0;
-    const bottomNavMargin = 10.0;
-    const paddingAboveNav =
-        40.0; // Lift the left metadata stack clear of the nav without floating too high
+    final leftInset = railMetrics.leftInset;
+    final rightInset = railMetrics.metadataRightInset;
+    final bottomNavHeight = railMetrics.bottomNavHeight;
+    final bottomNavMargin = railMetrics.bottomNavMargin;
+    final paddingAboveNav = railMetrics.metadataPaddingAboveNav;
 
     // Different positioning for each view type:
     // - HomeView: Perfect as is (standard TikTok positioning)
@@ -3572,7 +3629,7 @@ class _VideoPlayerViewOptimizedState
           maxHeight:
               media.size.height * 0.25, // Use maxHeight instead of fixed height
         ),
-        padding: const EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(railMetrics.metadataPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -3934,7 +3991,9 @@ class _VideoPlayerViewOptimizedState
     } catch (e) {
       if (e.toString().contains('permission-denied') ||
           e.toString().contains('PERMISSION_DENIED') ||
-          e.toString().contains('Unable to resolve host firestore.googleapis.com') ||
+          e
+              .toString()
+              .contains('Unable to resolve host firestore.googleapis.com') ||
           e.toString().contains('cloud_firestore/unavailable')) {
         return [];
       }
@@ -3945,13 +4004,13 @@ class _VideoPlayerViewOptimizedState
 
   Widget _buildActionButtons() {
     final media = MediaQuery.of(context);
+    final railMetrics = _ActionRailMetrics.of(context);
 
     // Calculate position - TikTok-style spacing above bottom navigation
-    const rightInset = 12.0;
-    const bottomNavHeight = 96.0; // Matches CustomBottomNav height
-    const bottomNavMargin = 10.0; // Matches CustomBottomNav bottom margin base
-    const paddingAboveNav =
-        76.0; // Slight extra lift so the right rail clears the floating nav
+    final rightInset = railMetrics.rightInset;
+    final bottomNavHeight = railMetrics.bottomNavHeight;
+    final bottomNavMargin = railMetrics.bottomNavMargin;
+    final paddingAboveNav = railMetrics.railPaddingAboveNav;
     final safeBottom = media.viewPadding.bottom;
 
     // Different positioning for each view type:
@@ -3987,16 +4046,23 @@ class _VideoPlayerViewOptimizedState
               onLikeChanged: _handleLikeChanged,
               iconKey: _likeButtonKey,
               source: 'button',
+              width: railMetrics.likeWidth,
+              height: railMetrics.likeHeight,
+              iconSize: railMetrics.likeIconSize,
+              labelFontSize: railMetrics.likeLabelFontSize,
+              labelGap: railMetrics.labelGap,
+              sparkleSize: railMetrics.sparkleSize,
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: railMetrics.itemGap),
 
             // Comment button with real-time count
             _buildActionButton(
               icon: Icons.chat_bubble_outline,
               count: _formatCompactCount(_commentCount),
               onTap: _handleComment,
+              metrics: railMetrics,
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: railMetrics.itemGap),
 
             _buildActionButton(
               icon: _isBookmarked ? Icons.bookmark : Icons.bookmark_border,
@@ -4006,25 +4072,47 @@ class _VideoPlayerViewOptimizedState
                   : _handleBookmark,
               isActive: _isBookmarked,
               isLoading: false,
+              metrics: railMetrics,
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: railMetrics.itemGap),
 
             // Share button
             _buildActionButton(
               icon: Icons.share,
-              count: _shareCount > 0 ? _formatCompactCount(_shareCount) : 'Share',
+              count:
+                  _shareCount > 0 ? _formatCompactCount(_shareCount) : 'Share',
               onTap: _handleShare,
+              metrics: railMetrics,
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: railMetrics.avatarGap),
 
-            // Creator avatar - Made slightly smaller
-            GestureDetector(
-              onTap: widget.onShowProfile ?? () => _handleProfileTap(),
-              child: _buildActionAvatar(),
-            ),
+            _buildTrailingRailButton(railMetrics.avatarSize),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTrailingRailButton(double size) {
+    final commandSnapshot = ref.watch(creatorCommandSnapshotProvider);
+    final bool showCommandCenterTrigger =
+        widget.showCommandCenterTrigger && widget.tabId == 'home/forYou';
+    final bool showAlertPulse =
+        commandSnapshot.valueOrNull?.alertCount != null &&
+            (commandSnapshot.valueOrNull!.alertCount > 0 ||
+                commandSnapshot.valueOrNull!.pendingWorkCount > 0);
+
+    if (showCommandCenterTrigger) {
+      return StreamersTipCommandCenterTrigger(
+        size: size,
+        showAlertPulse: showAlertPulse,
+        onTap: widget.onCommandCenterTap ?? () {},
+      );
+    }
+
+    return GestureDetector(
+      onTap: widget.onShowProfile ?? () => _handleProfileTap(),
+      child: _buildActionAvatar(size: size),
     );
   }
 
@@ -4034,8 +4122,9 @@ class _VideoPlayerViewOptimizedState
     required VoidCallback? onTap,
     bool isActive = false,
     bool isLoading = false,
+    required _ActionRailMetrics metrics,
   }) {
-    const btnSize = 56.0; // TikTok-style sizing to match _buildActionButtons
+    final btnSize = metrics.buttonSize;
     final bool isShareAction = count == 'Share';
     final Color labelColor = isActive
         ? AppColors.textPrimary.withValues(alpha: 0.98)
@@ -4090,10 +4179,10 @@ class _VideoPlayerViewOptimizedState
                     child: Center(
                       child: isLoading
                           ? SizedBox(
-                              width: 18,
-                              height: 18,
+                              width: metrics.progressSize,
+                              height: metrics.progressSize,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
+                                strokeWidth: metrics.progressStrokeWidth,
                                 valueColor: AlwaysStoppedAnimation<Color>(
                                   isActive
                                       ? AppColors.primary
@@ -4106,7 +4195,9 @@ class _VideoPlayerViewOptimizedState
                               color: isActive
                                   ? AppColors.primary
                                   : Colors.white.withValues(alpha: 0.96),
-                              size: isShareAction ? 28 : 30,
+                              size: isShareAction
+                                  ? metrics.shareIconSize
+                                  : metrics.iconSize,
                             ),
                     ),
                   ),
@@ -4114,7 +4205,7 @@ class _VideoPlayerViewOptimizedState
               ),
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: metrics.labelGap),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 180),
             switchInCurve: Curves.easeOutCubic,
@@ -4133,12 +4224,15 @@ class _VideoPlayerViewOptimizedState
             },
             child: Text(
               count,
-              key: ValueKey<String>('${icon.codePoint}-$count-$isActive-$isLoading'),
+              key: ValueKey<String>(
+                  '${icon.codePoint}-$count-$isActive-$isLoading'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: labelColor,
-                fontSize: isShareAction ? 10 : 11,
+                fontSize: isShareAction
+                    ? metrics.shareLabelFontSize
+                    : metrics.labelFontSize,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.1,
                 shadows: [
@@ -4204,20 +4298,20 @@ class _VideoPlayerViewOptimizedState
     );
   }
 
-  Widget _buildActionAvatar() {
+  Widget _buildActionAvatar({double size = 40}) {
     final avatarUrl = widget.video.creator.avatarURL;
 
     if (avatarUrl == null || avatarUrl.isEmpty) {
-      return _buildDefaultActionAvatar();
+      return _buildDefaultActionAvatar(size: size);
     }
 
     return CachedNetworkImage(
       imageUrl: avatarUrl,
-      width: 40,
-      height: 40,
+      width: size,
+      height: size,
       imageBuilder: (context, imageProvider) => Container(
-        width: 40,
-        height: 40,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
@@ -4230,10 +4324,10 @@ class _VideoPlayerViewOptimizedState
           ),
         ),
       ),
-      placeholder: (context, url) => _buildDefaultActionAvatar(),
+      placeholder: (context, url) => _buildDefaultActionAvatar(size: size),
       errorWidget: (context, url, error) {
         log('❌ Action avatar load error for ${widget.video.creator.username}: $error');
-        return _buildDefaultActionAvatar();
+        return _buildDefaultActionAvatar(size: size);
       },
     );
   }
@@ -4268,10 +4362,10 @@ class _VideoPlayerViewOptimizedState
     );
   }
 
-  Widget _buildDefaultActionAvatar() {
+  Widget _buildDefaultActionAvatar({double size = 40}) {
     return Container(
-      width: 40,
-      height: 40,
+      width: size,
+      height: size,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: SweepGradient(
@@ -4289,12 +4383,103 @@ class _VideoPlayerViewOptimizedState
           shape: BoxShape.circle,
           color: Colors.grey,
         ),
-        child: const Icon(
+        child: Icon(
           Icons.person,
           color: Colors.white,
-          size: 20,
+          size: size * 0.5,
         ),
       ),
+    );
+  }
+}
+
+class _ActionRailMetrics {
+  const _ActionRailMetrics({
+    required this.leftInset,
+    required this.rightInset,
+    required this.metadataRightInset,
+    required this.bottomNavHeight,
+    required this.bottomNavMargin,
+    required this.metadataPaddingAboveNav,
+    required this.railPaddingAboveNav,
+    required this.metadataPadding,
+    required this.buttonSize,
+    required this.iconSize,
+    required this.shareIconSize,
+    required this.labelFontSize,
+    required this.shareLabelFontSize,
+    required this.likeWidth,
+    required this.likeHeight,
+    required this.likeIconSize,
+    required this.likeLabelFontSize,
+    required this.labelGap,
+    required this.itemGap,
+    required this.avatarGap,
+    required this.avatarSize,
+    required this.sparkleSize,
+    required this.progressSize,
+    required this.progressStrokeWidth,
+  });
+
+  final double leftInset;
+  final double rightInset;
+  final double metadataRightInset;
+  final double bottomNavHeight;
+  final double bottomNavMargin;
+  final double metadataPaddingAboveNav;
+  final double railPaddingAboveNav;
+  final double metadataPadding;
+  final double buttonSize;
+  final double iconSize;
+  final double shareIconSize;
+  final double labelFontSize;
+  final double shareLabelFontSize;
+  final double likeWidth;
+  final double likeHeight;
+  final double likeIconSize;
+  final double likeLabelFontSize;
+  final double labelGap;
+  final double itemGap;
+  final double avatarGap;
+  final double avatarSize;
+  final double sparkleSize;
+  final double progressSize;
+  final double progressStrokeWidth;
+
+  static _ActionRailMetrics of(BuildContext context) {
+    final responsive = context.responsive;
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = responsive.isCompactPhone || width < 360;
+    final small = responsive.isSmallPhone || width < 390;
+    final rightInset = compact ? 8.0 : (small ? 10.0 : 12.0);
+    final buttonSize = compact ? 46.0 : (small ? 50.0 : 54.0);
+    final likeWidth = compact ? 52.0 : (small ? 56.0 : 60.0);
+
+    return _ActionRailMetrics(
+      leftInset: responsive.spacing(compact ? 10 : 12),
+      rightInset: rightInset,
+      metadataRightInset: rightInset + likeWidth + (compact ? 10.0 : 14.0),
+      bottomNavHeight: compact ? 76.0 : (small ? 80.0 : 84.0),
+      bottomNavMargin: compact ? 6.0 : 8.0,
+      metadataPaddingAboveNav: compact ? 28.0 : (small ? 34.0 : 40.0),
+      railPaddingAboveNav: compact ? 64.0 : (small ? 70.0 : 76.0),
+      metadataPadding: responsive.spacing(compact ? 12 : 16),
+      buttonSize: buttonSize,
+      iconSize: compact ? 25.0 : (small ? 27.0 : 29.0),
+      shareIconSize: compact ? 23.0 : (small ? 25.0 : 27.0),
+      labelFontSize: compact ? 10.0 : 11.0,
+      shareLabelFontSize: compact ? 9.0 : 10.0,
+      likeWidth: likeWidth,
+      likeHeight: compact ? 76.0 : (small ? 84.0 : 90.0),
+      likeIconSize: compact ? 29.0 : (small ? 31.0 : 33.0),
+      likeLabelFontSize: compact ? 10.5 : 11.5,
+      labelGap: compact ? 3.0 : 4.0,
+      itemGap: compact ? 3.0 : 5.0,
+      avatarGap: compact ? 7.0 : 9.0,
+      avatarSize: compact ? 34.0 : (small ? 37.0 : 40.0),
+      sparkleSize: compact ? 66.0 : (small ? 72.0 : 78.0),
+      progressSize: compact ? 16.0 : 18.0,
+      progressStrokeWidth: compact ? 2.0 : 2.2,
     );
   }
 }

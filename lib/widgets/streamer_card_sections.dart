@@ -4,6 +4,14 @@ import '../constants/app_colors.dart';
 import 'instant_response_button.dart';
 import 'user_stats_row.dart';
 
+const BoxDecoration _streamerCardSurfaceDecoration = BoxDecoration(
+  gradient: LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: AppColors.supportSurfaceGradient,
+  ),
+);
+
 class StreamerCardTabItem {
   const StreamerCardTabItem({
     required this.label,
@@ -22,6 +30,7 @@ class StreamerCardFrontSection extends StatelessWidget {
     required this.onMore,
     required this.profileSection,
     required this.userId,
+    this.postsCountOverride,
     required this.followButtonText,
     required this.followButtonOnPressed,
     required this.followButtonLoading,
@@ -38,6 +47,7 @@ class StreamerCardFrontSection extends StatelessWidget {
   final VoidCallback onMore;
   final Widget profileSection;
   final String userId;
+  final int? postsCountOverride;
   final String followButtonText;
   final VoidCallback? followButtonOnPressed;
   final bool followButtonLoading;
@@ -50,43 +60,59 @@ class StreamerCardFrontSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          width: double.infinity,
-          height: double.infinity,
-          color: AppColors.supportBackground,
-        ),
-        SafeArea(
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                _StreamerCardTopBar(
-                  onDismiss: onDismiss,
-                  onFlip: onFlip,
-                  onMore: onMore,
-                ),
-                const SizedBox(height: 8),
-                profileSection,
-                _StreamerCardStatsSection(userId: userId),
-                _StreamerCardActionRow(
-                  followButtonText: followButtonText,
-                  followButtonOnPressed: followButtonOnPressed,
-                  followButtonLoading: followButtonLoading,
-                  messageButtonOnPressed: messageButtonOnPressed,
-                  shareButtonOnPressed: shareButtonOnPressed,
-                ),
-                const SizedBox(height: 24),
-                _StreamerCardTabBar(
-                  tabs: tabs,
-                  selectedTabIndex: selectedTabIndex,
-                  onTabSelected: onTabSelected,
-                ),
-                content,
-              ],
-            ),
+    return _StreamerCardSurface(
+      child: SafeArea(
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: Column(
+            children: [
+              _StreamerCardTopBar(
+                onDismiss: onDismiss,
+                onFlip: onFlip,
+                onMore: onMore,
+              ),
+              const SizedBox(height: 8),
+              profileSection,
+              _StreamerCardStatsSection(
+                userId: userId,
+                postsCountOverride: postsCountOverride,
+              ),
+              _StreamerCardActionRow(
+                followButtonText: followButtonText,
+                followButtonOnPressed: followButtonOnPressed,
+                followButtonLoading: followButtonLoading,
+                messageButtonOnPressed: messageButtonOnPressed,
+                shareButtonOnPressed: shareButtonOnPressed,
+              ),
+              const SizedBox(height: 24),
+              _StreamerCardTabBar(
+                tabs: tabs,
+                selectedTabIndex: selectedTabIndex,
+                onTabSelected: onTabSelected,
+              ),
+              content,
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StreamerCardSurface extends StatelessWidget {
+  const _StreamerCardSurface({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        const DecoratedBox(
+          decoration: _streamerCardSurfaceDecoration,
+          child: SizedBox.expand(),
+        ),
+        child,
       ],
     );
   }
@@ -124,60 +150,54 @@ class StreamerCardDetailsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          width: double.infinity,
-          height: double.infinity,
-          color: AppColors.supportBackground,
-        ),
-        SafeArea(
-          child: Stack(
-            children: [
-              _StreamerCardDetailsHeader(onFlip: onFlip),
-              Padding(
-                padding: const EdgeInsets.only(top: 80),
-                child: CustomScrollView(
-                  slivers: [
-                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                    SliverToBoxAdapter(child: identity),
-                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                    SliverToBoxAdapter(child: tags),
-                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                    SliverToBoxAdapter(
-                      child: _StreamerCardSectionHeader(
-                        title: 'Bio',
-                        isExpanded: showBio,
-                        onTap: onToggleBio,
-                      ),
+    return _StreamerCardSurface(
+      child: SafeArea(
+        child: Stack(
+          children: [
+            _StreamerCardDetailsHeader(onFlip: onFlip),
+            Padding(
+              padding: const EdgeInsets.only(top: 80),
+              child: CustomScrollView(
+                physics: const ClampingScrollPhysics(),
+                slivers: [
+                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                  SliverToBoxAdapter(child: identity),
+                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                  SliverToBoxAdapter(child: tags),
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  SliverToBoxAdapter(
+                    child: _StreamerCardSectionHeader(
+                      title: 'Bio',
+                      isExpanded: showBio,
+                      onTap: onToggleBio,
                     ),
-                    if (showBio) SliverToBoxAdapter(child: bioBody),
-                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                    SliverToBoxAdapter(
-                      child: _StreamerCardSectionHeader(
-                        title: 'Platforms',
-                        isExpanded: showPlatforms,
-                        onTap: onTogglePlatforms,
-                      ),
+                  ),
+                  if (showBio) SliverToBoxAdapter(child: bioBody),
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  SliverToBoxAdapter(
+                    child: _StreamerCardSectionHeader(
+                      title: 'Platforms',
+                      isExpanded: showPlatforms,
+                      onTap: onTogglePlatforms,
                     ),
-                    if (showPlatforms) SliverToBoxAdapter(child: platformsBody),
-                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                    SliverToBoxAdapter(
-                      child: _StreamerCardSectionHeader(
-                        title: 'Calendar',
-                        isExpanded: showCalendar,
-                        onTap: onToggleCalendar,
-                      ),
+                  ),
+                  if (showPlatforms) SliverToBoxAdapter(child: platformsBody),
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  SliverToBoxAdapter(
+                    child: _StreamerCardSectionHeader(
+                      title: 'Calendar',
+                      isExpanded: showCalendar,
+                      onTap: onToggleCalendar,
                     ),
-                    if (showCalendar) SliverToBoxAdapter(child: calendarBody),
-                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                  ],
-                ),
+                  ),
+                  if (showCalendar) SliverToBoxAdapter(child: calendarBody),
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -258,9 +278,13 @@ class _StreamerCardTopBar extends StatelessWidget {
 }
 
 class _StreamerCardStatsSection extends StatelessWidget {
-  const _StreamerCardStatsSection({required this.userId});
+  const _StreamerCardStatsSection({
+    required this.userId,
+    this.postsCountOverride,
+  });
 
   final String userId;
+  final int? postsCountOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -276,7 +300,10 @@ class _StreamerCardStatsSection extends StatelessWidget {
             width: 1,
           ),
         ),
-        child: UserStatsRow(userId: userId),
+        child: UserStatsRow(
+          userId: userId,
+          postsCountOverride: postsCountOverride,
+        ),
       ),
     );
   }
@@ -301,30 +328,35 @@ class _StreamerCardActionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: _StreamerCardActionButton(
-              text: followButtonText,
-              onPressed: followButtonOnPressed,
-              isLoading: followButtonLoading,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _StreamerCardActionButton(
-              text: 'Message',
-              onPressed: messageButtonOnPressed,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _StreamerCardActionButton(
-              text: 'Share',
-              onPressed: shareButtonOnPressed,
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double gap = constraints.maxWidth < 340 ? 10 : 14;
+          return Row(
+            children: [
+              Expanded(
+                child: _StreamerCardActionButton(
+                  text: followButtonText,
+                  onPressed: followButtonOnPressed,
+                  isLoading: followButtonLoading,
+                ),
+              ),
+              SizedBox(width: gap),
+              Expanded(
+                child: _StreamerCardActionButton(
+                  text: 'Message',
+                  onPressed: messageButtonOnPressed,
+                ),
+              ),
+              SizedBox(width: gap),
+              Expanded(
+                child: _StreamerCardActionButton(
+                  text: 'Share',
+                  onPressed: shareButtonOnPressed,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -383,12 +415,20 @@ class _StreamerCardActionButton extends StatelessWidget {
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
-              : Text(
-                  text,
-                  style: TextStyle(
-                    color: onPressed != null ? Colors.white : Colors.grey,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+              : Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: onPressed != null ? Colors.white : Colors.grey,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
         ),

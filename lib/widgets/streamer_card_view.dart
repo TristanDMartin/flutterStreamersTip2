@@ -21,6 +21,7 @@ import '../providers/follow_refresh_provider.dart';
 import '../utils/avatar_url_resolver.dart';
 import '../providers/following_provider.dart';
 import '../providers/home_provider.dart' as hp;
+import '../providers/video_service_provider.dart' as video_providers;
 import '../services/user_blocking_service.dart';
 import '../services/global_playback_manager.dart';
 import '../routing/app_navigator.dart';
@@ -257,6 +258,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   // MARK: - Computed Properties
   Map<String, dynamic> get userData => _userData ?? {};
+  String get _effectiveUserId => _resolvedUserDocId ?? widget.userId;
   StreamerCardRelationshipState get relationshipState =>
       _relationshipController.state;
   bool get _isFollowing => relationshipState.isFollowing;
@@ -507,9 +509,11 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
         statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: AppColors.supportBackground,
+        systemNavigationBarIconBrightness: Brightness.light,
       ),
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: AppColors.supportBackground,
         extendBody: true,
         extendBodyBehindAppBar:
             false, // SAFE AREA FIX: Don't extend behind system UI
@@ -545,10 +549,19 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Widget _buildLoadingState() {
     return const Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      backgroundColor: AppColors.supportBackground,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: AppColors.supportSurfaceGradient,
+          ),
+        ),
+        child: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
         ),
       ),
     );
@@ -556,46 +569,55 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Widget _buildErrorState() {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              color: Colors.white,
-              size: 64,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Error Loading Profile',
-              style: TextStyle(
+      backgroundColor: AppColors.supportBackground,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: AppColors.supportSurfaceGradient,
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
                 color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                size: 64,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _error ?? 'Unknown error',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
+              const SizedBox(height: 16),
+              const Text(
+                'Error Loading Profile',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _isLoading = true;
-                  _error = null;
-                });
-                _loadUserProfile();
-              },
-              child: const Text('Retry'),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                _error ?? 'Unknown error',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 16,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _isLoading = true;
+                    _error = null;
+                  });
+                  _loadUserProfile();
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -606,7 +628,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
     if (_selectedChat == null) return const SizedBox.shrink();
 
     return Container(
-      color: Colors.black,
+      color: AppColors.supportBackground,
       child: SafeArea(
         child: Column(
           children: [
@@ -713,12 +735,24 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
   }
 
   Widget _buildFrontView() {
+    final videoServiceState =
+        ref.watch(video_providers.videoServiceStateProvider);
+    final bool isVideoServiceLoading =
+        ref.watch(video_providers.videoServiceLoadingProvider);
+    final visibleProfilePosts =
+        ref.watch(video_providers.userVideosProvider(_effectiveUserId));
+    final int? postsCountOverride = visibleProfilePosts.isNotEmpty ||
+            (!isVideoServiceLoading && videoServiceState.isNotEmpty)
+        ? visibleProfilePosts.length
+        : null;
+
     return StreamerCardFrontSection(
-      onDismiss: widget.onDismiss,
+      onDismiss: _handleDismiss,
       onFlip: _flipCard,
       onMore: () => _showShareSheet(context),
       profileSection: _buildProfileSection(),
-      userId: widget.userId,
+      userId: _effectiveUserId,
+      postsCountOverride: postsCountOverride,
       followButtonText: _getFollowButtonText(),
       followButtonOnPressed: _getFollowButtonAction(),
       followButtonLoading: _isFollowingOperation || _isUnfollowingOperation,
@@ -1736,12 +1770,23 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
 
   Widget _buildVideoFeed() {
     return ProfileVideoFeedView(
-      userId: widget.userId,
+      userId: _effectiveUserId,
       feedType: _getSelectedFeedType(),
       // ✅ FIX: Let ProfileVideoFeedView handle video taps directly
       // It will open the real PlayerScreen with actual videos
       onVideoTap: null,
     );
+  }
+
+  void _handleDismiss() {
+    if (widget.onDismiss != null) {
+      widget.onDismiss!();
+      return;
+    }
+
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   Widget _buildAvatarWithOnlineIndicator() {
@@ -1853,8 +1898,7 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       onToggleBio: () => setState(() => _showBio = !_showBio),
       bioBody: _buildBioBody(),
       showPlatforms: _showPlatforms,
-      onTogglePlatforms: () =>
-          setState(() => _showPlatforms = !_showPlatforms),
+      onTogglePlatforms: () => setState(() => _showPlatforms = !_showPlatforms),
       platformsBody: _buildPlatforms(_platforms),
       showCalendar: _showCalendar,
       onToggleCalendar: () => setState(() => _showCalendar = !_showCalendar),
@@ -2058,7 +2102,6 @@ class _StreamerCardViewState extends ConsumerState<StreamerCardView>
       ),
     );
   }
-
 
   Widget _buildCalendarRow(CalendarEvent event) {
     return Container(

@@ -25,6 +25,11 @@ mixin _$ActivityNotification {
   String get status;
   String? get videoId;
   String? get chatId;
+  String? get actionUrl;
+  String? get actionType;
+  String? get threadId;
+  String? get postId;
+  String? get commentId;
   String? get milestoneType;
   int? get milestoneValue;
   String? get parentCommentId;
@@ -57,6 +62,15 @@ mixin _$ActivityNotification {
             (identical(other.status, status) || other.status == status) &&
             (identical(other.videoId, videoId) || other.videoId == videoId) &&
             (identical(other.chatId, chatId) || other.chatId == chatId) &&
+            (identical(other.actionUrl, actionUrl) ||
+                other.actionUrl == actionUrl) &&
+            (identical(other.actionType, actionType) ||
+                other.actionType == actionType) &&
+            (identical(other.threadId, threadId) ||
+                other.threadId == threadId) &&
+            (identical(other.postId, postId) || other.postId == postId) &&
+            (identical(other.commentId, commentId) ||
+                other.commentId == commentId) &&
             (identical(other.milestoneType, milestoneType) ||
                 other.milestoneType == milestoneType) &&
             (identical(other.milestoneValue, milestoneValue) ||
@@ -78,13 +92,18 @@ mixin _$ActivityNotification {
       status,
       videoId,
       chatId,
+      actionUrl,
+      actionType,
+      threadId,
+      postId,
+      commentId,
       milestoneType,
       milestoneValue,
       parentCommentId);
 
   @override
   String toString() {
-    return 'ActivityNotification(id: $id, type: $type, user: $user, timestamp: $timestamp, postThumbnailUrl: $postThumbnailUrl, commentText: $commentText, status: $status, videoId: $videoId, chatId: $chatId, milestoneType: $milestoneType, milestoneValue: $milestoneValue, parentCommentId: $parentCommentId)';
+    return 'ActivityNotification(id: $id, type: $type, user: $user, timestamp: $timestamp, postThumbnailUrl: $postThumbnailUrl, commentText: $commentText, status: $status, videoId: $videoId, chatId: $chatId, actionUrl: $actionUrl, actionType: $actionType, threadId: $threadId, postId: $postId, commentId: $commentId, milestoneType: $milestoneType, milestoneValue: $milestoneValue, parentCommentId: $parentCommentId)';
   }
 }
 
@@ -104,6 +123,11 @@ abstract mixin class $ActivityNotificationCopyWith<$Res> {
       String status,
       String? videoId,
       String? chatId,
+      String? actionUrl,
+      String? actionType,
+      String? threadId,
+      String? postId,
+      String? commentId,
       String? milestoneType,
       int? milestoneValue,
       String? parentCommentId});
@@ -131,6 +155,11 @@ class _$ActivityNotificationCopyWithImpl<$Res>
     Object? status = null,
     Object? videoId = freezed,
     Object? chatId = freezed,
+    Object? actionUrl = freezed,
+    Object? actionType = freezed,
+    Object? threadId = freezed,
+    Object? postId = freezed,
+    Object? commentId = freezed,
     Object? milestoneType = freezed,
     Object? milestoneValue = freezed,
     Object? parentCommentId = freezed,
@@ -171,6 +200,26 @@ class _$ActivityNotificationCopyWithImpl<$Res>
       chatId: freezed == chatId
           ? _self.chatId
           : chatId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      actionUrl: freezed == actionUrl
+          ? _self.actionUrl
+          : actionUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      actionType: freezed == actionType
+          ? _self.actionType
+          : actionType // ignore: cast_nullable_to_non_nullable
+              as String?,
+      threadId: freezed == threadId
+          ? _self.threadId
+          : threadId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      postId: freezed == postId
+          ? _self.postId
+          : postId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      commentId: freezed == commentId
+          ? _self.commentId
+          : commentId // ignore: cast_nullable_to_non_nullable
               as String?,
       milestoneType: freezed == milestoneType
           ? _self.milestoneType
@@ -289,6 +338,11 @@ extension ActivityNotificationPatterns on ActivityNotification {
             String status,
             String? videoId,
             String? chatId,
+            String? actionUrl,
+            String? actionType,
+            String? threadId,
+            String? postId,
+            String? commentId,
             String? milestoneType,
             int? milestoneValue,
             String? parentCommentId)?
@@ -308,6 +362,11 @@ extension ActivityNotificationPatterns on ActivityNotification {
             _that.status,
             _that.videoId,
             _that.chatId,
+            _that.actionUrl,
+            _that.actionType,
+            _that.threadId,
+            _that.postId,
+            _that.commentId,
             _that.milestoneType,
             _that.milestoneValue,
             _that.parentCommentId);
@@ -341,6 +400,11 @@ extension ActivityNotificationPatterns on ActivityNotification {
             String status,
             String? videoId,
             String? chatId,
+            String? actionUrl,
+            String? actionType,
+            String? threadId,
+            String? postId,
+            String? commentId,
             String? milestoneType,
             int? milestoneValue,
             String? parentCommentId)
@@ -359,6 +423,11 @@ extension ActivityNotificationPatterns on ActivityNotification {
             _that.status,
             _that.videoId,
             _that.chatId,
+            _that.actionUrl,
+            _that.actionType,
+            _that.threadId,
+            _that.postId,
+            _that.commentId,
             _that.milestoneType,
             _that.milestoneValue,
             _that.parentCommentId);
@@ -389,6 +458,11 @@ extension ActivityNotificationPatterns on ActivityNotification {
             String status,
             String? videoId,
             String? chatId,
+            String? actionUrl,
+            String? actionType,
+            String? threadId,
+            String? postId,
+            String? commentId,
             String? milestoneType,
             int? milestoneValue,
             String? parentCommentId)?
@@ -407,6 +481,11 @@ extension ActivityNotificationPatterns on ActivityNotification {
             _that.status,
             _that.videoId,
             _that.chatId,
+            _that.actionUrl,
+            _that.actionType,
+            _that.threadId,
+            _that.postId,
+            _that.commentId,
             _that.milestoneType,
             _that.milestoneValue,
             _that.parentCommentId);
@@ -429,6 +508,11 @@ class _ActivityNotification implements ActivityNotification {
       this.status = 'pending',
       this.videoId,
       this.chatId,
+      this.actionUrl,
+      this.actionType,
+      this.threadId,
+      this.postId,
+      this.commentId,
       this.milestoneType,
       this.milestoneValue,
       this.parentCommentId});
@@ -456,6 +540,16 @@ class _ActivityNotification implements ActivityNotification {
   final String? videoId;
   @override
   final String? chatId;
+  @override
+  final String? actionUrl;
+  @override
+  final String? actionType;
+  @override
+  final String? threadId;
+  @override
+  final String? postId;
+  @override
+  final String? commentId;
   @override
   final String? milestoneType;
   @override
@@ -496,6 +590,15 @@ class _ActivityNotification implements ActivityNotification {
             (identical(other.status, status) || other.status == status) &&
             (identical(other.videoId, videoId) || other.videoId == videoId) &&
             (identical(other.chatId, chatId) || other.chatId == chatId) &&
+            (identical(other.actionUrl, actionUrl) ||
+                other.actionUrl == actionUrl) &&
+            (identical(other.actionType, actionType) ||
+                other.actionType == actionType) &&
+            (identical(other.threadId, threadId) ||
+                other.threadId == threadId) &&
+            (identical(other.postId, postId) || other.postId == postId) &&
+            (identical(other.commentId, commentId) ||
+                other.commentId == commentId) &&
             (identical(other.milestoneType, milestoneType) ||
                 other.milestoneType == milestoneType) &&
             (identical(other.milestoneValue, milestoneValue) ||
@@ -517,13 +620,18 @@ class _ActivityNotification implements ActivityNotification {
       status,
       videoId,
       chatId,
+      actionUrl,
+      actionType,
+      threadId,
+      postId,
+      commentId,
       milestoneType,
       milestoneValue,
       parentCommentId);
 
   @override
   String toString() {
-    return 'ActivityNotification(id: $id, type: $type, user: $user, timestamp: $timestamp, postThumbnailUrl: $postThumbnailUrl, commentText: $commentText, status: $status, videoId: $videoId, chatId: $chatId, milestoneType: $milestoneType, milestoneValue: $milestoneValue, parentCommentId: $parentCommentId)';
+    return 'ActivityNotification(id: $id, type: $type, user: $user, timestamp: $timestamp, postThumbnailUrl: $postThumbnailUrl, commentText: $commentText, status: $status, videoId: $videoId, chatId: $chatId, actionUrl: $actionUrl, actionType: $actionType, threadId: $threadId, postId: $postId, commentId: $commentId, milestoneType: $milestoneType, milestoneValue: $milestoneValue, parentCommentId: $parentCommentId)';
   }
 }
 
@@ -545,6 +653,11 @@ abstract mixin class _$ActivityNotificationCopyWith<$Res>
       String status,
       String? videoId,
       String? chatId,
+      String? actionUrl,
+      String? actionType,
+      String? threadId,
+      String? postId,
+      String? commentId,
       String? milestoneType,
       int? milestoneValue,
       String? parentCommentId});
@@ -572,6 +685,11 @@ class __$ActivityNotificationCopyWithImpl<$Res>
     Object? status = null,
     Object? videoId = freezed,
     Object? chatId = freezed,
+    Object? actionUrl = freezed,
+    Object? actionType = freezed,
+    Object? threadId = freezed,
+    Object? postId = freezed,
+    Object? commentId = freezed,
     Object? milestoneType = freezed,
     Object? milestoneValue = freezed,
     Object? parentCommentId = freezed,
@@ -612,6 +730,26 @@ class __$ActivityNotificationCopyWithImpl<$Res>
       chatId: freezed == chatId
           ? _self.chatId
           : chatId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      actionUrl: freezed == actionUrl
+          ? _self.actionUrl
+          : actionUrl // ignore: cast_nullable_to_non_nullable
+              as String?,
+      actionType: freezed == actionType
+          ? _self.actionType
+          : actionType // ignore: cast_nullable_to_non_nullable
+              as String?,
+      threadId: freezed == threadId
+          ? _self.threadId
+          : threadId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      postId: freezed == postId
+          ? _self.postId
+          : postId // ignore: cast_nullable_to_non_nullable
+              as String?,
+      commentId: freezed == commentId
+          ? _self.commentId
+          : commentId // ignore: cast_nullable_to_non_nullable
               as String?,
       milestoneType: freezed == milestoneType
           ? _self.milestoneType
