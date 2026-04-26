@@ -178,7 +178,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: AppColors.supportBackground,
+      color: AppColors.profileViewBackground,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Center(
@@ -222,7 +222,7 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
   Widget _buildContent(
       List<CalendarEvent> events, List<Map<String, dynamic>> platforms) {
     return Container(
-      color: AppColors.supportBackground,
+      color: AppColors.profileViewBackground,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: SafeArea(
@@ -691,7 +691,8 @@ class _ProfileBackViewState extends ConsumerState<ProfileBackView> {
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.supportBackground.withValues(alpha: 0.96),
+                  color:
+                      AppColors.profileViewBackground.withValues(alpha: 0.96),
                   borderRadius:
                       const BorderRadius.vertical(top: Radius.circular(28)),
                   border: Border.all(

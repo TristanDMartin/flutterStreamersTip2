@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/gamification/gamification_providers.dart';
 import '../features/gamification/models/subscription_plan.dart';
 import '../features/gamification/models/user_progress_bundle.dart';
+import '../features/tippy/tippy_access.dart';
 import '../models/creator_command_snapshot.dart';
 import 'current_user_provider.dart';
 
@@ -87,13 +88,23 @@ final StreamProvider<List<Map<String, dynamic>>> creatorCommandRecentVideosProvi
   return firestore
       .collection('videos')
       .where('creatorId', isEqualTo: userId)
-      .orderBy('createdAt', descending: true)
       .limit(100)
       .snapshots()
       .map((QuerySnapshot<Map<String, dynamic>> snapshot) {
-    return snapshot.docs
-        .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.data())
+    final List<Map<String, dynamic>> docs = snapshot.docs
+        .map(
+          (QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.data(),
+        )
         .toList(growable: false);
+    docs.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+      final DateTime? da = _readVideoCreatedAt(a);
+      final DateTime? db = _readVideoCreatedAt(b);
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return db.compareTo(da);
+    });
+    return docs;
   });
 });
 
@@ -111,12 +122,7 @@ final Provider<AsyncValue<CreatorCommandSnapshot?>> creatorCommandSnapshotProvid
   final AsyncValue<List<Map<String, dynamic>>> recentVideos =
       ref.watch(creatorCommandRecentVideosProvider);
 
-  if (identity.isLoading ||
-      progress.isLoading ||
-      scheduledPosts.isLoading ||
-      draftCount.isLoading ||
-      metrics.isLoading ||
-      recentVideos.isLoading) {
+  if (identity.isLoading) {
     return const AsyncValue<CreatorCommandSnapshot?>.loading();
   }
 
@@ -126,50 +132,29 @@ final Provider<AsyncValue<CreatorCommandSnapshot?>> creatorCommandSnapshotProvid
       identity.stackTrace ?? StackTrace.current,
     );
   }
-  if (progress.hasError) {
-    return AsyncValue<CreatorCommandSnapshot?>.error(
-      progress.error!,
-      progress.stackTrace ?? StackTrace.current,
-    );
-  }
-  if (scheduledPosts.hasError) {
-    return AsyncValue<CreatorCommandSnapshot?>.error(
-      scheduledPosts.error!,
-      scheduledPosts.stackTrace ?? StackTrace.current,
-    );
-  }
-  if (draftCount.hasError) {
-    return AsyncValue<CreatorCommandSnapshot?>.error(
-      draftCount.error!,
-      draftCount.stackTrace ?? StackTrace.current,
-    );
-  }
-  if (metrics.hasError) {
-    return AsyncValue<CreatorCommandSnapshot?>.error(
-      metrics.error!,
-      metrics.stackTrace ?? StackTrace.current,
-    );
-  }
-  if (recentVideos.hasError) {
-    return AsyncValue<CreatorCommandSnapshot?>.error(
-      recentVideos.error!,
-      recentVideos.stackTrace ?? StackTrace.current,
-    );
-  }
 
   final Map<String, dynamic>? userData = identity.valueOrNull;
   if (userData == null) {
     return const AsyncValue<CreatorCommandSnapshot?>.data(null);
   }
 
+  final UserProgressBundle bundle =
+      progress.valueOrNull ?? UserProgressBundle.fallback();
+  final List<Map<String, dynamic>> scheduledList =
+      scheduledPosts.valueOrNull ?? const <Map<String, dynamic>>[];
+  final int safeDraftCount = draftCount.valueOrNull ?? 0;
+  final Map<String, dynamic>? metricsMap = metrics.valueOrNull;
+  final List<Map<String, dynamic>> videoList =
+      recentVideos.valueOrNull ?? const <Map<String, dynamic>>[];
+
   return AsyncValue<CreatorCommandSnapshot?>.data(
     buildCreatorCommandSnapshot(
       userData: userData,
-      bundle: progress.valueOrNull ?? UserProgressBundle.fallback(),
-      scheduledPosts: scheduledPosts.valueOrNull ?? const <Map<String, dynamic>>[],
-      draftCount: draftCount.valueOrNull ?? 0,
-      metrics: metrics.valueOrNull,
-      recentVideos: recentVideos.valueOrNull ?? const <Map<String, dynamic>>[],
+      bundle: bundle,
+      scheduledPosts: scheduledList,
+      draftCount: safeDraftCount,
+      metrics: metricsMap,
+      recentVideos: videoList,
     ),
   );
 });
@@ -246,7 +231,7 @@ CreatorCommandSnapshot buildCreatorCommandSnapshot({
     level: bundle.progress.level,
     streakDays: bundle.progress.streakDays,
     subscriptionPlan: bundle.subscription?.plan ?? SubscriptionPlan.unknown,
-    tippyAiEnabled: bundle.entitlements.tippyAi,
+    tippyAiEnabled: resolveTippyEnabled(bundle),
     draftCount: draftCount,
     consistencyScorePercent: consistencyScorePercent,
     alertCount: alertCount,
@@ -256,6 +241,14 @@ CreatorCommandSnapshot buildCreatorCommandSnapshot({
     nextPostDueAt: nextPostDueAt,
     nextPostOverdue: nextPostOverdue,
   );
+}
+
+DateTime? _readVideoCreatedAt(Map<String, dynamic> video) {
+  final Object? createdAt = video['createdAt'];
+  if (createdAt is Timestamp) return createdAt.toDate();
+  if (createdAt is DateTime) return createdAt;
+  if (createdAt is String) return DateTime.tryParse(createdAt);
+  return null;
 }
 
 DateTime? _readScheduledAt(Map<String, dynamic>? post) {

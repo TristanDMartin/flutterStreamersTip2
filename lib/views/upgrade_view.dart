@@ -1,7 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fa;
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fa;
+import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+
 import '../constants/app_colors.dart';
+import '../features/billing/iap_billing_coordinator.dart';
+import '../features/billing/mobile_billing_setup_status_banner.dart';
+import '../features/billing/iap_billing_facade.dart';
+import '../features/billing/store_product_ids.dart';
 import 'contact_support_view.dart';
 
 class UpgradeView extends StatefulWidget {
@@ -20,11 +28,86 @@ class _UpgradeViewState extends State<UpgradeView> {
   String _resolvedTier = 'starter';
   String? _subscriptionStatus;
   bool _isLoadingTier = true;
+  String? _localProductHint;
+
+  IapBillingFacade get _iap => IapBillingCoordinator.instance.facade;
+
+  void _onIapUi() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onPurchaseVerified() {
+    unawaited(_loadSubscriptionTier());
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadSubscriptionTier();
+    final IapBillingCoordinator coordinator = IapBillingCoordinator.instance;
+    coordinator.addListener(_onIapUi);
+    coordinator.addVerifiedHandler(_onPurchaseVerified);
+    unawaited(_iap.loadProducts());
+    unawaited(_loadSubscriptionTier());
+  }
+
+  @override
+  void dispose() {
+    final IapBillingCoordinator coordinator = IapBillingCoordinator.instance;
+    coordinator.removeListener(_onIapUi);
+    coordinator.removeVerifiedHandler(_onPurchaseVerified);
+    super.dispose();
+  }
+
+  Future<void> _buyProduct(String productId) async {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _localProductHint = null;
+      _iap.lastRecoverableHint = null;
+    });
+    final ProductDetails? details = _iap.productsById[productId];
+    if (details == null) {
+      setState(() {
+        _localProductHint = 'That product is not available from the store yet. '
+            'Check App Store Connect / Play Console IDs match the app.';
+      });
+      return;
+    }
+    await _iap.buySubscription(details);
+  }
+
+  Future<void> _pickStudioProductThenBuy() async {
+    final String? picked = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Studio billing period'),
+          content: const Text(
+            'Choose monthly or yearly Studio. Apple or Google will '
+            'run checkout; entitlements unlock after server verification.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(kStreamersTipStudioMonthlyId),
+              child: const Text('Monthly'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(kStreamersTipStudioYearlyId),
+              child: const Text('Yearly'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted) {
+      return;
+    }
+    if (picked != null) {
+      await _buyProduct(picked);
+    }
   }
 
   Future<void> _loadSubscriptionTier() async {
@@ -127,6 +210,8 @@ class _UpgradeViewState extends State<UpgradeView> {
               _buildHero(),
               const SizedBox(height: 16),
               _buildCurrentPlanCard(),
+              const SizedBox(height: 16),
+              _buildMobileStoreSection(),
               const SizedBox(height: 24),
               _buildTierCard(
                 context,
@@ -166,7 +251,24 @@ class _UpgradeViewState extends State<UpgradeView> {
                   'Unlimited weekly cross-posting',
                 ],
                 isFeatured: true,
+                storePrimaryAction:
+                    !_isLoadingTier && _resolvedTier == 'starter'
+                        ? () => _buyProduct(kStreamersTipProMonthlyId)
+                        : null,
+                storePrimaryLabel: 'Start 7-Day Free Trial',
               ),
+              if (!_isLoadingTier &&
+                  _resolvedTier == 'starter' &&
+                  _iap.productsById[kStreamersTipProYearlyId] != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, left: 4),
+                  child: TextButton(
+                    onPressed: _iap.purchaseBusy
+                        ? null
+                        : () => _buyProduct(kStreamersTipProYearlyId),
+                    child: const Text('Prefer Pro yearly?'),
+                  ),
+                ),
               const SizedBox(height: 16),
               _buildTierCard(
                 context,
@@ -187,10 +289,22 @@ class _UpgradeViewState extends State<UpgradeView> {
                   'Up to 5 team members',
                   'Exportable reports and priority support',
                 ],
+                storePrimaryAction:
+                    !_isLoadingTier &&
+                            (_resolvedTier == 'starter' ||
+                                _resolvedTier == 'pro')
+                        ? _pickStudioProductThenBuy
+                        : null,
+                storePrimaryLabel: 'Subscribe to Studio',
               ),
               const SizedBox(height: 20),
               Text(
-                'Website pricing and entitlements are mirrored here. Paid subscriptions still route through support while mobile billing is being finalized.',
+                'In-app subscriptions use Apple App Store or Google Play '
+                'billing. Entitlements unlock only after your receipt is '
+                'verified on StreamersTip servers — the app never grants '
+                'Pro or Studio from the client alone. Do not add Stripe '
+                'checkout links here unless you use an approved external '
+                'purchase flow for your region.',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.62),
                   fontSize: 13,
@@ -200,6 +314,102 @@ class _UpgradeViewState extends State<UpgradeView> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMobileStoreSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Apple & Google subscriptions',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const MobileBillingSetupStatusBanner(),
+          const SizedBox(height: 8),
+          if (_iap.purchaseBusy)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: LinearProgressIndicator(minHeight: 3),
+            ),
+          if (_iap.lastError != null)
+            SelectableText.rich(
+              TextSpan(
+                text: _iap.lastError!,
+                style: const TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          if (_iap.notFoundProductIds.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            SelectableText.rich(
+              TextSpan(
+                style: TextStyle(
+                  color: Colors.orange.shade200,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                children: <InlineSpan>[
+                  const TextSpan(text: 'Store returned no match for: '),
+                  TextSpan(
+                    text: _iap.notFoundProductIds.join(', '),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_localProductHint != null) ...<Widget>[
+            const SizedBox(height: 8),
+            SelectableText.rich(
+              TextSpan(
+                text: _localProductHint!,
+                style: TextStyle(
+                  color: Colors.orange.shade200,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+          if (_iap.lastRecoverableHint != null) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              _iap.lastRecoverableHint!,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.75),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+          if (_iap.storeAvailable)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _iap.purchaseBusy ? null : () => _iap.restorePurchases(),
+                child: const Text('Restore purchases'),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -401,6 +611,8 @@ class _UpgradeViewState extends State<UpgradeView> {
     required List<String> features,
     String? secondaryPrice,
     bool isFeatured = false,
+    VoidCallback? storePrimaryAction,
+    String? storePrimaryLabel,
   }) {
     final isCurrentTier = !_isLoadingTier && _resolvedTier == tierKey;
     return Container(
@@ -590,11 +802,21 @@ class _UpgradeViewState extends State<UpgradeView> {
             child: ElevatedButton(
               onPressed: isCurrentTier
                   ? null
-                  : () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const ContactSupportView(),
+                  : () {
+                      if (_iap.purchaseBusy) {
+                        return;
+                      }
+                      if (storePrimaryAction != null) {
+                        storePrimaryAction();
+                        return;
+                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext ctx) =>
+                              const ContactSupportView(),
                         ),
-                      ),
+                      );
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: isFeatured
                     ? AppColors.supportAccent
@@ -612,9 +834,10 @@ class _UpgradeViewState extends State<UpgradeView> {
               child: Text(
                 isCurrentTier
                     ? 'Current Plan'
-                    : (name == 'Starter'
-                        ? 'Stay on Starter'
-                        : 'Subscribe to $name'),
+                    : (storePrimaryLabel ??
+                        (name == 'Starter'
+                            ? 'Stay on Starter'
+                            : 'Subscribe to $name')),
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,

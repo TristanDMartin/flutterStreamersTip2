@@ -49,9 +49,14 @@ void main() {
 
       // Should show empty state when no data
       expect(find.text('No connections yet'), findsOneWidget);
-      expect(find.text('Follow back people who follow you to connect.'),
-          findsOneWidget);
-      expect(find.text('Refresh'), findsOneWidget);
+      expect(
+        find.text(
+          'Follow back people who follow you to turn one-way relationships '
+          'into connections.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Refresh network'), findsOneWidget);
     });
 
     testWidgets('Empty state refresh action is present',
@@ -64,10 +69,10 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Refresh'));
+      await tester.tap(find.text('Refresh network'));
       await tester.pump();
 
-      expect(find.text('Refresh'), findsOneWidget);
+      expect(find.text('Refresh network'), findsOneWidget);
     });
   });
 

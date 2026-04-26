@@ -113,14 +113,14 @@ void main() {
     );
   });
 
-  testWidgets('tippy routes to upgrade when locked and manage posts when unlocked',
+  testWidgets('tippy routes to upgrade when locked and chat when unlocked',
       (WidgetTester tester) async {
     List<RouteSettings> seenRoutes = await pumpHarness(
       tester,
       snapshot: lockedSnapshot,
     );
 
-    await tester.tap(find.text('Tippy Locked'));
+    await tester.tap(find.text('Tippy (locked)'));
     await tester.pumpAndSettle();
     expect(seenRoutes.single.name, AppRoutes.upgrade);
 
@@ -128,12 +128,8 @@ void main() {
       tester,
       snapshot: unlockedSnapshot,
     );
-    await tester.tap(find.text('Tippy AI'));
+    await tester.tap(find.text('Tippy'));
     await tester.pumpAndSettle();
-    expect(seenRoutes.single.name, AppRoutes.managePosts);
-    expect(
-      (seenRoutes.single.arguments as ManagePostsRouteArgs).launchSource,
-      ManagePostsLaunchSource.tippy,
-    );
+    expect(seenRoutes.single.name, AppRoutes.tippyChat);
   });
 }

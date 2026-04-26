@@ -696,7 +696,7 @@ class _EditProfileViewState extends ConsumerState<EditProfileView> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: AppColors.supportBackground,
+        color: AppColors.profileViewBackground,
         child: SafeArea(
           child: Column(
             children: [

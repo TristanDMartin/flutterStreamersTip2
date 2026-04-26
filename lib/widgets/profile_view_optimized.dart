@@ -209,7 +209,7 @@ class _ProfileViewOptimizedState extends ConsumerState<ProfileViewOptimized>
   Widget build(BuildContext context) {
     final Map<String, dynamic> userData = _getCurrentUserData();
     return Scaffold(
-      backgroundColor: AppColors.supportBackground,
+      backgroundColor: AppColors.profileViewBackground,
       extendBody: true,
       extendBodyBehindAppBar: true,
       body: AnimatedBuilder(

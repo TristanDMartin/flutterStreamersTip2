@@ -89,5 +89,35 @@ void main() {
       expect(snapshot.consistencyScorePercent, greaterThan(0));
       expect(snapshot.collapsedSummary, contains('solo'));
     });
+
+    test('enables Tippy for active Studio without entitlement flag', () {
+      final snapshot = buildCreatorCommandSnapshot(
+        userData: <String, dynamic>{
+          'id': 'user-3',
+          'username': 'studio_user',
+          'displayName': 'Studio User',
+        },
+        bundle: UserProgressBundle(
+          progress: const GamificationSummaryModel(
+            level: 10,
+            totalXp: 5000,
+            streakDays: 3,
+            creatorScore: 90,
+            rankTitle: 'Pro',
+          ),
+          subscription: const UserSubscriptionModel(
+            plan: SubscriptionPlan.studio,
+            status: 'active',
+          ),
+          entitlements: const UserEntitlementsModel(tippyAi: false),
+          missions: const [],
+        ),
+        scheduledPosts: const <Map<String, dynamic>>[],
+        draftCount: 0,
+        metrics: null,
+        recentVideos: const <Map<String, dynamic>>[],
+      );
+      expect(snapshot.tippyAiEnabled, isTrue);
+    });
   });
 }

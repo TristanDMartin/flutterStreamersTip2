@@ -295,16 +295,13 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
         physics: _currentIndex == 0 || _currentIndex == 1
             ? const NeverScrollableScrollPhysics()
             : const ClampingScrollPhysics(),
-        children: const [
-          // Home View
+        children: [
           HomeView(),
-          // Network View
           NetworkView(),
-          // Creation Screen (handled by floating action button)
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+              children: const [
                 Icon(Icons.add_circle, size: 80, color: Colors.grey),
                 SizedBox(height: 16),
                 Text(
@@ -318,10 +315,10 @@ class _MainTabViewState extends ConsumerState<MainTabView> {
               ],
             ),
           ),
-          // Inbox (handled by navigation)
-          Center(child: Icon(Icons.mail_outline, size: 80, color: Colors.grey)),
-          // Profile (handled by navigation)
-          Center(
+          const Center(
+            child: Icon(Icons.mail_outline, size: 80, color: Colors.grey),
+          ),
+          const Center(
             child: Icon(
               Icons.account_circle_outlined,
               size: 80,

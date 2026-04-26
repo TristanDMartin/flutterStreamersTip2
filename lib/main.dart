@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -28,6 +29,7 @@ import 'services/streamers_tip_like_service.dart';
 import 'services/favorites_service_optimized.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'constants/app_colors.dart';
+import 'features/billing/iap_billing_coordinator.dart';
 import 'utils/responsive_layout.dart';
 
 void main() async {
@@ -163,6 +165,13 @@ Future<void> _initializeAllServices() async {
       ErrorHandlerService.instance.initialize();
     });
     debugPrint('✅ ErrorHandlerService: Completed at ${DateTime.now()}');
+
+    await _initializeServiceSafely('IapBillingCoordinator', () async {
+      if (kIsWeb) {
+        return;
+      }
+      await IapBillingCoordinator.instance.warmStart();
+    });
 
     // PERFORMANCE OPTIMIZATIONS
     _initializePerformanceOptimizations();

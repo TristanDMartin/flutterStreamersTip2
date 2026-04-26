@@ -47,6 +47,14 @@ class CreatorCommandSnapshot {
 
   String get collapsedSummary {
     final String name = displayName.isNotEmpty ? displayName : username;
-    return '$name • ${streakDays > 0 ? '🔥 $streakLabel' : 'Level $level'} • $draftCount ${draftCount == 1 ? 'draft' : 'drafts'}';
+    final String momentum = streakDays > 0
+        ? '🔥 ${streakDays}d streak'
+        : 'Lv$level';
+    final String work = pendingWorkCount > 0
+        ? ' • $pendingWorkCount ${pendingWorkCount == 1 ? 'clip' : 'clips'}'
+        : (draftCount > 0
+            ? ' • $draftCount ${draftCount == 1 ? 'draft' : 'drafts'}'
+            : '');
+    return '$name • $momentum$work';
   }
 }

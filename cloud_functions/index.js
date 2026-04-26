@@ -1590,9 +1590,16 @@ const region = 'us-central1';
 const crypto = require('crypto');
 const { createDirectUpload, handleMuxWebhook } = require('./src/mux');
 const {handleGamificationEvents} = require('./src/gamification/gamification_events_http');
+const {handleVerifyMobilePurchase} = require('./src/billing/verify_mobile_purchase');
 
 /** Optional fallback only — prefer Cloudflare Worker `POST /gamification/events` (same contract). */
 exports.gamificationEvents = onRequest({region, cors: true}, handleGamificationEvents);
+
+/** Mobile IAP: Flutter posts receipt/token; verifies Apple / Play; writes Firestore. */
+exports.verifyMobilePurchase = onRequest(
+    {region, cors: true},
+    handleVerifyMobilePurchase,
+);
 
 exports.createMuxDirectUpload = onCall({ region }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in');

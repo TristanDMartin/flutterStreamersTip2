@@ -55,6 +55,16 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
   DateTime? _pageEnteredAt;
   int _lastImpressionIndex = -1;
 
+  /// Stale [HomeViewController] index after a shorter feed would leave no page
+  /// with [isCurrentVideo] true (audio can still play). Clamp to a valid index.
+  int get _clampedCurrentIndex {
+    final int len = widget.videos.length;
+    if (len == 0) {
+      return 0;
+    }
+    return widget.currentIndex.clamp(0, len - 1);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -357,7 +367,7 @@ class _VideoPageViewWidgetState extends ConsumerState<VideoPageViewWidget> {
                   log('⚠️ VideoPageView: Invalid video at index $index');
                   return const SizedBox.shrink();
                 }
-                final isCurrentVideo = index == widget.currentIndex;
+                final isCurrentVideo = index == _clampedCurrentIndex;
                 return VideoPlayerViewOptimized(
                   key: ValueKey(video.id),
                   video: video,

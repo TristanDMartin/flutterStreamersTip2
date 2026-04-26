@@ -13,6 +13,8 @@ class AppColors {
 
   // MARK: - Support/Profile Palette
   static const Color supportBackground = Color(0xFF1C135D);
+  /// Profile tab, front/back, edit, and share — solid black.
+  static const Color profileViewBackground = Color(0xFF000000);
   static const Color supportTopSurface = Color(0xFF6137EB);
   static const Color supportAccent = primary;
   static const List<Color> supportAccentGradient = [

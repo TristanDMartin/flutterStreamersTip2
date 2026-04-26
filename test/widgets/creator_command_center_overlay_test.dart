@@ -64,8 +64,9 @@ void main() {
     await pumpOverlay(tester, state: CreatorCommandCenterState.expanded);
 
     expect(find.text('TechnQs • Level 7'), findsOneWidget);
-    expect(find.textContaining('Consistency Score: 82%'), findsOneWidget);
-    expect(find.text('Quick Actions'), findsOneWidget);
+    expect(find.text('Tippy'), findsOneWidget);
+    expect(find.text('Consistency 82%'), findsOneWidget);
+    expect(find.text('Shortcuts'), findsOneWidget);
     expect(find.text('Drafts'), findsOneWidget);
   });
 

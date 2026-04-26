@@ -57,3 +57,4 @@ app.*.map.json
 cloud_functions/.env
 cloud_functions/.env.*
 !.env.example
+cloud_functions/node_modules/

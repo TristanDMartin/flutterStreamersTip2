@@ -16,6 +16,7 @@ import '../widgets/inbox_view_optimized.dart';
 import '../widgets/player_screen.dart';
 import '../widgets/profile_view_optimized.dart';
 import '../widgets/tiktok_camera_view.dart';
+import '../features/tippy/tippy_chat_page.dart';
 
 class AppRoutes {
   static const String root = '/';
@@ -34,6 +35,7 @@ class AppRoutes {
   static const String player = '/player';
   static const String profile = '/profile';
   static const String chat = '/chat';
+  static const String tippyChat = '/tippy';
 
   static Route<dynamic> onGenerateRoute(RouteSettings routeSettings) {
     switch (routeSettings.name) {
@@ -172,6 +174,12 @@ class AppRoutes {
           );
         }
         break;
+      case tippyChat:
+        return _buildRoute(
+          settings: routeSettings,
+          builder: (_) => const TippyChatPage(),
+          fullscreenDialog: true,
+        );
     }
 
     return _buildRoute(

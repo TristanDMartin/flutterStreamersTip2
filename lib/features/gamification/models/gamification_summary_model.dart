@@ -39,7 +39,13 @@ class GamificationSummaryModel {
         _readInt(raw, <String>['streakDays', 'streak_days']) ?? 0;
     final double score =
         _readDouble(raw, <String>['creatorScore', 'creator_score']) ?? 0;
-    final String title = GamificationConstants.rankTitleForLevel(level);
+    final String? storedRank = _readString(raw, <String>[
+      'rank_title',
+      'rankTitle',
+    ]);
+    final String title = (storedRank != null && storedRank.isNotEmpty)
+        ? storedRank
+        : GamificationConstants.rankTitleForLevel(level);
     final String? next = _readString(raw, <String>[
       'nextAction',
       'next_action',

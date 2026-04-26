@@ -325,9 +325,8 @@ class _HomeViewState extends ConsumerState<HomeView>
 
       // 🚀 CACHE: Skip if ranked within last 5 minutes
       if (_lastRankingTime != null) {
-        final minutesSinceRanking = DateTime.now()
-            .difference(_lastRankingTime!)
-            .inMinutes;
+        final minutesSinceRanking =
+            DateTime.now().difference(_lastRankingTime!).inMinutes;
         if (minutesSinceRanking < 5) {
           log(
             '⏭️ UnifiedAlgorithm: Skipping re-ranking (cached ${minutesSinceRanking}min ago)',
@@ -349,12 +348,12 @@ class _HomeViewState extends ConsumerState<HomeView>
       log('🎯 UnifiedAlgorithm: Ranking ${candidateVideos.length} videos...');
 
       // Get personalized feed with all 7 systems applied
-      final rankedVideos = await UnifiedAlgorithmService.instance
-          .getPersonalizedFeed(
-            userId: currentUser.uid,
-            candidateVideos: candidateVideos,
-            limit: candidateVideos.length, // Keep all videos, just reorder
-          );
+      final rankedVideos =
+          await UnifiedAlgorithmService.instance.getPersonalizedFeed(
+        userId: currentUser.uid,
+        candidateVideos: candidateVideos,
+        limit: candidateVideos.length, // Keep all videos, just reorder
+      );
 
       // Update provider with ranked videos
       final homeVM = ref.read(hp.homeProvider.notifier);
@@ -536,10 +535,8 @@ class _HomeViewState extends ConsumerState<HomeView>
 
     // Get current feed videos based on active tab
     final activeFeed = ref.read(activeFeedProvider);
-    final List<HomeVideo> videos = ref
-        .read(hp.homeProvider)
-        .feedData(activeFeed)
-        .videos;
+    final List<HomeVideo> videos =
+        ref.read(hp.homeProvider).feedData(activeFeed).videos;
 
     if (activeFeed == FeedTab.threads) {
       log('⏭️ HomeView: Ignoring video tap while Threads tab is active');
@@ -746,120 +743,120 @@ class _HomeViewState extends ConsumerState<HomeView>
     final controllerState = ref.watch(homeViewControllerProvider);
 
     return NetworkStatusWidget(
-      child: Scaffold(
-        backgroundColor: AppColors.supportBackground,
-        extendBody:
-            true, // This allows content to extend behind the bottom navigation
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: Consumer(
-                builder: (context, ref, child) {
-                  final activeFeed = ref.watch(activeFeedProvider);
-                  return HomeContentWidget(
-                    key: ValueKey(activeFeed.tabId),
-                    activeTab: activeFeed,
-                    currentIndex: controllerState.currentIndex,
-                    showCommandCenterTrigger: activeFeed == FeedTab.forYou,
-                    onCommandCenterTap: _toggleCommandCenter,
-                    onTabChange: _handleFeedTabChange,
-                    onPageChanged: _onPageChanged,
-                    onVideoTap: _handleVideoTap,
-                    onLeftSwipe: _handleLeftSwipeVideo,
-                    onRightSwipe: _handleRightSwipe,
-                    onDiscoverTap: _navigateToDiscover,
-                    onNetworkTap: _navigateToNetwork,
-                    onScrollControllerReady: null,
-                  );
-                },
-              ),
-            ),
-            CreatorCommandCenterOverlay(
-              state: _commandCenterState,
-              onDismiss: _closeCommandCenter,
-              onExpand: _expandCommandCenter,
-            ),
-            if (_showStreamerCard && _currentStreamerCard != null)
+      child: Material(
+        color: AppColors.supportBackground,
+        child: SizedBox.expand(
+          child: Stack(
+            children: [
               Positioned.fill(
-                child: StreamerCardView(
-                  userId: _currentStreamerCard!.id,
-                  currentUserId:
-                      firebase_auth.FirebaseAuth.instance.currentUser?.uid,
-                  onDismiss: _dismissStreamerCard,
-                  onMessage: (userId) {
-                    HapticFeedback.lightImpact();
-                    if (kDebugMode) {
-                      print(
-                        'HomeView: Message action triggered for user: $userId',
-                      );
-                    }
-                  },
-                  onNavigateToTab: (tabName) {
-                    HapticFeedback.lightImpact();
-                    if (kDebugMode) {
-                      print('HomeView: Tab navigation requested: $tabName');
-                    }
-
-                    setState(() {
-                      _showStreamerCard = false;
-                      _currentStreamerCard = null;
-                    });
-                    _controller.prepareForRouteNavigation(
-                      reason: 'leave_home_to_network_from_streamer_card',
-                    );
-                    _navigateToNetworkViewWithTab(tabName);
-                  },
-                  onShare: (userId) {
-                    HapticFeedback.lightImpact();
-                    if (kDebugMode) {
-                      print(
-                        'HomeView: Share action triggered for user: $userId',
-                      );
-                    }
-
-                    final currentStreamer = _currentStreamerCard;
-                    if (currentStreamer == null) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('User information not available'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                      return;
-                    }
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Share profile feature coming soon!'),
-                      ),
+                child: Consumer(
+                  builder: (context, ref, child) {
+                    final activeFeed = ref.watch(activeFeedProvider);
+                    return HomeContentWidget(
+                      key: ValueKey(activeFeed.tabId),
+                      activeTab: activeFeed,
+                      currentIndex: controllerState.currentIndex,
+                      showCommandCenterTrigger: activeFeed == FeedTab.forYou,
+                      onCommandCenterTap: _toggleCommandCenter,
+                      onTabChange: _handleFeedTabChange,
+                      onPageChanged: _onPageChanged,
+                      onVideoTap: _handleVideoTap,
+                      onLeftSwipe: _handleLeftSwipeVideo,
+                      onRightSwipe: _handleRightSwipe,
+                      onDiscoverTap: _navigateToDiscover,
+                      onNetworkTap: _navigateToNetwork,
+                      onScrollControllerReady: null,
                     );
                   },
                 ),
               ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: IgnorePointer(
-                child: Container(
-                  height: MediaQuery.of(context).padding.bottom + 72,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        AppColors.supportBackground.withValues(alpha: 0.92),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.8],
+              CreatorCommandCenterOverlay(
+                state: _commandCenterState,
+                onDismiss: _closeCommandCenter,
+                onExpand: _expandCommandCenter,
+              ),
+              if (_showStreamerCard && _currentStreamerCard != null)
+                Positioned.fill(
+                  child: StreamerCardView(
+                    userId: _currentStreamerCard!.id,
+                    currentUserId:
+                        firebase_auth.FirebaseAuth.instance.currentUser?.uid,
+                    onDismiss: _dismissStreamerCard,
+                    onMessage: (userId) {
+                      HapticFeedback.lightImpact();
+                      if (kDebugMode) {
+                        print(
+                          'HomeView: Message action triggered for user: $userId',
+                        );
+                      }
+                    },
+                    onNavigateToTab: (tabName) {
+                      HapticFeedback.lightImpact();
+                      if (kDebugMode) {
+                        print('HomeView: Tab navigation requested: $tabName');
+                      }
+
+                      setState(() {
+                        _showStreamerCard = false;
+                        _currentStreamerCard = null;
+                      });
+                      _controller.prepareForRouteNavigation(
+                        reason: 'leave_home_to_network_from_streamer_card',
+                      );
+                      _navigateToNetworkViewWithTab(tabName);
+                    },
+                    onShare: (userId) {
+                      HapticFeedback.lightImpact();
+                      if (kDebugMode) {
+                        print(
+                          'HomeView: Share action triggered for user: $userId',
+                        );
+                      }
+
+                      final currentStreamer = _currentStreamerCard;
+                      if (currentStreamer == null) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('User information not available'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                        return;
+                      }
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Share profile feature coming soon!'),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: Container(
+                    height: MediaQuery.of(context).padding.bottom + 72,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          AppColors.supportBackground.withValues(alpha: 0.92),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.8],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

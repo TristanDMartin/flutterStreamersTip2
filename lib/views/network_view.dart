@@ -1348,18 +1348,21 @@ class _NetworkViewState extends ConsumerState<NetworkView>
         ? 'Find creators and friends from Home or Search, then follow them here.'
         : 'Follow back people who follow you to turn one-way relationships into connections.';
 
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 28),
-        padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      physics: const BouncingScrollPhysics(),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 28),
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             Container(
               width: 72,
               height: 72,
@@ -1377,7 +1380,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Text(
               title,
               style: const TextStyle(
@@ -1398,14 +1401,14 @@ class _NetworkViewState extends ConsumerState<NetworkView>
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             GestureDetector(
               onTap: () {
                 HapticFeedback.lightImpact();
                 _refreshDataInstantly();
               },
               child: Container(
-                height: 46,
+                height: 44,
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
@@ -1433,6 +1436,7 @@ class _NetworkViewState extends ConsumerState<NetworkView>
               ),
             ),
           ],
+        ),
         ),
       ),
     );

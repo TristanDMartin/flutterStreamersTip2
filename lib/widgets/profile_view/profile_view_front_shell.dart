@@ -38,7 +38,7 @@ class ProfileViewFrontShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.paddingOf(context).bottom;
     return ColoredBox(
-      color: AppColors.supportBackground,
+      color: AppColors.profileViewBackground,
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),

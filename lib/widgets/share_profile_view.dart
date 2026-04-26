@@ -120,7 +120,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
           return Container(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
             decoration: BoxDecoration(
-              color: AppColors.supportBackground.withValues(alpha: 0.98),
+              color: AppColors.profileViewBackground.withValues(alpha: 0.98),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(28)),
               border: Border.all(
@@ -270,7 +270,7 @@ class _ShareProfileViewState extends State<ShareProfileView> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: AppColors.supportBackground,
+        color: AppColors.profileViewBackground,
         child: SafeArea(
           child: Column(
             children: [

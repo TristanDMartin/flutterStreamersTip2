@@ -99,6 +99,10 @@ class AppNavigator {
     );
   }
 
+  static Future<T?> openTippyChat<T>(BuildContext context) {
+    return Navigator.of(context).pushNamed<T>(AppRoutes.tippyChat);
+  }
+
   static Future<T?> openManagePostsWithArgs<T>(
     BuildContext context, {
     required ManagePostsInitialTab initialTab,
